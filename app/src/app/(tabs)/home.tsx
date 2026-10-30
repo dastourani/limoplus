@@ -2,17 +2,19 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Text } from '../components/Text';
+import { Text } from '../../components/Text';
 
-import { endpoints } from '../api/endpoints';
-import { ErrorState, Loading, Screen } from '../components/ui';
-import { storage, type LastSection } from '../lib/storage';
-import { useApi } from '../lib/useApi';
-import { colors, formatToman, radius, rtl, toPersianDigits } from '../theme';
+import { endpoints } from '../../api/endpoints';
+import { ErrorState, Loading, Screen } from '../../components/ui';
+import { useAuth } from '../../lib/auth';
+import { storage, type LastSection } from '../../lib/storage';
+import { useApi } from '../../lib/useApi';
+import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
 
 type MajorRef = { slug: string; name: string; color: string };
 
 export default function Home() {
+  const { user } = useAuth();
   const [major, setMajor] = useState<MajorRef | null>(null);
   const [last, setLast] = useState<LastSection | null>(null);
 
@@ -35,23 +37,25 @@ export default function Home() {
   };
 
   return (
-    <Screen>
+    <Screen tab>
       <ScrollView
         contentContainerStyle={styles.page}
         refreshControl={<RefreshControl refreshing={books.loading && !!books.data} onRefresh={() => { books.retry(); banners.retry(); }} />}
       >
         <View style={styles.top}>
           <View style={{ gap: 2 }}>
-            <Text style={[styles.hello, rtl]}>سلام</Text>
+            <Text style={[styles.hello, rtl]}>سلام{user?.first_name ? ` ${user.first_name}` : ''}</Text>
             <Pressable onPress={() => router.push('/welcome')} style={styles.space} accessibilityRole="button" accessibilityLabel="تغییر رشته">
               <View style={[styles.dot, { backgroundColor: major.color }]} />
               <Text style={styles.spaceText}>فضای {major.name}</Text>
               <Text style={styles.chev}>▾</Text>
             </Pressable>
           </View>
-          <Pressable onPress={() => router.push('/settings')} style={styles.iconBox} accessibilityLabel="تنظیمات">
-            <Text style={{ fontSize: 18 }}>⚙</Text>
-          </Pressable>
+          {!user && (
+            <Pressable onPress={() => router.push('/login')} style={styles.loginPill} accessibilityRole="button">
+              <Text style={styles.loginText}>ورود</Text>
+            </Pressable>
+          )}
         </View>
 
         {last && (
@@ -97,14 +101,18 @@ export default function Home() {
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={[styles.bookTitle, rtl]}>{book.title}</Text>
                 <Text style={[styles.muted, rtl]}>{toPersianDigits(book.chapter_count)} فصل{book.price ? ` · ${formatToman(book.price)}` : ''}</Text>
-                {book.has_free_part && <Text style={[styles.free, rtl]}>بخشی از کتاب رایگان است</Text>}
+                {book.owned ? (
+                  <Text style={[styles.free, rtl]}>✓ در دسترس شما</Text>
+                ) : (
+                  book.has_free_part && <Text style={[styles.free, rtl]}>بخشی از کتاب رایگان است</Text>
+                )}
               </View>
             </Pressable>
           ))
         )}
 
         <View style={styles.soon}>
-          <Text style={[styles.soonText, rtl]}>✦ دستیار هوش مصنوعی</Text>
+          <Text style={[styles.soonText, rtl]}>✦ دستیار هوش مصنوعی برای رفع اشکال</Text>
           <Text style={styles.soonBadge}>به‌زودی</Text>
         </View>
       </ScrollView>
@@ -120,6 +128,8 @@ const styles = StyleSheet.create({
   dot: { width: 10, height: 10, borderRadius: 5 },
   spaceText: { fontSize: 15, fontWeight: '700', color: colors.ink },
   chev: { color: colors.ink },
+  loginPill: { backgroundColor: colors.ink, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10 },
+  loginText: { color: colors.lemon, fontWeight: '800' },
   iconBox: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   continue: { backgroundColor: colors.surface, borderRadius: 26, overflow: 'hidden', shadowColor: '#17201A', shadowOpacity: 0.1, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
   continueCover: { padding: 18, minHeight: 110, justifyContent: 'flex-end' },

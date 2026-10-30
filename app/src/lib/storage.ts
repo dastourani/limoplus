@@ -4,7 +4,10 @@ const KEYS = {
   serverUrl: 'limo.serverUrl',
   major: 'limo.major',
   lastSection: 'limo.lastSection',
+  reader: 'limo.reader',
 } as const;
+
+export type ReaderPrefs = { fontSize: number; dark: boolean };
 
 export type LastSection = { id: number; title: string; bookTitle: string; bookSlug: string };
 
@@ -33,4 +36,6 @@ export const storage = {
   setMajor: (major: { slug: string; name: string; color: string } | null) => setJson(KEYS.major, major),
   getLastSection: () => getJson<LastSection>(KEYS.lastSection),
   setLastSection: (value: LastSection) => setJson(KEYS.lastSection, value),
+  getReader: () => getJson<ReaderPrefs>(KEYS.reader),
+  setReader: (value: ReaderPrefs) => setJson(KEYS.reader, value),
 };

@@ -1,15 +1,16 @@
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Text } from './Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radius, rtl } from '../theme';
 
-export function Screen({ children, background = colors.ground }: { children: ReactNode; background?: string }) {
+export function Screen({ children, background = colors.ground, tab = false }: { children: ReactNode; background?: string; tab?: boolean }) {
+  // Tab screens leave the bottom edge to the tab bar.
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: background }]} edges={['top', 'bottom', 'left', 'right']}>
+    <SafeAreaView style={[styles.screen, { backgroundColor: background }]} edges={tab ? ['top', 'left', 'right'] : ['top', 'bottom', 'left', 'right']}>
       <View style={styles.inner}>{children}</View>
     </SafeAreaView>
   );
@@ -77,6 +78,39 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
   );
 }
 
+/** A panel that slides up from the bottom: reports, notes, choices. */
+export function Sheet({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: ReactNode }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetWrap}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="بستن" />
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.sheetTitle, rtl]}>{title}</Text>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 10, paddingBottom: 8 }}>
+            {children}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  return <View style={[styles.card, style]}>{children}</View>;
+}
+
+export function Empty({ icon = '🍋', title, text, action }: { icon?: string; title: string; text?: string; action?: ReactNode }) {
+  return (
+    <View style={styles.empty}>
+      <Text style={{ fontSize: 40 }}>{icon}</Text>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      {!!text && <Text style={styles.emptyText}>{text}</Text>}
+      {action}
+    </View>
+  );
+}
+
 export function Chip({ label, color = colors.muted, background = colors.surface }: { label: string; color?: string; background?: string }) {
   return (
     <View style={[styles.chip, { backgroundColor: background }]}>
@@ -107,5 +141,13 @@ const styles = StyleSheet.create({
   errorText: { fontSize: 15, color: colors.ink, textAlign: 'center', lineHeight: 26 },
   link: { color: colors.greenDark, fontWeight: '700', fontSize: 13 },
   chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
+  sheetWrap: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#17201A66' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingTop: 10, maxHeight: '85%', gap: 12 },
+  sheetHandle: { alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line, marginBottom: 6 },
+  sheetTitle: { fontSize: 18, fontWeight: '900', color: colors.ink },
+  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 16, gap: 10 },
+  empty: { alignItems: 'center', justifyContent: 'center', padding: 28, gap: 8 },
+  emptyTitle: { fontSize: 17, fontWeight: '800', color: colors.ink, textAlign: 'center' },
+  emptyText: { fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 24, marginBottom: 8 },
   chipText: { fontSize: 11, fontWeight: '700' },
 });

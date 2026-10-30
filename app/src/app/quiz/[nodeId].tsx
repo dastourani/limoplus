@@ -1,30 +1,20 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components/Text';
 
 import { ApiError } from '../../api/client';
 import { endpoints, type AnswerResult } from '../../api/endpoints';
-import { MarkdownView } from '../../components/MarkdownView';
+import { ReportSheet } from '../../components/ReportSheet';
+import { RichText } from '../../components/RichText';
 import { Button, Chip, ErrorState, Header, Loading, Screen } from '../../components/ui';
+import { requireLogin, useAuth } from '../../lib/auth';
 import { useApi } from '../../lib/useApi';
 import { colors, DIFFICULTY_LABEL, radius, rtl, toPersianDigits } from '../../theme';
 
 const KEYS = ['الف', 'ب', 'ج', 'د', 'ه', 'و'];
-
-function RichText({ text, size = 16 }: { text: string; size?: number }) {
-  // Plain text is drawn natively (fast); anything with formulas or markup goes through the lesson renderer.
-  if (/[$*`|!\[]/.test(text)) {
-    return (
-      <View pointerEvents="none">
-        <MarkdownView markdown={text} compact fontSize={size} />
-      </View>
-    );
-  }
-  return <Text style={[{ fontSize: size, lineHeight: size * 1.8, color: colors.ink }, rtl]}>{text}</Text>;
-}
 
 export default function Quiz() {
   const { nodeId } = useLocalSearchParams<{ nodeId: string }>();
@@ -36,6 +26,42 @@ export default function Quiz() {
   const [tab, setTab] = useState<'explanation' | 'quick_solution' | 'alternative_view'>('explanation');
   const [sending, setSending] = useState(false);
   const [answerError, setAnswerError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const [answered, setAnswered] = useState<Record<string, boolean>>({});
+  const [reported, setReported] = useState<number[]>([]);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [resumed, setResumed] = useState(false);
+
+  // Signed-in learners continue where they left off; answered questions are marked in the progress bar.
+  useEffect(() => {
+    if (!user || !data) return;
+    endpoints
+      .practiceState(Number(nodeId))
+      .then((s) => {
+        setAnswered(s.answered);
+        setReported(s.reported);
+        if (!resumed) {
+          const first = data.questions.findIndex((q) => !(String(q.id) in s.answered));
+          const done = Object.keys(s.answered).length;
+          if (first > 0 || (first === -1 && done > 0)) {
+            setIndex(first === -1 ? data.questions.length : first);
+            setScore(Object.values(s.answered).filter(Boolean).length);
+          }
+          setResumed(true);
+        }
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, data, nodeId]);
+
+  const restart = async () => {
+    if (user) await endpoints.practiceReset(Number(nodeId)).catch(() => undefined);
+    setAnswered({});
+    setIndex(0);
+    setScore(0);
+    setPicked(null);
+    setResult(null);
+  };
 
   if (loading) return <Screen><Header title="تست" /><Loading /></Screen>;
   if (error) return <Screen><Header title="تست" /><ErrorState message={error.message} onRetry={retry} /></Screen>;
@@ -61,7 +87,8 @@ export default function Quiz() {
             {toPersianDigits(score)} از {toPersianDigits(questions.length)} درست
           </Text>
           <Text style={styles.resultCheer}>{percent >= 80 ? 'عالی بود!' : percent >= 50 ? 'خوب پیش رفتی؛ غلط‌ها را مرور کن.' : 'ادامه بده؛ یک بار دیگر بخش را بخوان.'}</Text>
-          <Button label="شروع دوباره" onPress={() => { setIndex(0); setScore(0); setPicked(null); setResult(null); }} style={{ alignSelf: 'stretch' }} />
+          <Button label="شروع دوباره‌ی تست‌ها" onPress={restart} style={{ alignSelf: 'stretch' }} />
+          <Button label="آزمون زمان‌دار با نمره‌ی منفی" variant="dark" onPress={() => router.replace(`/exam/${nodeId}`)} style={{ alignSelf: 'stretch' }} />
           <Button label="بازگشت" variant="outline" onPress={() => router.back()} style={{ alignSelf: 'stretch' }} />
         </View>
       </Screen>
@@ -80,6 +107,7 @@ export default function Quiz() {
       setResult(r);
       setTab('explanation');
       if (r.is_correct) setScore((s) => s + 1);
+      setAnswered((a) => ({ ...a, [q.id]: r.is_correct }));
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(r.is_correct ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
       }
@@ -110,7 +138,13 @@ export default function Quiz() {
       <Header title={`سؤال ${toPersianDigits(index + 1)} از ${toPersianDigits(questions.length)}`} />
       <View style={styles.progress}>
         {questions.map((item, i) => (
-          <View key={item.id} style={[styles.seg, { backgroundColor: i < index ? colors.green : i === index ? colors.ink : colors.line }]} />
+          <View
+            key={item.id}
+            style={[
+              styles.seg,
+              { backgroundColor: i === index ? colors.ink : String(item.id) in answered ? (answered[item.id] ? colors.green : colors.red) : colors.line },
+            ]}
+          />
         ))}
       </View>
       <ScrollView contentContainerStyle={styles.page}>
@@ -168,12 +202,24 @@ export default function Quiz() {
               </View>
             )}
             <RichText text={result[tab] || result.explanation} size={15} />
+            <Pressable
+              onPress={() => requireLogin(user, 'برای گزارش اشکال وارد شوید.') && !reported.includes(q.id) && setReportOpen(true)}
+              style={{ alignSelf: 'flex-end' }}
+            >
+              <Text style={styles.report}>{reported.includes(q.id) ? 'گزارش داده شد ✓' : 'گزارش اشکال در این تست'}</Text>
+            </Pressable>
             {result.flashcards.length > 0 && (
               <Text style={[styles.related, rtl]}>فلش‌کارت مرتبط: {result.flashcards.map((f) => f.title).join('، ')}</Text>
             )}
           </View>
         )}
       </ScrollView>
+      <ReportSheet
+        visible={reportOpen}
+        onClose={() => setReportOpen(false)}
+        onSend={(reason, note) => endpoints.reportQuestion(q.id, reason, note)}
+        onDone={() => setReported((r) => [...r, q.id])}
+      />
       <View style={styles.bar}>
         {result ? (
           <Button label={index + 1 < questions.length ? 'سؤال بعد' : 'دیدن نتیجه'} variant="dark" onPress={next} />
@@ -200,6 +246,7 @@ const styles = StyleSheet.create({
   tabOn: { backgroundColor: colors.surface },
   tabText: { fontSize: 13, fontWeight: '700', color: colors.muted },
   related: { fontSize: 12, color: colors.muted },
+  report: { fontSize: 12, color: colors.muted, textDecorationLine: 'underline' },
   err: { color: colors.redDark },
   bar: { padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
   result: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
