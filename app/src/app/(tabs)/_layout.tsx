@@ -1,9 +1,9 @@
 import { router, Slot, usePathname } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '../../components/Icon';
-import { Text } from '../../components/Text';
 import { colors } from '../../theme';
 
 // Right to left: home is the rightmost tab.
@@ -14,7 +14,39 @@ const TABS: { href: '/home' | '/library' | '/stats' | '/profile'; label: string;
   { href: '/profile', label: 'پروفایل', icon: 'circle-user-round' },
 ];
 
-/** Bottom tabs: icons only; the active one sits in a lemon capsule with its name underneath. */
+const BAR = 58;
+
+/**
+ * Bottom tabs. Inactive: a larger icon centred in the bar, no label. Active: the icon moves up into a lemon capsule
+ * and its name fades in underneath. The bar height never changes, so the screen does not jump.
+ */
+function Tab({ tab, on }: { tab: (typeof TABS)[number]; on: boolean }) {
+  const v = useRef(new Animated.Value(on ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(v, { toValue: on ? 1 : 0, duration: 200, useNativeDriver: true }).start();
+  }, [on, v]);
+  const iconY = v.interpolate({ inputRange: [0, 1], outputRange: [0, -9] });
+  const iconScale = v.interpolate({ inputRange: [0, 1], outputRange: [1.12, 1] });
+  const labelY = v.interpolate({ inputRange: [0, 1], outputRange: [6, 0] });
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected: on }}
+      accessibilityLabel={tab.label}
+      onPress={() => !on && router.replace(tab.href)}
+      style={styles.tab}
+    >
+      <Animated.View style={[styles.capsuleWrap, { transform: [{ translateY: iconY }, { scale: iconScale }] }]}>
+        <Animated.View style={[styles.capsule, { opacity: v }]} />
+        <View style={styles.iconLayer}>
+          <Icon name={tab.icon} size={24} color={on ? colors.ink : colors.muted} strokeWidth={on ? 2.3 : 1.8} />
+        </View>
+      </Animated.View>
+      <Animated.Text maxFontSizeMultiplier={1.3} style={[styles.label, { opacity: v, transform: [{ translateY: labelY }] }]}>{tab.label}</Animated.Text>
+    </Pressable>
+  );
+}
+
 export default function TabsLayout() {
   const path = usePathname();
   const insets = useSafeAreaInsets();
@@ -23,35 +55,20 @@ export default function TabsLayout() {
       <View style={{ flex: 1 }}>
         <Slot />
       </View>
-      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-        {TABS.map((tab) => {
-          const on = path === tab.href || path.startsWith(`${tab.href}/`);
-          return (
-            <Pressable
-              key={tab.href}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-              accessibilityLabel={tab.label}
-              onPress={() => !on && router.replace(tab.href)}
-              style={styles.tab}
-            >
-              <View style={[styles.capsule, on && styles.capsuleOn]}>
-                <Icon name={tab.icon} size={24} color={on ? colors.ink : colors.muted} strokeWidth={on ? 2.3 : 1.7} />
-              </View>
-              <Text style={[styles.label, !on && styles.hidden]}>{tab.label}</Text>
-            </Pressable>
-          );
-        })}
+      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+        {TABS.map((tab) => (
+          <Tab key={tab.href} tab={tab} on={path === tab.href || path.startsWith(`${tab.href}/`)} />
+        ))}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row-reverse', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8 },
-  tab: { flex: 1, alignItems: 'center', gap: 3 },
-  capsule: { width: 58, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  capsuleOn: { backgroundColor: colors.lemon },
-  label: { fontSize: 12, fontWeight: '700', color: colors.ink, height: 18 },
-  hidden: { opacity: 0 },
+  bar: { flexDirection: 'row-reverse', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line },
+  tab: { flex: 1, height: BAR, alignItems: 'center', justifyContent: 'center' },
+  capsuleWrap: { width: 58, height: 34, alignItems: 'center', justifyContent: 'center' },
+  iconLayer: { position: 'relative', zIndex: 1 },
+  capsule: { position: 'absolute', zIndex: 0, top: 0, left: 0, width: 58, height: 34, borderRadius: 17, backgroundColor: colors.lemon },
+  label: { position: 'absolute', bottom: 4, fontSize: 12, color: colors.ink, fontFamily: 'Vazirmatn_700Bold' },
 });

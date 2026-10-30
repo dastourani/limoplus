@@ -57,19 +57,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       forget();
     });
     (async () => {
+      // Never wait for the server here: the app opens at once with what the phone knows, then refreshes in the
+      // background. (Waiting made the app sit on a blank screen while an unreachable server timed out.)
       const token = await secure.get(TOKEN_KEY);
       if (token) {
         setAuthToken(token);
-        try {
-          remember(await endpoints.me());
-        } catch (e) {
-          // Only a 401 means the session is gone (the unauthorized handler already forgot it). Network or server
-          // errors (e.g. a restart) keep the token and the last known profile.
-          const cached = await AsyncStorage.getItem(USER_KEY).catch(() => null);
-          if ((e as { status?: number }).status !== 401 && cached) setUser(JSON.parse(cached) as User);
-        }
+        const cached = await AsyncStorage.getItem(USER_KEY).catch(() => null);
+        if (cached) setUser(JSON.parse(cached) as User);
       }
       setReady(true);
+      if (token) {
+        // A 401 is handled by the unauthorized handler (signs out); any other error keeps the cached profile.
+        endpoints.me().then(remember).catch(() => undefined);
+      }
     })();
     return () => setUnauthorizedHandler(null);
   }, [forget, remember]);

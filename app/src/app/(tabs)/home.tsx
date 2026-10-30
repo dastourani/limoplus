@@ -87,7 +87,7 @@ export default function Home() {
         )}
 
         <Text style={[styles.sectionTitle, rtl]}>کتاب‌ها</Text>
-        {books.loading && !books.data ? (
+        {books.loading && !books.data?.length ? (
           <Loading />
         ) : books.error ? (
           <ErrorState message={books.error.message} onRetry={books.retry} />

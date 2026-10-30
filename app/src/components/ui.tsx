@@ -75,14 +75,23 @@ export function Loading() {
   );
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+export function ErrorState({ message, onRetry, icon }: { message: string; onRetry?: () => void; icon?: IconName }) {
+  // With a retry it is a loading failure (connection or server); without, just a message (e.g. nothing here yet).
   return (
     <View style={styles.center}>
-      <Text style={[styles.errorText]}>{message}</Text>
+      <IconBadge name={icon ?? (onRetry ? 'cloud-off' : 'book-open')} size={56} />
+      <Text style={[styles.errorText, { marginTop: 14 }]}>{message}</Text>
       {onRetry && <Button label="تلاش دوباره" variant="outline" onPress={onRetry} style={{ marginTop: 16, minWidth: 160 }} />}
-      <Pressable onPress={() => router.push('/settings')} style={{ marginTop: 14 }}>
-        <Text style={styles.link}>تنظیم آدرس سرور</Text>
-      </Pressable>
+      {onRetry && (
+      <View style={{ flexDirection: 'row-reverse', gap: 20, marginTop: 14 }}>
+        <Pressable onPress={() => router.push('/offline')}>
+          <Text style={styles.link}>کتاب‌های آفلاین</Text>
+        </Pressable>
+        <Pressable onPress={() => router.push('/settings')}>
+          <Text style={styles.link}>تنظیم آدرس سرور</Text>
+        </Pressable>
+      </View>
+      )}
     </View>
   );
 }

@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 
 from django.conf import settings
@@ -60,6 +61,18 @@ def _user_payload(user):
     }
 
 
+_APP_HASH = re.compile(r"^[A-Za-z0-9+/]{11}$")
+
+
+def _otp_message(code: str, app_hash=None) -> str:
+    """Short enough for one Persian SMS (70 characters). The Android app's hash on the last line lets the phone read
+    the code by itself (SMS Retriever); a malformed hash is ignored."""
+    text = f"لیمو پلاس\nکد ورود: {code}\nاین کد را به کسی ندهید"
+    if isinstance(app_hash, str) and _APP_HASH.match(app_hash):
+        text += f"\n{app_hash}"
+    return text
+
+
 @api_view(["GET"])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -103,7 +116,7 @@ def request_otp(request):
 
     # Sent after the code is committed, so a code the user receives always exists.
     try:
-        send_sms(phone, f"لیمو پلاس\nکد ورود شما: {code}\nاین کد را به کسی ندهید.")
+        send_sms(phone, _otp_message(code, request.data.get("app_hash")))
     except SMSError:
         otp.delete()
         return _error("ارسال پیامک ممکن نشد. کمی بعد دوباره تلاش کنید.", "sms_failed", status.HTTP_502_BAD_GATEWAY)

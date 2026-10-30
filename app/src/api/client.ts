@@ -30,20 +30,27 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
-export async function api<T>(path: string, options: { method?: string; body?: unknown; baseUrl?: string } = {}): Promise<T> {
+/** No request waits longer than this; an unreachable server would otherwise hang for minutes on Android. */
+const TIMEOUT_MS = 10_000;
+
+export async function api<T>(path: string, options: { method?: string; body?: unknown; baseUrl?: string; timeoutMs?: number } = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
   let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? TIMEOUT_MS);
   try {
     const base = options.baseUrl ?? (await getApiUrl());
     response = await fetch(`${base}/api/v1/${path.replace(/^\//, '')}`, {
       method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
     });
   } catch {
+    clearTimeout(timer);
     throw new ApiError(
       0,
       'network',
@@ -52,6 +59,7 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   }
 
   const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  clearTimeout(timer);
   if (!response.ok) {
     if (response.status === 401) onUnauthorized?.();
     throw new ApiError(

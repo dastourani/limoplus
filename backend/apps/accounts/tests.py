@@ -67,6 +67,19 @@ class OTPFlowTests(TestCase):
         self.assertEqual(response.data["code"], "cooldown")
         self.assertIsNone(code)
 
+    def test_sms_carries_app_hash_and_fits_one_sms(self):
+        with mock.patch("apps.accounts.views.send_sms") as send:
+            self.client.post("/api/v1/auth/request-otp/", {"phone": self.phone, "app_hash": "FA+9qCX9VSu"}, format="json")
+        text = send.call_args[0][1]
+        self.assertTrue(text.startswith("لیمو پلاس"))
+        self.assertTrue(text.endswith("\nFA+9qCX9VSu"))
+        self.assertLessEqual(len(text), 70)
+
+    def test_bad_app_hash_is_ignored(self):
+        with mock.patch("apps.accounts.views.send_sms") as send:
+            self.client.post("/api/v1/auth/request-otp/", {"phone": self.phone, "app_hash": "<script>"}, format="json")
+        self.assertNotIn("script", send.call_args[0][1])
+
     def test_hourly_limit_says_when_to_try_again(self):
         from datetime import timedelta
 

@@ -26,7 +26,7 @@ const KIND: Record<string, { label: string; icon: IconName }> = {
   analysis: { label: 'تحلیلی', icon: 'search-check' },
 };
 
-/** A question's labels: exam sources (konkur) or «تألیفی», difficulty, kind of question and field. */
+/** A question's labels: exam sources (konkur) or «تألیفی», difficulty and kind of question (kept short on purpose). */
 export function QuestionTags({ q }: { q: Question }) {
   const d = DIFFICULTY[q.difficulty];
   const kind = q.kind ? KIND[q.kind] : null;
@@ -44,8 +44,6 @@ export function QuestionTags({ q }: { q: Question }) {
       {q.is_original && <Tag icon="pen-line" label="تألیفی" color="#1F5E3A" background="#E3F3E9" />}
       {d && <Tag icon="gauge" label={d.label} color={d.color} background={d.background} />}
       {kind && <Tag icon={kind.icon} label={kind.label} color="#3B44B8" background="#EEF0FC" />}
-      {q.domain === 'specialized' && <Tag icon="badge-check" label="تخصصی" color={colors.muted} background={colors.disabled} />}
-      {q.domain === 'general' && <Tag icon="layers" label="عمومی" color={colors.muted} background={colors.disabled} />}
     </View>
   );
 }

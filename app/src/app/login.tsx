@@ -7,6 +7,7 @@ import { endpoints } from '../api/endpoints';
 import { LemonSlice } from '../components/LemonSlice';
 import { Text, TextInput } from '../components/Text';
 import { Button, Header, Screen } from '../components/ui';
+import { smsAppHash } from '../lib/smsCode';
 import { colors, radius, rtl } from '../theme';
 
 const toLatin = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
@@ -25,7 +26,7 @@ export default function Login() {
     setBusy(true);
     setError(null);
     try {
-      await endpoints.requestOtp(digits);
+      await endpoints.requestOtp(digits, smsAppHash());
       router.push({ pathname: '/verify', params: { phone: digits } });
     } catch (e) {
       if (e instanceof ApiError && e.code === 'cooldown') router.push({ pathname: '/verify', params: { phone: digits } });

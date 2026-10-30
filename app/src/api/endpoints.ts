@@ -125,7 +125,7 @@ export const endpoints = {
   health: (baseUrl?: string) => api<{ status: string }>('health/', { baseUrl }),
 
   // Account
-  requestOtp: (phone: string) => api<{ sent: boolean; expires_in: number }>('auth/request-otp/', { body: { phone } }),
+  requestOtp: (phone: string, appHash?: string) => api<{ sent: boolean; expires_in: number }>('auth/request-otp/', { body: { phone, app_hash: appHash }, timeoutMs: 25_000 }),
   verifyOtp: (body: { phone: string; code: string; device_name: string; platform: string; replace_session_id?: number }) =>
     api<VerifyResult>('auth/verify-otp/', { body }),
   logout: () => api<{ logged_out: boolean }>('auth/logout/', { method: 'POST' }),
@@ -154,11 +154,11 @@ export const endpoints = {
   myExams: () => api<ExamSummary[]>('me/exams/'),
   library: () => api<Library>('me/library/'),
   stats: () => api<Stats>('me/stats/'),
-  offline: (slug: string) => api<OfflineBundle>(`books/${encodeURIComponent(slug)}/offline/`),
+  offline: (slug: string) => api<OfflineBundle>(`books/${encodeURIComponent(slug)}/offline/`, { timeoutMs: 90_000 }),
 
   // Sales (prices always come from the server)
   offers: (book: string) => api<Offers>(`offers/?book=${encodeURIComponent(book)}`),
-  createOrder: (body: { book?: string; plan?: number; major?: string }) => api<{ order_id: number; amount: number; pay_url: string }>('orders/', { body }),
-  order: (id: number, check = false) => api<OrderStatus>(`orders/${id}/${check ? '?check=1' : ''}`),
+  createOrder: (body: { book?: string; plan?: number; major?: string }) => api<{ order_id: number; amount: number; pay_url: string }>('orders/', { body, timeoutMs: 30_000 }),
+  order: (id: number, check = false) => api<OrderStatus>(`orders/${id}/${check ? '?check=1' : ''}`, { timeoutMs: 30_000 }),
   purchases: () => api<Purchases>('me/purchases/'),
 };

@@ -35,7 +35,7 @@ function useLoop(duration: number, easing = Easing.linear, nativeDriver = false)
 }
 
 function Slice({ size }: { size: number }) {
-  const t = useLoop(900);
+  const t = useLoop(1500);
   return (
     <Svg width={size} height={size} viewBox="-100 -100 200 200">
       <Circle r={98} fill="#F5C518" />
@@ -75,12 +75,13 @@ export function LemonSpinner({ size = 20 }: { size?: number }) {
 
 export function LemonLoader({ size = 64, delay = 300 }: { size?: number; delay?: number }) {
   const show = useDelayed(delay);
-  const t = useLoop(1300, Easing.linear, true);
+  const t = useLoop(2000, Easing.linear, true);
   if (!show) return <View style={{ width: size * 1.6, height: size * 2.4 }} />;
   // Up and down (fast at the bottom, slow at the top), flipping like a tossed coin.
   const translateY = t.interpolate({ inputRange: [0, 0.45, 1], outputRange: [0, -size, 0], easing: Easing.out(Easing.quad) });
-  const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const scaleX = t.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [1, 0.3, 1, 0.3, 1] });
+  // Half a turn per toss, like a coin flipped gently (a full turn looked too fast).
+  const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+  const scaleX = t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.35, 1] });
   const shadow = t.interpolate({ inputRange: [0, 0.45, 1], outputRange: [1, 0.45, 1] });
   return (
     <View style={{ width: size * 1.6, height: size * 2.4, alignItems: 'center', justifyContent: 'flex-end' }} accessibilityRole="progressbar" accessibilityLabel="در حال بارگذاری">

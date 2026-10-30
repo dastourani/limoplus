@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ApiError } from '../api/client';
@@ -8,6 +8,7 @@ import { Text, TextInput } from '../components/Text';
 import { Button, Card, Header, Screen } from '../components/ui';
 import { deviceName, useAuth } from '../lib/auth';
 import { relativeDay } from '../lib/jalali';
+import { listenForSmsCode, smsAppHash } from '../lib/smsCode';
 import { colors, radius, rtl, toPersianDigits } from '../theme';
 
 const RESEND_SECONDS = 60;
@@ -23,6 +24,16 @@ export default function Verify() {
   const [wait, setWait] = useState(RESEND_SECONDS);
   const [limit, setLimit] = useState<DeviceSessionInfo[] | null>(null);
 
+  // Android: the code is read from the SMS by itself and the user is signed in without typing.
+  const verifyRef = useRef<(replace?: number, code?: string) => void>(() => undefined);
+  useEffect(() => {
+    if (limit) return;
+    return listenForSmsCode((smsCode) => {
+      setCode(smsCode);
+      verifyRef.current(undefined, smsCode);
+    });
+  }, [limit]);
+
   useEffect(() => {
     if (wait <= 0) return;
     const t = setTimeout(() => setWait((w) => w - 1), 1000);
@@ -31,11 +42,11 @@ export default function Verify() {
 
   const clean = toLatin(code).replace(/\D/g, '');
 
-  const verify = async (replace?: number) => {
+  const verify = async (replace?: number, fromSms?: string) => {
     setBusy(true);
     setError(null);
     try {
-      const r = await endpoints.verifyOtp({ phone: String(phone), code: clean, device_name: deviceName(), platform: Platform.OS, replace_session_id: replace });
+      const r = await endpoints.verifyOtp({ phone: String(phone), code: fromSms ?? clean, device_name: deviceName(), platform: Platform.OS, replace_session_id: replace });
       await signIn(r.token, r.user);
       // Back to where the user was; first-timers are asked for their name.
       if (!r.user.first_name) router.replace('/edit-profile?first=1');
@@ -49,10 +60,12 @@ export default function Verify() {
     }
   };
 
+  verifyRef.current = verify;
+
   const resend = async () => {
     setError(null);
     try {
-      await endpoints.requestOtp(String(phone));
+      await endpoints.requestOtp(String(phone), smsAppHash());
       setWait(RESEND_SECONDS);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'ارسال دوباره ممکن نشد.');
