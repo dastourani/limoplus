@@ -39,6 +39,7 @@ docker compose exec backend python manage.py load_samples
 
 اگر Docker نصب یا دانلود نمی‌شود، کافی است [Python](https://www.python.org/downloads/) نسخه‌ی ۳.۱۲ یا بالاتر نصب باشد.
 در این حالت داده‌ها در فایل `backend/db.sqlite3` ذخیره می‌شوند و نیازی به PostgreSQL نیست.
+پوشه‌ی پروژه را **بیرون از Dropbox/OneDrive/Google Drive** بگذارید (مثلاً `C:\limoplus`)؛ همگام‌سازی این برنامه‌ها می‌تواند فایل دیتابیس را خراب کند.
 
 1. در پوشه‌ی `backend` فایل `.env.example` را کپی کنید و نامش را `.env` بگذارید.
 2. `.env` را با Notepad باز کنید و خط `DATABASE_URL=...` را خالی کنید: `DATABASE_URL=`

@@ -87,7 +87,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 # --- Database ---------------------------------------------------------------
 # PostgreSQL in Docker and on the server; SQLite only as a quick local fallback.
 
-DATABASES = {"default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")}
+# An empty or missing DATABASE_URL means SQLite in backend/db.sqlite3. The SQLite path is set directly (not as a URL)
+# so Windows paths with spaces or brackets, e.g. "C:\\Dropbox (Maestral)\\...", work.
+if env.str("DATABASE_URL", default="").strip():
+    DATABASES = {"default": env.db("DATABASE_URL")}
+else:
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
 
 AUTH_USER_MODEL = "accounts.User"
