@@ -1,0 +1,52 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">مدیریت</a> ›
+  <a href="{% url 'admin:catalog_contentnode_changelist' %}">محتوا</a> ›
+  بارگذاری فصل
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <p>یک فایل <code>.md</code> یا یک <code>.zip</code> (فایل <code>.md</code> به‌همراه پوشه‌ی <code>images</code>) انتخاب کنید.
+     اول «فقط بررسی» را بزنید؛ اگر خطایی نبود، «بارگذاری» را بزنید. اگر فصل قبلاً وارد شده باشد، به‌روز می‌شود
+     و پیشرفت کاربران حفظ می‌شود.</p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      <div class="form-row">
+        <label for="id_file">فایل فصل:</label>
+        <input type="file" name="file" id="id_file" accept=".md,.zip" required>
+      </div>
+      <div class="form-row">
+        <label for="id_publish">
+          <input type="checkbox" name="publish" id="id_publish"> انتشار فوری (بدون این گزینه، به‌صورت پیش‌نویس وارد می‌شود)
+        </label>
+      </div>
+    </fieldset>
+    <div class="submit-row">
+      <input type="submit" name="action" value="فقط بررسی">
+      <input type="submit" name="action" value="بارگذاری" class="default">
+    </div>
+  </form>
+
+  {% if report %}
+    <h2>نتیجه: {{ report.filename }}</h2>
+    {% if report.errors %}
+      <p style="color:#ba2121"><strong>{{ report.errors|length }} خطا</strong>؛ چیزی وارد نشد. خطاها را در فایل اصلاح کنید و دوباره بارگذاری کنید.</p>
+      <ul>{% for issue in report.errors %}<li style="color:#ba2121">{{ issue }}</li>{% endfor %}</ul>
+    {% elif report.summary %}
+      <p style="color:#1f7a55"><strong>وارد شد.</strong> {{ report.summary }}</p>
+    {% else %}
+      <p style="color:#1f7a55"><strong>فایل بدون خطاست.</strong> برای وارد کردن، «بارگذاری» را بزنید.</p>
+    {% endif %}
+    {% if report.warnings %}
+      <h3>هشدارها ({{ report.warnings|length }})</h3>
+      <ul>{% for issue in report.warnings %}<li style="color:#9a6312">{{ issue }}</li>{% endfor %}</ul>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

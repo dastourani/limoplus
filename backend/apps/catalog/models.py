@@ -33,10 +33,13 @@ class ContentNode(MP_Node):
 
     kind = models.CharField("نوع", max_length=10, choices=Kind.choices)
     title = models.CharField("عنوان", max_length=200)
+    slug = models.SlugField("شناسه‌ی ثابت", max_length=120, allow_unicode=True, blank=True, db_index=True,
+                            help_text="از فایل محتوا می‌آید؛ برای به‌روزرسانی بدون از دست رفتن داده‌ی کاربران")
     majors = models.ManyToManyField(Major, blank=True, related_name="books", verbose_name="رشته‌ها")
     summary_body = models.TextField("متن خلاصه (Markdown)", blank=True)
     full_body = models.TextField("متن جزوه (Markdown)", blank=True)
     is_free = models.BooleanField("رایگان", default=False, help_text="برای نمونه‌ی رایگان از کتاب پولی")
+    position = models.PositiveSmallIntegerField("شماره‌ی فصل", null=True, blank=True)
     price = models.PositiveIntegerField("قیمت (تومان)", null=True, blank=True, help_text="فقط برای کتاب")
     is_published = models.BooleanField("منتشر شده", default=False)
     is_archived = models.BooleanField("بایگانی", default=False, help_text="به‌جای حذف؛ داده‌ی کاربران حفظ می‌شود")

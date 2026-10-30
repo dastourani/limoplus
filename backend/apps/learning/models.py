@@ -26,7 +26,7 @@ class Flashcard(models.Model):
     """A key point, not a question: a short title on the front, the point on the back."""
 
     node = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="flashcards", verbose_name="بخش")
-    slug = models.SlugField("شناسه در فایل محتوا", max_length=120)
+    slug = models.SlugField("شناسه در فایل محتوا", max_length=120, allow_unicode=True)
     title = models.CharField("عنوان (رو)", max_length=160)
     point = models.TextField("نکته (پشت)")
     formula = models.CharField("فرمول (LaTeX)", max_length=300, blank=True)
@@ -59,6 +59,7 @@ class Question(models.Model):
         ANALYSIS = "analysis", "تحلیلی"
 
     node = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="questions", verbose_name="بخش")
+    slug = models.SlugField("شناسه در فایل محتوا", max_length=120, allow_unicode=True)
     stem = models.TextField("صورت سؤال (Markdown)")
     explanation = models.TextField("پاسخ تشریحی")
     quick_solution = models.TextField("راه‌حل سریع (تستی)", blank=True)
@@ -79,6 +80,7 @@ class Question(models.Model):
     class Meta:
         verbose_name = "تست"
         verbose_name_plural = "تست‌ها"
+        unique_together = [("node", "slug")]
 
     def __str__(self):
         return self.stem[:60]
@@ -158,3 +160,18 @@ class Report(models.Model):
             models.UniqueConstraint(fields=["user", "question"], condition=models.Q(question__isnull=False), name="one_report_per_question"),
             models.UniqueConstraint(fields=["user", "flashcard"], condition=models.Q(flashcard__isnull=False), name="one_report_per_flashcard"),
         ]
+
+
+class QuizAnswer(models.Model):
+    """One answer by a signed-in learner. Stores a snapshot, so later content edits never change history."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="quiz_answers")
+    question = models.ForeignKey(Question, on_delete=models.PROTECT, related_name="answers")
+    choice_order = models.PositiveSmallIntegerField()
+    was_correct = models.BooleanField()
+    answered_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "پاسخ"
+        verbose_name_plural = "پاسخ‌ها"
+        indexes = [models.Index(fields=["user", "question"])]

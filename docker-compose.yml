@@ -20,6 +20,7 @@ services:
       - "8000:8000"
     volumes:
       - media:/app/media
+      - ./content:/content:ro
     depends_on:
       db:
         condition: service_healthy
