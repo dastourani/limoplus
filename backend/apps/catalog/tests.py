@@ -1,0 +1,267 @@
+import io
+import shutil
+import tempfile
+import zipfile
+
+from django.core.management import call_command
+from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
+
+from apps.learning.models import Flashcard, Question
+
+from .importer import import_file, parse_chapter
+from .models import ContentNode, Major
+
+GOOD = """---
+شناسه-کتاب: test-book
+کتاب: کتاب آزمایشی
+رشته‌ها: economics
+شناسه-فصل: ch1
+عنوان: فصل یک
+رایگان: بله
+---
+
+## بخش اول {#one}
+متن جزوه با فرمول $x^2$.
+
+:::خلاصه
+خلاصه‌ی بخش.
+:::
+
+:::تست {#q1}
+منبع: کنکور ارشد اقتصاد ۱۴۰۱، سؤال ۲۳
+منبع: کنکور دکتری اقتصاد 1399
+سطح: سخت
+حوزه: تخصصی
+نوع: محاسباتی
+صورت:
+دو به‌علاوه‌ی دو چند است؟
+- [ ] سه
+- [x] چهار
+- [ ] پنج
+توضیح: جمع ساده.
+خط دوم توضیح.
+راه‌حل سریع: بشمارید.
+فلش‌کارت: card1
+:::
+
+:::فلش‌کارت {#card1}
+عنوان: جمع
+نکته: دو و دو می‌شود چهار.
+فرمول: 2+2=4
+:::
+
+## بخش دوم {#two}
+متن دوم.
+"""
+
+
+class ParserTests(TestCase):
+    def test_good_file_parses(self):
+        chapter = parse_chapter(GOOD)
+        self.assertEqual(chapter.errors, [])
+        self.assertEqual([s.slug for s in chapter.sections], ["one", "two"])
+        q = chapter.sections[0].questions[0]
+        self.assertEqual(q.stem, "دو به‌علاوه‌ی دو چند است؟")
+        self.assertEqual(q.choices, [("سه", False), ("چهار", True), ("پنج", False)])
+        self.assertEqual(q.explanation, "جمع ساده.\nخط دوم توضیح.")
+        self.assertEqual(q.sources, [("کنکور ارشد اقتصاد", 1401, 23), ("کنکور دکتری اقتصاد", 1399, None)])
+        self.assertEqual((q.difficulty, q.domain, q.kind), ("hard", "specialized", "calc"))
+        self.assertEqual(chapter.sections[0].summary_body, "خلاصه‌ی بخش.")
+        self.assertNotIn("خلاصه", chapter.sections[0].full_body)
+
+    def test_errors_have_line_numbers_and_persian_messages(self):
+        bad = GOOD.replace("- [x] چهار", "- [ ] چهار").replace("سطح: سخت", "سطح: خیلی سخت").replace("فلش‌کارت: card1", "فلش‌کارت: missing")
+        chapter = parse_chapter(bad)
+        messages = " | ".join(str(e) for e in chapter.errors)
+        self.assertIn("دقیقاً یک گزینه", messages)
+        self.assertIn("سطح «خیلی سخت»", messages)
+        self.assertIn("«missing»", messages)
+        self.assertTrue(all(e.line for e in chapter.errors))
+
+    def test_missing_front_matter_and_unclosed_block(self):
+        self.assertTrue(parse_chapter("## no front matter").errors)
+        self.assertIn("بسته نشده", str(parse_chapter(GOOD.replace("خلاصه‌ی بخش.\n:::", "خلاصه‌ی بخش.")).errors[0]))
+
+    def test_arabic_letters_are_normalised(self):
+        chapter = parse_chapter(GOOD.replace("متن دوم.", "كتاب علي"))
+        self.assertIn("کتاب علی", chapter.sections[1].full_body)
+
+    def test_missing_image_is_an_error(self):
+        chapter, _ = import_file("x.md", GOOD.replace("متن دوم.", "![نمودار](images/a.png)").encode(), dry_run=True)
+        self.assertTrue(any("a.png" in str(e) for e in chapter.errors))
+
+
+class ImportTests(TestCase):
+    def setUp(self):
+        self.media = tempfile.mkdtemp()
+        self.override = override_settings(MEDIA_ROOT=self.media)
+        self.override.enable()
+        Major.objects.create(slug="economics", name="اقتصاد")
+
+    def tearDown(self):
+        self.override.disable()
+        shutil.rmtree(self.media, ignore_errors=True)
+
+    def _zip(self, text, images=None):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as z:
+            z.writestr("chapter/chapter.md", text)
+            for name, data in (images or {}).items():
+                z.writestr(f"chapter/{name}", data)
+        return buffer.getvalue()
+
+    def test_unknown_major_blocks_import(self):
+        chapter, result = import_file("c.md", GOOD.replace("economics", "nope").encode())
+        self.assertIsNone(result)
+        self.assertTrue(any("nope" in str(e) for e in chapter.errors))
+        self.assertFalse(ContentNode.objects.exists())
+
+    def test_import_creates_tree_and_links(self):
+        chapter, result = import_file("c.md", GOOD.encode(), publish=True)
+        self.assertEqual(chapter.errors, [])
+        book = ContentNode.objects.get(slug="test-book")
+        self.assertEqual(book.get_children().get().slug, "ch1")
+        self.assertEqual(book.get_children().get().get_children().count(), 2)
+        q = Question.objects.get(slug="q1")
+        self.assertEqual(q.choices.filter(is_correct=True).get().text, "چهار")
+        self.assertEqual(list(q.flashcards.values_list("slug", flat=True)), ["card1"])
+        self.assertEqual(q.questionsource_set.count(), 2)
+
+    def test_reimport_updates_in_place_and_archives_removed(self):
+        import_file("c.md", GOOD.encode(), publish=True)
+        q_id = Question.objects.get(slug="q1").id
+        section_two = ContentNode.objects.get(slug="two").id
+
+        changed = GOOD.replace("دو به‌علاوه‌ی دو", "سه به‌علاوه‌ی یک").split("## بخش دوم")[0]
+        chapter, result = import_file("c.md", changed.encode(), publish=True)
+        self.assertEqual(chapter.errors, [])
+        q = Question.objects.get(slug="q1")
+        self.assertEqual(q.id, q_id)  # same row: learners' answers stay attached
+        self.assertIn("سه به‌علاوه‌ی یک", q.stem)
+        self.assertTrue(ContentNode.objects.get(id=section_two).is_archived)
+        self.assertEqual(result.archived["section"], 1)
+
+        # Restoring the section brings the same row back.
+        import_file("c.md", GOOD.encode(), publish=True)
+        self.assertFalse(ContentNode.objects.get(id=section_two).is_archived)
+
+    def test_zip_images_are_stored_and_rewritten(self):
+        text = GOOD.replace("متن دوم.", "![نمودار](images/g.svg)")
+        chapter, result = import_file("c.zip", self._zip(text, {"images/g.svg": b"<svg/>"}), publish=True)
+        self.assertEqual(chapter.errors, [])
+        body = ContentNode.objects.get(slug="two").full_body
+        self.assertRegex(body, r"\]\(media:content/test-book/ch1/[0-9a-f]{24}\.svg\)")
+
+    def test_svg_with_script_rejected(self):
+        text = GOOD.replace("متن دوم.", "![نمودار](images/g.svg)")
+        evil = b'<svg onload="alert(1)"></svg>'
+        chapter, result = import_file("c.zip", self._zip(text, {"images/g.svg": evil}))
+        self.assertIsNone(result)
+        self.assertTrue(any("اسکریپت" in str(e) for e in chapter.errors))
+
+    def test_broken_and_oversized_zips_rejected(self):
+        chapter, _ = import_file("c.zip", b"not a zip")
+        self.assertTrue(chapter.errors)
+        many = {f"images/{i}.png": b"x" for i in range(400)}
+        chapter, _ = import_file("c.zip", self._zip(GOOD, many))
+        self.assertTrue(any("تعداد" in str(e) for e in chapter.errors))
+
+    def test_moving_question_to_another_section_keeps_its_row(self):
+        import_file("c.md", GOOD.encode(), publish=True)
+        q_id = Question.objects.get(slug="q1").id
+        block = GOOD[GOOD.index(":::تست") : GOOD.index(":::فلش‌کارت")]
+        moved = GOOD.replace(block, "").replace("متن دوم.", "متن دوم.\n\n" + block)
+        chapter, _ = import_file("c.md", moved.encode(), publish=True)
+        self.assertEqual(chapter.errors, [])
+        q = Question.objects.get(slug="q1")
+        self.assertEqual(q.id, q_id)
+        self.assertEqual(q.node.slug, "two")
+        self.assertFalse(q.is_archived)
+        self.assertEqual(Question.objects.count(), 1)
+
+    def test_section_order_follows_file(self):
+        import_file("c.md", GOOD.encode(), publish=True)
+        first = GOOD[GOOD.index("## بخش اول") : GOOD.index("## بخش دوم")]
+        second = GOOD[GOOD.index("## بخش دوم") :]
+        swapped = GOOD[: GOOD.index("## بخش اول")] + second + "\n" + first
+        import_file("c.md", swapped.encode(), publish=True)
+        chapter = ContentNode.objects.get(slug="ch1")
+        self.assertEqual([n.slug for n in chapter.get_children()], ["two", "one"])
+
+    def test_load_samples_runs_twice(self):
+        call_command("load_samples", stdout=io.StringIO())
+        call_command("load_samples", stdout=io.StringIO())
+        self.assertEqual(ContentNode.objects.filter(kind="book").count(), 1)
+        self.assertEqual(Question.objects.filter(is_archived=False).count(), 9)
+        self.assertEqual(Flashcard.objects.filter(is_archived=False).count(), 8)
+
+
+class ReadApiTests(TestCase):
+    def setUp(self):
+        self.media = tempfile.mkdtemp()
+        self.override = override_settings(MEDIA_ROOT=self.media)
+        self.override.enable()
+        call_command("load_samples", stdout=io.StringIO())
+        self.client = APIClient()
+
+    def tearDown(self):
+        self.override.disable()
+        shutil.rmtree(self.media, ignore_errors=True)
+
+    def test_majors_and_books(self):
+        majors = self.client.get("/api/v1/majors/").data
+        self.assertIn("economics", [m["slug"] for m in majors])
+        books = self.client.get("/api/v1/majors/economics/books/").data
+        self.assertEqual(books[0]["slug"], "math-1")
+        self.assertTrue(books[0]["has_free_part"])
+
+    def test_book_tree_marks_locked_parts(self):
+        book = self.client.get("/api/v1/books/math-1/").data
+        free_chapter, paid_chapter = book["chapters"]
+        self.assertFalse(free_chapter["is_locked"])
+        self.assertTrue(all(not s["is_locked"] for s in free_chapter["sections"]))
+        self.assertTrue(paid_chapter["is_locked"])
+
+    def test_free_section_readable_with_media_urls(self):
+        node = ContentNode.objects.get(slug="limit-idea")
+        data = self.client.get(f"/api/v1/nodes/{node.id}/").data
+        self.assertRegex(data["full"], r"http://testserver/media/content/math-1/limits/[0-9a-f]{24}\.svg")
+        self.assertTrue(data["summary"])
+        self.assertEqual(data["breadcrumb"][0]["slug"], "math-1")
+
+    def test_paid_section_locked_for_guests(self):
+        node = ContentNode.objects.get(slug="rules")
+        response = self.client.get(f"/api/v1/nodes/{node.id}/")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data["code"], "locked")
+        self.assertEqual(response.data["book"]["price"], 249000)
+
+    def test_unpublished_content_hidden(self):
+        ContentNode.objects.filter(slug="limit-idea").update(is_published=False)
+        node = ContentNode.objects.get(slug="limit-idea")
+        self.assertEqual(self.client.get(f"/api/v1/nodes/{node.id}/").status_code, 404)
+
+    def test_unpublishing_a_chapter_hides_everything_under_it(self):
+        chapter = ContentNode.objects.get(slug="limits")
+        ContentNode.objects.filter(pk=chapter.pk).update(is_published=False)
+        section = ContentNode.objects.get(slug="limit-idea")
+        self.assertEqual(self.client.get(f"/api/v1/nodes/{section.id}/").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/v1/nodes/{section.id}/questions/").status_code, 404)
+        book = ContentNode.objects.get(slug="math-1")
+        data = self.client.get(f"/api/v1/nodes/{book.id}/questions/").data
+        self.assertEqual(len(data["questions"]), 0)
+        self.assertEqual([c["slug"] for c in self.client.get("/api/v1/books/math-1/").data["chapters"]], ["derivatives"])
+
+    def test_chapters_ordered_by_number(self):
+        slugs = [c["slug"] for c in self.client.get("/api/v1/books/math-1/").data["chapters"]]
+        self.assertEqual(slugs, ["limits", "derivatives"])
+
+    def test_banners_count_impressions_and_clicks(self):
+        items = self.client.get("/api/v1/banners/?major=economics").data
+        self.assertEqual(len(items), 2)
+        self.client.post(f"/api/v1/banners/{items[0]['id']}/click/")
+        from .models import Banner
+
+        banner = Banner.objects.get(pk=items[0]["id"])
+        self.assertEqual((banner.impressions, banner.clicks), (1, 1))

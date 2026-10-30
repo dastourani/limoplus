@@ -12,7 +12,16 @@ Code, identifiers and commit messages are in English.
   exam sources, flashcards, reports).
 - `app/` — Expo (SDK 58) + TypeScript, one codebase for Android, web (PWA for iPhone users) and desktop browsers.
   Read `app/AGENTS.md` before touching Expo APIs.
-- `docker-compose.yml` — local Postgres + backend.
+- `docker-compose.yml` — local Postgres + backend (mounts `content/` read-only).
+- `content/samples/` — sample book in the chapter format; `python manage.py load_samples` loads it.
+- `docs/content-format.md` — the chapter Markdown format (Persian) and the prompt for AI content writers.
+- Content import: `apps/catalog/importer.py` (admin page «بارگذاری فصل از فایل», or `manage.py import_chapter`).
+  Items are matched by slug across the whole book and moved, never duplicated; missing items are archived.
+- Access rules live only in `apps/catalog/access.py` (`AccessMap`): visible = node and all ancestors published and
+  not archived; readable = visible and (staff, or free node/ancestor, or — TODO payments — owned/subscribed).
+  Every content endpoint must use it.
+- TODO before launch: serve paid-content images through an access check (X-Accel-Redirect); today they have
+  unguessable content-hash names but are public to anyone with the URL.
 
 ## Rules that must hold
 

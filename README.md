@@ -27,6 +27,12 @@ docker compose up --build
 docker compose exec backend python manage.py createsuperuser
 ```
 
+بارگذاری کتاب نمونه (ریاضی عمومی ۱، با رشته‌ها و بنرهای نمونه):
+
+```bash
+docker compose exec backend python manage.py load_samples
+```
+
 تا وقتی `SMS_BACKEND=console` است، کد ورود به‌جای پیامک در خروجی همین ترمینال Docker چاپ می‌شود.
 
 ### ۲. اپ
@@ -42,6 +48,12 @@ npm run android    # روی گوشی یا شبیه‌ساز اندروید (با
 ```
 
 برای تست روی گوشی واقعی در همان Wi‑Fi، در `app/.env` به‌جای `localhost` آدرس IP کامپیوترتان را بگذارید.
+
+## نوشتن و بارگذاری محتوا
+
+راهنمای کامل قالب فایل فصل‌ها، همراه با دستور آماده برای هوش مصنوعی: [`docs/content-format.md`](docs/content-format.md)
+
+بارگذاری: پنل مدیر › محتوا › «بارگذاری فصل از فایل».
 
 ## انتقال به سرور اصلی و دامنه
 
