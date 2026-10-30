@@ -1,2 +1,64 @@
-# limoplus
-LimoPlus learning platform
+# لیمو پلاس
+
+پلتفرم درس تعاملی: کتاب‌های هر رشته به‌صورت خلاصه و جزوه، با تست، فلش‌کارت و آمار مطالعه.
+
+| بخش | پوشه | فناوری |
+| --- | --- | --- |
+| سرور و پنل مدیر | `backend/` | Python · Django 5.2 · Django REST Framework · PostgreSQL |
+| اپ (اندروید، وب‌اپ آیفون و کامپیوتر) | `app/` | TypeScript · React Native · Expo |
+
+## اجرا روی سیستم خودتان
+
+### ۱. سرور (با Docker)
+
+پیش‌نیاز: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+```bash
+cp backend/.env.example backend/.env      # بعد SECRET_KEY را در آن عوض کنید
+docker compose up --build
+```
+
+- سرور: http://localhost:8000/api/v1/health/
+- پنل مدیر: http://localhost:8000/admin/
+
+ساخت حساب مدیر (در یک ترمینال دیگر):
+
+```bash
+docker compose exec backend python manage.py createsuperuser
+```
+
+تا وقتی `SMS_BACKEND=console` است، کد ورود به‌جای پیامک در خروجی همین ترمینال Docker چاپ می‌شود.
+
+### ۲. اپ
+
+پیش‌نیاز: [Node.js](https://nodejs.org/) نسخه‌ی ۲۰ یا بالاتر
+
+```bash
+cd app
+cp .env.example .env
+npm install
+npm run web        # نسخه‌ی وب در مرورگر
+npm run android    # روی گوشی یا شبیه‌ساز اندروید (با برنامه‌ی Expo Go)
+```
+
+برای تست روی گوشی واقعی در همان Wi‑Fi، در `app/.env` به‌جای `localhost` آدرس IP کامپیوترتان را بگذارید.
+
+## انتقال به سرور اصلی و دامنه
+
+فقط دو فایل عوض می‌شود:
+
+1. **`backend/.env`**: `SITE_DOMAIN` (مثلاً `api.limoplus.ir`)، `SITE_SCHEME=https`، `DEBUG=False`، `SECRET_KEY` جدید، `DATABASE_URL`، `CORS_ALLOWED_ORIGINS` (آدرس نسخه‌ی وب)، اطلاعات پیامک و `ZIBAL_MERCHANT`.
+2. **`app/.env`**: `EXPO_PUBLIC_API_URL=https://api.limoplus.ir`
+
+هیچ آدرس یا رمزی داخل کد نوشته نشده است. فایل‌های `.env` هرگز وارد GitHub نمی‌شوند.
+
+## تست‌ها
+
+```bash
+cd backend && pip install -r requirements.txt && SECRET_KEY=test DEBUG=True python manage.py test apps
+cd app && npm run typecheck
+```
+
+## سند امکانات
+
+همه‌ی تصمیم‌ها و امکانات توافق‌شده در سند «لیمو پلاس · فهرست امکانات و تصمیم‌ها» نگه داشته می‌شود.
