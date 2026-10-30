@@ -163,7 +163,11 @@ def settle(track_id: str) -> Order | None:
             order.save()
             _grant(order)
         else:
-            amount_mismatch = result.get("result") in (100, 201)
+            verified = result.get("result") in (100, 201)
+            # Verified but without an amount to compare: stay pending (re-checkable) instead of failing a real payment.
+            amount_mismatch = verified and result.get("amount") not in (None, "")
+            if verified and not amount_mismatch:
+                log.error("Zibal verify without amount for order %s", order.id)
             if amount_mismatch or result.get("result") in FINAL_FAILURES:
                 order.status = Order.Status.FAILED
             order.save(update_fields=["status", "gateway_response"])
