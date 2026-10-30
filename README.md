@@ -35,6 +35,27 @@ docker compose exec backend python manage.py load_samples
 
 تا وقتی `SMS_BACKEND=console` است، کد ورود به‌جای پیامک در خروجی همین ترمینال Docker چاپ می‌شود.
 
+### ۱ (راه دیگر). سرور بدون Docker، فقط با Python
+
+اگر Docker نصب یا دانلود نمی‌شود، کافی است [Python](https://www.python.org/downloads/) نسخه‌ی ۳.۱۲ یا بالاتر نصب باشد.
+در این حالت داده‌ها در فایل `backend/db.sqlite3` ذخیره می‌شوند و نیازی به PostgreSQL نیست.
+
+1. در پوشه‌ی `backend` فایل `.env.example` را کپی کنید و نامش را `.env` بگذارید.
+2. `.env` را با Notepad باز کنید و خط `DATABASE_URL=...` را خالی کنید: `DATABASE_URL=`
+3. در همان پوشه یک ترمینال باز کنید (ویندوز: در نوار آدرس پوشه بنویسید `cmd` و Enter) و این دستورها را یکی‌یکی اجرا کنید:
+
+```bash
+python -m venv venv
+venv\Scripts\activate            # مک و لینوکس: source venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py load_samples
+python manage.py createsuperuser
+python manage.py runserver 0.0.0.0:8000
+```
+
+دفعه‌های بعد فقط دو دستور لازم است: `venv\Scripts\activate` و `python manage.py runserver 0.0.0.0:8000`.
+
 ### ۲. اپ
 
 پیش‌نیاز: [Node.js](https://nodejs.org/) نسخه‌ی ۲۰ یا بالاتر
@@ -43,11 +64,10 @@ docker compose exec backend python manage.py load_samples
 cd app
 cp .env.example .env
 npm install
-npm run web        # نسخه‌ی وب در مرورگر
-npm run android    # روی گوشی یا شبیه‌ساز اندروید (با برنامه‌ی Expo Go)
+npm run web        # نسخه‌ی وب در مرورگر: http://localhost:8081
 ```
 
-برای تست روی گوشی واقعی در همان Wi‑Fi، در `app/.env` به‌جای `localhost` آدرس IP کامپیوترتان را بگذارید.
+برای گوشی از APK بخش ۳ استفاده کنید.
 
 ### ۳. نسخه‌ی آزمایشی اندروید (APK)
 
