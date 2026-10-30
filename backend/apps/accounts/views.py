@@ -17,6 +17,10 @@ from .sms import SMSError, send_sms
 _PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 
 
+def _fa(number) -> str:
+    return str(number).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+
+
 def _error(message, code, http_status=status.HTTP_400_BAD_REQUEST, **extra):
     return Response({"code": code, "message": message, **extra}, status=http_status)
 
@@ -84,9 +88,15 @@ def request_otp(request):
         last = recent.order_by("-created_at").first()
         if last and now - last.created_at < settings.OTP_RESEND_COOLDOWN:
             wait = int((settings.OTP_RESEND_COOLDOWN - (now - last.created_at)).total_seconds()) + 1
-            return _error(f"برای ارسال دوباره {wait} ثانیه صبر کنید.", "cooldown", status.HTTP_429_TOO_MANY_REQUESTS, retry_after=wait)
+            return _error(f"برای ارسال دوباره {_fa(wait)} ثانیه صبر کنید.", "cooldown", status.HTTP_429_TOO_MANY_REQUESTS, retry_after=wait)
         if recent.count() >= settings.OTP_MAX_PER_HOUR:
-            return _too_many("تعداد درخواست کد برای این شماره زیاد است. یک ساعت دیگر تلاش کنید.")
+            # Say exactly when the next code can be requested (when the oldest code of the hour drops out).
+            oldest = recent.order_by("created_at").first().created_at
+            wait = max(60, int((oldest + timedelta(hours=1) - now).total_seconds()) + 1)
+            minutes = (wait + 59) // 60
+            return _too_many(
+                f"تعداد درخواست کد برای این شماره زیاد است. {_fa(minutes)} دقیقه‌ی دیگر دوباره تلاش کنید.", retry_after=wait
+            )
 
         ratelimit.hit(ip_key)
         otp, code = OTPCode.issue(phone)

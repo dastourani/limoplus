@@ -18,7 +18,7 @@ export default function Exams() {
       ) : error ? (
         <ErrorState message={error.message} onRetry={retry} />
       ) : data!.length === 0 ? (
-        <Empty icon="📝" title="هنوز آزمونی نداده‌ای" text="در صفحه‌ی کتاب، کنار هر فصل دکمه‌ی «آزمون» هست." />
+        <Empty icon="clipboard-list" title="هنوز آزمونی نداده‌ای" text="در صفحه‌ی کتاب، کنار هر فصل دکمه‌ی «آزمون» هست." />
       ) : (
         <ScrollView contentContainerStyle={styles.page}>
           {data!.map((e) => (
@@ -43,5 +43,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14 },
   title: { fontSize: 15, fontWeight: '800', color: colors.ink },
   muted: { fontSize: 12, color: colors.muted },
-  score: { fontSize: 18, fontWeight: '900', color: colors.greenDark },
+  score: { fontSize: 18, fontWeight: '800', color: colors.greenDark },
 });

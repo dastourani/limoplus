@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components/Text';
+import { Icon, IconBadge } from '../../components/Icon';
 
 import { endpoints } from '../../api/endpoints';
 import { ErrorState, Loading, Screen } from '../../components/ui';
@@ -102,7 +103,10 @@ export default function Home() {
                 <Text style={[styles.bookTitle, rtl]}>{book.title}</Text>
                 <Text style={[styles.muted, rtl]}>{toPersianDigits(book.chapter_count)} فصل{book.price ? ` · ${formatToman(book.price)}` : ''}</Text>
                 {book.owned ? (
-                  <Text style={[styles.free, rtl]}>✓ در دسترس شما</Text>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
+                    <Icon name="circle-check" size={15} color={colors.greenDark} />
+                    <Text style={[styles.free, rtl]}>در دسترس شما</Text>
+                  </View>
                 ) : (
                   book.has_free_part && <Text style={[styles.free, rtl]}>بخشی از کتاب رایگان است</Text>
                 )}
@@ -112,7 +116,10 @@ export default function Home() {
         )}
 
         <View style={styles.soon}>
-          <Text style={[styles.soonText, rtl]}>✦ دستیار هوش مصنوعی برای رفع اشکال</Text>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flex: 1 }}>
+            <IconBadge name="sparkles" size={32} />
+            <Text style={[styles.soonText, rtl, { flex: 1 }]}>دستیار هوش مصنوعی برای رفع اشکال</Text>
+          </View>
           <Text style={styles.soonBadge}>به‌زودی</Text>
         </View>
       </ScrollView>
@@ -134,7 +141,7 @@ const styles = StyleSheet.create({
   continue: { backgroundColor: colors.surface, borderRadius: 26, overflow: 'hidden', shadowColor: '#17201A', shadowOpacity: 0.1, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
   continueCover: { padding: 18, minHeight: 110, justifyContent: 'flex-end' },
   continueSmall: { color: '#FFFFFFCC', fontSize: 12 },
-  continueTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '900' },
+  continueTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '800' },
   continueFoot: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', padding: 14 },
   pill: { backgroundColor: colors.lemon, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   pillText: { fontWeight: '800', color: colors.ink },
@@ -143,14 +150,14 @@ const styles = StyleSheet.create({
   banner: { width: 300, minHeight: 110, backgroundColor: colors.ink, borderRadius: 22, padding: 18, justifyContent: 'center', overflow: 'hidden' },
   bannerLemon: { position: 'absolute', left: -30, bottom: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: colors.lemon },
   bannerSmall: { color: '#B9C4BC', fontSize: 12, paddingLeft: 80 },
-  bannerTitle: { color: colors.lemon, fontSize: 20, fontWeight: '900', lineHeight: 30, paddingLeft: 80 },
+  bannerTitle: { color: colors.lemon, fontSize: 20, fontWeight: '800', lineHeight: 30, paddingLeft: 80 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, marginTop: 4 },
   book: { flexDirection: 'row-reverse', gap: 14, alignItems: 'center', backgroundColor: colors.surface, borderRadius: radius.md, padding: 12, borderWidth: 1, borderColor: colors.line },
   cover: { width: 62, height: 86, borderTopLeftRadius: 10, borderBottomLeftRadius: 10, borderTopRightRadius: 4, borderBottomRightRadius: 4, padding: 6, justifyContent: 'flex-end' },
-  coverText: { color: '#fff', fontSize: 10, fontWeight: '800', textAlign: 'right' },
+  coverText: { color: '#fff', fontSize: 10, fontWeight: '700', textAlign: 'right' },
   bookTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
   free: { fontSize: 12, color: colors.greenDark, fontWeight: '700' },
   soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, padding: 12 },
   soonText: { color: colors.muted, fontSize: 13 },
-  soonBadge: { backgroundColor: colors.lemonSoft, color: '#6B5200', fontSize: 11, fontWeight: '800', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2, overflow: 'hidden' },
+  soonBadge: { backgroundColor: colors.lemonSoft, color: '#6B5200', fontSize: 12, fontWeight: '700', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2, overflow: 'hidden' },
 });

@@ -44,6 +44,12 @@
             "./node_modules/@expo-google-fonts/vazirmatn/900Black/Vazirmatn_900Black.ttf"
           ]
         }
+      ],
+      [
+        "expo-localization",
+        {
+          "supportsRTL": false
+        }
       ]
     ],
     "experiments": {

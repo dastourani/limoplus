@@ -5,6 +5,8 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ApiError } from '../../api/client';
 import { endpoints, type NodeSummary } from '../../api/endpoints';
 import { Text } from '../../components/Text';
+import { useFeedback } from '../../components/Feedback';
+import { Icon } from '../../components/Icon';
 import { Button, Chip, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { jalaliDate } from '../../lib/jalali';
@@ -19,6 +21,7 @@ export default function Book() {
   const [offline, setOffline] = useState<OfflineBook | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const { confirm } = useFeedback();
 
   useFocusEffect(
     useCallback(() => {
@@ -74,7 +77,10 @@ export default function Book() {
             </View>
           )}
           {book.owned ? (
-            <Text style={[styles.owned, rtl]}>✓ نسخه‌ی کامل در دسترس شماست</Text>
+            <View style={styles.inline}>
+              <Icon name="circle-check" size={18} color="#9BE3B4" />
+              <Text style={[styles.owned, rtl]}>نسخه‌ی کامل در دسترس شماست</Text>
+            </View>
           ) : book.price ? (
             <Button label={`خرید نسخه‌ی کامل · ${formatToman(book.price)}`} onPress={() => router.push(`/buy/${book.slug}`)} />
           ) : null}
@@ -82,13 +88,17 @@ export default function Book() {
             <View style={styles.offlineRow}>
               {offline ? (
                 <>
-                  <Text style={[styles.heroMeta, rtl, { flex: 1 }]}>⬇ آفلاین تا {jalaliDate(offline.validUntil)}</Text>
+                  <Icon name="download" size={16} color="#C9D0C6" />
+                  <Text style={[styles.heroMeta, rtl, { flex: 1 }]}>آفلاین تا {jalaliDate(offline.validUntil)}</Text>
                   <Pressable onPress={download} disabled={downloading}><Text style={styles.link}>{downloading ? '…' : 'به‌روزرسانی'}</Text></Pressable>
-                  <Pressable onPress={() => removeOfflineBook(book.slug).then(() => setOffline(null))}><Text style={styles.link}>حذف</Text></Pressable>
+                  <Pressable onPress={async () => (await confirm({ title: 'نسخه‌ی آفلاین حذف شود؟', message: 'بعداً می‌توانید دوباره دانلودش کنید.', confirmLabel: 'حذف', destructive: true, icon: 'trash' })) && removeOfflineBook(book.slug).then(() => setOffline(null))}><Text style={styles.link}>حذف</Text></Pressable>
                 </>
               ) : (
                 <Pressable onPress={download} disabled={downloading} style={styles.offlineBtn}>
-                  <Text style={styles.offlineText}>{downloading ? 'در حال دانلود…' : '⬇ دانلود برای مطالعه‌ی آفلاین'}</Text>
+                  <View style={styles.inline}>
+                    <Icon name="download" size={18} color={colors.ground} />
+                    <Text style={styles.offlineText}>{downloading ? 'در حال دانلود…' : 'دانلود برای مطالعه‌ی آفلاین'}</Text>
+                  </View>
                 </Pressable>
               )}
             </View>
@@ -102,7 +112,7 @@ export default function Book() {
               <Text style={[styles.chapterTitle, rtl]}>
                 فصل {toPersianDigits(index + 1)} · {chapter.title}
               </Text>
-              {chapter.is_locked ? <Chip label="🔒 نسخه‌ی کامل" /> : !book.owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
+              {chapter.is_locked ? <Chip label="نسخه‌ی کامل" icon="lock" /> : !book.owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
             </View>
             {chapter.sections.map((section) => (
               <SectionRow key={section.id} section={section} done={done.has(section.id)} />
@@ -134,11 +144,13 @@ function SectionRow({ section, done }: { section: NodeSummary; done: boolean }) 
       style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}
       accessibilityRole="button"
     >
-      <View style={[styles.check, done && styles.checkOn]}>{done && <Text style={styles.checkMark}>✓</Text>}</View>
+      <View style={[styles.check, done && styles.checkOn]}>{done && <Icon name="check" size={13} color="#fff" strokeWidth={3} />}</View>
       <Text style={[styles.sectionTitle, rtl, section.is_locked && { color: colors.muted }]}>{section.title}</Text>
-      <Text style={styles.sectionMeta}>
-        {section.is_locked ? '🔒' : `${toPersianDigits(section.question_count ?? 0)} تست · ${toPersianDigits(section.flashcard_count ?? 0)} کارت`}
-      </Text>
+      {section.is_locked ? (
+        <Icon name="lock" size={16} color={colors.muted} />
+      ) : (
+        <Text style={styles.sectionMeta}>{`${toPersianDigits(section.question_count ?? 0)} تست · ${toPersianDigits(section.flashcard_count ?? 0)} کارت`}</Text>
+      )}
     </Pressable>
   );
 }
@@ -146,25 +158,26 @@ function SectionRow({ section, done }: { section: NodeSummary; done: boolean }) 
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 14 },
   hero: { backgroundColor: colors.ink, borderRadius: radius.lg, padding: 18, gap: 10 },
-  heroTitle: { fontSize: 22, fontWeight: '900', color: colors.lemon },
+  heroTitle: { fontSize: 22, fontWeight: '800', color: colors.lemon },
   heroMeta: { fontSize: 13, color: '#C9D0C6' },
   track: { height: 8, borderRadius: 4, backgroundColor: '#2C3A31', overflow: 'hidden', flexDirection: 'row-reverse' },
   fill: { backgroundColor: colors.lemon, borderRadius: 4 },
   owned: { color: '#9BE3B4', fontWeight: '800' },
+  inline: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   offlineRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   offlineBtn: { borderWidth: 1, borderColor: '#56655B', borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14, flex: 1, alignItems: 'center' },
   offlineText: { color: colors.ground, fontWeight: '700', fontSize: 13 },
-  link: { color: colors.lemon, fontWeight: '800', fontSize: 13 },
+  link: { color: colors.lemon, fontWeight: '700', fontSize: 13 },
   chapter: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
   chapterHead: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', padding: 16, gap: 8 },
-  chapterTitle: { flex: 1, fontSize: 17, fontWeight: '900', color: colors.ink },
+  chapterTitle: { flex: 1, fontSize: 17, fontWeight: '800', color: colors.ink },
   section: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.line, gap: 10 },
   check: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
   checkOn: { backgroundColor: colors.green, borderColor: colors.green },
-  checkMark: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  checkMark: { color: '#fff', fontSize: 12, fontWeight: '700' },
   sectionTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.ink },
   sectionMeta: { fontSize: 12, color: colors.muted },
   actions: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
   action: { flex: 1, backgroundColor: colors.ground, borderRadius: 14, paddingVertical: 12, alignItems: 'center' },
-  actionText: { fontWeight: '800', color: colors.ink, fontSize: 14 },
+  actionText: { fontWeight: '700', color: colors.ink, fontSize: 14 },
 });

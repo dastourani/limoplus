@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { endpoints, type OrderStatus } from '../api/endpoints';
 import { Text } from '../components/Text';
+import { Icon } from '../components/Icon';
 import { Button, Loading, Screen } from '../components/ui';
 import { colors, formatToman, toPersianDigits } from '../theme';
 
@@ -27,7 +28,7 @@ export default function PaymentResult() {
   return (
     <Screen>
       <View style={styles.page}>
-        <Text style={[styles.icon, { color: paid ? colors.green : colors.red }]}>{paid ? '✓' : '✕'}</Text>
+        <Icon name={paid ? 'circle-check' : 'circle-x'} size={72} color={paid ? colors.green : colors.red} strokeWidth={1.6} />
         <Text style={styles.title}>{paid ? 'پرداخت موفق بود' : status?.status === 'pending' ? 'پرداخت هنوز تأیید نشده' : 'پرداخت انجام نشد'}</Text>
         {status && (
           <Text style={styles.text}>
@@ -50,6 +51,6 @@ export default function PaymentResult() {
 const styles = StyleSheet.create({
   page: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
   icon: { fontSize: 64, fontWeight: '900' },
-  title: { fontSize: 22, fontWeight: '900', color: colors.ink },
+  title: { fontSize: 22, fontWeight: '800', color: colors.ink },
   text: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 26 },
 });

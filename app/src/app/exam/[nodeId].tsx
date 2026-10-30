@@ -1,12 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { ApiError } from '../../api/client';
 import { endpoints, type ExamDetail } from '../../api/endpoints';
 import { RichText } from '../../components/RichText';
 import { Text } from '../../components/Text';
+import { useFeedback } from '../../components/Feedback';
+import { Icon } from '../../components/Icon';
 import { Button, Card, Header, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { colors, radius, rtl, toPersianDigits } from '../../theme';
@@ -17,14 +19,6 @@ const COUNTS = [10, 20, 30, 50];
 function clock(seconds: number) {
   const s = Math.max(0, seconds);
   return toPersianDigits(`${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`);
-}
-
-function confirm(message: string, onYes: () => void) {
-  if (Platform.OS === 'web') {
-    if (window.confirm(message)) onYes();
-    return;
-  }
-  Alert.alert('', message, [{ text: 'نه', style: 'cancel' }, { text: 'بله', onPress: onYes }]);
 }
 
 /** Exam mode: timed, no feedback until the end, negative marking on by default (as in the konkur). */
@@ -40,6 +34,28 @@ export default function Exam() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submitted = useRef(false);
+  const { confirm } = useFeedback();
+  type BeforeRemove = { preventDefault: () => void; data: { action: unknown } };
+  const navigation = useNavigation() as unknown as {
+    addListener: (event: 'beforeRemove', cb: (e: BeforeRemove) => void) => () => void;
+    dispatch: (action: unknown) => void;
+  };
+
+  // Leaving mid-exam (back button or gesture) asks first; the timer keeps running on the server.
+  useEffect(() => {
+    if (!exam) return;
+    return navigation.addListener('beforeRemove', (e) => {
+      if (submitted.current) return;
+      e.preventDefault();
+      confirm({
+        title: 'از آزمون خارج می‌شوید؟',
+        message: 'زمان آزمون ادامه دارد. پاسخ‌هایتان روی گوشی می‌ماند و از «سابقه‌ی آزمون‌ها» می‌توانید ادامه دهید.',
+        confirmLabel: 'خروج',
+        cancelLabel: 'ادامه‌ی آزمون',
+        destructive: true,
+      }).then((ok) => ok && navigation.dispatch(e.data.action));
+    });
+  }, [exam, navigation, confirm]);
 
   const storeKey = exam ? `limo.exam.${exam.id}` : null;
 
@@ -155,7 +171,10 @@ export default function Exam() {
   return (
     <Screen>
       <View style={styles.top}>
-        <Text style={[styles.timer, left < 60 && { color: colors.red }]}>⏱ {clock(left)}</Text>
+        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+          <Icon name="timer" size={22} color={left < 60 ? colors.red : colors.ink} />
+          <Text style={[styles.timer, left < 60 && { color: colors.red }]}>{clock(left)}</Text>
+        </View>
         <Text style={styles.help}>
           {toPersianDigits(answeredCount)} از {toPersianDigits(exam.questions.length)} پاسخ داده‌شده
         </Text>
@@ -200,7 +219,14 @@ export default function Exam() {
           <Button
             label={busy ? '…' : 'پایان آزمون'}
             disabled={busy}
-            onPress={() => confirm(`آزمون تمام شود؟ ${toPersianDigits(exam.questions.length - answeredCount)} سؤال بی‌پاسخ است.`, submit)}
+            onPress={async () =>
+              (await confirm({
+                title: 'آزمون تمام شود؟',
+                message: answeredCount < exam.questions.length ? `${toPersianDigits(exam.questions.length - answeredCount)} سؤال بی‌پاسخ است.` : 'همه‌ی سؤال‌ها پاسخ داده شده‌اند.',
+                confirmLabel: 'پایان آزمون',
+                icon: 'circle-check',
+              })) && submit()
+            }
             style={{ flex: 1.3 }}
           />
         )}
@@ -219,12 +245,12 @@ const styles = StyleSheet.create({
   countOn: { backgroundColor: colors.ink, borderColor: colors.ink },
   switchRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   top: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 10 },
-  timer: { fontSize: 22, fontWeight: '900', color: colors.ink },
+  timer: { fontSize: 22, fontWeight: '800', color: colors.ink },
   grid: { gap: 6, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row-reverse' },
   dot: { width: 36, height: 36, borderRadius: 12, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   dotDone: { backgroundColor: colors.green, borderColor: colors.green },
   dotNow: { backgroundColor: colors.ink, borderColor: colors.ink },
-  dotText: { fontSize: 13, fontWeight: '800', color: colors.muted },
+  dotText: { fontSize: 13, fontWeight: '700', color: colors.muted },
   choice: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, minHeight: 58, padding: 12, borderRadius: radius.md, borderWidth: 2, borderColor: colors.line, backgroundColor: colors.surface },
   choiceOn: { borderColor: colors.ink, backgroundColor: colors.lemonSoft },
   key: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#F1F3EC', alignItems: 'center', justifyContent: 'center' },

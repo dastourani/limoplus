@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ApiError } from '../api/client';
 import { endpoints, type DeviceSessionInfo } from '../api/endpoints';
@@ -83,7 +83,8 @@ export default function Verify() {
   return (
     <Screen>
       <Header title="کد تأیید" />
-      <View style={styles.page}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
         <Text style={[styles.help, rtl]}>کد ۶ رقمی پیامک‌شده به {toPersianDigits(String(phone))} را وارد کنید.</Text>
         <TextInput
           value={code}
@@ -110,7 +111,8 @@ export default function Verify() {
         <Pressable onPress={() => router.back()} style={{ alignSelf: 'center', padding: 6 }}>
           <Text style={{ color: colors.muted }}>شماره را اشتباه زده‌ام</Text>
         </Pressable>
-      </View>
+      </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
@@ -118,7 +120,7 @@ export default function Verify() {
 const styles = StyleSheet.create({
   page: { padding: 24, gap: 12 },
   help: { fontSize: 14, color: colors.muted, lineHeight: 24 },
-  input: { backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, padding: 16, fontSize: 28, textAlign: 'center', letterSpacing: 10, writingDirection: 'ltr' },
+  input: { backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, paddingHorizontal: 16, height: 64, fontSize: 28, textAlign: 'center', letterSpacing: 8 },
   error: { color: colors.redDark, fontSize: 14 },
   device: { fontSize: 16, fontWeight: '800', color: colors.ink },
 });

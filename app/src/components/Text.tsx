@@ -11,10 +11,13 @@ function withFont<S>(style: S) {
 }
 
 /** Text in the app font (Vazirmatn); fontWeight picks the matching weight file. Use instead of react-native's Text. */
+// Follows the phone's text-size setting, up to 1.3× so layouts and buttons stay intact.
+const MAX_SCALE = 1.3;
+
 export function Text({ style, ...props }: ComponentProps<typeof RNText>) {
-  return <RNText {...props} style={withFont(style)} />;
+  return <RNText maxFontSizeMultiplier={MAX_SCALE} {...props} style={withFont(style)} />;
 }
 
 export function TextInput({ style, ...props }: ComponentProps<typeof RNTextInput>) {
-  return <RNTextInput {...props} style={withFont(style)} />;
+  return <RNTextInput maxFontSizeMultiplier={MAX_SCALE} {...props} style={withFont(style)} />;
 }

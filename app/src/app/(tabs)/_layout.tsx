@@ -2,17 +2,19 @@ import { router, Slot, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon, type IconName } from '../../components/Icon';
 import { Text } from '../../components/Text';
 import { colors } from '../../theme';
 
-const TABS = [
-  { href: '/home', label: 'خانه', icon: '⌂' },
-  { href: '/library', label: 'کتابخانه', icon: '▤' },
-  { href: '/stats', label: 'آمار', icon: '▥' },
-  { href: '/profile', label: 'پروفایل', icon: '◉' },
-] as const;
+// Right to left: home is the rightmost tab.
+const TABS: { href: '/home' | '/library' | '/stats' | '/profile'; label: string; icon: IconName }[] = [
+  { href: '/home', label: 'خانه', icon: 'house' },
+  { href: '/library', label: 'کتابخانه', icon: 'library-big' },
+  { href: '/stats', label: 'آمار', icon: 'chart-column' },
+  { href: '/profile', label: 'پروفایل', icon: 'circle-user-round' },
+];
 
-/** The four main tabs, right to left, with the lemon highlight on the active one. */
+/** Bottom tabs: icons only; the active one sits in a lemon capsule with its name underneath. */
 export default function TabsLayout() {
   const path = usePathname();
   const insets = useSafeAreaInsets();
@@ -33,10 +35,10 @@ export default function TabsLayout() {
               onPress={() => !on && router.replace(tab.href)}
               style={styles.tab}
             >
-              <View style={[styles.iconWrap, on && styles.iconOn]}>
-                <Text style={[styles.icon, on && { color: colors.ink }]}>{tab.icon}</Text>
+              <View style={[styles.capsule, on && styles.capsuleOn]}>
+                <Icon name={tab.icon} size={24} color={on ? colors.ink : colors.muted} strokeWidth={on ? 2.3 : 1.7} />
               </View>
-              <Text style={[styles.label, on && styles.labelOn]}>{tab.label}</Text>
+              <Text style={[styles.label, !on && styles.hidden]}>{tab.label}</Text>
             </Pressable>
           );
         })}
@@ -46,11 +48,10 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row-reverse', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 6 },
-  tab: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 2 },
-  iconWrap: { width: 52, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  iconOn: { backgroundColor: colors.lemon },
-  icon: { fontSize: 18, color: colors.muted },
-  label: { fontSize: 11, color: colors.muted },
-  labelOn: { color: colors.ink, fontWeight: '800' },
+  bar: { flexDirection: 'row-reverse', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8 },
+  tab: { flex: 1, alignItems: 'center', gap: 3 },
+  capsule: { width: 58, height: 34, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  capsuleOn: { backgroundColor: colors.lemon },
+  label: { fontSize: 12, fontWeight: '700', color: colors.ink, height: 18 },
+  hidden: { opacity: 0 },
 });

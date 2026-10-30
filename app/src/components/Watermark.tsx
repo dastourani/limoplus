@@ -24,5 +24,5 @@ export function Watermark({ text, dark }: { text: string; dark?: boolean }) {
 const styles = StyleSheet.create({
   layer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', justifyContent: 'space-around', paddingVertical: 20 },
   row: { flexDirection: 'row', justifyContent: 'space-around', transform: [{ rotate: '-24deg' }] },
-  text: { fontSize: 13, opacity: 0.06, fontWeight: '800' },
+  text: { fontSize: 13, opacity: 0.06, fontWeight: '700' },
 });

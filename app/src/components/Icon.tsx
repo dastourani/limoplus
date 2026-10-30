@@ -1,0 +1,102 @@
+/**
+ * Icons: one family everywhere (Lucide, ISC licence). Imported one by one so only the icons used end up in the app.
+ * Use <Icon name="…" /> for plain icons and <IconBadge name="…" /> for an icon in the lemon frame.
+ */
+import ALargeSmall from 'lucide-react-native/icons/a-large-small';
+import ArrowRight from 'lucide-react-native/icons/arrow-right';
+import BookOpen from 'lucide-react-native/icons/book-open';
+import Bookmark from 'lucide-react-native/icons/bookmark';
+import BookmarkCheck from 'lucide-react-native/icons/bookmark-check';
+import ChartColumn from 'lucide-react-native/icons/chart-column';
+import Check from 'lucide-react-native/icons/check';
+import ChevronLeft from 'lucide-react-native/icons/chevron-left';
+import CircleAlert from 'lucide-react-native/icons/circle-alert';
+import CircleCheck from 'lucide-react-native/icons/circle-check';
+import CircleUserRound from 'lucide-react-native/icons/circle-user-round';
+import CircleX from 'lucide-react-native/icons/circle-x';
+import ClipboardList from 'lucide-react-native/icons/clipboard-list';
+import Download from 'lucide-react-native/icons/download';
+import Flag from 'lucide-react-native/icons/flag';
+import Flame from 'lucide-react-native/icons/flame';
+import House from 'lucide-react-native/icons/house';
+import Layers from 'lucide-react-native/icons/layers';
+import LibraryBig from 'lucide-react-native/icons/library-big';
+import Lock from 'lucide-react-native/icons/lock';
+import LogOut from 'lucide-react-native/icons/log-out';
+import MonitorSmartphone from 'lucide-react-native/icons/monitor-smartphone';
+import Moon from 'lucide-react-native/icons/moon';
+import NotebookPen from 'lucide-react-native/icons/notebook-pen';
+import RotateCcw from 'lucide-react-native/icons/rotate-ccw';
+import Settings from 'lucide-react-native/icons/settings';
+import Share2 from 'lucide-react-native/icons/share-2';
+import Smartphone from 'lucide-react-native/icons/smartphone';
+import Sparkles from 'lucide-react-native/icons/sparkles';
+import Sun from 'lucide-react-native/icons/sun';
+import Target from 'lucide-react-native/icons/target';
+import Timer from 'lucide-react-native/icons/timer';
+import Trash from 'lucide-react-native/icons/trash';
+import Trophy from 'lucide-react-native/icons/trophy';
+import UserPen from 'lucide-react-native/icons/user-pen';
+import WifiOff from 'lucide-react-native/icons/wifi-off';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+
+import { colors } from '../theme';
+
+const ICONS = {
+  'a-large-small': ALargeSmall,
+  'arrow-right': ArrowRight,
+  'book-open': BookOpen,
+  bookmark: Bookmark,
+  'bookmark-check': BookmarkCheck,
+  'chart-column': ChartColumn,
+  check: Check,
+  'chevron-left': ChevronLeft,
+  'circle-alert': CircleAlert,
+  'circle-check': CircleCheck,
+  'circle-user-round': CircleUserRound,
+  'circle-x': CircleX,
+  'clipboard-list': ClipboardList,
+  download: Download,
+  flag: Flag,
+  flame: Flame,
+  house: House,
+  layers: Layers,
+  'library-big': LibraryBig,
+  lock: Lock,
+  'log-out': LogOut,
+  'monitor-smartphone': MonitorSmartphone,
+  moon: Moon,
+  'notebook-pen': NotebookPen,
+  'rotate-ccw': RotateCcw,
+  settings: Settings,
+  'share-2': Share2,
+  smartphone: Smartphone,
+  sparkles: Sparkles,
+  sun: Sun,
+  target: Target,
+  timer: Timer,
+  trash: Trash,
+  trophy: Trophy,
+  'user-pen': UserPen,
+  'wifi-off': WifiOff,
+} as const;
+
+export type IconName = keyof typeof ICONS;
+
+export function Icon({ name, size = 22, color = colors.ink, strokeWidth = 1.9 }: { name: IconName; size?: number; color?: string; strokeWidth?: number }) {
+  const Component = ICONS[name];
+  return <Component size={size} color={color} strokeWidth={strokeWidth} />;
+}
+
+/** An icon in the lemon frame — used for empty states, stat tiles and list rows, so the whole app looks the same. */
+export function IconBadge({ name, size = 44, style }: { name: IconName; size?: number; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View style={[styles.badge, { width: size, height: size, borderRadius: size * 0.32 }, style]}>
+      <Icon name={name} size={Math.round(size * 0.5)} color={colors.ink} strokeWidth={2} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  badge: { backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center' },
+});

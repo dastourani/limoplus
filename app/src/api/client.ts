@@ -13,6 +13,12 @@ export class ApiError extends Error {
 }
 
 let authToken: string | null = null;
+let online = true;
+
+/** Set by the network watcher, so a failed request can say "no internet" rather than "server unreachable". */
+export function setOnline(value: boolean) {
+  online = value;
+}
 let onUnauthorized: (() => void) | null = null;
 
 export function setAuthToken(token: string | null) {
@@ -38,7 +44,11 @@ export async function api<T>(path: string, options: { method?: string; body?: un
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch {
-    throw new ApiError(0, 'network', 'اتصال به سرور برقرار نشد. اینترنت یا آدرس سرور را بررسی کنید.');
+    throw new ApiError(
+      0,
+      'network',
+      online ? 'سرور در دسترس نیست. کمی بعد دوباره تلاش کنید.' : 'اینترنت قطع است. اتصال را بررسی کنید و دوباره تلاش کنید.',
+    );
   }
 
   const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;

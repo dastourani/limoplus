@@ -4,6 +4,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 
 import { endpoints, type Library } from '../../api/endpoints';
 import { Text } from '../../components/Text';
+import { IconBadge } from '../../components/Icon';
 import { Button, Card, Empty, ErrorState, Loading, Screen } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { relativeDay } from '../../lib/jalali';
@@ -43,7 +44,7 @@ export default function LibraryTab() {
       <Screen tab>
         <Text style={[styles.title, rtl]}>کتابخانه‌ی من</Text>
         <Empty
-          icon="📚"
+          icon="library-big"
           title="کتابخانه‌ات اینجاست"
           text="بعد از ورود، کتاب‌هایی که می‌خوانی، بخش‌های نشان‌شده و یادداشت‌هایت اینجا جمع می‌شوند و روی همه‌ی دستگاه‌هایت هست."
           action={<Button label="ورود یا ثبت‌نام" onPress={() => router.push('/login')} style={{ alignSelf: 'stretch' }} />}
@@ -82,18 +83,19 @@ export default function LibraryTab() {
             ))}
           {tab === 'bookmarks' &&
             (data!.bookmarks.length === 0 ? (
-              <Empty icon="🔖" title="بخشی نشان نکرده‌ای" text="در صفحه‌ی درس، دکمه‌ی نشان را بزن تا اینجا بیاید." />
+              <Empty icon="bookmark" title="بخشی نشان نکرده‌ای" text="در صفحه‌ی درس، دکمه‌ی نشان را بزن تا اینجا بیاید." />
             ) : (
               data!.bookmarks.map((b) => (
                 <Pressable key={b.id} onPress={() => router.push(`/section/${b.id}`)} style={styles.rowItem}>
-                  <Text style={[styles.itemTitle, rtl, { flex: 1 }]}>🔖 {b.title}</Text>
+                  <IconBadge name="bookmark" size={36} />
+                  <Text style={[styles.itemTitle, rtl, { flex: 1 }]}>{b.title}</Text>
                   <Text style={styles.muted}>{relativeDay(b.created_at)}</Text>
                 </Pressable>
               ))
             ))}
           {tab === 'notes' &&
             (data!.notes.length === 0 ? (
-              <Empty icon="✎" title="یادداشتی نداری" text="در صفحه‌ی درس متنی را انتخاب کن تا هایلایت یا یادداشت بگذاری." />
+              <Empty icon="notebook-pen" title="یادداشتی نداری" text="در صفحه‌ی درس متنی را انتخاب کن تا هایلایت یا یادداشت بگذاری." />
             ) : (
               data!.notes.map((n) => (
                 <Pressable key={n.id} onPress={() => router.push(`/section/${n.node_id}`)}>
@@ -112,11 +114,11 @@ export default function LibraryTab() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 24, fontWeight: '900', color: colors.ink, paddingHorizontal: 20, paddingTop: 12 },
+  title: { fontSize: 24, fontWeight: '800', color: colors.ink, paddingHorizontal: 20, paddingTop: 12 },
   tabs: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 20, paddingVertical: 12 },
   tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
   tabOn: { backgroundColor: colors.ink, borderColor: colors.ink },
-  tabText: { fontWeight: '800', color: colors.muted, fontSize: 13 },
+  tabText: { fontWeight: '700', color: colors.muted, fontSize: 13 },
   page: { padding: 16, paddingTop: 0, gap: 12 },
   itemTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
   muted: { fontSize: 12, color: colors.muted },

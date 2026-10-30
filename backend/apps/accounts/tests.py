@@ -67,6 +67,20 @@ class OTPFlowTests(TestCase):
         self.assertEqual(response.data["code"], "cooldown")
         self.assertIsNone(code)
 
+    def test_hourly_limit_says_when_to_try_again(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        for minutes_ago in (50, 40, 30, 20, 10):
+            otp, _ = OTPCode.issue(self.phone)
+            OTPCode.objects.filter(pk=otp.pk).update(created_at=timezone.now() - timedelta(minutes=minutes_ago))
+        response, code = self._request_code()
+        self.assertEqual(response.status_code, 429)
+        self.assertIsNone(code)
+        self.assertIn("۱۰ دقیقه", response.data["message"])
+        self.assertTrue(540 <= response.data["retry_after"] <= 601)
+
     def test_wrong_code_counts_attempts_and_locks(self):
         _, code = self._request_code()
         wrong = "000000" if code != "000000" else "111111"

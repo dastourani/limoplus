@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components/Text';
+import { useFeedback } from '../../components/Feedback';
 
 import { ApiError } from '../../api/client';
 import { endpoints, type AnswerResult } from '../../api/endpoints';
@@ -54,7 +55,15 @@ export default function Quiz() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, data, nodeId]);
 
+  const { confirm } = useFeedback();
   const restart = async () => {
+    const ok = await confirm({
+      title: 'تست‌ها از اول شروع شود؟',
+      message: 'پاسخ‌های قبلی از نوار پیشرفت این بخش برداشته می‌شود؛ در آمار کلی شما می‌ماند.',
+      confirmLabel: 'شروع دوباره',
+      icon: 'rotate-ccw',
+    });
+    if (!ok) return;
     if (user) await endpoints.practiceReset(Number(nodeId)).catch(() => undefined);
     setAnswered({});
     setIndex(0);
@@ -206,7 +215,7 @@ export default function Quiz() {
               onPress={() => requireLogin(user, 'برای گزارش اشکال وارد شوید.') && !reported.includes(q.id) && setReportOpen(true)}
               style={{ alignSelf: 'flex-end' }}
             >
-              <Text style={styles.report}>{reported.includes(q.id) ? 'گزارش داده شد ✓' : 'گزارش اشکال در این تست'}</Text>
+              <Text style={styles.report}>{reported.includes(q.id) ? 'گزارش داده شد' : 'گزارش اشکال در این تست'}</Text>
             </Pressable>
             {result.flashcards.length > 0 && (
               <Text style={[styles.related, rtl]}>فلش‌کارت مرتبط: {result.flashcards.map((f) => f.title).join('، ')}</Text>
@@ -240,7 +249,7 @@ const styles = StyleSheet.create({
   key: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#F1F3EC', alignItems: 'center', justifyContent: 'center' },
   keyText: { fontWeight: '800', color: colors.ink },
   feedback: { borderRadius: radius.md, padding: 14, gap: 10 },
-  feedbackTitle: { fontSize: 16, fontWeight: '900' },
+  feedbackTitle: { fontSize: 16, fontWeight: '800' },
   tabs: { flexDirection: 'row-reverse', gap: 6, flexWrap: 'wrap' },
   tab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFFFFF88' },
   tabOn: { backgroundColor: colors.surface },

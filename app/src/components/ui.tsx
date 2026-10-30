@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Text } from './Text';
+import { Icon, IconBadge, type IconName } from './Icon';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radius, rtl } from '../theme';
@@ -20,7 +21,7 @@ export function Header({ title, subtitle, right }: { title?: string; subtitle?: 
   return (
     <View style={styles.header}>
       <Pressable accessibilityRole="button" accessibilityLabel="بازگشت" onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={styles.iconButton}>
-        <Text style={styles.back}>→</Text>
+        <Icon name="arrow-right" size={24} />
       </Pressable>
       <View style={styles.headerText}>
         {!!subtitle && <Text style={[styles.subtitle, rtl]} numberOfLines={1}>{subtitle}</Text>}
@@ -40,12 +41,12 @@ export function Button({
 }: {
   label: string;
   onPress: () => void;
-  variant?: 'primary' | 'dark' | 'outline';
+  variant?: 'primary' | 'dark' | 'outline' | 'danger';
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const look = variant === 'primary' ? styles.primary : variant === 'dark' ? styles.dark : styles.outline;
-  const text = variant === 'dark' ? styles.darkText : styles.primaryText;
+  const look = variant === 'primary' ? styles.primary : variant === 'dark' ? styles.dark : variant === 'danger' ? styles.danger : styles.outline;
+  const text = variant === 'dark' ? styles.darkText : variant === 'danger' ? styles.dangerText : styles.primaryText;
   return (
     <Pressable
       accessibilityRole="button"
@@ -100,10 +101,10 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-export function Empty({ icon = '🍋', title, text, action }: { icon?: string; title: string; text?: string; action?: ReactNode }) {
+export function Empty({ icon = 'book-open', title, text, action }: { icon?: IconName; title: string; text?: string; action?: ReactNode }) {
   return (
     <View style={styles.empty}>
-      <Text style={{ fontSize: 40 }}>{icon}</Text>
+      <IconBadge name={icon} size={64} />
       <Text style={styles.emptyTitle}>{title}</Text>
       {!!text && <Text style={styles.emptyText}>{text}</Text>}
       {action}
@@ -111,9 +112,10 @@ export function Empty({ icon = '🍋', title, text, action }: { icon?: string; t
   );
 }
 
-export function Chip({ label, color = colors.muted, background = colors.surface }: { label: string; color?: string; background?: string }) {
+export function Chip({ label, color = colors.muted, background = colors.surface, icon }: { label: string; color?: string; background?: string; icon?: IconName }) {
   return (
     <View style={[styles.chip, { backgroundColor: background }]}>
+      {icon && <Icon name={icon} size={13} color={color} strokeWidth={2.2} />}
       <Text style={[styles.chipText, { color }]}>{label}</Text>
     </View>
   );
@@ -132,22 +134,24 @@ const styles = StyleSheet.create({
   button: { minHeight: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
   primary: { backgroundColor: colors.lemon },
   dark: { backgroundColor: colors.ink },
+  danger: { backgroundColor: colors.redDark },
+  dangerText: { color: '#FFFFFF' },
   outline: { borderWidth: 1.5, borderColor: colors.ink, backgroundColor: 'transparent' },
   disabled: { backgroundColor: colors.disabled, borderColor: colors.disabled },
-  buttonText: { fontSize: 16, fontWeight: '800' },
+  buttonText: { fontSize: 16, fontWeight: '700' },
   primaryText: { color: colors.ink },
   darkText: { color: colors.lemon },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   errorText: { fontSize: 15, color: colors.ink, textAlign: 'center', lineHeight: 26 },
   link: { color: colors.greenDark, fontWeight: '700', fontSize: 13 },
-  chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
+  chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
   sheetWrap: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#17201A66' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingTop: 10, maxHeight: '85%', gap: 12 },
   sheetHandle: { alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line, marginBottom: 6 },
-  sheetTitle: { fontSize: 18, fontWeight: '900', color: colors.ink },
+  sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.ink },
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 16, gap: 10 },
   empty: { alignItems: 'center', justifyContent: 'center', padding: 28, gap: 8 },
   emptyTitle: { fontSize: 17, fontWeight: '800', color: colors.ink, textAlign: 'center' },
   emptyText: { fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 24, marginBottom: 8 },
-  chipText: { fontSize: 11, fontWeight: '700' },
+  chipText: { fontSize: 12, fontWeight: '700' },
 });

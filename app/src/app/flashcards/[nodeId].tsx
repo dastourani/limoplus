@@ -9,8 +9,10 @@ import { LemonSlice } from '../../components/LemonSlice';
 import { MarkdownView } from '../../components/MarkdownView';
 import { ReportSheet } from '../../components/ReportSheet';
 import { Text } from '../../components/Text';
+import { Icon } from '../../components/Icon';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { sendOrQueue } from '../../lib/network';
 import { useApi } from '../../lib/useApi';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
@@ -104,10 +106,10 @@ export default function Flashcards() {
   const advance = (known: boolean) => {
     setAgain((list) => (known ? list.filter((id) => id !== card.id) : list.includes(card.id) ? list : [...list, card.id]));
     if (user) {
-      endpoints
-        .reviewFlashcard(card.id, known)
-        .then((r) => setBoxes((b) => ({ ...b, [card.id]: { box: r.box, due: false } })))
-        .catch(() => undefined);
+      // Sent later if offline, so no review is lost; the box shown here is the expected one.
+      const box = known ? Math.min(5, (boxes[card.id]?.box ?? 1) + 1) : 1;
+      setBoxes((b) => ({ ...b, [card.id]: { box, due: false } }));
+      sendOrQueue(`flashcards/${card.id}/review/`, { known });
     }
     setFlipped(false);
     setIndex((i) => i + 1);
@@ -131,7 +133,7 @@ export default function Flashcards() {
         right={
           Platform.OS !== 'web' ? (
             <Pressable onPress={share} style={{ padding: 10 }} accessibilityLabel="اشتراک‌گذاری کارت">
-              <Text style={{ fontSize: 18 }}>⇪</Text>
+              <Icon name="share-2" size={22} />
             </Pressable>
           ) : undefined
         }
@@ -165,7 +167,7 @@ export default function Flashcards() {
           onPress={() => requireLogin(user, 'برای گزارش اشکال وارد شوید.') && !reported.includes(card.id) && setReportOpen(true)}
           style={{ alignSelf: 'center', marginTop: 14 }}
         >
-          <Text style={styles.report}>{reported.includes(card.id) ? 'گزارش داده شد ✓' : 'گزارش اشکال در این کارت'}</Text>
+          <Text style={styles.report}>{reported.includes(card.id) ? 'گزارش داده شد' : 'گزارش اشکال در این کارت'}</Text>
         </Pressable>
       </View>
       <View style={styles.bar}>
@@ -193,9 +195,9 @@ const styles = StyleSheet.create({
   shadowCard: { position: 'absolute', bottom: 70, borderRadius: 30, backgroundColor: colors.line },
   card: { minHeight: 380, borderRadius: 30, backgroundColor: colors.surface, padding: 26, alignItems: 'center', justifyContent: 'center', gap: 16, shadowColor: '#17201A', shadowOpacity: 0.16, shadowRadius: 30, shadowOffset: { width: 0, height: 14 }, elevation: 6 },
   cardBack: { backgroundColor: colors.ink },
-  chip: { position: 'absolute', top: 18, right: 18, fontSize: 11, fontWeight: '800', backgroundColor: '#EEF0FC', color: '#3B44B8', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' },
+  chip: { position: 'absolute', top: 18, right: 18, fontSize: 12, fontWeight: '700', backgroundColor: '#EEF0FC', color: '#3B44B8', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' },
   chipBack: { backgroundColor: colors.lemon, color: colors.ink },
-  box: { position: 'absolute', top: 20, left: 20, fontSize: 11, color: colors.muted },
+  box: { position: 'absolute', top: 20, left: 20, fontSize: 12, color: colors.muted },
   title: { fontSize: 30, fontWeight: '900', color: colors.ink, textAlign: 'center', lineHeight: 44 },
   hint: { fontSize: 13, color: colors.muted },
   point: { fontSize: 19, fontWeight: '800', color: colors.ground, textAlign: 'center', lineHeight: 34, writingDirection: 'rtl' },

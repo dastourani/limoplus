@@ -52,6 +52,6 @@ export default function EditProfile() {
 const styles = StyleSheet.create({
   page: { padding: 24, gap: 10 },
   help: { fontSize: 14, color: colors.muted, lineHeight: 24 },
-  label: { fontSize: 14, fontWeight: '800', color: colors.ink },
+  label: { fontSize: 14, fontWeight: '700', color: colors.ink },
   input: { backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, padding: 14, fontSize: 16, textAlign: 'right', writingDirection: 'rtl' },
 });

@@ -3,15 +3,17 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { endpoints, type Stats } from '../../api/endpoints';
+import { IconBadge, type IconName } from '../../components/Icon';
 import { Text } from '../../components/Text';
 import { Button, Card, Empty, ErrorState, Loading, Screen } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { weekdayShort } from '../../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
-function Tile({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Tile({ label, value, accent, icon }: { label: string; value: string; accent?: boolean; icon: IconName }) {
   return (
     <View style={[styles.tile, accent && { backgroundColor: colors.ink }]}>
+      <IconBadge name={icon} size={32} />
       <Text style={[styles.tileValue, accent && { color: colors.lemon }]}>{value}</Text>
       <Text style={[styles.tileLabel, accent && { color: '#C9D0C6' }]}>{label}</Text>
     </View>
@@ -43,7 +45,7 @@ export default function StatsTab() {
       <Screen tab>
         <Text style={[styles.title, rtl]}>آمار من</Text>
         <Empty
-          icon="📈"
+          icon="chart-column"
           title="پیشرفتت را ببین"
           text="بعد از ورود، روزهای پیاپی مطالعه، درصد پاسخ درست و بخش‌هایی که باید بیشتر کار کنی اینجا نشان داده می‌شود."
           action={<Button label="ورود یا ثبت‌نام" onPress={() => router.push('/login')} style={{ alignSelf: 'stretch' }} />}
@@ -60,12 +62,12 @@ export default function StatsTab() {
       <ScrollView contentContainerStyle={styles.page} refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
         <Text style={[styles.title, rtl, { padding: 0 }]}>آمار من</Text>
         <View style={styles.tiles}>
-          <Tile accent label="روز پیاپی" value={`🔥 ${toPersianDigits(data.streak_days)}`} />
-          <Tile label="درصد پاسخ درست" value={data.accuracy === null ? '—' : `${toPersianDigits(data.accuracy)}٪`} />
-          <Tile label="بخش خوانده‌شده" value={toPersianDigits(data.sections_done)} />
-          <Tile label="تست حل‌شده" value={toPersianDigits(data.answers)} />
-          <Tile label="کارت مسلط" value={`${toPersianDigits(data.cards_mastered)} از ${toPersianDigits(data.cards_reviewed)}`} />
-          <Tile label="آزمون" value={toPersianDigits(data.exams)} />
+          <Tile accent icon="flame" label="روز پیاپی" value={toPersianDigits(data.streak_days)} />
+          <Tile icon="target" label="درصد پاسخ درست" value={data.accuracy === null ? '—' : `${toPersianDigits(data.accuracy)}٪`} />
+          <Tile icon="book-open" label="بخش خوانده‌شده" value={toPersianDigits(data.sections_done)} />
+          <Tile icon="circle-check" label="تست حل‌شده" value={toPersianDigits(data.answers)} />
+          <Tile icon="layers" label="کارت مسلط" value={`${toPersianDigits(data.cards_mastered)} از ${toPersianDigits(data.cards_reviewed)}`} />
+          <Tile icon="trophy" label="آزمون" value={toPersianDigits(data.exams)} />
         </View>
 
         <Card>
@@ -123,18 +125,18 @@ export default function StatsTab() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 24, fontWeight: '900', color: colors.ink, padding: 20, paddingBottom: 0 },
+  title: { fontSize: 24, fontWeight: '800', color: colors.ink, padding: 20, paddingBottom: 0 },
   page: { padding: 16, gap: 14 },
   tiles: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
-  tile: { flexBasis: '30%', flexGrow: 1, backgroundColor: colors.surface, borderRadius: 18, padding: 14, borderWidth: 1, borderColor: colors.line, gap: 4 },
-  tileValue: { fontSize: 20, fontWeight: '900', color: colors.ink, textAlign: 'right' },
+  tile: { flexBasis: '30%', flexGrow: 1, backgroundColor: colors.surface, borderRadius: 18, padding: 12, borderWidth: 1, borderColor: colors.line, gap: 6, alignItems: 'flex-end' },
+  tileValue: { fontSize: 20, fontWeight: '800', color: colors.ink, textAlign: 'right' },
   tileLabel: { fontSize: 12, color: colors.muted, textAlign: 'right' },
   cardTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   chart: { flexDirection: 'row-reverse', gap: 4, height: 120, alignItems: 'flex-end' },
   barCol: { flex: 1, alignItems: 'center', gap: 4, height: '100%' },
   barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
   bar: { width: '100%', backgroundColor: colors.lemon, borderRadius: 6 },
-  barLabel: { fontSize: 10, color: colors.muted },
+  barLabel: { fontSize: 12, color: colors.muted },
   bookTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
   muted: { fontSize: 12, color: colors.muted },
   progressTrack: { height: 8, backgroundColor: colors.line, borderRadius: 4, overflow: 'hidden', flexDirection: 'row-reverse' },

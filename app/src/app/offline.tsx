@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Text } from '../components/Text';
+import { useFeedback } from '../components/Feedback';
 import { Empty, Header, Screen } from '../components/ui';
 import { jalaliDate } from '../lib/jalali';
 import { offlineBooks, offlineSupported, removeOfflineBook, type OfflineBook } from '../lib/offline';
@@ -10,15 +11,16 @@ import { colors, rtl, toPersianDigits } from '../theme';
 
 export default function Offline() {
   const [books, setBooks] = useState<OfflineBook[]>([]);
+  const { confirm } = useFeedback();
   useFocusEffect(useCallback(() => void offlineBooks().then(setBooks), []));
 
   return (
     <Screen>
       <Header title="کتاب‌های آفلاین" />
       {!offlineSupported ? (
-        <Empty icon="📱" title="فقط در اپ گوشی" text="دانلود آفلاین رمزدار در اپ اندروید در دسترس است." />
+        <Empty icon="smartphone" title="فقط در اپ گوشی" text="دانلود آفلاین رمزدار در اپ اندروید در دسترس است." />
       ) : books.length === 0 ? (
-        <Empty icon="⬇" title="کتاب آفلاینی نداری" text="در صفحه‌ی هر کتاب، «دانلود برای مطالعه‌ی آفلاین» را بزن. فایل‌ها رمزگذاری‌شده‌اند و ۳۰ روز اعتبار دارند." />
+        <Empty icon="download" title="کتاب آفلاینی نداری" text="در صفحه‌ی هر کتاب، «دانلود برای مطالعه‌ی آفلاین» را بزن. فایل‌ها رمزگذاری‌شده‌اند و ۳۰ روز اعتبار دارند." />
       ) : (
         <ScrollView contentContainerStyle={styles.page}>
           {books.map((b) => (
@@ -29,7 +31,7 @@ export default function Offline() {
                   {toPersianDigits(b.sectionIds.length)} بخش · معتبر تا {jalaliDate(b.validUntil)}
                 </Text>
               </Pressable>
-              <Pressable onPress={() => removeOfflineBook(b.slug).then(() => offlineBooks().then(setBooks))}>
+              <Pressable onPress={async () => (await confirm({ title: `نسخه‌ی آفلاین «${b.title}» حذف شود؟`, confirmLabel: 'حذف', destructive: true, icon: 'trash' })) && removeOfflineBook(b.slug).then(() => offlineBooks().then(setBooks))}>
                 <Text style={{ color: colors.redDark, fontWeight: '800' }}>حذف</Text>
               </Pressable>
             </View>

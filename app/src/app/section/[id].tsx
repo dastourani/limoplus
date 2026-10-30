@@ -7,9 +7,12 @@ import { endpoints, type NodeDetail, type Note } from '../../api/endpoints';
 import { MarkdownView, type MarkdownViewHandle, type ReaderEvent } from '../../components/MarkdownView';
 import { ReportSheet } from '../../components/ReportSheet';
 import { Text, TextInput } from '../../components/Text';
+import { Icon, IconBadge } from '../../components/Icon';
 import { Button, ErrorState, Header, Loading, Screen, Sheet } from '../../components/ui';
 import { Watermark } from '../../components/Watermark';
+import { useFeedback } from '../../components/Feedback';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { sendOrQueue } from '../../lib/network';
 import { offlineBooks, offlineSection } from '../../lib/offline';
 import { storage } from '../../lib/storage';
 import { colors, formatToman, radius, rtl } from '../../theme';
@@ -42,7 +45,6 @@ export default function Section() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [missing, setMissing] = useState<number[]>([]);
   const [selection, setSelection] = useState('');
-  const [toast, setToast] = useState<string | null>(null);
   const [noteSheet, setNoteSheet] = useState<{ note?: Note; quote?: string } | null>(null);
   const [noteText, setNoteText] = useState('');
   const [notesOpen, setNotesOpen] = useState(false);
@@ -50,10 +52,7 @@ export default function Section() {
   const [reported, setReported] = useState(false);
   const progress = useRef({ sent: 0, done: false });
 
-  const flash = (text: string) => {
-    setToast(text);
-    setTimeout(() => setToast(null), 2500);
-  };
+  const { toast: flash, confirm } = useFeedback();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -143,7 +142,7 @@ export default function Section() {
       if (e.percent >= p.sent + 10 || (e.percent >= 90 && !p.done)) {
         p.sent = Math.max(p.sent, e.percent);
         p.done = p.done || e.percent >= 90;
-        endpoints.saveProgress(node.id, e.percent).catch(() => undefined);
+        sendOrQueue(`nodes/${node.id}/progress/`, { percent: e.percent, done: false });
       }
     }
   };
@@ -184,8 +183,33 @@ export default function Section() {
   };
 
   const deleteNote = async (note: Note) => {
-    await endpoints.deleteNote(note.id).catch(() => undefined);
+    try {
+      await endpoints.deleteNote(note.id);
+    } catch (e) {
+      flash(e instanceof ApiError ? e.message : 'حذف نشد.');
+      return;
+    }
     setNotes((list) => list.filter((n) => n.id !== note.id));
+    setNoteSheet(null);
+    flash(note.quote && !note.body ? 'هایلایت حذف شد.' : 'یادداشت حذف شد.', {
+      label: 'برگرداندن',
+      onPress: () => {
+        if (!node) return;
+        endpoints
+          .addNote(node.id, { quote: note.quote, body: note.body, color: note.color, mode: note.mode })
+          .then((restored) => setNotes((list) => [...list, restored]))
+          .catch(() => flash('برگرداندن ممکن نشد.'));
+      },
+    });
+  };
+
+  // Closing the note editor with unsaved text asks first.
+  const closeNoteSheet = async () => {
+    const original = noteSheet?.note?.body ?? '';
+    if (noteText.trim() && noteText !== original) {
+      const discard = await confirm({ title: 'یادداشت ذخیره نشده است', message: 'بدون ذخیره بسته شود؟', confirmLabel: 'بستن بدون ذخیره', cancelLabel: 'ادامه‌ی نوشتن', destructive: true });
+      if (!discard) return;
+    }
     setNoteSheet(null);
   };
 
@@ -194,9 +218,14 @@ export default function Section() {
     try {
       const r = await endpoints.toggleBookmark(node.id);
       setBookmarked(r.bookmarked);
-      flash(r.bookmarked ? 'به نشان‌شده‌ها اضافه شد.' : 'از نشان‌شده‌ها برداشته شد.');
+      if (r.bookmarked) flash('به نشان‌شده‌ها اضافه شد.');
+      else
+        flash('از نشان‌شده‌ها برداشته شد.', {
+          label: 'برگرداندن',
+          onPress: () => endpoints.toggleBookmark(node.id).then((x) => setBookmarked(x.bookmarked)).catch(() => undefined),
+        });
     } catch {
-      flash('ذخیره نشد.');
+      flash('ذخیره نشد. اتصال اینترنت را بررسی کنید.');
     }
   };
 
@@ -207,7 +236,7 @@ export default function Section() {
       <Screen>
         <Header title={locked.title} />
         <View style={styles.locked}>
-          <Text style={styles.lockIcon}>🔒</Text>
+          <IconBadge name="lock" size={72} />
           <Text style={styles.lockTitle}>این بخش در نسخه‌ی کامل کتاب است</Text>
           {locked.price ? <Text style={styles.lockPrice}>{formatToman(locked.price)}</Text> : null}
           {locked.slug && <Button label="خرید یا اشتراک" onPress={() => router.push(`/buy/${locked.slug}`)} style={{ alignSelf: 'stretch' }} />}
@@ -228,23 +257,24 @@ export default function Section() {
     <Screen background={paper}>
       <View style={styles.header}>
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={styles.icon} accessibilityLabel="بازگشت">
-          <Text style={[styles.iconText, { color: ink }]}>→</Text>
+          <Icon name="arrow-right" size={24} color={ink} />
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین · ${chapter?.title ?? ''}` : chapter?.title}</Text>
           <Text style={[styles.title, rtl, { color: ink }]} numberOfLines={1}>{node.title}</Text>
         </View>
         <Pressable onPress={toggleBookmark} style={styles.icon} accessibilityLabel="نشان کردن">
-          <Text style={[styles.iconText, { color: bookmarked ? colors.lemon : ink }]}>{bookmarked ? '★' : '☆'}</Text>
+          <Icon name={bookmarked ? 'bookmark-check' : 'bookmark'} size={22} color={bookmarked ? colors.lemon : ink} />
         </Pressable>
         <Pressable onPress={() => setNotesOpen(true)} style={styles.icon} accessibilityLabel="یادداشت‌ها">
-          <Text style={[styles.iconText, { color: ink, fontSize: 17 }]}>✎{notes.length ? notes.length : ''}</Text>
+          <Icon name="notebook-pen" size={22} color={ink} />
+          {notes.length > 0 && <Text style={styles.count}>{notes.length}</Text>}
         </Pressable>
         <Pressable onPress={() => savePrefs({ fontSize: fontSize >= 23 ? 15 : fontSize + 2 })} style={styles.icon} accessibilityLabel="اندازه‌ی متن">
-          <Text style={[styles.iconText, { color: ink, fontSize: 18 }]}>آ</Text>
+          <Icon name="a-large-small" size={24} color={ink} />
         </Pressable>
         <Pressable onPress={() => savePrefs({ dark: !dark })} style={styles.icon} accessibilityLabel="حالت شب">
-          <Text style={[styles.iconText, { color: ink, fontSize: 18 }]}>{dark ? '☀' : '☾'}</Text>
+          <Icon name={dark ? 'sun' : 'moon'} size={22} color={ink} />
         </Pressable>
       </View>
       {!!node.summary && (
@@ -276,11 +306,6 @@ export default function Section() {
             </Pressable>
           </View>
         )}
-        {!!toast && (
-          <View style={styles.toast} pointerEvents="none">
-            <Text style={styles.toastText}>{toast}</Text>
-          </View>
-        )}
       </View>
 
       <View style={[styles.bar, { backgroundColor: paper, borderTopColor: dark ? '#26302A' : '#ECEFE6' }]}>
@@ -291,7 +316,7 @@ export default function Section() {
             label="بخش بعد"
             variant="dark"
             onPress={() => {
-              if (user && !offline && !progress.current.done) endpoints.saveProgress(node.id, 100, true).catch(() => undefined);
+              if (user && !offline && !progress.current.done) sendOrQueue(`nodes/${node.id}/progress/`, { percent: 100, done: true });
               router.replace(`/section/${node.next_id}`);
             }}
             style={{ flex: 1.2 }}
@@ -299,7 +324,7 @@ export default function Section() {
         ) : null}
       </View>
 
-      <Sheet visible={!!noteSheet} onClose={() => setNoteSheet(null)} title={noteSheet?.note ? 'یادداشت' : 'یادداشت تازه'}>
+      <Sheet visible={!!noteSheet} onClose={closeNoteSheet} title={noteSheet?.note ? 'یادداشت' : 'یادداشت تازه'}>
         {!!(noteSheet?.note?.quote || noteSheet?.quote) && <Text style={[styles.quote, rtl]}>{noteSheet?.note?.quote || noteSheet?.quote}</Text>}
         <TextInput value={noteText} onChangeText={setNoteText} multiline placeholder="یادداشت شما…" style={styles.noteInput} maxLength={5000} />
         <Button label="ذخیره" onPress={saveNote} />
@@ -324,7 +349,7 @@ export default function Section() {
           </Pressable>
         ))}
         <Pressable onPress={() => (setNotesOpen(false), requireLogin(user, 'برای گزارش اشکال وارد شوید.') && setReportOpen(true))}>
-          <Text style={[styles.link, rtl]}>{reported ? 'اشکال این بخش گزارش داده شد ✓' : 'گزارش اشکال در متن این بخش'}</Text>
+          <Text style={[styles.link, rtl]}>{reported ? 'اشکال این بخش گزارش داده شد' : 'گزارش اشکال در متن این بخش'}</Text>
         </Pressable>
       </Sheet>
 
@@ -344,8 +369,9 @@ export default function Section() {
 const styles = StyleSheet.create({
   header: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 4 },
   icon: { width: 40, height: 44, alignItems: 'center', justifyContent: 'center' },
+  count: { position: 'absolute', top: 4, left: 2, minWidth: 18, height: 18, borderRadius: 8, backgroundColor: colors.lemon, color: colors.ink, fontSize: 12, textAlign: 'center', overflow: 'hidden' },
   iconText: { fontSize: 22, fontWeight: '800' },
-  sub: { fontSize: 11, color: colors.muted },
+  sub: { fontSize: 12, color: colors.muted },
   title: { fontSize: 16, fontWeight: '800' },
   toggle: { flexDirection: 'row-reverse', alignSelf: 'center', backgroundColor: colors.disabled, borderRadius: 999, padding: 3, marginBottom: 6 },
   toggleItem: { paddingHorizontal: 22, paddingVertical: 7, borderRadius: 999 },

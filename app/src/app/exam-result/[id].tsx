@@ -122,8 +122,8 @@ const styles = StyleSheet.create({
   filter: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
   filterOn: { backgroundColor: colors.ink, borderColor: colors.ink },
   qHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
-  qNum: { fontSize: 14, fontWeight: '800', color: colors.ink },
-  badge: { fontSize: 12, fontWeight: '800', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },
+  qNum: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  badge: { fontSize: 12, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },
   right: { backgroundColor: colors.greenSoft, color: colors.greenDark },
   wrong: { backgroundColor: colors.redSoft, color: colors.redDark },
   blank: { backgroundColor: colors.disabled, color: colors.muted },
@@ -131,6 +131,6 @@ const styles = StyleSheet.create({
   choiceRight: { borderColor: colors.green, backgroundColor: colors.greenSoft },
   choiceWrong: { borderColor: colors.red, backgroundColor: colors.redSoft },
   key: { fontWeight: '800', color: colors.muted, width: 24, textAlign: 'center' },
-  label: { fontSize: 13, fontWeight: '800', color: colors.greenDark },
+  label: { fontSize: 13, fontWeight: '700', color: colors.greenDark },
   link: { color: colors.greenDark, fontWeight: '800', textAlign: 'right' },
 });
