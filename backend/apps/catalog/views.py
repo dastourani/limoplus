@@ -57,9 +57,18 @@ def major_books(request, slug):
                 "price": book.price,
                 "chapter_count": len(chapters),
                 "has_free_part": any(n.is_free for n in access.nodes.values() if access.visible(n.id)),
+                "owned": access.owned,
             }
         )
     return Response(payload)
+
+
+def _done_ids(user, book):
+    if not user.is_authenticated:
+        return []
+    from apps.study.models import SectionProgress
+
+    return list(SectionProgress.objects.filter(user=user, book=book, is_done=True).values_list("node_id", flat=True))
 
 
 @api_view(["GET"])
@@ -99,6 +108,8 @@ def book_detail(request, slug):
             "price": book.price,
             "majors": list(book.majors.values_list("slug", flat=True)),
             "chapters": chapters,
+            "owned": access.owned,
+            "done_ids": _done_ids(request.user, book),
         }
     )
 

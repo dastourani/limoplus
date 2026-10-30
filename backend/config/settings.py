@@ -52,6 +52,8 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.catalog",
     "apps.learning",
+    "apps.study",
+    "apps.commerce",
 ]
 
 MIDDLEWARE = [
@@ -154,6 +156,8 @@ if not DEBUG and not TESTING and SMS_BACKEND == "console":
 # Leave empty until the merchant code arrives; "zibal" is Zibal's test merchant.
 
 ZIBAL_MERCHANT = env("ZIBAL_MERCHANT", default="zibal")
+# Where the payment result page sends the user afterwards: the app's deep link (or the web app's address).
+APP_RETURN_URL = env("APP_RETURN_URL", default="limoplus://payment-result")
 
 # --- Security on the real server --------------------------------------------
 

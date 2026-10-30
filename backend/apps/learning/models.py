@@ -170,6 +170,8 @@ class QuizAnswer(models.Model):
     choice_order = models.PositiveSmallIntegerField()
     was_correct = models.BooleanField()
     answered_at = models.DateTimeField(auto_now_add=True)
+    # "Start the tests again" archives earlier answers for practice; history and statistics keep them.
+    is_archived = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "پاسخ"

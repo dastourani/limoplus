@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.catalog.importer import import_file
-from apps.catalog.models import Banner, Major
+from apps.catalog.models import Banner, ContentNode, Major
 from apps.catalog.zipdir import zip_chapter_dir
 
 SAMPLES = Path(settings.BASE_DIR).parent / "content" / "samples"
@@ -33,6 +33,18 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.ERROR(f"{chapter_dir}: {issue}"))
                 raise CommandError("Sample content has errors.")
             self.stdout.write(self.style.SUCCESS(f"{result.book.title} › {result.chapter.title}: {result.summary()}"))
+
+        from apps.commerce.models import Plan
+
+        # Starting prices (toman); change them any time in the admin.
+        for order, (title, scope, months, price) in enumerate(
+            [("اشتراک ماهانه‌ی رشته", "major", 1, 149_000), ("اشتراک سه‌ماهه‌ی رشته", "major", 3, 369_000), ("اشتراک ماهانه‌ی همه‌ی رشته‌ها", "all", 1, 249_000)]
+        ):
+            Plan.objects.get_or_create(title=title, defaults={"scope": scope, "months": months, "price": price, "order": order})
+        book = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, slug="math-1").first()
+        if book and not book.price:
+            book.price = 249_000
+            book.save(update_fields=["price"])
 
         Banner.objects.get_or_create(
             title="۳۰٪ تخفیف ریاضی عمومی ۱",

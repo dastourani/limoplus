@@ -2,12 +2,25 @@
 Who may see and read what. Everything goes through AccessMap so the rules live in one place:
 
 - visible:  the node and every ancestor are published and not archived
-- readable: visible, and (staff, or the node or an ancestor is free, or — later — the book is owned)
+- readable: visible, and (staff, or the node or an ancestor is free, or the user owns the book, or has an active
+            subscription to one of the book's majors or to all majors)
 
 AccessMap loads a whole book in one query, so lists of questions or sections cost a constant number of queries.
 """
 
 from .models import ContentNode
+
+
+def owns_book(user, book: ContentNode) -> bool:
+    """Bought the book, or has an active subscription covering it."""
+    if not (user and user.is_authenticated):
+        return False
+    from django.db.models import Q
+
+    from apps.commerce.models import Entitlement
+
+    majors = list(book.majors.values_list("id", flat=True))
+    return Entitlement.active_for(user).filter(Q(book=book) | Q(all_majors=True) | Q(major_id__in=majors, book__isnull=True)).exists()
 
 
 def book_of(node: ContentNode) -> ContentNode:
@@ -23,12 +36,12 @@ class AccessMap:
         hidden = [n.path for n in self.nodes.values() if not n.is_published or n.is_archived]
         free = [n.path for n in self.nodes.values() if n.is_free]
         is_staff = bool(user and user.is_authenticated and user.is_staff)
-        # TODO(payments): owned books / active subscriptions make the whole book readable.
+        self.owned = is_staff or owns_book(user, self.book)
         self._visible, self._readable = {}, {}
         for n in self.nodes.values():
             visible = not any(n.path.startswith(h) for h in hidden)
             self._visible[n.id] = visible
-            self._readable[n.id] = visible and (is_staff or any(n.path.startswith(f) for f in free))
+            self._readable[n.id] = visible and (self.owned or any(n.path.startswith(f) for f in free))
 
     def visible(self, node_id) -> bool:
         return self._visible.get(node_id, False)

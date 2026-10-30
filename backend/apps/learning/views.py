@@ -9,6 +9,8 @@ from apps.catalog.access import AccessMap
 from apps.catalog.models import ContentNode
 from apps.catalog.views import NOT_FOUND, media_urls
 
+from apps.study.models import StudyDay
+
 from .models import Flashcard, Question, QuizAnswer
 
 LOCKED = {"code": "locked", "message": "این مورد در نسخه‌ی کامل کتاب است."}
@@ -75,6 +77,7 @@ def answer(request, question_id):
         Question.objects.filter(pk=question.pk).update(
             answer_count=F("answer_count") + 1, correct_count=F("correct_count") + (1 if picked.is_correct else 0)
         )
+        StudyDay.touch(request.user, "answers")
 
     related = [f for f in question.flashcards.filter(is_archived=False) if _usable(access, f)]
     return Response(
