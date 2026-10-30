@@ -1,8 +1,11 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+
+import { Text } from '../components/Text';
 
 import { endpoints, type Major } from '../api/endpoints';
+import { LemonSlice } from '../components/LemonSlice';
 import { Button, ErrorState, Loading, Screen } from '../components/ui';
 import { storage } from '../lib/storage';
 import { useApi } from '../lib/useApi';
@@ -21,11 +24,11 @@ export default function Welcome() {
   return (
     <Screen>
       <View style={styles.hero}>
-        <View style={styles.lemon}>
-          <View style={styles.lemonInner} />
+        <View style={styles.lemon} pointerEvents="none">
+          <LemonSlice size={170} />
         </View>
         <Text style={styles.brand}>لیمو پلاس</Text>
-        <Text style={[styles.tagline, rtl]}>درس‌هایی که زنده‌اند؛ بخوان، تست بزن، مرور کن.</Text>
+        <Text style={[styles.tagline, rtl]}>هر درس، یک لیمو: فشرده، تازه، کاربردی.</Text>
       </View>
 
       {loading ? (
@@ -75,8 +78,7 @@ export default function Welcome() {
 
 const styles = StyleSheet.create({
   hero: { backgroundColor: colors.ink, padding: 24, paddingTop: 28, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, gap: 6, overflow: 'hidden' },
-  lemon: { position: 'absolute', left: -70, top: -70, width: 150, height: 150, borderRadius: 75, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center' },
-  lemonInner: { width: 116, height: 116, borderRadius: 58, backgroundColor: '#FFE57A' },
+  lemon: { position: 'absolute', left: -62, top: -58, transform: [{ rotate: '-18deg' }] },
   brand: { fontSize: 36, fontWeight: '900', color: colors.lemon, textAlign: 'right' },
   tagline: { fontSize: 16, color: colors.ground, fontWeight: '700', lineHeight: 28, maxWidth: 260, alignSelf: 'flex-end' },
   body: { padding: 20, gap: 6 },

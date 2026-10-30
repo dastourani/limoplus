@@ -1,6 +1,8 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+
+import { Text } from '../components/Text';
 
 import { endpoints } from '../api/endpoints';
 import { ErrorState, Loading, Screen } from '../components/ui';

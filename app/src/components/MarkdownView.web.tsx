@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
+import { Asset } from 'expo-asset';
+
+import { FONT_FILES, fontFaceCss } from '../lib/fonts';
 import { CONTENT_CSS, renderMarkdown } from '../lib/renderMarkdown';
 
 type Props = { markdown: string; compact?: boolean; fontSize?: number };
@@ -9,7 +12,7 @@ let cssInjected = false;
 function injectCss() {
   if (cssInjected || typeof document === 'undefined') return;
   const style = document.createElement('style');
-  style.textContent = CONTENT_CSS;
+  style.textContent = fontFaceCss((family) => Asset.fromModule(FONT_FILES[family]).uri) + CONTENT_CSS;
   document.head.appendChild(style);
   cssInjected = true;
 }

@@ -33,6 +33,17 @@
             "usesCleartextTraffic": true
           }
         }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./node_modules/@expo-google-fonts/vazirmatn/400Regular/Vazirmatn_400Regular.ttf",
+            "./node_modules/@expo-google-fonts/vazirmatn/700Bold/Vazirmatn_700Bold.ttf",
+            "./node_modules/@expo-google-fonts/vazirmatn/800ExtraBold/Vazirmatn_800ExtraBold.ttf",
+            "./node_modules/@expo-google-fonts/vazirmatn/900Black/Vazirmatn_900Black.ttf"
+          ]
+        }
       ]
     ],
     "experiments": {

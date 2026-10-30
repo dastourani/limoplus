@@ -1,5 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+
+import { Text } from '../../components/Text';
 
 import { endpoints, type NodeSummary } from '../../api/endpoints';
 import { Chip, ErrorState, Header, Loading, Screen } from '../../components/ui';

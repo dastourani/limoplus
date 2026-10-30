@@ -2,7 +2,11 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
+import { fontFaceCss } from '../lib/fonts';
 import { CONTENT_CSS, renderMarkdown } from '../lib/renderMarkdown';
+
+// Font files embedded in the APK by the expo-font plugin (app.json); Android WebViews can always read android_asset.
+const FONT_CSS = fontFaceCss((family) => `file:///android_asset/fonts/${family}.ttf`);
 
 type Props = {
   markdown: string;
@@ -26,7 +30,7 @@ export function MarkdownView({ markdown, compact = false, fontSize = 17 }: Props
   const html = useMemo(
     () => `<!doctype html><html dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<style>${CONTENT_CSS} body{--fs:${fontSize}px}</style></head>
+<style>${FONT_CSS}${CONTENT_CSS} body{--fs:${fontSize}px}</style></head>
 <body><div class="lesson${compact ? ' compact' : ''}">${renderMarkdown(markdown)}</div></body></html>`,
     [markdown, compact, fontSize],
   );
@@ -35,7 +39,7 @@ export function MarkdownView({ markdown, compact = false, fontSize = 17 }: Props
     <View style={compact ? { height } : styles.fill}>
       <WebView
         originWhitelist={['*']}
-        source={{ html }}
+        source={{ html, baseUrl: 'file:///android_asset/' }}
         style={styles.web}
         scrollEnabled={!compact}
         injectedJavaScript={compact ? HEIGHT_SCRIPT : undefined}

@@ -1,6 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+
+import { Text } from '../../components/Text';
 
 import { endpoints } from '../../api/endpoints';
 import { MarkdownView } from '../../components/MarkdownView';
