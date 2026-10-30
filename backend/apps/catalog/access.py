@@ -23,6 +23,23 @@ def owns_book(user, book: ContentNode) -> bool:
     return Entitlement.active_for(user).filter(Q(book=book) | Q(all_majors=True) | Q(major_id__in=majors, book__isnull=True)).exists()
 
 
+def access_until(user, book: ContentNode):
+    """When the user's paid access to the book ends: None if it never does (bought, staff) or there is none."""
+    if not (user and user.is_authenticated) or user.is_staff:
+        return None
+    from django.db.models import Max, Q
+
+    from apps.commerce.models import Entitlement
+
+    covering = Entitlement.active_for(user).filter(Q(book=book) | Q(all_majors=True) | Q(major__in=book.majors.all(), book__isnull=True))
+    if covering.filter(ends_at__isnull=True).exists():
+        return None
+    # Renewals already bought extend the access.
+    return Entitlement.objects.filter(user=user, is_archived=False).filter(
+        Q(all_majors=True) | Q(major__in=book.majors.all(), book__isnull=True)
+    ).aggregate(end=Max("ends_at"))["end"] if covering.exists() else None
+
+
 def book_of(node: ContentNode) -> ContentNode:
     if node.depth == 1:
         return node

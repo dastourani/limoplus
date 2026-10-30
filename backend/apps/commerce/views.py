@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -82,7 +82,10 @@ def create_order(request):
             return _err("این کتاب را قبلاً خریده‌اید.", "already_owned")
         order = Order.objects.create(user=user, book=book, title=f"خرید کتاب {book.title}", amount=book.price)
     elif plan_id and not book_slug:
-        plan = Plan.objects.filter(pk=plan_id, is_active=True).first()
+        try:
+            plan = Plan.objects.filter(pk=int(plan_id), is_active=True).first()
+        except (TypeError, ValueError):
+            plan = None
         if plan is None:
             return _err("این طرح فعال نیست.", "invalid_plan")
         major = None
@@ -115,9 +118,10 @@ def _grant(order: Order):
     if order.book_id:
         return Entitlement.objects.create(user=order.user, book=order.book, order=order)
     now = timezone.now()
-    same_scope = Entitlement.active_for(order.user, now).filter(
-        book__isnull=True, all_majors=order.plan.scope == Plan.Scope.ALL, major=order.major
-    )
+    # Includes renewals bought earlier that start in the future, so stacked purchases chain end to end.
+    same_scope = Entitlement.objects.filter(
+        user=order.user, is_archived=False, book__isnull=True, all_majors=order.plan.scope == Plan.Scope.ALL, major=order.major
+    ).filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
     # A renewal starts when the current subscription ends, so no paid days are lost.
     start = max(now, same_scope.aggregate(end=Max("ends_at"))["end"] or now)
     return Entitlement.objects.create(
@@ -128,6 +132,12 @@ def _grant(order: Order):
         ends_at=start + timedelta(days=DAYS_PER_MONTH * order.plan.months),
         order=order,
     )
+
+
+# Zibal verify results that end an order for good. Anything else (e.g. 202 "not paid yet") leaves it pending,
+# so a check made before the user finishes paying cannot lose a later payment.
+FINAL_FAILURES = {102, 103, 104, 203}
+RECHECK_WINDOW = timedelta(hours=2)
 
 
 def settle(track_id: str) -> Order | None:
@@ -153,7 +163,9 @@ def settle(track_id: str) -> Order | None:
             order.save()
             _grant(order)
         else:
-            order.status = Order.Status.FAILED
+            amount_mismatch = result.get("result") in (100, 201)
+            if amount_mismatch or result.get("result") in FINAL_FAILURES:
+                order.status = Order.Status.FAILED
             order.save(update_fields=["status", "gateway_response"])
         return order
 
@@ -165,13 +177,17 @@ def zibal_callback(request):
     order = settle(track_id) if track_id else None
     paid = bool(order and order.status == Order.Status.PAID)
     return_url = f"{settings.APP_RETURN_URL}?order={order.id if order else ''}&status={'paid' if paid else 'failed'}"
-    return render(request, "commerce/payment_result.html", {"order": order, "paid": paid, "return_url": return_url})
+    # No order details here: anyone holding a trackId could open this page. The app shows details after sign-in.
+    return render(request, "commerce/payment_result.html", {"paid": paid, "return_url": return_url})
 
 
 @api_view(["GET"])
 def order_status(request, order_id):
     order = get_object_or_404(Order, pk=order_id, user=request.user)
-    if order.status == Order.Status.PENDING and order.track_id and request.query_params.get("check"):
+    recent = timezone.now() - order.created_at < RECHECK_WINDOW
+    if order.status != Order.Status.PAID and order.track_id and recent and request.query_params.get("check"):
+        if order.status == Order.Status.FAILED and not order.gateway_response.get("result") in (100, 201):
+            Order.objects.filter(pk=order.pk, status=Order.Status.FAILED).update(status=Order.Status.PENDING)
         order = settle(order.track_id) or order
     return Response(
         {

@@ -9,7 +9,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from apps.catalog.access import AccessMap, book_of
+from apps.catalog.access import AccessMap, access_until, book_of
 from apps.catalog.models import ContentNode
 from apps.catalog.views import NOT_FOUND, media_urls
 from apps.learning.models import Flashcard, Question, QuizAnswer, Report
@@ -221,6 +221,17 @@ def report_node(request, node_id):
     if error:
         return error
     return _report(request, node=node)
+
+
+def in_open_exam(user, question_id) -> bool:
+    """True while the question is part of the user's running exam (practice must not reveal its answer then)."""
+    if not user.is_authenticated:
+        return False
+    now = timezone.now()
+    for attempt in ExamAttempt.objects.filter(user=user, submitted_at__isnull=True, started_at__gte=now - timedelta(hours=5)):
+        if question_id in attempt.question_ids and now <= attempt.ends_at + EXAM_GRACE:
+            return True
+    return False
 
 
 # --- Exams ---------------------------------------------------------------------------------------------------------------
@@ -476,11 +487,9 @@ def offline_bundle(request, slug):
         sections.append({"id": n.id, "title": n.title, "summary": media_urls(request, n.summary_body), "full": media_urls(request, n.full_body)})
     if not sections:
         return Response(LOCKED, status=status.HTTP_403_FORBIDDEN)
-    return Response(
-        {
-            "book": {"slug": book.slug, "title": book.title},
-            "sections": sections,
-            "downloaded_at": timezone.now(),
-            "valid_until": timezone.now() + timedelta(days=OFFLINE_VALID_DAYS),
-        }
-    )
+    valid_until = timezone.now() + timedelta(days=OFFLINE_VALID_DAYS)
+    # A subscription-only reader keeps offline access no longer than the subscription.
+    ends = access_until(request.user, book)
+    if ends and ends < valid_until:
+        valid_until = ends
+    return Response({"book": {"slug": book.slug, "title": book.title}, "sections": sections, "downloaded_at": timezone.now(), "valid_until": valid_until})

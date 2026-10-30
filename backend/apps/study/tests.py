@@ -137,3 +137,13 @@ class StudyTests(TestCase):
         self.client.force_login(admin)
         r = self.client.get("/admin/study/dashboard/")
         self.assertContains(r, "داشبورد آمار")
+
+    def test_practice_cannot_reveal_open_exam_answers(self):
+        r = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 2}, format="json")
+        qid = r.data["questions"][0]["id"]
+        q = Question.objects.get(pk=qid)
+        res = self.client.post(f"/api/v1/questions/{qid}/answer/", {"choice_id": q.choices.first().id}, format="json")
+        self.assertEqual(res.status_code, 409)
+        self.client.post(f"/api/v1/exams/{r.data['id']}/submit/", {"answers": {}}, format="json")
+        res = self.client.post(f"/api/v1/questions/{qid}/answer/", {"choice_id": q.choices.first().id}, format="json")
+        self.assertEqual(res.status_code, 200)

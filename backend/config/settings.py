@@ -156,6 +156,9 @@ if not DEBUG and not TESTING and SMS_BACKEND == "console":
 # Leave empty until the merchant code arrives; "zibal" is Zibal's test merchant.
 
 ZIBAL_MERCHANT = env("ZIBAL_MERCHANT", default="zibal")
+if not DEBUG and not TESTING and ZIBAL_MERCHANT == "zibal":
+    # The test merchant "pays" without real money; it must never run on the real server.
+    raise ImproperlyConfigured("ZIBAL_MERCHANT=zibal is Zibal's test merchant. Set the real merchant code on the server.")
 # Where the payment result page sends the user afterwards: the app's deep link (or the web app's address).
 APP_RETURN_URL = env("APP_RETURN_URL", default="limoplus://payment-result")
 

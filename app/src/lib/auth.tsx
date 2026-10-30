@@ -63,10 +63,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           remember(await endpoints.me());
         } catch (e) {
-          // Offline: keep the token and the last known profile. A rejected token was already cleared (401).
+                    // Only a 401 means the session is gone (the unauthorized handler already forgot it). Network or server
+          // errors (e.g. a restart) keep the token and the last known profile.
           const cached = await AsyncStorage.getItem(USER_KEY).catch(() => null);
-          if ((e as { status?: number }).status === 0 && cached) setUser(JSON.parse(cached) as User);
-          else if ((e as { status?: number }).status !== 0) await forget();
+          if ((e as { status?: number }).status !== 401 && cached) setUser(JSON.parse(cached) as User);
         }
       }
       setReady(true);

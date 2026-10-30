@@ -65,6 +65,10 @@ def answer(request, question_id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
     if not _usable(access, question):
         return Response(LOCKED, status=status.HTTP_403_FORBIDDEN)
+    from apps.study.views import in_open_exam
+
+    if in_open_exam(request.user, question.id):
+        return Response({"code": "in_exam", "message": "این سؤال در آزمون در حال اجرای شماست؛ پاسخش بعد از پایان آزمون نشان داده می‌شود."}, status=status.HTTP_409_CONFLICT)
     choices = list(question.choices.all())
     picked = next((c for c in choices if str(c.id) == str(request.data.get("choice_id"))), None)
     correct = next((c for c in choices if c.is_correct), None)

@@ -112,3 +112,36 @@ class PaymentTests(TestCase):
 
     def test_guest_cannot_order(self):
         self.assertEqual(APIClient().post("/api/v1/orders/", {"book": "math-1"}, format="json").status_code, 401)
+
+    def test_three_stacked_renewals_chain(self):
+        plan = Plan.objects.get(scope="major", months=1)
+        for track in ("A", "B", "C"):
+            with mock.patch("apps.commerce.zibal.request_payment", return_value=track):
+                self.client.post("/api/v1/orders/", {"plan": plan.id, "major": "economics"}, format="json")
+            self._callback(track, {"result": 100, "amount": plan.price * 10})
+        rows = list(Entitlement.objects.order_by("starts_at").values_list("starts_at", "ends_at"))
+        self.assertEqual(rows[1][0], rows[0][1])
+        self.assertEqual(rows[2][0], rows[1][1])
+
+    def test_not_paid_yet_stays_pending_and_can_be_paid_later(self):
+        order = self._order_book()
+        with mock.patch("apps.commerce.zibal.verify", return_value={"result": 202}):
+            self.client.get(f"/api/v1/orders/{order.id}/?check=1")
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PENDING)
+        with mock.patch("apps.commerce.zibal.verify", return_value={"result": 100, "amount": 2_490_000}):
+            r = self.client.get(f"/api/v1/orders/{order.id}/?check=1")
+        self.assertEqual(r.data["status"], "paid")
+
+    def test_bad_plan_id_is_400(self):
+        self.assertEqual(self.client.post("/api/v1/orders/", {"plan": "abc"}, format="json").status_code, 400)
+
+    def test_callback_page_shows_no_order_details(self):
+        self._order_book()
+        r = self._callback("T1", {"result": 100, "amount": 2_490_000, "refNumber": "SECRET-REF"})
+        self.assertNotContains(r, "SECRET-REF")
+
+    def test_offline_access_capped_by_subscription(self):
+        Entitlement.objects.create(user=self.user, all_majors=True, ends_at=timezone.now() + timedelta(days=2))
+        data = self.client.get("/api/v1/books/math-1/offline/").data
+        self.assertLess(data["valid_until"], timezone.now() + timedelta(days=3))
