@@ -1,8 +1,10 @@
 import { router, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { endpoints, type Stats } from '../../api/endpoints';
+import { useCelebrate } from '../../components/Celebrate';
 import { IconBadge, type IconName } from '../../components/Icon';
 import { Text } from '../../components/Text';
 import { Button, Card, Empty, ErrorState, Loading, Screen } from '../../components/ui';
@@ -26,6 +28,7 @@ export default function StatsTab() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const celebrate = useCelebrate();
   const load = useCallback(() => {
     if (!user) return;
     setLoading(true);
@@ -34,10 +37,22 @@ export default function StatsTab() {
       .then((d) => {
         setData(d);
         setError(null);
+        // Streak milestones are celebrated once each.
+        const milestone = [100, 30, 7, 3].find((m) => d.streak_days >= m);
+        if (milestone) {
+          const key = `limo.streak.${user.id}.${milestone}`;
+          AsyncStorage.getItem(key)
+            .then((seen) => {
+              if (seen) return;
+              AsyncStorage.setItem(key, '1').catch(() => undefined);
+              celebrate('streak', { title: `${toPersianDigits(milestone)} روز پشت سر هم!`, text: 'عادت مطالعه‌ات دارد شکل می‌گیرد. ادامه بده.' });
+            })
+            .catch(() => undefined);
+        }
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user, celebrate]);
   useFocusEffect(load);
 
   if (!user) {

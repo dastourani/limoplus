@@ -101,7 +101,7 @@ export default function Exam() {
     try {
       await endpoints.submitExam(exam.id, answers);
       if (storeKey) AsyncStorage.removeItem(storeKey).catch(() => undefined);
-      router.replace(`/exam-result/${exam.id}`);
+      router.replace({ pathname: `/exam-result/${exam.id}`, params: { fresh: '1' } });
     } catch (e) {
       submitted.current = false;
       setError(e instanceof ApiError ? e.message : 'ارسال پاسخ‌ها ممکن نشد. دوباره تلاش کنید.');

@@ -40,6 +40,7 @@ api = [
     path("exams/<int:attempt_id>/", study.exam_detail),
     path("exams/<int:attempt_id>/submit/", study.submit_exam),
     path("me/exams/", study.my_exams),
+    path("me/flashcards/due/", study.due_flashcards),
     path("me/library/", study.library),
     path("me/stats/", study.stats),
     path("books/<str:slug>/offline/", study.offline_bundle),

@@ -71,9 +71,19 @@ class Note(models.Model):
 
 
 class FlashcardReview(models.Model):
-    """Leitner box (1–5) of a card for a learner. Box 1 is due now; higher boxes come back later."""
+    """
+    Spaced review of a card (Leitner boxes 1–6). Grades:
+      again — not remembered: box 1, shown again in this session
+      hard  — remembered with effort: same box, back tomorrow
+      good  — remembered: one box up
+      easy  — effortless: two boxes up
+    The wait grows with the box, so well-known cards take less and less time. Box 4+ counts as mastered.
+    """
 
-    INTERVAL_DAYS = {1: 0, 2: 1, 3: 3, 4: 7, 5: 15}
+    INTERVAL_DAYS = {1: 0, 2: 1, 3: 3, 4: 7, 5: 15, 6: 30}
+    MAX_BOX = 6
+    MASTERED_BOX = 4
+    GRADES = ("again", "hard", "good", "easy")
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="flashcard_reviews")
     flashcard = models.ForeignKey(Flashcard, on_delete=models.PROTECT, related_name="reviews")
@@ -87,10 +97,28 @@ class FlashcardReview(models.Model):
         verbose_name_plural = "مرور فلش‌کارت‌ها"
         unique_together = [("user", "flashcard")]
 
-    def record(self, known: bool):
-        self.box = min(5, self.box + 1) if known else 1
+    @classmethod
+    def next_step(cls, box: int, grade: str) -> tuple[int, timedelta]:
+        """(new box, wait until the next review) for a grade — also used to label the buttons in the app."""
+        if grade == "again":
+            return 1, timedelta(0)
+        if grade == "hard":
+            return box, timedelta(days=1)
+        up = 2 if grade == "easy" else 1
+        new_box = min(cls.MAX_BOX, box + up)
+        return new_box, timedelta(days=cls.INTERVAL_DAYS[new_box])
+
+    def record(self, grade):
+        # Older app versions send known=true/false.
+        if grade is True:
+            grade = "good"
+        elif grade is False:
+            grade = "again"
+        if grade not in self.GRADES:
+            grade = "good"
+        self.box, wait = self.next_step(self.box, grade)
         now = timezone.now()
-        self.due_at = now + timedelta(days=self.INTERVAL_DAYS[self.box])
+        self.due_at = now + wait
         self.review_count += 1
         self.last_reviewed_at = now
 

@@ -1,8 +1,9 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { endpoints } from '../../api/endpoints';
+import { useCelebrate } from '../../components/Celebrate';
 import { RichText } from '../../components/RichText';
 import { Text } from '../../components/Text';
 import { Button, Card, ErrorState, Header, Loading, Screen } from '../../components/ui';
@@ -13,10 +14,22 @@ import { colors, radius, rtl, toPersianDigits } from '../../theme';
 const KEYS = ['الف', 'ب', 'ج', 'د', 'ه', 'و'];
 
 export default function ExamResult() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, fresh } = useLocalSearchParams<{ id: string; fresh?: string }>();
+  const celebrate = useCelebrate();
+  const shown = useRef(false);
   const { data, error, loading, retry } = useApi(() => endpoints.exam(Number(id)), [id]);
   const [open, setOpen] = useState<number | null>(null);
   const [filter, setFilter] = useState<'all' | 'wrong'>('all');
+
+  // Right after finishing an exam: a moment that matches the score (gentle when it went badly).
+  useEffect(() => {
+    if (!fresh || shown.current || !data?.submitted_at) return;
+    shown.current = true;
+    const s = data.score_percent ?? 0;
+    if (s >= 80) celebrate('great', { title: 'عالی بود!', text: `${toPersianDigits(s)}٪ — همین‌طور ادامه بده.` });
+    else if (s >= 50) celebrate('good', { title: 'خوب بود!', text: 'غلط‌ها را مرور کن تا به بالای ۸۰٪ برسی.' });
+    else celebrate('low', { title: 'اشکالی ندارد', text: 'از همین غلط‌ها یاد می‌گیری. پاسخ‌های تشریحی را ببین و دوباره امتحان کن.' });
+  }, [fresh, data, celebrate]);
 
   if (loading) return <Screen><Header title="نتیجه‌ی آزمون" /><Loading /></Screen>;
   if (error || !data) return <Screen><Header title="نتیجه‌ی آزمون" /><ErrorState message={error?.message ?? ''} onRetry={retry} /></Screen>;

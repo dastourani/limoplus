@@ -74,7 +74,24 @@ class StudyTests(TestCase):
         self.assertEqual(FlashcardReview.objects.get(user=self.user, flashcard=card).box, 3)
         self.client.post(f"/api/v1/flashcards/{card.id}/review/", {"known": False}, format="json")
         state = self.client.get(f"/api/v1/nodes/{self.chapter.id}/flashcards/me/").data
-        self.assertEqual(state["cards"][str(card.id)], {"box": 1, "due": True})
+        self.assertEqual({k: state["cards"][str(card.id)][k] for k in ("box", "due")}, {"box": 1, "due": True})
+
+    def test_four_grades_and_due_review(self):
+        cards = list(Flashcard.objects.filter(node__path__startswith=self.chapter.path)[:4])
+        for card, grade in zip(cards, ("again", "hard", "good", "easy")):
+            self.client.post(f"/api/v1/flashcards/{card.id}/review/", {"grade": grade}, format="json")
+        boxes = {r.flashcard_id: r.box for r in FlashcardReview.objects.filter(user=self.user)}
+        self.assertEqual([boxes[c.id] for c in cards], [1, 1, 2, 3])
+        due = self.client.get("/api/v1/me/flashcards/due/").data
+        self.assertEqual([c["id"] for c in due["flashcards"]], [cards[0].id])  # only «again» is due now
+        self.assertEqual(due["flashcards"][0]["hints"], {"again": 0, "hard": 1, "good": 1, "easy": 3})
+        state = self.client.get(f"/api/v1/nodes/{self.chapter.id}/flashcards/me/").data
+        self.assertEqual(state["new_hints"]["easy"], 3)
+
+    def test_old_app_known_flag_still_works(self):
+        card = Flashcard.objects.filter(node__path__startswith=self.chapter.path).first()
+        self.client.post(f"/api/v1/flashcards/{card.id}/review/", {"known": True}, format="json")
+        self.assertEqual(FlashcardReview.objects.get(user=self.user, flashcard=card).box, 2)
 
     def test_report_shows_as_reported(self):
         q = Question.objects.filter(node__path__startswith=self.chapter.path).first()

@@ -165,7 +165,9 @@ def flashcard_state(request, node_id):
     now = timezone.now()
     return Response(
         {
-            "cards": {str(r.flashcard_id): {"box": r.box, "due": r.due_at <= now} for r in reviews},
+            "cards": {str(r.flashcard_id): {"box": r.box, "due": r.due_at <= now, "hints": _grade_hints(r.box)} for r in reviews},
+            "new_hints": _grade_hints(1),
+            "mastered_box": FlashcardReview.MASTERED_BOX,
             "reported": sorted(reported),
         }
     )
@@ -178,10 +180,41 @@ def review_flashcard(request, flashcard_id):
     if not _usable(access, card):
         return Response(LOCKED, status=status.HTTP_403_FORBIDDEN)
     review, _ = FlashcardReview.objects.get_or_create(user=request.user, flashcard=card)
-    review.record(bool(request.data.get("known")))
+    grade = request.data.get("grade")
+    if grade is None and "known" in request.data:
+        grade = request.data.get("known") in (True, "true", 1, "1")
+    review.record(grade)
     review.save()
     StudyDay.touch(request.user, "cards")
-    return Response({"box": review.box, "due_at": review.due_at})
+    return Response({"box": review.box, "due_at": review.due_at, "mastered": review.box >= FlashcardReview.MASTERED_BOX})
+
+
+def _grade_hints(box: int) -> dict:
+    """Days until the next review for each button, shown under the buttons."""
+    return {g: FlashcardReview.next_step(box, g)[1].days for g in FlashcardReview.GRADES}
+
+
+@api_view(["GET"])
+def due_flashcards(request):
+    """«مرور امروز»: cards due for review across all books the learner can use (cards already seen at least once)."""
+    now = timezone.now()
+    reviews = (
+        FlashcardReview.objects.filter(user=request.user, due_at__lte=now, flashcard__is_archived=False)
+        .select_related("flashcard__node")
+        .order_by("box", "due_at")
+    )
+    maps, cards = {}, []
+    for r in reviews[:300]:
+        card = r.flashcard
+        book_path = card.node.path[: ContentNode.steplen]
+        if book_path not in maps:
+            maps[book_path] = AccessMap(request.user, card.node)
+        if not _usable(maps[book_path], card):
+            continue
+        cards.append({"id": card.id, "title": card.title, "point": media_urls(request, card.point), "formula": card.formula,
+                      "box": r.box, "hints": _grade_hints(r.box)})
+    limit = 50
+    return Response({"count": len(cards), "flashcards": cards[:limit]})
 
 
 # --- Reports -------------------------------------------------------------------------------------------------------------

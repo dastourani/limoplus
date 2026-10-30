@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { endpoints, type OrderStatus } from '../api/endpoints';
+import { useCelebrate } from '../components/Celebrate';
 import { Text } from '../components/Text';
 import { Icon } from '../components/Icon';
 import { Button, Loading, Screen } from '../components/ui';
@@ -13,6 +14,7 @@ export default function PaymentResult() {
   const { order } = useLocalSearchParams<{ order?: string }>();
   const [status, setStatus] = useState<OrderStatus | null>(null);
   const [failed, setFailed] = useState(false);
+  const celebrate = useCelebrate();
 
   useEffect(() => {
     const id = Number(order);
@@ -20,8 +22,14 @@ export default function PaymentResult() {
       setFailed(true);
       return;
     }
-    endpoints.order(id, true).then(setStatus).catch(() => setFailed(true));
-  }, [order]);
+    endpoints
+      .order(id, true)
+      .then((s) => {
+        setStatus(s);
+        if (s.status === 'paid') celebrate('purchase', { title: 'خرید انجام شد', text: s.book_slug ? 'کتاب برایت باز شد. مطالعه‌ی خوبی داشته باشی!' : 'اشتراکت فعال شد.' });
+      })
+      .catch(() => setFailed(true));
+  }, [order, celebrate]);
 
   if (!status && !failed) return <Screen><Loading /></Screen>;
   const paid = status?.status === 'paid';

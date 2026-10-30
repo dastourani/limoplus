@@ -50,6 +50,15 @@
         {
           "supportsRTL": false
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-lemon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#17201A"
+        }
       ]
     ],
     "experiments": {

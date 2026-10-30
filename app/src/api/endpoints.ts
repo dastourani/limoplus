@@ -53,7 +53,15 @@ export type VerifyResult = { token: string; session_id: number; user: User };
 export type Note = { id: number; node_id: number; mode: 'full' | 'summary'; quote: string; body: string; color: string; created_at: string; updated_at: string };
 export type NodeState = { bookmarked: boolean; percent: number; is_done: boolean; notes: Note[] };
 export type PracticeState = { answered: Record<string, boolean>; reported: number[] };
-export type FlashcardState = { cards: Record<string, { box: number; due: boolean }>; reported: number[] };
+export type Grade = 'again' | 'hard' | 'good' | 'easy';
+export type GradeHints = Record<Grade, number>;
+export type FlashcardState = {
+  cards: Record<string, { box: number; due: boolean; hints: GradeHints }>;
+  reported: number[];
+  new_hints: GradeHints;
+  mastered_box: number;
+};
+export type DueFlashcard = Flashcard & { box: number; hints: GradeHints };
 export type ExamQuestion = { id: number; stem: string; choices: { id: number; text: string }[]; difficulty: string };
 export type ExamReview = {
   question_id: number;
@@ -144,7 +152,8 @@ export const endpoints = {
   practiceState: (id: number) => api<PracticeState>(`nodes/${id}/practice/`),
   practiceReset: (id: number) => api<{ reset: number }>(`nodes/${id}/practice/reset/`, { method: 'POST' }),
   flashcardState: (id: number) => api<FlashcardState>(`nodes/${id}/flashcards/me/`),
-  reviewFlashcard: (id: number, known: boolean) => api<{ box: number }>(`flashcards/${id}/review/`, { body: { known } }),
+  reviewFlashcard: (id: number, grade: Grade) => api<{ box: number; mastered: boolean }>(`flashcards/${id}/review/`, { body: { grade } }),
+  dueFlashcards: () => api<{ count: number; flashcards: DueFlashcard[] }>('me/flashcards/due/'),
   reportQuestion: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`questions/${id}/report/`, { body: { reason, note } }),
   reportFlashcard: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`flashcards/${id}/report/`, { body: { reason, note } }),
   reportNode: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`nodes/${id}/report/`, { body: { reason, note } }),

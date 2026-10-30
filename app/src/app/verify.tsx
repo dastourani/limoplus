@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View
 
 import { ApiError } from '../api/client';
 import { endpoints, type DeviceSessionInfo } from '../api/endpoints';
+import { useCelebrate } from '../components/Celebrate';
 import { Text, TextInput } from '../components/Text';
 import { Button, Card, Header, Screen } from '../components/ui';
 import { deviceName, useAuth } from '../lib/auth';
@@ -18,6 +19,7 @@ const toLatin = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵
 export default function Verify() {
   const { phone } = useLocalSearchParams<{ phone: string }>();
   const { signIn } = useAuth();
+  const celebrate = useCelebrate();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export default function Verify() {
     try {
       const r = await endpoints.verifyOtp({ phone: String(phone), code: fromSms ?? clean, device_name: deviceName(), platform: Platform.OS, replace_session_id: replace });
       await signIn(r.token, r.user);
+      celebrate('login', { title: r.user.first_name ? `خوش آمدی ${r.user.first_name}!` : 'خوش آمدی!' });
       // Back to where the user was; first-timers are asked for their name.
       if (!r.user.first_name) router.replace('/edit-profile?first=1');
       else if (router.canDismiss()) router.dismissAll();

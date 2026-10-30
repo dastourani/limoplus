@@ -28,6 +28,13 @@ export default function Home() {
 
   const books = useApi(() => (major ? endpoints.books(major.slug) : Promise.resolve([])), [major?.slug]);
   const banners = useApi(() => (major ? endpoints.banners(major.slug) : Promise.resolve([])), [major?.slug]);
+  const [due, setDue] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      if (user) endpoints.dueFlashcards().then((d) => setDue(d.count)).catch(() => undefined);
+      else setDue(0);
+    }, [user]),
+  );
 
   if (!major) return <Loading />;
 
@@ -58,6 +65,17 @@ export default function Home() {
             </Pressable>
           )}
         </View>
+
+        {due > 0 && (
+          <Pressable onPress={() => router.push('/review')} style={styles.review} accessibilityRole="button">
+            <IconBadge name="layers" size={44} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.reviewTitle, rtl]}>مرور امروز</Text>
+              <Text style={[styles.muted, rtl]}>{toPersianDigits(due)} فلش‌کارت منتظر مرور است</Text>
+            </View>
+            <Icon name="chevron-left" size={22} color={colors.muted} />
+          </Pressable>
+        )}
 
         {last && (
           <Pressable onPress={() => router.push(`/section/${last.id}`)} style={styles.continue} accessibilityRole="button">
@@ -135,6 +153,8 @@ const styles = StyleSheet.create({
   dot: { width: 10, height: 10, borderRadius: 5 },
   spaceText: { fontSize: 15, fontWeight: '700', color: colors.ink },
   chev: { color: colors.ink },
+  review: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: 20, padding: 14, borderWidth: 1.5, borderColor: colors.lemon },
+  reviewTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
   loginPill: { backgroundColor: colors.ink, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10 },
   loginText: { color: colors.lemon, fontWeight: '800' },
   iconBox: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
