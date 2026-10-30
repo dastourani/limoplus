@@ -1,4 +1,4 @@
-import { config } from '../config';
+import { getApiUrl } from '../config';
 
 /** Error returned by the server, with its machine code and a Persian message for the user. */
 export class ApiError extends Error {
@@ -24,20 +24,21 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
-export async function api<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T>(path: string, options: { method?: string; body?: unknown; baseUrl?: string } = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
   let response: Response;
   try {
-    response = await fetch(`${config.apiUrl}/api/v1/${path.replace(/^\//, '')}`, {
+    const base = options.baseUrl ?? (await getApiUrl());
+    response = await fetch(`${base}/api/v1/${path.replace(/^\//, '')}`, {
       method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch {
-    throw new ApiError(0, 'network', 'اتصال به سرور برقرار نشد. اینترنت را بررسی کنید.');
+    throw new ApiError(0, 'network', 'اتصال به سرور برقرار نشد. اینترنت یا آدرس سرور را بررسی کنید.');
   }
 
   const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;

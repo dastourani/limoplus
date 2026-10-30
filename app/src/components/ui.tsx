@@ -1,0 +1,109 @@
+import { router } from 'expo-router';
+import type { ReactNode } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { colors, radius, rtl } from '../theme';
+
+export function Screen({ children, background = colors.ground }: { children: ReactNode; background?: string }) {
+  return (
+    <SafeAreaView style={[styles.screen, { backgroundColor: background }]} edges={['top', 'bottom', 'left', 'right']}>
+      <View style={styles.inner}>{children}</View>
+    </SafeAreaView>
+  );
+}
+
+export function Header({ title, subtitle, right }: { title?: string; subtitle?: string; right?: ReactNode }) {
+  return (
+    <View style={styles.header}>
+      <Pressable accessibilityRole="button" accessibilityLabel="بازگشت" onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={styles.iconButton}>
+        <Text style={styles.back}>→</Text>
+      </Pressable>
+      <View style={styles.headerText}>
+        {!!subtitle && <Text style={[styles.subtitle, rtl]} numberOfLines={1}>{subtitle}</Text>}
+        {!!title && <Text style={[styles.title, rtl]} numberOfLines={1}>{title}</Text>}
+      </View>
+      <View style={styles.headerRight}>{right}</View>
+    </View>
+  );
+}
+
+export function Button({
+  label,
+  onPress,
+  variant = 'primary',
+  disabled,
+  style,
+}: {
+  label: string;
+  onPress: () => void;
+  variant?: 'primary' | 'dark' | 'outline';
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const look = variant === 'primary' ? styles.primary : variant === 'dark' ? styles.dark : styles.outline;
+  const text = variant === 'dark' ? styles.darkText : styles.primaryText;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.button, look, disabled && styles.disabled, pressed && { opacity: 0.85 }, style]}
+    >
+      <Text style={[styles.buttonText, text, disabled && { color: colors.muted }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function Loading() {
+  return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color={colors.green} />
+    </View>
+  );
+}
+
+export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <View style={styles.center}>
+      <Text style={[styles.errorText]}>{message}</Text>
+      {onRetry && <Button label="تلاش دوباره" variant="outline" onPress={onRetry} style={{ marginTop: 16, minWidth: 160 }} />}
+      <Pressable onPress={() => router.push('/settings')} style={{ marginTop: 14 }}>
+        <Text style={styles.link}>تنظیم آدرس سرور</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+export function Chip({ label, color = colors.muted, background = colors.surface }: { label: string; color?: string; background?: string }) {
+  return (
+    <View style={[styles.chip, { backgroundColor: background }]}>
+      <Text style={[styles.chipText, { color }]}>{label}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  inner: { flex: 1, width: '100%', maxWidth: 900, alignSelf: 'center' },
+  header: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6, gap: 4 },
+  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  back: { fontSize: 24, color: colors.ink },
+  headerText: { flex: 1 },
+  headerRight: { minWidth: 44, alignItems: 'flex-start' },
+  title: { fontSize: 17, fontWeight: '800', color: colors.ink },
+  subtitle: { fontSize: 12, color: colors.muted },
+  button: { minHeight: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  primary: { backgroundColor: colors.lemon },
+  dark: { backgroundColor: colors.ink },
+  outline: { borderWidth: 1.5, borderColor: colors.ink, backgroundColor: 'transparent' },
+  disabled: { backgroundColor: colors.disabled, borderColor: colors.disabled },
+  buttonText: { fontSize: 16, fontWeight: '800' },
+  primaryText: { color: colors.ink },
+  darkText: { color: colors.lemon },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  errorText: { fontSize: 15, color: colors.ink, textAlign: 'center', lineHeight: 26 },
+  link: { color: colors.greenDark, fontWeight: '700', fontSize: 13 },
+  chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
+  chipText: { fontSize: 11, fontWeight: '700' },
+});

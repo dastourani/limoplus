@@ -12,6 +12,13 @@ Code, identifiers and commit messages are in English.
   exam sources, flashcards, reports).
 - `app/` — Expo (SDK 58) + TypeScript, one codebase for Android, web (PWA for iPhone users) and desktop browsers.
   Read `app/AGENTS.md` before touching Expo APIs.
+- App screens: `app/src/app/` (Expo Router): welcome (major), home (banners, books, continue reading), book,
+  section (summary/full toggle), quiz (practice mode, server-graded), flashcards, settings (server address for
+  test builds). Lesson Markdown → HTML in `src/lib/renderMarkdown.ts` (KaTeX MathML output, no font files);
+  native renders in a WebView (`MarkdownView.tsx`), web straight into the DOM (`MarkdownView.web.tsx`).
+- `.github/workflows/android-apk.yml` — builds a test APK on every push to main touching `app/`, published as a
+  GitHub prerelease. It is signed with the debug key and allows cleartext HTTP (for laptop testing).
+  TODO before store release: real signing key, HTTPS only (remove `usesCleartextTraffic`).
 - `docker-compose.yml` — local Postgres + backend (mounts `content/` read-only).
 - `content/samples/` — sample book in the chapter format; `python manage.py load_samples` loads it.
 - `docs/content-format.md` — the chapter Markdown format (Persian) and the prompt for AI content writers.
