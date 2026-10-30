@@ -1,0 +1,54 @@
+import { config } from '../config';
+
+/** Error returned by the server, with its machine code and a Persian message for the user. */
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+    public readonly data: Record<string, unknown> = {},
+  ) {
+    super(message);
+  }
+}
+
+let authToken: string | null = null;
+let onUnauthorized: (() => void) | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
+/** Called when the server says the session is no longer valid (sends the user to sign in). */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
+export async function api<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
+  let response: Response;
+  try {
+    response = await fetch(`${config.apiUrl}/api/v1/${path.replace(/^\//, '')}`, {
+      method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+  } catch {
+    throw new ApiError(0, 'network', 'اتصال به سرور برقرار نشد. اینترنت را بررسی کنید.');
+  }
+
+  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    if (response.status === 401) onUnauthorized?.();
+    throw new ApiError(
+      response.status,
+      typeof data.code === 'string' ? data.code : 'error',
+      typeof data.message === 'string' ? data.message : 'خطایی رخ داد. دوباره تلاش کنید.',
+      data,
+    );
+  }
+  return data as T;
+}
