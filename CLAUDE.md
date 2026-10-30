@@ -9,12 +9,21 @@ Code, identifiers and commit messages are in English.
 
 - `backend/` — Django 5.2 + DRF, PostgreSQL. Apps: `apps.accounts` (phone OTP login, device sessions),
   `apps.catalog` (majors, content tree via django-treebeard, banners), `apps.learning` (questions, choices,
-  exam sources, flashcards, reports).
+  exam sources, flashcards, reports), `apps.study` (the learner's own data: reading progress, bookmarks,
+  highlights/notes, Leitner flashcard boxes, timed exams with negative marking, daily activity, stats, offline
+  bundles, admin «داشبورد آمار»), `apps.commerce` (subscription plans, orders, Zibal payment, entitlements).
 - `app/` — Expo (SDK 58) + TypeScript, one codebase for Android, web (PWA for iPhone users) and desktop browsers.
   Read `app/AGENTS.md` before touching Expo APIs.
-- App screens: `app/src/app/` (Expo Router): welcome (major), home (banners, books, continue reading), book,
-  section (summary/full toggle), quiz (practice mode, server-graded), flashcards, settings (server address for
-  test builds). Lesson Markdown → HTML in `src/lib/renderMarkdown.ts` (KaTeX MathML output, no font files);
+- App screens: `app/src/app/` (Expo Router). Tabs in `(tabs)/` (custom RTL bar): home, library (reading,
+  bookmarks, notes), stats, profile. Others: welcome (major), login → verify (OTP; session-limit chooser) →
+  edit-profile, devices, book (progress, buy, offline download), section (summary/full, highlights and notes,
+  bookmark, night mode, font size, watermark, copy limit, offline fallback), quiz (practice, resume, reset,
+  report), exam (timed, negative marking) and exam-result, exams (history), flashcards (Leitner, report, share as
+  image), buy/[slug] and payment-result (deep link `limoplus://payment-result`), offline, settings (server address).
+  Guests can read free parts; `requireLogin()` sends them to login when a feature needs an account.
+  Auth state: `src/lib/auth.tsx` (token in expo-secure-store). Offline books: `src/lib/offline.ts`, AES-256-GCM,
+  key in the secure store, wiped on sign-out, valid 30 days. Screenshots are blocked app-wide on Android
+  (`src/lib/protect.ts`). Dates: `src/lib/jalali.ts`. Lesson Markdown → HTML in `src/lib/renderMarkdown.ts` (KaTeX MathML output, no font files);
   native renders in a WebView (`MarkdownView.tsx`), web straight into the DOM (`MarkdownView.web.tsx`).
 - `.github/workflows/android-apk.yml` — builds a test APK on every push to main touching `app/`, published as a
   GitHub prerelease. It is signed with the debug key and allows cleartext HTTP (for laptop testing).
@@ -25,7 +34,7 @@ Code, identifiers and commit messages are in English.
 - Content import: `apps/catalog/importer.py` (admin page «بارگذاری فصل از فایل», or `manage.py import_chapter`).
   Items are matched by slug across the whole book and moved, never duplicated; missing items are archived.
 - Access rules live only in `apps/catalog/access.py` (`AccessMap`): visible = node and all ancestors published and
-  not archived; readable = visible and (staff, or free node/ancestor, or — TODO payments — owned/subscribed).
+  not archived; readable = visible and (staff, or free node/ancestor, or owned / covered by an active subscription — `owns_book`).
   Every content endpoint must use it.
 - TODO before launch: serve paid-content images through an access check (X-Accel-Redirect); today they have
   unguessable content-hash names but are public to anyone with the URL.
