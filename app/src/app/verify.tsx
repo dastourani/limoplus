@@ -71,7 +71,7 @@ export default function Verify() {
             <Card key={s.id}>
               <Text style={[styles.device, rtl]}>{s.device_name}</Text>
               <Text style={[styles.help, rtl]}>آخرین استفاده: {relativeDay(s.last_seen_at)}</Text>
-              <Button label={busy ? '…' : 'خروج این دستگاه و ورود'} variant="dark" disabled={busy} onPress={() => verify(s.id)} />
+              <Button label="خروج این دستگاه و ورود" variant="dark" loading={busy} onPress={() => verify(s.id)} />
             </Card>
           ))}
           {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}
@@ -102,7 +102,7 @@ export default function Verify() {
           onSubmitEditing={() => clean.length === 6 && verify()}
         />
         {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}
-        <Button label={busy ? 'در حال بررسی…' : 'ورود'} onPress={() => verify()} disabled={clean.length !== 6 || busy} />
+        <Button label="ورود" onPress={() => verify()} disabled={clean.length !== 6} loading={busy} />
         <Pressable onPress={resend} disabled={wait > 0} style={{ alignSelf: 'center', padding: 10 }}>
           <Text style={{ color: wait > 0 ? colors.muted : colors.greenDark, fontWeight: '700' }}>
             {wait > 0 ? `ارسال دوباره تا ${toPersianDigits(wait)} ثانیه‌ی دیگر` : 'ارسال دوباره‌ی کد'}

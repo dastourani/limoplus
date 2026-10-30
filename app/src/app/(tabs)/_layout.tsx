@@ -50,7 +50,7 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   bar: { flexDirection: 'row-reverse', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8 },
   tab: { flex: 1, alignItems: 'center', gap: 3 },
-  capsule: { width: 58, height: 34, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  capsule: { width: 58, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   capsuleOn: { backgroundColor: colors.lemon },
   label: { fontSize: 12, fontWeight: '700', color: colors.ink, height: 18 },
   hidden: { opacity: 0 },

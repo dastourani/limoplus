@@ -59,7 +59,7 @@ export default function Login() {
         />
         <Text style={[styles.help, rtl]}>یک کد ۶ رقمی برایتان پیامک می‌شود. اگر حساب ندارید، همین‌جا ساخته می‌شود.</Text>
         {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}
-        <Button label={busy ? 'در حال ارسال…' : 'دریافت کد'} onPress={send} disabled={!valid || busy} />
+        <Button label="دریافت کد" onPress={send} disabled={!valid} loading={busy} />
         <Button label="فعلاً بدون ورود ادامه می‌دهم" variant="outline" onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} />
       </ScrollView>
       </KeyboardAvoidingView>

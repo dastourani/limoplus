@@ -66,7 +66,7 @@ export const CONTENT_CSS = `
 body { margin: 0; background: transparent; color: #17201A; }
 .lesson { color: #17201A; }
 .lesson { direction: rtl; text-align: right; font-family: Vazirmatn, "Segoe UI", Tahoma, system-ui, sans-serif;
-  font-size: var(--fs, 17px); line-height: 2; padding: 4px 20px 32px; overflow-wrap: anywhere; }
+  font-size: var(--fs, 17px); line-height: var(--lh, 2); padding: 4px 20px 32px; overflow-wrap: anywhere; }
 .lesson.compact { padding: 0; font-size: 16px; line-height: 1.9; }
 .lesson p { margin: 0 0 14px; }
 .lesson h1, .lesson h2, .lesson h3 { line-height: 1.5; margin: 22px 0 10px; }
@@ -90,6 +90,12 @@ math { font-family: "STIX Two Math", "Cambria Math", "Latin Modern Math", serif;
 mark.hl { color: inherit; border-radius: 3px; padding: 0 1px; }
 mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } mark.hl-blue { background: #C9DBFF; } mark.hl-pink { background: #FFD0DF; }
 .lesson.no-select { -webkit-user-select: none; user-select: none; }
+/* Sepia reading */
+.lesson.sepia { color: #4A3B2A; }
+.lesson.sepia strong { background: #F3DE9E; }
+.lesson.sepia .math-block, .lesson.sepia .table-wrap, .lesson.sepia img { background: #FBF5E6; border-color: #E6D8B8; }
+.lesson.sepia .table-wrap th { background: #F1E6CC; color: #6B5840; }
+.lesson.sepia .table-wrap th, .lesson.sepia .table-wrap td { border-color: #E6D8B8; }
 /* Night reading */
 .lesson.dark { color: #E4E9E2; }
 .lesson.dark strong { background: #4A3F12; }

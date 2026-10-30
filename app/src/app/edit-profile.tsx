@@ -42,7 +42,7 @@ export default function EditProfile() {
         <Text style={[styles.label, rtl]}>نام خانوادگی</Text>
         <TextInput value={lastName} onChangeText={setLastName} style={styles.input} maxLength={60} />
         {!!error && <Text style={{ color: colors.redDark }}>{error}</Text>}
-        <Button label={busy ? '…' : 'ذخیره'} onPress={save} disabled={busy || !firstName.trim()} />
+        <Button label="ذخیره" onPress={save} disabled={!firstName.trim()} loading={busy} />
         {!!first && <Button label="بعداً" variant="outline" onPress={done} />}
       </View>
     </Screen>

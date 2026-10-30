@@ -22,3 +22,36 @@ class SimpleCorsMiddleware:
             response["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
             response["Vary"] = "Origin"
         return response
+
+
+ADMIN_FAILS_PER_IP_PER_HOUR = 10
+ADMIN_FAILS_PER_PHONE_PER_HOUR = 5
+
+
+class AdminLoginThrottleMiddleware:
+    """
+    Blocks password guessing on the admin login: after 10 wrong passwords from one address, or 5 for one admin phone,
+    in an hour, further attempts are refused. Failures are counted by the user_login_failed signal (accounts/apps.py).
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from django.http import HttpResponse
+        from django.urls import reverse
+
+        from . import ratelimit
+        from .views import _client_ip
+
+        if request.method == "POST" and request.path == reverse("admin:login"):
+            phone = (request.POST.get("username") or "").strip()
+            if (
+                ratelimit.count(f"admin-fail-ip:{_client_ip(request)}") >= ADMIN_FAILS_PER_IP_PER_HOUR
+                or ratelimit.count(f"admin-fail-phone:{phone}") >= ADMIN_FAILS_PER_PHONE_PER_HOUR
+            ):
+                return HttpResponse(
+                    "<p dir='rtl' style='font-family:Tahoma;padding:24px'>تلاش‌های ناموفق زیاد بود. یک ساعت دیگر دوباره امتحان کنید.</p>",
+                    status=429,
+                )
+        return self.get_response(request)

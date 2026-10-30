@@ -4,7 +4,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -61,9 +61,23 @@ export async function flushOutbox() {
   }
 }
 
+const BANNER_SECONDS = 4;
+
 export function NetworkProvider({ children }: { children: ReactNode }) {
   const [online, setState] = useState(true);
+  const [banner, setBanner] = useState<'offline' | 'back' | null>(null);
   const insets = useSafeAreaInsets();
+  const wasOnline = useRef(true);
+
+  // When the connection drops: a banner for a few seconds, then only a small icon in the corner (reading in peace).
+  // When it comes back: a short «back online» note.
+  useEffect(() => {
+    if (online === wasOnline.current) return;
+    wasOnline.current = online;
+    setBanner(online ? 'back' : 'offline');
+    const t = setTimeout(() => setBanner(null), (online ? 2.5 : BANNER_SECONDS) * 1000);
+    return () => clearTimeout(t);
+  }, [online]);
   useEffect(() => {
     flushOutbox();
     const update = (now: boolean) => {
@@ -90,10 +104,17 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
   return (
     <OnlineContext.Provider value={online}>
       {children}
-      {!online && (
-        <View style={[styles.banner, { paddingTop: insets.top + 6 }]} pointerEvents="none">
-          <Icon name="wifi-off" size={16} color={colors.ink} />
-          <Text style={styles.text}>اینترنت قطع است؛ کارهایتان بعداً ارسال می‌شود.</Text>
+      {banner && (
+        <View style={[styles.banner, { paddingTop: insets.top + 6 }, banner === 'back' && { backgroundColor: colors.greenSoft }]} pointerEvents="none">
+          <Icon name={banner === 'back' ? 'circle-check' : 'cloud-off'} size={16} color={banner === 'back' ? colors.greenDark : colors.ink} />
+          <Text style={[styles.text, banner === 'back' && { color: colors.greenDark }]}>
+            {banner === 'back' ? 'دوباره آنلاین شدید؛ کارهایتان ارسال شد.' : 'آفلاین هستید؛ کارهایتان ذخیره می‌شود.'}
+          </Text>
+        </View>
+      )}
+      {!online && !banner && (
+        <View style={[styles.dot, { top: insets.top + 8 }]} pointerEvents="none" accessibilityLabel="آفلاین هستید">
+          <Icon name="cloud-off" size={14} color={colors.ink} />
         </View>
       )}
     </OnlineContext.Provider>
@@ -102,5 +123,6 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   banner: { position: 'absolute', zIndex: 1000, elevation: 10, top: 0, left: 0, right: 0, paddingBottom: 8, paddingHorizontal: 16, backgroundColor: colors.lemon, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  dot: { position: 'absolute', zIndex: 1000, elevation: 10, left: 10, width: 26, height: 26, borderRadius: 13, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', opacity: 0.9 },
   text: { fontSize: 13, fontWeight: '700', color: colors.ink, textAlign: 'right', flexShrink: 1 },
 });

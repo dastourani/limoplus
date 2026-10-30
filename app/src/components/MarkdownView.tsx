@@ -22,6 +22,9 @@ type Props = {
   compact?: boolean;
   fontSize?: number;
   dark?: boolean;
+  sepia?: boolean;
+  /** Line spacing multiplier for lessons (default 2). */
+  lineHeight?: number;
   highlights?: Highlight[];
   onEvent?: (event: ReaderEvent) => void;
 };
@@ -58,7 +61,7 @@ const READER_BOOT = `
 
 /** Lesson text with formulas, tables and boxes. Native version: rendered in a WebView. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, highlights, onEvent },
+  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, onEvent },
   ref,
 ) {
   const web = useRef<{ injectJavaScript: (script: string) => void } | null>(null);
@@ -67,9 +70,9 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
   const html = useMemo(
     () => `<!doctype html><html dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<style>${FONT_CSS}${CONTENT_CSS} body{--fs:${fontSize}px}</style></head>
-<body><div class="lesson${compact ? ' compact no-select' : ''}${dark ? ' dark' : ''}">${renderMarkdown(markdown)}</div></body></html>`,
-    [markdown, compact, fontSize, dark],
+<style>${FONT_CSS}${CONTENT_CSS} body{--fs:${fontSize}px;--lh:${lineHeight}}</style></head>
+<body><div class="lesson${compact ? ' compact no-select' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}">${renderMarkdown(markdown)}</div></body></html>`,
+    [markdown, compact, fontSize, dark, sepia, lineHeight],
   );
 
   useEffect(() => setLoaded(false), [html]);

@@ -159,7 +159,7 @@ export default function Exam() {
             <Text style={[styles.help, rtl]}>زمان بر اساس سطح سؤال‌ها تعیین می‌شود. پاسخ‌ها تا پایان آزمون نشان داده نمی‌شوند.</Text>
           </Card>
           {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}
-          <Button label={busy ? '…' : 'شروع آزمون'} onPress={start} disabled={busy} />
+          <Button label="شروع آزمون" onPress={start} loading={busy} />
         </ScrollView>
       </Screen>
     );
@@ -217,8 +217,8 @@ export default function Exam() {
           <Button label="بعدی" variant="dark" onPress={() => setIndex((i) => i + 1)} style={{ flex: 1 }} />
         ) : (
           <Button
-            label={busy ? '…' : 'پایان آزمون'}
-            disabled={busy}
+            label="پایان آزمون"
+            loading={busy}
             onPress={async () =>
               (await confirm({
                 title: 'آزمون تمام شود؟',

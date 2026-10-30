@@ -38,6 +38,16 @@ import Trash from 'lucide-react-native/icons/trash';
 import Trophy from 'lucide-react-native/icons/trophy';
 import UserPen from 'lucide-react-native/icons/user-pen';
 import WifiOff from 'lucide-react-native/icons/wifi-off';
+import GraduationCap from 'lucide-react-native/icons/graduation-cap';
+import PenLine from 'lucide-react-native/icons/pen-line';
+import Brain from 'lucide-react-native/icons/brain';
+import Calculator from 'lucide-react-native/icons/calculator';
+import SearchCheck from 'lucide-react-native/icons/search-check';
+import CloudOff from 'lucide-react-native/icons/cloud-off';
+import Gauge from 'lucide-react-native/icons/gauge';
+import UnfoldVertical from 'lucide-react-native/icons/unfold-vertical';
+import BadgeCheck from 'lucide-react-native/icons/badge-check';
+import Type from 'lucide-react-native/icons/type';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { colors } from '../theme';
@@ -79,6 +89,16 @@ const ICONS = {
   trophy: Trophy,
   'user-pen': UserPen,
   'wifi-off': WifiOff,
+  'graduation-cap': GraduationCap,
+  'pen-line': PenLine,
+  'brain': Brain,
+  'calculator': Calculator,
+  'search-check': SearchCheck,
+  'cloud-off': CloudOff,
+  'gauge': Gauge,
+  'unfold-vertical': UnfoldVertical,
+  'badge-check': BadgeCheck,
+  'type': Type,
 } as const;
 
 export type IconName = keyof typeof ICONS;

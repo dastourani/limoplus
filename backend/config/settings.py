@@ -36,6 +36,9 @@ SITE_DOMAIN = env("SITE_DOMAIN", default="localhost:8000")
 SITE_SCHEME = env("SITE_SCHEME", default="http" if DEBUG else "https")
 SITE_URL = f"{SITE_SCHEME}://{SITE_DOMAIN}"
 
+# Address of the admin panel. On the real server use something only you know, e.g. "manage-7f3k/".
+ADMIN_URL = env("ADMIN_URL", default="admin/").strip("/") + "/"
+
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[SITE_DOMAIN.split(":")[0], "localhost", "127.0.0.1"])
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[SITE_URL])
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
@@ -65,6 +68,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.accounts.middleware.SimpleCorsMiddleware",
+    "apps.accounts.middleware.AdminLoginThrottleMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

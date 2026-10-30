@@ -6,6 +6,7 @@ import { ApiError } from '../../api/client';
 import { endpoints, type NodeDetail, type Note } from '../../api/endpoints';
 import { MarkdownView, type MarkdownViewHandle, type ReaderEvent } from '../../components/MarkdownView';
 import { ReportSheet } from '../../components/ReportSheet';
+import { ReportButton } from '../../components/Tags';
 import { Text, TextInput } from '../../components/Text';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, ErrorState, Header, Loading, Screen, Sheet } from '../../components/ui';
@@ -14,8 +15,21 @@ import { useFeedback } from '../../components/Feedback';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { sendOrQueue } from '../../lib/network';
 import { offlineBooks, offlineSection } from '../../lib/offline';
-import { storage } from '../../lib/storage';
-import { colors, formatToman, radius, rtl } from '../../theme';
+import { storage, type ReaderTheme } from '../../lib/storage';
+import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
+
+/** Reading colours: each background comes with its own text colour. */
+const THEMES: Record<ReaderTheme, { paper: string; ink: string; label: string }> = {
+  white: { paper: '#FFFFFF', ink: '#17201A', label: 'سفید' },
+  paper: { paper: colors.paper, ink: '#17201A', label: 'کاغذی' },
+  sepia: { paper: '#F4ECD8', ink: '#4A3B2A', label: 'کاهی' },
+  dark: { paper: '#121614', ink: '#E4E9E2', label: 'شب' },
+};
+const LINE_HEIGHTS: [number, string][] = [
+  [1.7, 'فشرده'],
+  [2, 'معمولی'],
+  [2.4, 'باز'],
+];
 
 const NOTE_COLORS: [string, string][] = [
   ['yellow', '#FFE98A'],
@@ -40,7 +54,10 @@ export default function Section() {
 
   const [mode, setMode] = useState<'full' | 'summary'>('full');
   const [fontSize, setFontSize] = useState(17);
-  const [dark, setDark] = useState(false);
+  const [theme, setTheme] = useState<ReaderTheme>('paper');
+  const [lineHeight, setLineHeight] = useState(2);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const dark = theme === 'dark';
   const [bookmarked, setBookmarked] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
   const [missing, setMissing] = useState<number[]>([]);
@@ -95,7 +112,8 @@ export default function Section() {
     storage.getReader().then((p) => {
       if (p) {
         setFontSize(p.fontSize);
-        setDark(p.dark);
+        setTheme(p.theme ?? (p.dark ? 'dark' : 'paper'));
+        setLineHeight(p.lineHeight ?? 2);
       }
     });
   }, [load]);
@@ -120,10 +138,11 @@ export default function Section() {
     }
   }, [node, user, offline]);
 
-  const savePrefs = (next: { fontSize?: number; dark?: boolean }) => {
-    const prefs = { fontSize: next.fontSize ?? fontSize, dark: next.dark ?? dark };
+  const savePrefs = (next: { fontSize?: number; theme?: ReaderTheme; lineHeight?: number }) => {
+    const prefs = { fontSize: next.fontSize ?? fontSize, theme: next.theme ?? theme, lineHeight: next.lineHeight ?? lineHeight };
     setFontSize(prefs.fontSize);
-    setDark(prefs.dark);
+    setTheme(prefs.theme);
+    setLineHeight(prefs.lineHeight);
     storage.setReader(prefs);
   };
 
@@ -164,8 +183,10 @@ export default function Section() {
     }
   };
 
+  const [noteBusy, setNoteBusy] = useState(false);
   const saveNote = async () => {
-    if (!node || !noteSheet) return;
+    if (!node || !noteSheet || noteBusy) return;
+    setNoteBusy(true);
     try {
       if (noteSheet.note) {
         const updated = await endpoints.editNote(noteSheet.note.id, { body: noteText });
@@ -179,6 +200,8 @@ export default function Section() {
       setNoteSheet(null);
     } catch (e) {
       flash(e instanceof ApiError ? e.message : 'ذخیره نشد.');
+    } finally {
+      setNoteBusy(false);
     }
   };
 
@@ -213,8 +236,10 @@ export default function Section() {
     setNoteSheet(null);
   };
 
+  const [bookmarkBusy, setBookmarkBusy] = useState(false);
   const toggleBookmark = async () => {
-    if (!node || !requireLogin(user, 'برای نشان کردن بخش‌ها وارد شوید.')) return;
+    if (bookmarkBusy || !node || !requireLogin(user, 'برای نشان کردن بخش‌ها وارد شوید.')) return;
+    setBookmarkBusy(true);
     try {
       const r = await endpoints.toggleBookmark(node.id);
       setBookmarked(r.bookmarked);
@@ -226,6 +251,8 @@ export default function Section() {
         });
     } catch {
       flash('ذخیره نشد. اتصال اینترنت را بررسی کنید.');
+    } finally {
+      setBookmarkBusy(false);
     }
   };
 
@@ -249,8 +276,7 @@ export default function Section() {
 
   const chapter = node.breadcrumb[node.breadcrumb.length - 1];
   const body = mode === 'summary' && node.summary ? node.summary : node.full;
-  const paper = dark ? '#121614' : colors.paper;
-  const ink = dark ? '#E4E9E2' : colors.ink;
+  const { paper, ink } = THEMES[theme];
   const missingNotes = notes.filter((n) => missing.includes(n.id) && n.mode === mode);
 
   return (
@@ -263,18 +289,15 @@ export default function Section() {
           <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین · ${chapter?.title ?? ''}` : chapter?.title}</Text>
           <Text style={[styles.title, rtl, { color: ink }]} numberOfLines={1}>{node.title}</Text>
         </View>
-        <Pressable onPress={toggleBookmark} style={styles.icon} accessibilityLabel="نشان کردن">
+        <Pressable onPress={toggleBookmark} disabled={bookmarkBusy} style={[styles.icon, bookmarkBusy && { opacity: 0.35 }]} accessibilityLabel="نشان کردن">
           <Icon name={bookmarked ? 'bookmark-check' : 'bookmark'} size={22} color={bookmarked ? colors.lemon : ink} />
         </Pressable>
         <Pressable onPress={() => setNotesOpen(true)} style={styles.icon} accessibilityLabel="یادداشت‌ها">
           <Icon name="notebook-pen" size={22} color={ink} />
           {notes.length > 0 && <Text style={styles.count}>{notes.length}</Text>}
         </Pressable>
-        <Pressable onPress={() => savePrefs({ fontSize: fontSize >= 23 ? 15 : fontSize + 2 })} style={styles.icon} accessibilityLabel="اندازه‌ی متن">
+        <Pressable onPress={() => setPanelOpen(true)} style={styles.icon} accessibilityLabel="تنظیمات نمایش متن">
           <Icon name="a-large-small" size={24} color={ink} />
-        </Pressable>
-        <Pressable onPress={() => savePrefs({ dark: !dark })} style={styles.icon} accessibilityLabel="حالت شب">
-          <Icon name={dark ? 'sun' : 'moon'} size={22} color={ink} />
         </Pressable>
       </View>
       {!!node.summary && (
@@ -288,7 +311,7 @@ export default function Section() {
       )}
 
       <View style={{ flex: 1 }}>
-        <MarkdownView ref={reader} markdown={body} fontSize={fontSize} dark={dark} highlights={highlights} onEvent={onEvent} />
+        <MarkdownView ref={reader} markdown={body} fontSize={fontSize} dark={dark} sepia={theme === 'sepia'} lineHeight={lineHeight} highlights={highlights} onEvent={onEvent} />
         <Watermark text={user?.phone || 'لیمو پلاس'} dark={dark} />
         {!!selection && (
           <View style={styles.selBar}>
@@ -324,10 +347,46 @@ export default function Section() {
         ) : null}
       </View>
 
+      <Sheet visible={panelOpen} onClose={() => setPanelOpen(false)} title="نمایش متن">
+        <Text style={[styles.panelLabel, rtl]}>رنگ زمینه</Text>
+        <View style={styles.themes}>
+          {(Object.keys(THEMES) as ReaderTheme[]).map((key) => (
+            <Pressable
+              key={key}
+              onPress={() => savePrefs({ theme: key })}
+              style={[styles.theme, { backgroundColor: THEMES[key].paper }, theme === key && styles.themeOn]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: theme === key }}
+            >
+              <Text style={{ color: THEMES[key].ink, fontSize: 18, fontWeight: '700' }}>آ</Text>
+              <Text style={{ color: THEMES[key].ink, fontSize: 12 }}>{THEMES[key].label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={[styles.panelLabel, rtl]}>اندازه‌ی متن</Text>
+        <View style={styles.stepper}>
+          <Pressable onPress={() => savePrefs({ fontSize: Math.min(25, fontSize + 1) })} style={styles.step} accessibilityLabel="بزرگ‌تر">
+            <Text style={{ fontSize: 22, fontWeight: '700' }}>آ+</Text>
+          </Pressable>
+          <Text style={styles.stepValue}>{toPersianDigits(fontSize)}</Text>
+          <Pressable onPress={() => savePrefs({ fontSize: Math.max(14, fontSize - 1) })} style={styles.step} accessibilityLabel="کوچک‌تر">
+            <Text style={{ fontSize: 15, fontWeight: '700' }}>آ−</Text>
+          </Pressable>
+        </View>
+        <Text style={[styles.panelLabel, rtl]}>فاصله‌ی خطوط</Text>
+        <View style={styles.themes}>
+          {LINE_HEIGHTS.map(([value, label]) => (
+            <Pressable key={value} onPress={() => savePrefs({ lineHeight: value })} style={[styles.lh, lineHeight === value && styles.themeOn]}>
+              <Text style={{ fontWeight: '700', color: colors.ink }}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </Sheet>
+
       <Sheet visible={!!noteSheet} onClose={closeNoteSheet} title={noteSheet?.note ? 'یادداشت' : 'یادداشت تازه'}>
         {!!(noteSheet?.note?.quote || noteSheet?.quote) && <Text style={[styles.quote, rtl]}>{noteSheet?.note?.quote || noteSheet?.quote}</Text>}
         <TextInput value={noteText} onChangeText={setNoteText} multiline placeholder="یادداشت شما…" style={styles.noteInput} maxLength={5000} />
-        <Button label="ذخیره" onPress={saveNote} />
+        <Button label="ذخیره" onPress={saveNote} loading={noteBusy} />
         {noteSheet?.note && <Button label="حذف" variant="outline" onPress={() => deleteNote(noteSheet.note!)} />}
       </Sheet>
 
@@ -348,9 +407,16 @@ export default function Section() {
             {missingNotes.some((m) => m.id === n.id) && <Text style={[styles.help, rtl]}>متن این بخش ویرایش شده و جای این هایلایت پیدا نشد.</Text>}
           </Pressable>
         ))}
-        <Pressable onPress={() => (setNotesOpen(false), requireLogin(user, 'برای گزارش اشکال وارد شوید.') && setReportOpen(true))}>
-          <Text style={[styles.link, rtl]}>{reported ? 'اشکال این بخش گزارش داده شد' : 'گزارش اشکال در متن این بخش'}</Text>
-        </Pressable>
+        <View style={{ paddingVertical: 8 }}>
+          <ReportButton
+            reported={reported}
+            label="گزارش اشکال در متن این بخش"
+            onPress={() => {
+              setNotesOpen(false);
+              if (requireLogin(user, 'برای گزارش اشکال وارد شوید.')) setReportOpen(true);
+            }}
+          />
+        </View>
       </Sheet>
 
       <ReportSheet
@@ -369,6 +435,14 @@ export default function Section() {
 const styles = StyleSheet.create({
   header: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 4 },
   icon: { width: 40, height: 44, alignItems: 'center', justifyContent: 'center' },
+  panelLabel: { fontSize: 14, fontWeight: '700', color: colors.muted },
+  themes: { flexDirection: 'row-reverse', gap: 8 },
+  theme: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: colors.line, gap: 2 },
+  themeOn: { borderColor: colors.ink, borderWidth: 2.5 },
+  stepper: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: colors.line, borderRadius: 14 },
+  step: { width: 72, height: 48, alignItems: 'center', justifyContent: 'center' },
+  stepValue: { fontSize: 18, fontWeight: '800', color: colors.ink },
+  lh: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 14, borderWidth: 1.5, borderColor: colors.line },
   count: { position: 'absolute', top: 4, left: 2, minWidth: 18, height: 18, borderRadius: 8, backgroundColor: colors.lemon, color: colors.ink, fontSize: 12, textAlign: 'center', overflow: 'hidden' },
   iconText: { fontSize: 22, fontWeight: '800' },
   sub: { fontSize: 12, color: colors.muted },

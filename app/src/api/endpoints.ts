@@ -29,6 +29,9 @@ export type Question = {
   stem: string;
   choices: { id: number; text: string }[];
   difficulty: 'easy' | 'medium' | 'hard';
+  measured_difficulty?: number | null;
+  domain?: 'general' | 'specialized' | '';
+  kind?: 'recall' | 'concept' | 'calc' | 'analysis' | '';
   is_original: boolean;
   estimated_seconds: number | null;
   sources: { name: string; year: number; number: number | null }[];

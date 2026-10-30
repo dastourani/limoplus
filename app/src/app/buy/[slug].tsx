@@ -117,7 +117,7 @@ export default function Buy() {
       </ScrollView>
       <View style={styles.bar}>
         {pendingOrder && <Button label="بررسی پرداخت" variant="outline" onPress={() => check(pendingOrder)} />}
-        <Button label={busy ? 'در حال اتصال به درگاه…' : 'پرداخت'} disabled={!ready || busy} onPress={pay} />
+        <Button label={busy ? 'اتصال به درگاه' : 'پرداخت'} disabled={!ready} loading={busy} onPress={pay} />
       </View>
     </Screen>
   );

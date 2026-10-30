@@ -10,6 +10,7 @@ import { ApiError } from '../../api/client';
 import { endpoints, type AnswerResult } from '../../api/endpoints';
 import { ReportSheet } from '../../components/ReportSheet';
 import { RichText } from '../../components/RichText';
+import { QuestionTags, ReportButton } from '../../components/Tags';
 import { Button, Chip, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { useApi } from '../../lib/useApi';
@@ -157,13 +158,7 @@ export default function Quiz() {
         ))}
       </View>
       <ScrollView contentContainerStyle={styles.page}>
-        <View style={styles.badges}>
-          <Chip label={DIFFICULTY_LABEL[q.difficulty] ?? q.difficulty} />
-          {q.sources.map((s) => (
-            <Chip key={`${s.name}${s.year}`} label={`${s.name} ${toPersianDigits(s.year)}`} color="#3B44B8" background="#EEF0FC" />
-          ))}
-          {q.is_original && <Chip label="تألیفی" />}
-        </View>
+        <QuestionTags q={q} />
         <RichText text={q.stem} size={17} />
 
         <View style={{ gap: 10 }}>
@@ -211,12 +206,11 @@ export default function Quiz() {
               </View>
             )}
             <RichText text={result[tab] || result.explanation} size={15} />
-            <Pressable
-              onPress={() => requireLogin(user, 'برای گزارش اشکال وارد شوید.') && !reported.includes(q.id) && setReportOpen(true)}
-              style={{ alignSelf: 'flex-end' }}
-            >
-              <Text style={styles.report}>{reported.includes(q.id) ? 'گزارش داده شد' : 'گزارش اشکال در این تست'}</Text>
-            </Pressable>
+            <ReportButton
+              reported={reported.includes(q.id)}
+              label="گزارش اشکال در این تست"
+              onPress={() => requireLogin(user, 'برای گزارش اشکال وارد شوید.') && setReportOpen(true)}
+            />
             {result.flashcards.length > 0 && (
               <Text style={[styles.related, rtl]}>فلش‌کارت مرتبط: {result.flashcards.map((f) => f.title).join('، ')}</Text>
             )}
@@ -233,7 +227,7 @@ export default function Quiz() {
         {result ? (
           <Button label={index + 1 < questions.length ? 'سؤال بعد' : 'دیدن نتیجه'} variant="dark" onPress={next} />
         ) : (
-          <Button label={sending ? 'در حال بررسی…' : 'یک گزینه را انتخاب کن'} disabled onPress={() => undefined} />
+          <Button label={sending ? 'در حال بررسی' : 'یک گزینه را انتخاب کن'} loading={sending} disabled={!sending} onPress={() => undefined} />
         )}
       </View>
     </Screen>

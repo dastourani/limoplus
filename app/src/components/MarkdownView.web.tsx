@@ -8,7 +8,7 @@ import type { Highlight, MarkdownViewHandle, ReaderEvent } from './MarkdownView'
 
 export type { Highlight, MarkdownViewHandle, ReaderEvent } from './MarkdownView';
 
-type Props = { markdown: string; compact?: boolean; fontSize?: number; dark?: boolean; highlights?: Highlight[]; onEvent?: (e: ReaderEvent) => void };
+type Props = { markdown: string; compact?: boolean; fontSize?: number; dark?: boolean; sepia?: boolean; lineHeight?: number; highlights?: Highlight[]; onEvent?: (e: ReaderEvent) => void };
 
 let cssInjected = false;
 function injectCss() {
@@ -21,7 +21,7 @@ function injectCss() {
 
 /** Lesson text with formulas, tables and boxes. Web version: rendered straight into the page. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, highlights, onEvent },
+  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, onEvent },
   ref,
 ) {
   injectCss();
@@ -46,8 +46,8 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
   const content = (
     <div
       ref={root}
-      className={`lesson${compact ? ' compact' : ''}${dark ? ' dark' : ''}`}
-      style={{ ['--fs' as string]: `${fontSize}px` }}
+      className={`lesson${compact ? ' compact' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}`}
+      style={{ ['--fs' as string]: `${fontSize}px`, ['--lh' as string]: String(lineHeight) }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

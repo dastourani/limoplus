@@ -48,7 +48,7 @@ export default function Home() {
             <Text style={[styles.hello, rtl]}>سلام{user?.first_name ? ` ${user.first_name}` : ''}</Text>
             <Pressable onPress={() => router.push('/welcome')} style={styles.space} accessibilityRole="button" accessibilityLabel="تغییر رشته">
               <View style={[styles.dot, { backgroundColor: major.color }]} />
-              <Text style={styles.spaceText}>فضای {major.name}</Text>
+              <Text style={styles.spaceText}>لیمو {major.name}</Text>
               <Text style={styles.chev}>▾</Text>
             </Pressable>
           </View>

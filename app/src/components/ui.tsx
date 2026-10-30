@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Text } from './Text';
 import { Icon, IconBadge, type IconName } from './Icon';
+import { LemonLoader, LemonSpinner } from './LemonLoader';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radius, rtl } from '../theme';
@@ -37,12 +38,15 @@ export function Button({
   onPress,
   variant = 'primary',
   disabled,
+  loading,
   style,
 }: {
   label: string;
   onPress: () => void;
   variant?: 'primary' | 'dark' | 'outline' | 'danger';
   disabled?: boolean;
+  /** Shows the lemon spinner and blocks taps until the work is done. */
+  loading?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const look = variant === 'primary' ? styles.primary : variant === 'dark' ? styles.dark : variant === 'danger' ? styles.danger : styles.outline;
@@ -50,11 +54,15 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
+      disabled={disabled || loading}
+      accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
       onPress={onPress}
       style={({ pressed }) => [styles.button, look, disabled && styles.disabled, pressed && { opacity: 0.85 }, style]}
     >
-      <Text style={[styles.buttonText, text, disabled && { color: colors.muted }]}>{label}</Text>
+      <View style={styles.buttonInner}>
+        {loading && <LemonSpinner size={20} />}
+        <Text style={[styles.buttonText, text, disabled && !loading && { color: colors.muted }]}>{label}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -62,7 +70,7 @@ export function Button({
 export function Loading() {
   return (
     <View style={styles.center}>
-      <ActivityIndicator size="large" color={colors.green} />
+      <LemonLoader />
     </View>
   );
 }
@@ -138,6 +146,7 @@ const styles = StyleSheet.create({
   dangerText: { color: '#FFFFFF' },
   outline: { borderWidth: 1.5, borderColor: colors.ink, backgroundColor: 'transparent' },
   disabled: { backgroundColor: colors.disabled, borderColor: colors.disabled },
+  buttonInner: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   buttonText: { fontSize: 16, fontWeight: '700' },
   primaryText: { color: colors.ink },
   darkText: { color: colors.lemon },

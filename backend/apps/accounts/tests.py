@@ -2,7 +2,7 @@ from datetime import timedelta
 from unittest import mock
 
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -203,3 +203,14 @@ class OTPFlowTests(TestCase):
 
     def test_health_is_public(self):
         self.assertEqual(self.client.get("/api/v1/health/").status_code, 200)
+
+
+class AdminLoginThrottleTests(TestCase):
+    def test_password_guessing_is_blocked(self):
+        User.objects.create_superuser("09120000009", password="Right-Pass-123")
+        c = Client()
+        for _ in range(5):
+            r = c.post("/admin/login/", {"username": "09120000009", "password": "wrong"})
+            self.assertEqual(r.status_code, 200)
+        r = c.post("/admin/login/", {"username": "09120000009", "password": "Right-Pass-123"})
+        self.assertEqual(r.status_code, 429)

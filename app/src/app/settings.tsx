@@ -67,7 +67,7 @@ export default function Settings() {
           برای تست روی گوشی: سرور را روی لپ‌تاپ اجرا کنید، گوشی و لپ‌تاپ در یک Wi‑Fi باشند، و آدرس IP لپ‌تاپ را با پورت ۸۰۰۰ وارد کنید.
         </Text>
         {status && <Text style={[styles.status, rtl, { color: status.ok ? colors.greenDark : colors.redDark }]}>{status.text}</Text>}
-        <Button label={busy ? 'در حال بررسی…' : 'آزمایش اتصال'} variant="outline" onPress={test} disabled={busy} />
+        <Button label="آزمایش اتصال" variant="outline" onPress={test} loading={busy} />
         <Button label="ذخیره" onPress={save} />
         <Button label="برگشت به آدرس پیش‌فرض" variant="outline" onPress={reset} />
       </View>

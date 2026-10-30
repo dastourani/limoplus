@@ -7,7 +7,8 @@ const KEYS = {
   reader: 'limo.reader',
 } as const;
 
-export type ReaderPrefs = { fontSize: number; dark: boolean };
+export type ReaderTheme = 'white' | 'paper' | 'sepia' | 'dark';
+export type ReaderPrefs = { fontSize: number; dark?: boolean; theme?: ReaderTheme; lineHeight?: number };
 
 export type LastSection = { id: number; title: string; bookTitle: string; bookSlug: string };
 

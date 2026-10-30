@@ -8,6 +8,8 @@ import { endpoints, type Flashcard } from '../../api/endpoints';
 import { LemonSlice } from '../../components/LemonSlice';
 import { MarkdownView } from '../../components/MarkdownView';
 import { ReportSheet } from '../../components/ReportSheet';
+import { ReportButton } from '../../components/Tags';
+import { Watermark } from '../../components/Watermark';
 import { Text } from '../../components/Text';
 import { Icon } from '../../components/Icon';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
@@ -163,12 +165,15 @@ export default function Flashcards() {
             <Text style={[styles.watermark, flipped && { color: '#3E4C44' }]}>لیمو پلاس</Text>
           </View>
         </Pressable>
-        <Pressable
-          onPress={() => requireLogin(user, 'برای گزارش اشکال وارد شوید.') && !reported.includes(card.id) && setReportOpen(true)}
-          style={{ alignSelf: 'center', marginTop: 14 }}
-        >
-          <Text style={styles.report}>{reported.includes(card.id) ? 'گزارش داده شد' : 'گزارش اشکال در این کارت'}</Text>
-        </Pressable>
+        {/* On screen only: the shared image carries just the brand, never the reader's phone number. */}
+        <Watermark text={user?.phone || 'لیمو پلاس'} />
+        <View style={{ alignSelf: 'center', marginTop: 14 }}>
+          <ReportButton
+            reported={reported.includes(card.id)}
+            label="گزارش اشکال در این کارت"
+            onPress={() => requireLogin(user, 'برای گزارش اشکال وارد شوید.') && setReportOpen(true)}
+          />
+        </View>
       </View>
       <View style={styles.bar}>
         {flipped ? (

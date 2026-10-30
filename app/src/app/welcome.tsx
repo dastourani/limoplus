@@ -64,7 +64,7 @@ export default function Welcome() {
 
       <View style={styles.footer}>
         <Button
-          label={!picked ? 'یک رشته انتخاب کن' : picked.is_coming_soon ? `${picked.name} به‌زودی آماده می‌شود` : `ورود به فضای ${picked.name}`}
+          label={!picked ? 'یک رشته انتخاب کن' : picked.is_coming_soon ? `${picked.name} به‌زودی آماده می‌شود` : `ورود به لیمو ${picked.name}`}
           disabled={!picked || picked.is_coming_soon}
           onPress={start}
         />
