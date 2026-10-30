@@ -1,7 +1,9 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+
+import { Text } from '../../components/Text';
 
 import { ApiError } from '../../api/client';
 import { endpoints, type AnswerResult } from '../../api/endpoints';

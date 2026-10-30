@@ -14,7 +14,7 @@
   </g>
   <line x1="74" y1="100" x2="80" y2="100" stroke="#56655b"/>
   <line x1="137" y1="200" x2="137" y2="206" stroke="#56655b"/>
-  <line x1="40" y1="183" x2="300" y2="40" stroke="#3b44b8" stroke-width="3"/>
+  <line x1="40" y1="185" x2="228" y2="20" stroke="#3b44b8" stroke-width="3"/>
   <line x1="137" y1="100" x2="137" y2="200" stroke="#3b44b8" stroke-width="1" stroke-dasharray="4 4"/>
   <circle cx="137" cy="100" r="6" fill="#ffffff" stroke="#3b44b8" stroke-width="2.5"/>
 </svg>

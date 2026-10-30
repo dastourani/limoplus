@@ -1,6 +1,8 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+
+import { Text, TextInput } from '../components/Text';
 
 import { ApiError } from '../api/client';
 import { endpoints } from '../api/endpoints';
