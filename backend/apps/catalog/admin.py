@@ -75,6 +75,11 @@ class BookAdmin(admin.ModelAdmin):
     def chapter_count(self, obj):
         return obj.get_children().filter(kind=ContentNode.Kind.CHAPTER, is_archived=False).count()
 
+    def changelist_view(self, request, extra_context=None):
+        extra = extra_context or {}
+        extra["orphans"] = [n for n in panel.orphans() if not n.is_archived]
+        return super().changelist_view(request, extra_context=extra)
+
     def change_view(self, request, object_id, form_url="", extra_context=None):
         extra = extra_context or {}
         book = ContentNode.objects.filter(pk=object_id, kind=ContentNode.Kind.BOOK).first()
@@ -99,6 +104,7 @@ class BookAdmin(admin.ModelAdmin):
             path("import/", site(lambda r: panel.import_view(self.admin_site, r)), name="catalog_import"),
             path("<int:book_id>/import/", site(lambda r, book_id: panel.import_view(self.admin_site, r, book_id)), name="catalog_book_import"),
             path("<int:book_id>/export/", site(panel.book_export), name="catalog_book_export"),
+            path("orphan/<int:node_id>/archive/", site(panel.archive_orphan), name="catalog_archive_orphan"),
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
             path("chapter/<int:chapter_id>/", site(lambda r, chapter_id: panel.chapter_manager(self.admin_site, r, chapter_id)), name="catalog_chapter_manager"),
             path("chapter/<int:chapter_id>/api/", site(panel.chapter_api), name="catalog_chapter_api"),
@@ -205,7 +211,7 @@ class SectionAdmin(admin.ModelAdmin):
     @admin.display(description="")
     def manage(self, obj):
         c = self._chapter(obj)
-        if not c:
+        if not c or c.kind != ContentNode.Kind.CHAPTER or c.book() is None:
             return ""
         return format_html('<a class="button" href="{}#s={}">ویرایش</a>', reverse("admin:catalog_chapter_manager", args=[c.pk]), obj.slug)
 

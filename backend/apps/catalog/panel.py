@@ -16,7 +16,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
@@ -42,7 +42,28 @@ def _book(pk) -> ContentNode:
 
 
 def _chapter(pk) -> ContentNode:
-    return get_object_or_404(ContentNode, pk=pk, kind=ContentNode.Kind.CHAPTER)
+    chapter = get_object_or_404(ContentNode, pk=pk, kind=ContentNode.Kind.CHAPTER)
+    if chapter.book() is None:
+        raise Http404("این فصل داخل هیچ کتابی نیست.")
+    return chapter
+
+
+def orphans():
+    """Content made by hand in the old panel outside any book (e.g. a chapter at the top level)."""
+    return ContentNode.objects.filter(depth=1).exclude(kind=ContentNode.Kind.BOOK)
+
+
+@require_POST
+def archive_orphan(request, node_id):
+    _can_edit(request)
+    node = get_object_or_404(orphans(), pk=node_id)
+    ids = [node.pk, *node.get_descendants().values_list("pk", flat=True)]
+    with transaction.atomic():
+        ContentNode.objects.filter(pk__in=ids).update(is_archived=True, is_published=False)
+        Question.objects.filter(node_id__in=ids).update(is_archived=True)
+        Flashcard.objects.filter(node_id__in=ids).update(is_archived=True)
+    messages.success(request, f"«{node.title}» بایگانی شد (پاک نشد).")
+    return redirect(reverse("admin:catalog_book_changelist"))
 
 
 def _can_edit(request):

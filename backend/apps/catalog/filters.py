@@ -36,7 +36,13 @@ class ChapterFilter(admin.SimpleListFilter):
         if book_id:
             book = ContentNode.objects.filter(pk=book_id).first()
             chapters = chapters.filter(path__startswith=book.path) if book else chapters.none()
-        return [(str(c.pk), f"{c.position or '-'}. {c.title}" if book_id else f"{c.book().title} › {c.title}") for c in chapters.order_by("path")]
+        out = []
+        for c in chapters.order_by("path"):
+            book = c.book()
+            if book is None:
+                continue  # a chapter outside any book (made by hand in the old panel); listed on the books page
+            out.append((str(c.pk), f"{c.position or '-'}. {c.title}" if book_id else f"{book.title} › {c.title}"))
+        return out
 
     def queryset(self, request, queryset):
         if self.value():

@@ -15,7 +15,9 @@ def manager_url(node, anchor: str) -> str:
     from apps.catalog.models import ContentNode
 
     chapter = node if node.kind == ContentNode.Kind.CHAPTER else node.get_parent()
-    return reverse("admin:catalog_chapter_manager", args=[chapter.pk]) + anchor if chapter else ""
+    if chapter is None or chapter.kind != ContentNode.Kind.CHAPTER or chapter.book() is None:
+        return ""
+    return reverse("admin:catalog_chapter_manager", args=[chapter.pk]) + anchor
 
 
 class SourceFilter(admin.SimpleListFilter):
@@ -118,12 +120,13 @@ class _ManagedInChapter:
         section = obj.node.title if obj.node.kind == "section" else "مقدمه‌ی فصل"
         return format_html(
             '<span style="font-size:11px;color:var(--body-quiet-color)">{} › فصل {}</span><br>{}',
-            book.title if book else "", chapter.position or chapter.title if chapter else "", section,
+            book.title if book else "بدون کتاب", (chapter.position or chapter.title) if chapter else "", section,
         )
 
     @admin.display(description="")
     def manage(self, obj):
-        return format_html('<a class="button" href="{}">ویرایش</a>', manager_url(obj.node, f"#{self.anchor}={obj.slug}"))
+        url = manager_url(obj.node, f"#{self.anchor}={obj.slug}")
+        return format_html('<a class="button" href="{}">ویرایش</a>', url) if url else "—"
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         obj = self.model.objects.filter(pk=object_id).select_related("node").first()

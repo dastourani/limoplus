@@ -356,3 +356,18 @@ def _upload(name, text):
     from django.core.files.uploadedfile import SimpleUploadedFile
 
     return SimpleUploadedFile(name, text.encode("utf-8"), content_type="text/markdown")
+
+
+class OrphanTests(_Base):
+    def test_chapter_outside_any_book_does_not_break_lists(self):
+        orphan = ContentNode.add_root(kind=ContentNode.Kind.CHAPTER, title="فصل دستی", slug="hand")
+        Flashcard.objects.create(node=orphan, slug="h1", title="t", point="p")
+        for url in ("admin:learning_flashcard_changelist", "admin:learning_question_changelist", "admin:catalog_section_changelist"):
+            self.assertEqual(self.client.get(reverse(url)).status_code, 200, url)
+        page = self.client.get(reverse("admin:catalog_book_changelist"))
+        self.assertContains(page, "فصل دستی")
+        self.assertEqual(self.client.get(reverse("admin:catalog_chapter_manager", args=[orphan.pk])).status_code, 404)
+        self.client.post(reverse("admin:catalog_archive_orphan", args=[orphan.pk]))
+        self.assertTrue(ContentNode.objects.get(pk=orphan.pk).is_archived)
+        self.assertTrue(Flashcard.objects.get(slug="h1").is_archived)
+        self.assertNotContains(self.client.get(reverse("admin:catalog_book_changelist")), "محتوای بیرون از کتاب‌ها")
