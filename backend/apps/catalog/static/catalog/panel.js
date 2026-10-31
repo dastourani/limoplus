@@ -863,3 +863,41 @@
     return box;
   };
 })();
+
+/* Book covers in the panel: thumbnails in the books list, and a live preview (dark and light) on the book form. */
+(function () {
+  'use strict';
+  var P = window.LimoPreview;
+  if (!P || !P.coverHtml) return;
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.lp-cover').forEach(function (el) {
+      var d = el.dataset;
+      el.innerHTML = P.coverHtml({ title: d.title, title_en: d.en, author: d.author, edition: d.edition, motif: d.motif, major: d.major, strip: d.strip }, 'dark', Number(d.width || 44));
+      el.style.display = 'inline-block';
+    });
+    var motif = document.getElementById('id_cover_motif');
+    if (!motif) return;
+    var majors = {};
+    try { majors = JSON.parse(document.getElementById('lp-majors').textContent); } catch (e) { /* ignore */ }
+    var box = document.createElement('div');
+    box.style.cssText = 'display:flex;gap:18px;margin:12px 0 4px;flex-wrap:wrap;align-items:flex-start';
+    var hint = document.createElement('p');
+    hint.className = 'help';
+    hint.textContent = 'پیش‌نمایش جلد در اپ (تیره و روشن؛ هر کاربر در پروفایل یکی را انتخاب می‌کند). اگر «عکس جلد» بگذارید، عکس جای این جلد را می‌گیرد.';
+    motif.parentNode.appendChild(box);
+    motif.parentNode.appendChild(hint);
+    function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+    function draw() {
+      var checked = document.querySelector('input[name=majors]:checked');
+      var m = checked && majors[checked.value] || { name: 'پزشکی', color: '#3FB8A9' };
+      var book = { title: val('id_title'), title_en: val('id_title_en'), author: val('id_author'), edition: val('id_edition'), motif: motif.value, major: m.name, strip: m.color };
+      box.innerHTML = P.coverHtml(book, 'dark', 180) + P.coverHtml(book, 'light', 180);
+    }
+    ['id_title', 'id_title_en', 'id_author', 'id_edition', 'id_cover_motif'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('input', draw), el.addEventListener('change', draw);
+    });
+    document.querySelectorAll('input[name=majors]').forEach(function (el) { el.addEventListener('change', draw); });
+    draw();
+  });
+})();

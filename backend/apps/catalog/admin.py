@@ -6,7 +6,7 @@ from django.utils.html import format_html
 
 from . import panel
 from .filters import BookFilter, ChapterFilter, YesNoFilter
-from .models import Banner, Book, ChapterRevision, ContentNode, Major, Section
+from .models import Banner, Book, BookWaitlist, ChapterRevision, ContentNode, Major, Section
 
 
 @admin.register(Major)
@@ -22,14 +22,14 @@ class BookAdmin(admin.ModelAdmin):
 
     change_form_template = "admin/catalog/book/change_form.html"
     change_list_template = "admin/catalog/book/change_list.html"
-    list_display = ("cover_thumb", "title", "author", "chapter_count", "price", "is_published", "is_archived")
+    list_display = ("cover_thumb", "title", "author", "chapter_count", "price", "waiting", "is_coming_soon", "is_published", "is_archived")
     list_display_links = ("cover_thumb", "title")
     list_filter = ("is_published", "is_archived", "majors")
     search_fields = ("title", "slug", "author")
     fieldsets = (
-        (None, {"fields": ("title", "slug", "author", "edition", "majors")}),
-        ("جلد و معرفی", {"fields": ("cover", "about")}),
-        ("فروش و نمایش", {"fields": ("price", "is_free", "is_published", "is_archived")}),
+        (None, {"fields": ("title", "title_en", "slug", "author", "edition", "majors")}),
+        ("جلد و معرفی", {"fields": ("cover_motif", "cover", "about")}),
+        ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "position", "is_published", "is_archived")}),
     )
 
     def get_queryset(self, request):
@@ -43,6 +43,9 @@ class BookAdmin(admin.ModelAdmin):
         if "slug" in form.base_fields:
             form.base_fields["slug"].required = True
             form.base_fields["slug"].help_text = "شناسه‌ی لاتین ثابت کتاب، مثلاً bushberg؛ بعداً عوض نمی‌شود."
+        if "position" in form.base_fields:
+            form.base_fields["position"].label = "ترتیب در قفسه"
+            form.base_fields["position"].help_text = "عدد کمتر جلوتر؛ خالی = بعد از بقیه (کتاب‌های «به‌زودی» همیشه آخرند)."
         if "majors" in form.base_fields:
             from django import forms
 
@@ -68,8 +71,17 @@ class BookAdmin(admin.ModelAdmin):
     @admin.display(description="جلد")
     def cover_thumb(self, obj):
         if obj.cover:
-            return format_html('<img src="{}" style="height:56px;border-radius:6px">', obj.cover.url)
-        return format_html('<span style="display:inline-block;width:38px;height:56px;border-radius:6px;background:#17201A;color:#F5C518;text-align:center;line-height:56px">🍋</span>')
+            return format_html('<img src="{}" style="height:66px;border-radius:6px">', obj.cover.url)
+        major = obj.majors.order_by("order", "name").first()
+        return format_html(
+            '<span class="lp-cover" data-title="{}" data-en="{}" data-author="{}" data-edition="{}" data-motif="{}" data-major="{}" data-strip="{}" data-width="44"></span>',
+            obj.title, obj.title_en, obj.author, obj.edition, obj.cover_motif, major.name if major else "", major.color if major else "",
+        )
+
+    @admin.display(description="خبرم کن")
+    def waiting(self, obj):
+        n = obj.waitlist.filter(is_active=True).count()
+        return n or ""
 
     @admin.display(description="فصل‌ها")
     def chapter_count(self, obj):
@@ -80,8 +92,17 @@ class BookAdmin(admin.ModelAdmin):
         extra["orphans"] = [n for n in panel.orphans() if not n.is_archived]
         return super().changelist_view(request, extra_context=extra)
 
+    def _majors_json(self):
+        import json
+
+        return json.dumps({str(m.pk): {"name": m.name, "color": m.color} for m in Major.objects.all()}, ensure_ascii=False)
+
+    def add_view(self, request, form_url="", extra_context=None):
+        return super().add_view(request, form_url, extra_context={**(extra_context or {}), "majors_json": self._majors_json()})
+
     def change_view(self, request, object_id, form_url="", extra_context=None):
         extra = extra_context or {}
+        extra["majors_json"] = self._majors_json()
         book = ContentNode.objects.filter(pk=object_id, kind=ContentNode.Kind.BOOK).first()
         if book:
             from apps.learning.models import Flashcard, Question
@@ -240,6 +261,24 @@ class ChapterRevisionAdmin(admin.ModelAdmin):
 
     def get_list_filter(self, request):
         return ("source",)
+
+
+@admin.register(BookWaitlist)
+class BookWaitlistAdmin(admin.ModelAdmin):
+    """Who pressed «خبرم کن» on a coming-soon book."""
+
+    list_display = ("book", "user", "is_active", "created_at")
+    list_filter = ("is_active", "book")
+    search_fields = ("user__phone", "book__title")
+
+    def get_readonly_fields(self, request, obj=None):
+        return ("user", "book", "is_active", "created_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Banner)

@@ -47,23 +47,44 @@ def major_books(request, slug):
     major = get_object_or_404(Major, slug=slug)
     books = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, majors=major, is_published=True, is_archived=False)
     payload = []
-    for book in books.order_by("title"):
+    for book in books.order_by("is_coming_soon", F("position").asc(nulls_last=True), "title"):
         access = AccessMap(request.user, book)
-        chapters = access.children(book)
-        payload.append(
-            {
-                "slug": book.slug,
-                "title": book.title,
-                "author": book.author,
-                "edition": book.edition,
-                "cover": request.build_absolute_uri(book.cover.url) if book.cover else None,
-                "price": book.price,
-                "chapter_count": len(chapters),
-                "has_free_part": any(n.is_free for n in access.nodes.values() if access.visible(n.id)),
-                "owned": access.owned,
-            }
-        )
+        payload.append(book_card(request, book, access))
     return Response(payload)
+
+
+def book_card(request, book, access) -> dict:
+    """What a shelf needs to draw a book: its cover, its free part, the reader's progress and «خبرم کن»."""
+    chapters = access.children(book)
+    sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
+    done = set(_done_ids(request.user, book)) & {s.id for s in sections}
+    free_chapter = next((i for i, c in enumerate(chapters, start=1) if c.is_free), None)
+    return {
+        "slug": book.slug,
+        "title": book.title,
+        "title_en": book.title_en,
+        "author": book.author,
+        "edition": book.edition,
+        "motif": book.cover_motif,
+        "cover": request.build_absolute_uri(book.cover.url) if book.cover else None,
+        "is_coming_soon": book.is_coming_soon,
+        "price": book.price,
+        "chapter_count": len(chapters),
+        "section_count": len(sections),
+        "has_free_part": any(n.is_free for n in access.nodes.values() if access.visible(n.id)),
+        "free_chapter": free_chapter,
+        "owned": access.owned,
+        "progress": round(len(done) / len(sections), 3) if done and sections else None,
+        "notify": _notify(request.user, book),
+    }
+
+
+def _notify(user, book) -> bool:
+    if not user.is_authenticated:
+        return False
+    from .models import BookWaitlist
+
+    return BookWaitlist.objects.filter(user=user, book=book, is_active=True).exists()
 
 
 def _done_ids(user, book):
@@ -108,16 +129,10 @@ def book_detail(request, slug):
         chapters.append(item)
     return Response(
         {
-            "slug": book.slug,
-            "title": book.title,
-            "author": book.author,
-            "edition": book.edition,
-            "cover": request.build_absolute_uri(book.cover.url) if book.cover else None,
+            **book_card(request, book, access),
             "about": media_urls(request, book.about),
-            "price": book.price,
             "majors": list(book.majors.values_list("slug", flat=True)),
             "chapters": chapters,
-            "owned": access.owned,
             "done_ids": _done_ids(request.user, book),
         }
     )
@@ -207,3 +222,19 @@ def book_glossary(request, slug):
     terms.sort(key=lambda t: t["fa"])
     return Response({"book": book.title, "terms": terms})
 
+
+
+@api_view(["POST"])
+def book_notify(request, slug):
+    """«خبرم کن» on or off for a coming-soon book."""
+    from .models import BookWaitlist
+
+    book = get_object_or_404(ContentNode, kind=ContentNode.Kind.BOOK, slug=slug, depth=1)
+    if not AccessMap(request.user, book).visible(book.id):
+        return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    on = bool(request.data.get("on", True))
+    wait, created = BookWaitlist.objects.get_or_create(user=request.user, book=book, defaults={"is_active": on})
+    if not created and wait.is_active != on:
+        wait.is_active = on
+        wait.save(update_fields=["is_active", "updated_at"])
+    return Response({"notify": on})

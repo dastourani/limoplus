@@ -310,7 +310,7 @@ class BookPageTests(_Base):
     def test_create_book_then_empty_chapter(self):
         r = self.client.post(reverse("admin:catalog_book_add"), {
             "title": "کتاب تازه", "slug": "new-book", "author": "نویسنده", "edition": "", "about": "درباره‌ی **کتاب**",
-            "majors": [Major.objects.get(slug="economics").pk], "price": "", "is_published": "on",
+            "majors": [Major.objects.get(slug="economics").pk], "price": "", "is_published": "on", "cover_motif": "fourier", "title_en": "New",
         })
         self.assertEqual(r.status_code, 302, r.content[:2000])
         book = ContentNode.objects.get(slug="new-book", kind="book")
@@ -373,3 +373,41 @@ class OrphanTests(_Base):
         self.assertTrue(ContentNode.objects.get(pk=orphan.pk).is_archived)
         self.assertTrue(Flashcard.objects.get(slug="h1").is_archived)
         self.assertNotContains(self.client.get(reverse("admin:catalog_book_changelist")), "محتوای بیرون از کتاب‌ها")
+
+
+class ShelfTests(_Base):
+    def test_book_card_has_cover_free_part_and_coming_soon(self):
+        ContentNode.objects.filter(pk=self.book.pk).update(title_en="Test Book", cover_motif="fourier", author="نویسنده", edition="ویرایش ۲")
+        soon = ContentNode.add_root(kind="book", title="به‌زودی", slug="soon", is_published=True, is_coming_soon=True, cover_motif="brain")
+        soon.majors.add(Major.objects.get(slug="economics"))
+        from rest_framework.test import APIClient
+
+        api = APIClient()
+        books = api.get("/api/v1/majors/economics/books/").json()
+        self.assertEqual([b["slug"] for b in books], ["test-book", "soon"], "coming-soon books come last")
+        first = books[0]
+        self.assertEqual((first["title_en"], first["motif"], first["free_chapter"], first["progress"], first["notify"]), ("Test Book", "fourier", 1, None, False))
+        detail = api.get("/api/v1/books/test-book/").json()
+        self.assertEqual(detail["motif"], "fourier")
+        self.assertIn("chapters", detail)
+
+    def test_notify_me_needs_login_and_toggles(self):
+        from rest_framework.test import APIClient
+
+        from apps.accounts.models import DeviceSession
+
+        api = APIClient()
+        self.assertEqual(api.post("/api/v1/books/test-book/notify/", {"on": True}, format="json").status_code, 401)
+        learner = User.objects.create_user("09120000009")
+        api.force_authenticate(learner)
+        self.assertEqual(api.post("/api/v1/books/test-book/notify/", {"on": True}, format="json").json(), {"notify": True})
+        self.assertTrue(api.get("/api/v1/majors/economics/books/").json()[0]["notify"])
+        api.post("/api/v1/books/test-book/notify/", {"on": False}, format="json")
+        self.assertFalse(api.get("/api/v1/majors/economics/books/").json()[0]["notify"])
+        page = self.client.get(reverse("admin:catalog_book_changelist"))
+        self.assertContains(page, 'class="lp-cover"')
+
+    def test_book_form_has_cover_fields(self):
+        page = self.client.get(reverse("admin:catalog_book_change", args=[self.book.pk]))
+        for field in ("id_cover_motif", "id_title_en", "id_is_coming_soon", "lp-majors"):
+            self.assertContains(page, field)

@@ -50,6 +50,21 @@ class ContentNode(MP_Node):
         "عکس جلد", upload_to="covers/", blank=True, help_text="عمودی، ۸۰۰ در ۱۲۰۰ پیکسل (نسبت ۲ به ۳)؛ بدون عکس، جلد لیمویی نشان داده می‌شود."
     )
     about = models.TextField("درباره‌ی کتاب (Markdown)", blank=True)
+    title_en = models.CharField("نام انگلیسی", max_length=200, blank=True, help_text="روی جلد، زیر نام کتاب؛ مثلاً Medical Imaging")
+
+    class Motif(models.TextChoices):
+        CT = "ct", "حلقه‌ی CT و مقیاس هانسفیلد (تصویربرداری)"
+        BRAIN = "brain", "نیم‌رخ مغز (نوروآناتومی)"
+        AP = "ap", "پتانسیل عمل (نوروفیزیولوژی)"
+        NEURON = "neuron", "نورون (علوم اعصاب)"
+        PIXELS = "pixels", "پیکسل و پنجره‌ی ۳×۳ (پردازش تصویر)"
+        SYSTEM = "system", "ورودی، h(t)، خروجی (سیگنال‌ها و سیستم‌ها)"
+        FOURIER = "fourier", "سری فوریه (ریاضی مهندسی)"
+        WORDS = "words", "ریشه‌ی واژه‌ها (زبان تخصصی)"
+
+    cover_motif = models.CharField("نقش جلد", max_length=20, choices=Motif.choices, default=Motif.CT,
+                                   help_text="نقش خطی وسط جلد؛ بقیه‌ی جلد (رنگ، نام، نویسنده) خودکار است. اگر «عکس جلد» بگذارید، عکس به‌جای این جلد نشان داده می‌شود.")
+    is_coming_soon = models.BooleanField("به‌زودی", default=False, help_text="کتاب با جلد کم‌رنگ و دکمه‌ی «خبرم کن» در قفسه دیده می‌شود ولی باز نمی‌شود.")
     is_published = models.BooleanField("منتشر شده", default=False)
     is_archived = models.BooleanField("بایگانی", default=False, help_text="به‌جای حذف؛ داده‌ی کاربران حفظ می‌شود")
     updated_at = models.DateTimeField(auto_now=True)
@@ -87,6 +102,21 @@ class Section(ContentNode):
         proxy = True
         verbose_name = "بخش (جزوه و خلاصه)"
         verbose_name_plural = "بخش‌ها (جزوه و خلاصه)"
+
+
+class BookWaitlist(models.Model):
+    """«خبرم کن»: a learner wants to know when a coming-soon book opens."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="book_waits", verbose_name="کاربر")
+    book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="waitlist", verbose_name="کتاب")
+    is_active = models.BooleanField("فعال", default=True)
+    created_at = models.DateTimeField("زمان", auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "درخواست «خبرم کن»"
+        verbose_name_plural = "درخواست‌های «خبرم کن»"
+        unique_together = [("user", "book")]
 
 
 class ChapterRevision(models.Model):

@@ -1,7 +1,27 @@
 import { api } from './client';
 
 export type Major = { slug: string; name: string; color: string; is_coming_soon: boolean };
-export type BookListItem = { slug: string; title: string; price: number | null; chapter_count: number; has_free_part: boolean; owned: boolean };
+export type BookListItem = {
+  slug: string;
+  title: string;
+  title_en: string;
+  author: string;
+  edition: string;
+  motif: string;
+  cover: string | null;
+  is_coming_soon: boolean;
+  price: number | null;
+  chapter_count: number;
+  section_count: number;
+  has_free_part: boolean;
+  /** Number of the first free chapter, if a whole chapter is free. */
+  free_chapter: number | null;
+  owned: boolean;
+  /** Share of sections read (0–1), once the learner has started. */
+  progress: number | null;
+  /** «خبرم کن» is on. */
+  notify: boolean;
+};
 export type NodeSummary = {
   id: number;
   slug: string;
@@ -14,7 +34,7 @@ export type NodeSummary = {
   group?: string;
 };
 export type ChapterSummary = NodeSummary & { sections: NodeSummary[]; has_overview?: boolean };
-export type BookDetail = { slug: string; title: string; price: number | null; majors: string[]; chapters: ChapterSummary[]; owned: boolean; done_ids: number[] };
+export type BookDetail = BookListItem & { about: string; majors: string[]; chapters: ChapterSummary[]; done_ids: number[] };
 export type NodeDetail = {
   id: number;
   kind: NodeSummary['kind'];
@@ -128,6 +148,7 @@ export const endpoints = {
   books: (major: string) => api<BookListItem[]>(`majors/${encodeURIComponent(major)}/books/`),
   book: (slug: string) => api<BookDetail>(`books/${encodeURIComponent(slug)}/`),
   node: (id: number) => api<NodeDetail>(`nodes/${id}/`),
+  notifyBook: (slug: string, on: boolean) => api<{ notify: boolean }>(`books/${encodeURIComponent(slug)}/notify/`, { body: { on } }),
   glossary: (slug: string) => api<{ book: string; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(`books/${encodeURIComponent(slug)}/glossary/`),
   questions: (nodeId: number) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/`),
   answer: (questionId: number, choiceId: number) => api<AnswerResult>(`questions/${questionId}/answer/`, { body: { choice_id: choiceId } }),

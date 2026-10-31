@@ -31,6 +31,10 @@ Code, identifiers and commit messages are in English.
 - App updates: `apps.releases` (`AppRelease` in admin). The Android app sends `X-App-Platform`/`X-App-Build`
   (build = CI run number, `EXPO_PUBLIC_APP_BUILD`); `GET app/version/` offers newer builds; builds older than the newest
   required release get HTTP 426 from `MinimumAppVersionMiddleware` and the app shows `UpdateGate`'s full-screen notice.
+- Book covers are drawn, not uploaded: one template (`components/BookCover.tsx`) plus a line motif per subject from
+  `src/lib/cover.ts` (`cover_motif` on the book; dark or light by the learner's choice in profile, `lib/coverTheme.ts`).
+  The same file draws the panel's cover preview through the admin-preview bundle. An uploaded `cover` image wins.
+  Books can be «به‌زودی» (`is_coming_soon`) with «خبرم کن» (`BookWaitlist`).
 - Progress is drawn as a lemon (`LemonProgress`, one wedge per item); quiz and exam share `QuizView` (single web view,
   finger-following page drag) and `usePageTurn`. Don't use «·» next to Persian digits (۰ looks like a dot).
 - `docker-compose.yml` — local Postgres + backend (mounts `content/` read-only).

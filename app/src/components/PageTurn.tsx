@@ -5,7 +5,7 @@
  *   kind="paper": a page of the section just finished (going to the next section)
  * Drawn with transforms only (native driver), so it stays smooth on low-end phones. Tapping skips it.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -13,7 +13,10 @@ import { colors, rtl } from '../theme';
 import { LemonSlice } from './LemonSlice';
 import { Text } from './Text';
 
-function Face({ kind, title, w, h }: { kind: 'cover' | 'paper'; title?: string; w: number; h: number }) {
+function Face({ kind, title, w, h, face }: { kind: 'cover' | 'paper'; title?: string; w: number; h: number; face?: ReactNode }) {
+  if (kind === 'cover' && face) {
+    return <View style={[styles.cover, { width: w, height: h }]}>{face}</View>;
+  }
   if (kind === 'cover') {
     return (
       <View style={[styles.cover, { width: w, height: h }]}>
@@ -54,6 +57,7 @@ export function PageTurn({
   delay = 120,
   duration = 760,
   hold = false,
+  face,
   onDone,
 }: {
   kind: 'cover' | 'paper';
@@ -62,6 +66,8 @@ export function PageTurn({
   duration?: number;
   /** Show the page still (while the next screen loads). */
   hold?: boolean;
+  /** What the turning page shows instead of the plain cover (e.g. the book's real cover). */
+  face?: ReactNode;
   onDone?: () => void;
 }) {
   const { width: W, height: H } = useWindowDimensions();
@@ -102,7 +108,7 @@ export function PageTurn({
         {/* the old page, still flat to the right of the fold */}
         <Animated.View style={[StyleSheet.absoluteFill, { overflow: 'hidden', transform: [{ translateX: x }] }]}>
           <Animated.View style={{ transform: [{ translateX: negX }] }}>
-            <Face kind={kind} title={title} w={W} h={H} />
+            <Face kind={kind} title={title} w={W} h={H} face={face} />
           </Animated.View>
         </Animated.View>
         {/* soft shadow the rolling page casts on the new page */}

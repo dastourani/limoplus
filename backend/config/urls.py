@@ -19,6 +19,7 @@ api = [
     path("majors/<slug:slug>/books/", catalog.major_books),
     path("books/<str:slug>/", catalog.book_detail),
     path("books/<str:slug>/glossary/", catalog.book_glossary),
+    path("books/<str:slug>/notify/", catalog.book_notify),
     path("nodes/<int:node_id>/", catalog.node_detail),
     path("nodes/<int:node_id>/questions/", learning.node_questions),
     path("nodes/<int:node_id>/flashcards/", learning.node_flashcards),

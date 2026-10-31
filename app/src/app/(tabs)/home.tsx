@@ -1,22 +1,32 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewInstance } from 'react-native';
 
-import { Text } from '../../components/Text';
-import { Icon, IconBadge } from '../../components/Icon';
-
-import { endpoints } from '../../api/endpoints';
+import { endpoints, type BookListItem, type Major } from '../../api/endpoints';
 import { BannerCarousel } from '../../components/BannerCarousel';
+import { BookCover } from '../../components/BookCover';
+import { Icon, IconBadge } from '../../components/Icon';
+import { LemonProgress } from '../../components/LemonProgress';
+import { LemonSlice } from '../../components/LemonSlice';
+import { Text } from '../../components/Text';
 import { ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
-import { useAuth } from '../../lib/auth';
+import { requireLogin, useAuth } from '../../lib/auth';
 import { storage, type LastSection } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
-import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
+import { colors, formatToman, rtl, toPersianDigits } from '../../theme';
 
 type MajorRef = { slug: string; name: string; color: string };
 
+/** Read sections as lemon wedges, from a book's share read (0–1) and its number of sections. */
+function wedges(progress: number | null, count: number) {
+  const n = Math.max(1, Math.min(count || 10, 24));
+  const done = Math.round((progress ?? 0) * n);
+  return Array.from({ length: n }, (_, i) => (i < done ? ('done' as const) : ('empty' as const)));
+}
+
 export default function Home() {
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
   const [major, setMajor] = useState<MajorRef | null>(null);
   const [last, setLast] = useState<LastSection | null>(null);
 
@@ -27,7 +37,8 @@ export default function Home() {
     }, []),
   );
 
-  const books = useApi(() => (major ? endpoints.books(major.slug) : Promise.resolve([])), [major?.slug]);
+  const majors = useApi(() => endpoints.majors(), []);
+  const books = useApi(() => (major ? endpoints.books(major.slug) : Promise.resolve([] as BookListItem[])), [major?.slug, user?.id]);
   const banners = useApi(() => (major ? endpoints.banners(major.slug) : Promise.resolve([])), [major?.slug]);
   const [due, setDue] = useState(0);
   useFocusEffect(
@@ -36,10 +47,40 @@ export default function Home() {
       else setDue(0);
     }, [user]),
   );
+  // Back from a book or a payment: progress and ownership may have changed.
+  const [focused, setFocused] = useState(0);
+  useFocusEffect(useCallback(() => setFocused((n) => n + 1), []));
+  useEffect(() => {
+    if (focused > 1) books.retry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused]);
+
+  // The shelf fades in when the major changes.
+  const shelf = useRef(new Animated.Value(1)).current;
+  const majorsRef = useRef<ScrollViewInstance>(null);
+  const pickMajor = (m: Major) => {
+    if (m.is_coming_soon || m.slug === major?.slug) return;
+    const next = { slug: m.slug, name: m.name, color: m.color };
+    shelf.setValue(0);
+    setMajor(next);
+    storage.setMajor(next);
+  };
+  useEffect(() => {
+    if (!books.loading) Animated.timing(shelf, { toValue: 1, duration: 260, useNativeDriver: true }).start();
+  }, [books.loading, shelf]);
+
+  const [notify, setNotify] = useState<Record<string, boolean>>({});
+  const toggleNotify = async (book: BookListItem) => {
+    if (!requireLogin(user, 'برای «خبرم کن» وارد شوید تا وقتی کتاب آماده شد خبرتان کنیم.')) return;
+    const on = !(notify[book.slug] ?? book.notify);
+    setNotify((n) => ({ ...n, [book.slug]: on }));
+    endpoints.notifyBook(book.slug, on).catch(() => setNotify((n) => ({ ...n, [book.slug]: !on })));
+  };
 
   const refresh = usePullRefresh(books.loading, () => {
     books.retry();
     banners.retry();
+    majors.retry();
   });
 
   if (!major) return <Loading />;
@@ -53,20 +94,20 @@ export default function Home() {
     else if (/^https?:\/\//.test(link)) Linking.openURL(link);
   };
 
+  const list = books.data ?? [];
+  const lastBook = last ? list.find((b) => b.slug === last.bookSlug) : undefined;
+  const pageWidth = Math.min(width, 760);
+  const coverWidth = Math.floor((pageWidth - 40 - 18) / 2);
+  const majorRef = { name: major.name, color: major.color };
+
   return (
     <Screen tab>
-      <ScrollView
-        contentContainerStyle={styles.page}
-        refreshControl={refresh}
-      >
+      <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
         <View style={styles.top}>
-          <View style={{ gap: 2 }}>
-            <Text style={[styles.hello, rtl]}>سلام{user?.first_name ? ` ${user.first_name}` : ''}</Text>
-            <Pressable onPress={() => router.push('/welcome')} style={styles.space} accessibilityRole="button" accessibilityLabel="تغییر رشته">
-              <View style={[styles.dot, { backgroundColor: major.color }]} />
-              <Text style={styles.spaceText}>لیمو {major.name}</Text>
-              <Text style={styles.chev}>▾</Text>
-            </Pressable>
+          <LemonSlice size={36} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.hello, rtl]}>سلام{user?.first_name ? ` ${user.first_name}` : ''}!</Text>
+            <Text style={[styles.muted, rtl]}>امروز کدام لیمو را می‌خوانی؟</Text>
           </View>
           {!user && (
             <Pressable onPress={() => router.push('/login')} style={styles.loginPill} accessibilityRole="button">
@@ -74,6 +115,27 @@ export default function Home() {
             </Pressable>
           )}
         </View>
+
+        {last && (
+          <Pressable onPress={() => router.push(`/section/${last.id}`)} style={styles.continue} accessibilityRole="button" accessibilityLabel={`ادامه‌ی خواندن ${last.title}`}>
+            {lastBook ? (
+              <BookCover book={lastBook} major={majorRef} width={64} />
+            ) : (
+              <View style={styles.continueLemon}>
+                <LemonSlice size={52} />
+              </View>
+            )}
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={[styles.continueLabel, rtl]}>ادامه‌ی خواندن</Text>
+              <Text style={[styles.continueTitle, rtl]} numberOfLines={1}>{last.bookTitle}</Text>
+              <Text style={[styles.continueSub, rtl]} numberOfLines={1}>{last.title}</Text>
+              <View style={styles.continuePill}>
+                <Text style={styles.continuePillText}>ادامه بده</Text>
+              </View>
+            </View>
+            {lastBook?.progress != null && <LemonProgress parts={wedges(lastBook.progress, lastBook.section_count)} size={46} />}
+          </Pressable>
+        )}
 
         {due > 0 && (
           <Pressable onPress={() => router.push('/review')} style={styles.review} accessibilityRole="button">
@@ -86,50 +148,102 @@ export default function Home() {
           </Pressable>
         )}
 
-        {last && (
-          <Pressable onPress={() => router.push(`/section/${last.id}`)} style={styles.continue} accessibilityRole="button">
-            <View style={[styles.continueCover, { backgroundColor: major.color }]}>
-              <Text style={[styles.continueSmall, rtl]}>{last.bookTitle}</Text>
-              <Text style={[styles.continueTitle, rtl]} numberOfLines={2}>{last.title}</Text>
-            </View>
-            <View style={styles.continueFoot}>
-              <View style={styles.pill}>
-                <Text style={styles.pillText}>ادامه بده ←</Text>
-              </View>
-              <Text style={[styles.muted, rtl]}>از همان‌جا که ماندی</Text>
-            </View>
-          </Pressable>
-        )}
+        <Text style={[styles.sectionTitle, rtl]}>رشته‌ات را انتخاب کن</Text>
+        <ScrollView
+          ref={majorsRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.majors}
+          style={styles.majorsWrap}
+          // Right-to-left: the row starts at its right end, where the first major is.
+          onContentSizeChange={() => majorsRef.current?.scrollToEnd({ animated: false })}
+        >
+          {(majors.data ?? [{ slug: major.slug, name: major.name, color: major.color, is_coming_soon: false }]).map((m) => {
+            const on = m.slug === major.slug;
+            return (
+              <Pressable
+                key={m.slug}
+                onPress={() => pickMajor(m)}
+                disabled={m.is_coming_soon}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: on, disabled: m.is_coming_soon }}
+                style={[
+                  styles.major,
+                  on ? { backgroundColor: m.color, borderColor: m.color, shadowColor: m.color, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4 } : null,
+                  m.is_coming_soon && { opacity: 0.55 },
+                ]}
+              >
+                <View style={[styles.majorDot, { backgroundColor: on ? '#FFFFFF' : m.color }]} />
+                <View>
+                  <Text style={[styles.majorSmall, on && { color: '#FFFFFFCC' }]}>{m.is_coming_soon ? 'به‌زودی' : 'لیمو'}</Text>
+                  <Text style={[styles.majorName, on && { color: '#FFFFFF' }]}>{m.name}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
 
         {!!banners.data?.length && <BannerCarousel banners={banners.data} onOpen={(b) => openLink(b.link, b.id)} />}
 
-        <Text style={[styles.sectionTitle, rtl]}>کتاب‌ها</Text>
-        {books.loading && !books.data?.length ? (
+        <View style={styles.shelfHead}>
+          <Text style={[styles.shelfTitle, rtl]}>کتاب‌های لیمو {major.name}</Text>
+          {!!list.length && <Text style={styles.muted}>{toPersianDigits(list.length)} کتاب</Text>}
+        </View>
+
+        {books.loading && !list.length ? (
           <Loading />
         ) : books.error ? (
           <ErrorState message={books.error.message} onRetry={books.retry} />
-        ) : books.data!.length === 0 ? (
+        ) : list.length === 0 ? (
           <Text style={[styles.muted, rtl]}>هنوز کتابی برای این رشته منتشر نشده است.</Text>
         ) : (
-          books.data!.map((book) => (
-            <Pressable key={book.slug} onPress={() => router.push(`/book/${book.slug}`)} style={styles.book} accessibilityRole="button">
-              <View style={[styles.cover, { backgroundColor: major.color }]}>
-                <Text style={styles.coverText} numberOfLines={3}>{book.title}</Text>
-              </View>
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={[styles.bookTitle, rtl]}>{book.title}</Text>
-                <Text style={[styles.muted, rtl]}>{toPersianDigits(book.chapter_count)} فصل{book.price ? `، ${formatToman(book.price)}` : ''}</Text>
-                {book.owned ? (
-                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
-                    <Icon name="circle-check" size={15} color={colors.greenDark} />
-                    <Text style={[styles.free, rtl]}>در دسترس شما</Text>
-                  </View>
-                ) : (
-                  book.has_free_part && <Text style={[styles.free, rtl]}>بخشی از کتاب رایگان است</Text>
-                )}
-              </View>
-            </Pressable>
-          ))
+          <Animated.View style={[styles.shelf, { opacity: shelf }]}>
+            {list.map((book) => {
+              const free = !book.owned && !book.is_coming_soon ? (book.free_chapter ? `فصل ${toPersianDigits(book.free_chapter)} رایگان` : book.has_free_part ? 'بخش رایگان' : '') : '';
+              const waiting = notify[book.slug] ?? book.notify;
+              return (
+                <View key={book.slug} style={{ width: coverWidth, gap: 8 }}>
+                  <Pressable
+                    onPress={() => router.push({ pathname: '/book/[slug]', params: { slug: book.slug } })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${book.title}${book.is_coming_soon ? '، به‌زودی' : ''}`}
+                    style={({ pressed }) => [{ opacity: book.is_coming_soon ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
+                  >
+                    <BookCover book={book} major={majorRef} width={coverWidth} />
+                    {!!free && <Text style={[styles.ribbon, styles.ribbonFree]}>{free}</Text>}
+                    {book.is_coming_soon && <Text style={[styles.ribbon, styles.ribbonSoon]}>به‌زودی</Text>}
+                    {book.owned && !book.is_coming_soon && (
+                      <View style={[styles.ribbon, styles.ribbonOwned]}>
+                        <Icon name="circle-check" size={12} color="#FFFFFF" />
+                        <Text style={styles.ribbonOwnedText}>مال تو</Text>
+                      </View>
+                    )}
+                    {book.progress != null && (
+                      <View style={styles.progressBadge}>
+                        <LemonProgress parts={wedges(book.progress, book.section_count)} size={18} />
+                        <Text style={styles.progressText}>{toPersianDigits(Math.round(book.progress * 100))}٪</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                  {book.is_coming_soon ? (
+                    <Pressable
+                      onPress={() => toggleNotify(book)}
+                      style={[styles.notify, waiting && styles.notifyOn]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: waiting }}
+                    >
+                      <Icon name={waiting ? 'bell-ring' : 'bell'} size={15} color={waiting ? colors.ink : colors.ink} />
+                      <Text style={styles.notifyText}>{waiting ? 'خبرت می‌کنیم' : 'خبرم کن'}</Text>
+                    </Pressable>
+                  ) : (
+                    <Text style={[styles.price, rtl]} numberOfLines={1}>
+                      {book.owned ? 'در دسترس تو' : book.price ? `${formatToman(book.price)}، یا با اشتراک` : 'رایگان'}
+                    </Text>
+                  )}
+                </View>
+              );
+            })}
+          </Animated.View>
         )}
 
         <View style={styles.soon}>
@@ -145,32 +259,42 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
-  page: { padding: 20, gap: 16 },
-  top: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
-  hello: { fontSize: 13, color: colors.muted },
-  space: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  spaceText: { fontSize: 15, fontWeight: '700', color: colors.ink },
-  chev: { color: colors.ink },
-  review: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: 20, padding: 14, borderWidth: 1.5, borderColor: colors.lemon },
-  reviewTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
+  page: { padding: 20, gap: 16, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  top: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  hello: { fontSize: 20, fontWeight: '900', color: colors.ink },
+  muted: { fontSize: 13, color: colors.muted },
   loginPill: { backgroundColor: colors.ink, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10 },
   loginText: { color: colors.lemon, fontWeight: '800' },
-  iconBox: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  continue: { backgroundColor: colors.surface, borderRadius: 26, overflow: 'hidden', shadowColor: '#17201A', shadowOpacity: 0.1, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
-  continueCover: { padding: 18, minHeight: 110, justifyContent: 'flex-end' },
-  continueSmall: { color: '#FFFFFFCC', fontSize: 12 },
-  continueTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '800' },
-  continueFoot: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', padding: 14 },
-  pill: { backgroundColor: colors.lemon, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
-  pillText: { fontWeight: '800', color: colors.ink },
-  muted: { fontSize: 13, color: colors.muted },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, marginTop: 4 },
-  book: { flexDirection: 'row-reverse', gap: 14, alignItems: 'center', backgroundColor: colors.surface, borderRadius: radius.md, padding: 12, borderWidth: 1, borderColor: colors.line },
-  cover: { width: 62, height: 86, borderTopLeftRadius: 10, borderBottomLeftRadius: 10, borderTopRightRadius: 4, borderBottomRightRadius: 4, padding: 6, justifyContent: 'flex-end' },
-  coverText: { color: '#fff', fontSize: 10, fontWeight: '700', textAlign: 'right' },
-  bookTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
-  free: { fontSize: 12, color: colors.greenDark, fontWeight: '700' },
+  continue: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: colors.ink, borderRadius: 22, padding: 14 },
+  continueLemon: { width: 64, height: 96, borderRadius: 10, backgroundColor: '#24302A', alignItems: 'center', justifyContent: 'center' },
+  continueLabel: { fontSize: 11, fontWeight: '800', color: colors.lemon },
+  continueTitle: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
+  continueSub: { fontSize: 12, color: '#A9B6AD' },
+  continuePill: { alignSelf: 'flex-end', marginTop: 6, backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 5 },
+  continuePillText: { fontSize: 12, fontWeight: '800', color: colors.ink },
+  review: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: 20, padding: 14, borderWidth: 1.5, borderColor: colors.lemon },
+  reviewTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
+  sectionTitle: { fontSize: 15, fontWeight: '900', color: colors.ink, marginBottom: -6 },
+  majorsWrap: { marginHorizontal: -20, flexGrow: 0 },
+  majors: { flexDirection: 'row-reverse', gap: 10, paddingHorizontal: 20, paddingVertical: 4 },
+  major: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, minHeight: 52, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
+  majorDot: { width: 9, height: 9, borderRadius: 5 },
+  majorSmall: { fontSize: 10, color: colors.muted, textAlign: 'right' },
+  majorName: { fontSize: 14, fontWeight: '800', color: colors.ink, textAlign: 'right' },
+  shelfHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
+  shelfTitle: { fontSize: 18, fontWeight: '900', color: colors.ink },
+  shelf: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 18, rowGap: 22 },
+  ribbon: { position: 'absolute', top: 12, left: -4, fontSize: 10, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6, overflow: 'hidden' },
+  ribbonFree: { backgroundColor: colors.lemon, color: colors.ink },
+  ribbonSoon: { backgroundColor: colors.ink, color: colors.ground },
+  ribbonOwned: { backgroundColor: '#3FB8A9', flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
+  ribbonOwnedText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  progressBadge: { position: 'absolute', bottom: 10, left: 10, flexDirection: 'row-reverse', alignItems: 'center', gap: 5, backgroundColor: 'rgba(23,32,26,0.88)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
+  progressText: { fontSize: 11, fontWeight: '800', color: colors.lemon },
+  notify: { minHeight: 38, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  notifyOn: { backgroundColor: colors.lemonSoft, borderColor: colors.lemon },
+  notifyText: { fontSize: 12, fontWeight: '700', color: colors.ink },
+  price: { fontSize: 12, color: colors.muted, minHeight: 38, textAlignVertical: 'center' },
   soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, padding: 12 },
   soonText: { color: colors.muted, fontSize: 13 },
   soonBadge: { backgroundColor: colors.lemonSoft, color: '#6B5200', fontSize: 12, fontWeight: '700', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2, overflow: 'hidden' },

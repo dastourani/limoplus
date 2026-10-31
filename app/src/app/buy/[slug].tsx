@@ -5,9 +5,11 @@ import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 
 import { ApiError } from '../../api/client';
 import { endpoints, type Plan } from '../../api/endpoints';
+import { BookCover } from '../../components/BookCover';
 import { Text } from '../../components/Text';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { coverByline } from '../../lib/cover';
 import { storage } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
 import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
@@ -24,6 +26,11 @@ export default function Buy() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<number | null>(null);
+  const book = useApi(() => endpoints.book(String(slug)), [slug]);
+  const [majorRef, setMajorRef] = useState<{ name: string; color: string } | null>(null);
+  useEffect(() => {
+    storage.getMajor().then((m) => m && setMajorRef({ name: m.name, color: m.color }));
+  }, []);
 
   // The subscription major defaults to the space the learner is in.
   useEffect(() => {
@@ -31,8 +38,8 @@ export default function Buy() {
     storage.getMajor().then((m) => m && data.majors.some((x) => x.slug === m.slug) && setMajor((cur) => cur ?? m.slug));
   }, [data]);
 
-  if (loading) return <Screen><Header title="خرید" /><Loading /></Screen>;
-  if (error || !data) return <Screen><Header title="خرید" /><ErrorState message={error?.message ?? ''} onRetry={retry} /></Screen>;
+  if (loading) return <Screen><Header title="باز کردن کتاب" /><Loading /></Screen>;
+  if (error || !data) return <Screen><Header title="باز کردن کتاب" /><ErrorState message={error?.message ?? ''} onRetry={retry} /></Screen>;
 
   const majorChoice = major ?? (data.majors.length === 1 ? data.majors[0].slug : null);
   const needsMajor = choice?.kind === 'plan' && choice.plan.scope === 'major';
@@ -66,37 +73,60 @@ export default function Buy() {
     }
   };
 
-  const Option = ({ on, title, price, sub, onPress }: { on: boolean; title: string; price: number; sub: string; onPress: () => void }) => (
+  const Option = ({ on, title, price, unit, sub, badge, onPress }: { on: boolean; title: string; price: number; unit?: string; sub: string; badge?: string; onPress: () => void }) => (
     <Pressable onPress={onPress} style={[styles.option, on && styles.optionOn]} accessibilityRole="radio" accessibilityState={{ checked: on }}>
+      <View style={[styles.radio, on && styles.radioOn]}>{on && <View style={styles.radioDot} />}</View>
       <View style={{ flex: 1, gap: 4 }}>
-        <Text style={[styles.optionTitle, rtl]}>{title}</Text>
+        <View style={styles.optionTop}>
+          <Text style={[styles.optionTitle, rtl, { flex: 1 }]}>{title}</Text>
+          <Text style={styles.price}>
+            {formatToman(price).replace(' تومان', '')} <Text style={styles.unit}>{unit ?? 'تومان'}</Text>
+          </Text>
+        </View>
         <Text style={[styles.sub, rtl]}>{sub}</Text>
       </View>
-      <Text style={styles.price}>{formatToman(price)}</Text>
+      {!!badge && <Text style={styles.badge}>{badge}</Text>}
     </Pressable>
   );
 
+  const amount = choice?.kind === 'book' ? data.book.price ?? 0 : choice?.kind === 'plan' ? choice.plan.price : 0;
+
   return (
     <Screen>
-      <Header title="خرید" subtitle={data.book.title} />
+      <Header title="باز کردن کتاب" />
       <ScrollView contentContainerStyle={styles.page}>
+        <View style={styles.bookCard}>
+          {book.data ? <BookCover book={book.data} major={majorRef} width={64} /> : <View style={styles.coverSpace} />}
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={[styles.bookTitle, rtl]}>{data.book.title}</Text>
+            {!!book.data && !!coverByline(book.data.author, book.data.edition) && <Text style={[styles.sub, rtl]}>{coverByline(book.data.author, book.data.edition)}</Text>}
+            {!!book.data && (
+              <Text style={[styles.sub, rtl]}>
+                {toPersianDigits(book.data.chapter_count)} فصل، {toPersianDigits(book.data.section_count)} بخش
+              </Text>
+            )}
+          </View>
+        </View>
+
+        <Text style={[styles.group, rtl]}>یکی را انتخاب کن</Text>
         {!!data.book.price && (
           <Option
             on={choice?.kind === 'book'}
-            title={`خرید کتاب «${data.book.title}»`}
-            sub="همیشگی؛ خلاصه، جزوه، تست‌ها و فلش‌کارت‌های کتاب"
+            title="فقط همین کتاب"
+            sub="یک‌بار پرداخت، همیشه مال تو؛ همه‌ی فصل‌های فعلی و فصل‌هایی که بعداً اضافه می‌شوند."
             price={data.book.price}
             onPress={() => setChoice({ kind: 'book' })}
           />
         )}
-        {data.plans.length > 0 && <Text style={[styles.group, rtl]}>یا اشتراک (همه‌ی کتاب‌های رشته)</Text>}
-        {data.plans.map((plan) => (
+        {data.plans.map((plan, i) => (
           <Option
             key={plan.id}
             on={choice?.kind === 'plan' && choice.plan.id === plan.id}
             title={plan.title}
-            sub={`${toPersianDigits(plan.months)} ماه، ${plan.scope === 'all' ? 'همه‌ی رشته‌ها' : 'همه‌ی کتاب‌های یک رشته'}`}
+            sub={`${plan.scope === 'all' ? 'همه‌ی کتاب‌های همه‌ی رشته‌ها' : 'همه‌ی کتاب‌های یک رشته'} تا وقتی اشتراک داری (${toPersianDigits(plan.months)} ماه)؛ کتاب‌های تازه هم خودکار اضافه می‌شوند.`}
             price={plan.price}
+            unit={plan.months === 1 ? 'تومان در ماه' : `تومان برای ${toPersianDigits(plan.months)} ماه`}
+            badge={i === 0 ? 'برای چند کتاب به‌صرفه‌تر' : undefined}
             onPress={() => setChoice({ kind: 'plan', plan })}
           />
         ))}
@@ -112,12 +142,27 @@ export default function Buy() {
             </View>
           </View>
         )}
-        <Text style={[styles.sub, rtl]}>پرداخت امن با درگاه زیبال. بعد از پرداخت، کتاب فوراً برایتان باز می‌شود.</Text>
+        {!!choice && (
+          <View style={styles.summary}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.sub}>مبلغ</Text>
+              <Text style={styles.summaryValue}>{formatToman(amount)}</Text>
+            </View>
+            <View style={styles.rule} />
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryTotal}>قابل پرداخت</Text>
+              <Text style={styles.summaryTotal}>{formatToman(amount)}</Text>
+            </View>
+          </View>
+        )}
+        <Text style={[styles.sub, rtl, { textAlign: 'center' }]}>
+          به درگاه بانکی زیبال می‌روی و بعد از پرداخت خودکار به اپ برمی‌گردی؛ قفل باز می‌شود و از همان‌جا ادامه می‌دهی.
+        </Text>
         {!!message && <Text style={[styles.message, rtl]}>{message}</Text>}
       </ScrollView>
       <View style={styles.bar}>
         {pendingOrder && <Button label="بررسی پرداخت" variant="outline" onPress={() => check(pendingOrder)} />}
-        <Button label={busy ? 'اتصال به درگاه' : 'پرداخت'} disabled={!ready} loading={busy} onPress={pay} />
+        <Button label={busy ? 'اتصال به درگاه' : 'پرداخت امن با زیبال'} variant="dark" disabled={!ready} loading={busy} onPress={pay} />
       </View>
     </Screen>
   );
@@ -125,16 +170,30 @@ export default function Buy() {
 
 
 const styles = StyleSheet.create({
-  page: { padding: 16, gap: 12 },
-  option: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, padding: 16, borderRadius: radius.md, borderWidth: 2, borderColor: colors.line, backgroundColor: colors.surface },
-  optionOn: { borderColor: colors.ink, backgroundColor: colors.lemonSoft },
-  optionTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
-  sub: { fontSize: 13, color: colors.muted, lineHeight: 22 },
-  price: { fontSize: 15, fontWeight: '800', color: colors.ink },
-  group: { fontSize: 14, fontWeight: '700', color: colors.muted, marginTop: 8 },
+  page: { padding: 16, gap: 12, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  bookCard: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 12 },
+  coverSpace: { width: 64, height: 96, borderRadius: 8, backgroundColor: colors.ink },
+  bookTitle: { fontSize: 16, fontWeight: '900', color: colors.ink },
+  option: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
+  optionOn: { borderWidth: 2, borderColor: colors.ink, shadowColor: '#17201A', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
+  optionTop: { flexDirection: 'row-reverse', alignItems: 'baseline', gap: 8 },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#CBD3C6', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  radioOn: { borderColor: colors.ink },
+  radioDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: colors.ink },
+  optionTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  sub: { fontSize: 12.5, color: colors.muted, lineHeight: 22 },
+  price: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  unit: { fontSize: 11, fontWeight: '400', color: colors.muted },
+  badge: { position: 'absolute', top: -10, left: 16, backgroundColor: '#3FB8A9', color: '#FFFFFF', fontSize: 10, fontWeight: '800', paddingHorizontal: 9, paddingVertical: 2, borderRadius: 8, overflow: 'hidden' },
+  group: { fontSize: 14, fontWeight: '900', color: colors.ink, marginTop: 6 },
   majors: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
   major: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.surface },
   majorOn: { backgroundColor: colors.ink, borderColor: colors.ink },
+  summary: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+  summaryRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
+  summaryValue: { fontSize: 13, color: colors.ink },
+  summaryTotal: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  rule: { height: 1, backgroundColor: colors.line },
   message: { backgroundColor: colors.lemonSoft, padding: 12, borderRadius: 12, color: '#6B5200', lineHeight: 24 },
   bar: { padding: 12, gap: 8, borderTopWidth: 1, borderTopColor: colors.line },
 });

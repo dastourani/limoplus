@@ -12,6 +12,7 @@ import { Button, Card, Screen } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { jalaliDate } from '../../lib/jalali';
 import { play, setSoundEnabled, soundEnabled } from '../../lib/sound';
+import { setCoverTheme, useCoverTheme } from '../../lib/coverTheme';
 import { storage } from '../../lib/storage';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
@@ -30,6 +31,7 @@ export default function Profile() {
   const [major, setMajor] = useState<{ name: string } | null>(null);
   const [purchases, setPurchases] = useState<Purchases | null>(null);
   const [sound, setSound] = useState(true);
+  const coverTheme = useCoverTheme();
   useEffect(() => {
     soundEnabled().then(setSound);
   }, []);
@@ -91,6 +93,23 @@ export default function Profile() {
               accessibilityLabel="صدای جشن‌ها"
             />
           </View>
+          <View style={styles.row}>
+            <Text style={[styles.rowLabel, rtl]}>جلد کتاب‌ها</Text>
+            <View style={styles.segment} accessibilityRole="radiogroup">
+              {(['dark', 'light'] as const).map((t) => (
+                <Pressable
+                  key={t}
+                  onPress={() => setCoverTheme(t)}
+                  style={[styles.segmentItem, coverTheme === t && styles.segmentOn]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: coverTheme === t }}
+                >
+                  <View style={[styles.swatch, { backgroundColor: t === 'dark' ? colors.ink : '#F4F0E3' }]} />
+                  <Text style={[styles.segmentText, coverTheme === t && { color: colors.ink }]}>{t === 'dark' ? 'تیره' : 'روشن'}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
           <Row label="تنظیمات سرور" onPress={() => router.push('/settings')} />
         </View>
 
@@ -141,5 +160,10 @@ const styles = StyleSheet.create({
   soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, padding: 12 },
   soonText: { color: colors.muted, fontSize: 13 },
   soonBadge: { backgroundColor: colors.lemonSoft, color: '#6B5200', fontSize: 12, fontWeight: '700', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2, overflow: 'hidden' },
+  segment: { flexDirection: 'row-reverse', backgroundColor: colors.ground, borderRadius: 12, padding: 3, gap: 3 },
+  segmentItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
+  segmentOn: { backgroundColor: colors.surface, shadowColor: '#17201A', shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 },
+  segmentText: { fontSize: 13, fontWeight: '700', color: colors.muted },
+  swatch: { width: 12, height: 18, borderRadius: 3, borderWidth: 1, borderColor: colors.line },
   version: { textAlign: 'center', color: colors.muted, fontSize: 12 },
 });

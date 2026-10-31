@@ -8,6 +8,7 @@
 {% endblock %}
 {% block content %}
 {{ block.super }}
+{{ majors_json|json_script:"lp-majors" }}
 {% if original %}
 <div class="lp chapters-box" id="chapters">
   <h2>فصل‌های کتاب</h2>

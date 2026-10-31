@@ -53,6 +53,11 @@ import MapIcon from 'lucide-react-native/icons/map';
 import Languages from 'lucide-react-native/icons/languages';
 import Volume2 from 'lucide-react-native/icons/volume-2';
 import VolumeX from 'lucide-react-native/icons/volume-x';
+import Bell from 'lucide-react-native/icons/bell';
+import BellRing from 'lucide-react-native/icons/bell-ring';
+import Gift from 'lucide-react-native/icons/gift';
+import CreditCard from 'lucide-react-native/icons/credit-card';
+import LockOpen from 'lucide-react-native/icons/lock-open';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { colors } from '../theme';
@@ -109,6 +114,11 @@ const ICONS = {
   'languages': Languages,
   'volume-2': Volume2,
   'volume-x': VolumeX,
+  bell: Bell,
+  'bell-ring': BellRing,
+  gift: Gift,
+  'credit-card': CreditCard,
+  'lock-open': LockOpen,
 } as const;
 
 export type IconName = keyof typeof ICONS;
