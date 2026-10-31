@@ -13,6 +13,8 @@ export type CoverBook = {
   author?: string;
   edition?: string;
   motif?: string;
+  /** The book's own line drawing (motif «custom»), as the server cleaned it. */
+  drawing?: { viewBox: string; body: string } | null;
   /** An uploaded cover picture replaces the drawn cover. */
   cover?: string | null;
 };
@@ -40,7 +42,7 @@ export const BookCover = memo(function BookCover({
   const p = coverPalette(theme);
   const k = width / 240;
   const strip = major?.color || '#3FB8A9';
-  const xml = useMemo(() => coverMotifSvg(book.motif || 'ct', theme), [book.motif, theme]);
+  const xml = useMemo(() => coverMotifSvg(book.motif || 'ct', theme, book.drawing), [book.motif, book.drawing, theme]);
   const byline = coverByline(book.author, book.edition);
   const frame = {
     width,

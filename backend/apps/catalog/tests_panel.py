@@ -415,3 +415,80 @@ class ShelfTests(_Base):
         page = self.client.get(reverse("admin:catalog_book_change", args=[self.book.pk]))
         for field in ("id_cover_motif", "id_title_en", "id_is_coming_soon", "lp-majors"):
             self.assertContains(page, field)
+
+
+SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#123456" stroke-width="2">'
+    '<script>alert(1)</script><style>*{}</style><text>hi</text>'
+    '<g transform="translate(1 1)"><path d="M2 2 L20 20" onclick="x()"/><circle cx="12" cy="12" r="4" fill="red"/></g>'
+    '<image href="http://x/y.png"/><rect x="1" y="1" width="3" height="3" style="stroke:none;fill:#000"/></svg>'
+)
+
+
+class DrawingTests(_Base):
+    def test_clean_svg_keeps_only_shapes_and_recolours_them(self):
+        from .drawing import clean_svg
+
+        d = clean_svg(SVG.encode())
+        self.assertEqual(d["viewBox"], "0 0 24 24")
+        body = d["body"]
+        for bad in ("script", "style", "text", "image", "onclick", "#123456", "red", "#000", "http"):
+            self.assertNotIn(bad, body)
+        self.assertIn('<g transform="translate(1 1)">', body)
+        self.assertIn('d="M2 2 L20 20"', body)
+        self.assertIn('fill="none"', body)
+        self.assertIn('stroke="@L@"', body)
+        self.assertIn('<rect fill="@L@"', body)
+
+    def test_clean_svg_refuses_bad_files(self):
+        from .drawing import DrawingError, clean_svg
+
+        for data in (
+            b'<!DOCTYPE svg [<!ENTITY a "aaaa">]><svg viewBox="0 0 1 1"><path d="M0 0"/></svg>',
+            b"<svg viewBox='0 0 1 1'><text>only text</text></svg>",
+            b"not xml",
+            b"<html/>",
+            b"<svg><path d='M0 0'/></svg>",
+            b"<svg viewBox='0 0 1 1'>" + b"<path d='M0 0'/>" * 700 + b"</svg>",
+        ):
+            with self.assertRaises(DrawingError, msg=data[:40]):
+                clean_svg(data)
+
+    def test_upload_drawing_in_book_form_and_shelf_returns_it(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        url = reverse("admin:catalog_book_change", args=[self.book.pk])
+        page = self.client.get(url)
+        self.assertContains(page, "id_drawing_file")
+        data = {
+            "title": self.book.title, "slug": self.book.slug, "author": "", "edition": "", "about": "", "title_en": "",
+            "majors": [Major.objects.get(slug="economics").pk], "price": "", "is_published": "on", "cover_motif": "fourier",
+            "drawing_file": SimpleUploadedFile("d.svg", SVG.encode(), content_type="image/svg+xml"),
+        }
+        r = self.client.post(url, data)
+        self.assertEqual(r.status_code, 302, r.content[:3000])
+        book = ContentNode.objects.get(pk=self.book.pk)
+        self.assertEqual(book.cover_motif, "custom")
+        from rest_framework.test import APIClient
+
+        card = APIClient().get("/api/v1/majors/economics/books/").json()[0]
+        self.assertEqual(card["motif"], "custom")
+        self.assertEqual(card["drawing"]["viewBox"], "0 0 24 24")
+
+        bad = dict(data, drawing_file=SimpleUploadedFile("d.svg", b"<svg/>", content_type="image/svg+xml"))
+        self.assertContains(self.client.post(url, bad), "viewBox")
+
+        data.pop("drawing_file")
+        self.client.post(url, dict(data, cover_motif="custom", clear_drawing="on"))
+        book = ContentNode.objects.get(pk=self.book.pk)
+        self.assertEqual((book.cover_drawing, book.cover_motif), ("", "book"))
+
+    def test_custom_motif_needs_a_drawing(self):
+        url = reverse("admin:catalog_book_change", args=[self.book.pk])
+        data = {
+            "title": self.book.title, "slug": self.book.slug, "author": "", "edition": "", "about": "", "title_en": "",
+            "majors": [Major.objects.get(slug="economics").pk], "price": "", "is_published": "on", "cover_motif": "custom",
+        }
+        r = self.client.post(url, data)
+        self.assertEqual(r.status_code, 200)
+        self.assertNotEqual(ContentNode.objects.get(pk=self.book.pk).cover_motif, "custom")

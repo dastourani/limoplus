@@ -61,9 +61,40 @@ class ContentNode(MP_Node):
         SYSTEM = "system", "ورودی، h(t)، خروجی (سیگنال‌ها و سیستم‌ها)"
         FOURIER = "fourier", "سری فوریه (ریاضی مهندسی)"
         WORDS = "words", "ریشه‌ی واژه‌ها (زبان تخصصی)"
+        CALCULUS = "calculus", "مشتق و انتگرال (ریاضی عمومی ۱، حسابان)"
+        SURFACE = "surface", "رویه‌ی سه‌بعدی (ریاضی عمومی ۲، توابع چندمتغیره)"
+        SLOPEFIELD = "slopefield", "میدان شیب (معادلات دیفرانسیل)"
+        VECTORS = "vectors", "بردارها (جبر خطی، مکانیک)"
+        NEWTON = "newton", "روش نیوتن (محاسبات عددی، آنالیز عددی)"
+        CONTOUR = "contour", "منحنی‌های تراز و کمینه (بهینه‌سازی)"
+        SIMPLEX = "simplex", "ناحیه‌ی شدنی (تحقیق در عملیات، برنامه‌ریزی خطی)"
+        GRAPH = "graph", "گراف (ریاضیات گسسته، ساختمان داده، الگوریتم)"
+        COMPLEX = "complex", "صفحه‌ی مختلط (متغیرهای مختلط)"
+        BELL = "bell", "منحنی زنگوله‌ای (آمار و احتمال)"
+        SURVIVAL = "survival", "منحنی بقا (آمار حیاتی، اپیدمیولوژی)"
+        REGRESSION = "regression", "رگرسیون (آمار، روش تحقیق، اقتصادسنجی)"
+        PROJECTILE = "projectile", "پرتابه (فیزیک ۱، مکانیک)"
+        ATOM = "atom", "اتم (فیزیک، فیزیک پزشکی، فیزیک هسته‌ای)"
+        MOLECULE = "molecule", "مولکول (شیمی عمومی و آلی)"
+        DNA = "dna", "مارپیچ DNA (بیوشیمی، ژنتیک، زیست مولکولی)"
+        ECG = "ecg", "نوار قلب (فیزیولوژی، سیگنال‌های حیاتی)"
+        HEART = "heart", "قلب (آناتومی، قلب و عروق)"
+        FEEDBACK = "feedback", "حلقه‌ی بازخورد (کنترل خطی، سیستم‌های کنترل)"
+        CIRCUIT = "circuit", "مدار RLC (مدار الکتریکی، الکترونیک)"
+        MRI = "mri", "اسپین و میدان (MRI، تشدید مغناطیسی)"
+        ULTRASOUND = "ultrasound", "موج و پژواک (سونوگرافی، آکوستیک)"
+        BIOMECH = "biomech", "اهرم بازو (بیومکانیک)"
+        NETWORK = "network", "شبکه‌ی عصبی (هوش مصنوعی، یادگیری ماشین)"
+        MICROSCOPE = "microscope", "میکروسکوپ (بافت‌شناسی، پاتولوژی، سلولی)"
+        MICROBE = "microbe", "ویروس و آنتی‌بادی (میکروب‌شناسی، ایمنی‌شناسی)"
+        DOSE = "dose", "منحنی دوز و پاسخ (فارماکولوژی)"
+        CODE = "code", "آکولاد کد (برنامه‌نویسی، کامپیوتر)"
+        BOOK = "book", "کتاب باز (هر درس دیگر)"
+        CUSTOM = "custom", "طرح سفارشی (فایل SVG خودتان)"
 
     cover_motif = models.CharField("نقش جلد", max_length=20, choices=Motif.choices, default=Motif.CT,
                                    help_text="نقش خطی وسط جلد؛ بقیه‌ی جلد (رنگ، نام، نویسنده) خودکار است. اگر «عکس جلد» بگذارید، عکس به‌جای این جلد نشان داده می‌شود.")
+    cover_drawing = models.TextField("طرح سفارشی جلد", blank=True, editable=False, help_text="طرح خطی پاک‌سازی‌شده‌ی یک فایل SVG")
     is_coming_soon = models.BooleanField("به‌زودی", default=False, help_text="کتاب با جلد کم‌رنگ و دکمه‌ی «خبرم کن» در قفسه دیده می‌شود ولی باز نمی‌شود.")
     is_published = models.BooleanField("منتشر شده", default=False)
     is_archived = models.BooleanField("بایگانی", default=False, help_text="به‌جای حذف؛ داده‌ی کاربران حفظ می‌شود")

@@ -8,6 +8,7 @@ export type BookListItem = {
   author: string;
   edition: string;
   motif: string;
+  drawing: { viewBox: string; body: string } | null;
   cover: string | null;
   is_coming_soon: boolean;
   price: number | null;

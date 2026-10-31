@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.db.models import Count, Q
 from django.shortcuts import redirect
@@ -5,6 +6,8 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 
 from . import panel
+from .drawing import DrawingError, clean_svg
+from .drawing import dumps as dumps_drawing
 from .filters import BookFilter, ChapterFilter, YesNoFilter
 from .models import Banner, Book, BookWaitlist, ChapterRevision, ContentNode, Major, Section
 
@@ -16,10 +19,47 @@ class MajorAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("name",)}
 
 
+class BookForm(forms.ModelForm):
+    drawing_file = forms.FileField(
+        label="فایل طرح سفارشی (SVG)",
+        required=False,
+        help_text="فقط وقتی هیچ «نقش جلد» آماده‌ای به درس نمی‌خورد: یک طرح خطی ساده (مثلاً از یک سایت آیکن) با پسوند svg. "
+        "رنگ‌هایش خودکار لیمویی یا جوهری می‌شود. با بارگذاری، «نقش جلد» خودکار «طرح سفارشی» می‌شود.",
+    )
+    clear_drawing = forms.BooleanField(label="حذف طرح سفارشی", required=False)
+
+    class Meta:
+        model = Book
+        fields = "__all__"
+
+    def clean_drawing_file(self):
+        upload = self.cleaned_data.get("drawing_file")
+        self.drawing = None
+        if upload:
+            if not upload.name.lower().endswith(".svg"):
+                raise forms.ValidationError("فقط فایل svg.")
+            try:
+                self.drawing = clean_svg(upload.read())
+            except DrawingError as e:
+                raise forms.ValidationError(str(e))
+        return upload
+
+    def clean(self):
+        data = super().clean()
+        new = getattr(self, "drawing", None)
+        if data.get("clear_drawing") and not new and data.get("cover_motif") == "custom":
+            data["cover_motif"] = "book"  # removing the drawing falls back to the plain book motif
+        has_drawing = new or (self.instance.cover_drawing and not data.get("clear_drawing"))
+        if data.get("cover_motif") == "custom" and not has_drawing:
+            self.add_error("cover_motif", "برای «طرح سفارشی» اول فایل SVG طرح را بارگذاری کنید.")
+        return data
+
+
 @admin.register(Book)
 class BookAdmin(admin.ModelAdmin):
     """«کتاب‌ها»: make a book first (cover, about, majors, price), then add its chapters on the book's page."""
 
+    form = BookForm
     change_form_template = "admin/catalog/book/change_form.html"
     change_list_template = "admin/catalog/book/change_list.html"
     list_display = ("cover_thumb", "title", "author", "chapter_count", "price", "waiting", "is_coming_soon", "is_published", "is_archived")
@@ -28,7 +68,7 @@ class BookAdmin(admin.ModelAdmin):
     search_fields = ("title", "slug", "author")
     fieldsets = (
         (None, {"fields": ("title", "title_en", "slug", "author", "edition", "majors")}),
-        ("جلد و معرفی", {"fields": ("cover_motif", "cover", "about")}),
+        ("جلد و معرفی", {"fields": ("cover_motif", "drawing_file", "clear_drawing", "cover", "about")}),
         ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "position", "is_published", "is_archived")}),
     )
 
@@ -60,6 +100,13 @@ class BookAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         obj.kind = ContentNode.Kind.BOOK
+        if getattr(form, "drawing", None):
+            obj.cover_drawing = dumps_drawing(form.drawing)
+            obj.cover_motif = ContentNode.Motif.CUSTOM
+        elif form.cleaned_data.get("clear_drawing"):
+            obj.cover_drawing = ""
+            if obj.cover_motif == ContentNode.Motif.CUSTOM:
+                obj.cover_motif = ContentNode.Motif.BOOK
         if change:
             obj.save()
         else:
@@ -74,8 +121,8 @@ class BookAdmin(admin.ModelAdmin):
             return format_html('<img src="{}" style="height:66px;border-radius:6px">', obj.cover.url)
         major = obj.majors.order_by("order", "name").first()
         return format_html(
-            '<span class="lp-cover" data-title="{}" data-en="{}" data-author="{}" data-edition="{}" data-motif="{}" data-major="{}" data-strip="{}" data-width="44"></span>',
-            obj.title, obj.title_en, obj.author, obj.edition, obj.cover_motif, major.name if major else "", major.color if major else "",
+            '<span class="lp-cover" data-title="{}" data-en="{}" data-author="{}" data-edition="{}" data-motif="{}" data-major="{}" data-strip="{}" data-drawing="{}" data-width="44"></span>',
+            obj.title, obj.title_en, obj.author, obj.edition, obj.cover_motif, major.name if major else "", major.color if major else "", obj.cover_drawing,
         )
 
     @admin.display(description="خبرم کن")
@@ -103,6 +150,8 @@ class BookAdmin(admin.ModelAdmin):
     def change_view(self, request, object_id, form_url="", extra_context=None):
         extra = extra_context or {}
         extra["majors_json"] = self._majors_json()
+        drawing_owner = ContentNode.objects.filter(pk=object_id).first()
+        extra["drawing_json"] = drawing_owner.cover_drawing if drawing_owner else ""
         book = ContentNode.objects.filter(pk=object_id, kind=ContentNode.Kind.BOOK).first()
         if book:
             from apps.learning.models import Flashcard, Question

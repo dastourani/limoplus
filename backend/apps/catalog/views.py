@@ -8,6 +8,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .access import AccessMap
+from .drawing import loads as loads_drawing
 from .importer import MEDIA_PREFIX
 from .models import Banner, ContentNode, Major
 
@@ -66,6 +67,7 @@ def book_card(request, book, access) -> dict:
         "author": book.author,
         "edition": book.edition,
         "motif": book.cover_motif,
+        "drawing": loads_drawing(book.cover_drawing),
         "cover": request.build_absolute_uri(book.cover.url) if book.cover else None,
         "is_coming_soon": book.is_coming_soon,
         "price": book.price,

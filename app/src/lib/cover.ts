@@ -6,9 +6,10 @@
  */
 
 export type CoverTheme = 'dark' | 'light';
-export type Motif = 'ct' | 'brain' | 'ap' | 'neuron' | 'pixels' | 'system' | 'fourier' | 'words';
+import { EXTRA_MOTIFS, extraMotif } from './coverExtra';
 
-export const MOTIFS: Motif[] = ['ct', 'brain', 'ap', 'neuron', 'pixels', 'system', 'fourier', 'words'];
+/** Every motif key; 'custom' draws the book's own uploaded line drawing. */
+export const MOTIFS: string[] = ['ct', 'brain', 'ap', 'neuron', 'pixels', 'system', 'fourier', 'words', ...EXTRA_MOTIFS, 'custom'];
 
 export type CoverPalette = {
   bg: string;
@@ -61,6 +62,8 @@ const DAMPED =
   '128,70 130,55.8 132,47.3 134,46.2 136,51.6 138,61.1 140,71.7 142,80.3 144,84.9 146,84.9 148,80.9 150,74.5 152,67.9 154,62.7 156,60.3 158,60.8 160,63.7 162,67.8 164,72 166,75 168,76.3 170,75.7 172,73.6 174,70.9 176,68.3 178,66.6 180,66 182,66.5 184,68 186,69.7 188,71.3 190,72.3 192,72.6 194,72.1 196,71.1 198,70';
 
 function body(motif: string, p: CoverPalette): string {
+  const extra = extraMotif(motif, p);
+  if (extra) return extra;
   const L = (d: string, w = 2.6) => `<path d="${d}" stroke="${p.line}" stroke-width="${w}"/>`;
   const S = (d: string, w = 1.6, extra = '') => `<path d="${d}" stroke="${p.soft}" stroke-width="${w}"${extra}/>`;
   const dot = (x: number, y: number, r = 3) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${p.line}" stroke="none"/>`;
@@ -151,10 +154,17 @@ function body(motif: string, p: CoverPalette): string {
   }
 }
 
-/** The motif as a standalone SVG document (viewBox 200×140). */
-export function coverMotifSvg(motif: string, theme: CoverTheme): string {
+/**
+ * The motif as a standalone SVG document (viewBox 200×140). For 'custom', `custom` is the book's own drawing as the
+ * server cleaned it ({viewBox, body} with only shapes); its lines take the cover's colours.
+ */
+export function coverMotifSvg(motif: string, theme: CoverTheme, custom?: { viewBox: string; body: string } | null): string {
   const p = coverPalette(theme);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140" fill="none" stroke-linecap="round" stroke-linejoin="round">${body(motif, p)}</svg>`;
+  if (motif === 'custom' && custom?.body) {
+    const inner = custom.body.split('@L@').join(p.line).split('@S@').join(p.soft).split('@B@').join(p.bg);
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${custom.viewBox}" fill="none" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140" fill="none" stroke-linecap="round" stroke-linejoin="round">${body(motif === 'custom' ? 'book' : motif, p)}</svg>`;
 }
 
 /** A book's line under its title: «بوشبرگ، ویرایش چهارم». */

@@ -864,34 +864,100 @@
   };
 })();
 
-/* Book covers in the panel: thumbnails in the books list, and a live preview (dark and light) on the book form. */
+/* Book covers in the panel: thumbnails in the books list, a live preview (dark and light) on the book form, and
+ * «دریافت جلد» — the same cover as a 960×1440 PNG (for a channel post, a print, or a later redesign). */
 (function () {
   'use strict';
   var P = window.LimoPreview;
   if (!P || !P.coverHtml) return;
+  var FONTS = ((document.currentScript && document.currentScript.src.replace(/panel\.js.*$/, '')) || '/static/catalog/') + 'fonts/';
+
+  function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+
+  var fontCss = null;
+  function inlineFonts() {
+    if (fontCss !== null) return Promise.resolve(fontCss);
+    var faces = [['Vazirmatn_400Regular.ttf', 400], ['Vazirmatn_700Bold.ttf', 700], ['Vazirmatn_700Bold.ttf', 900]];
+    return Promise.all(faces.map(function (f) {
+      return fetch(FONTS + f[0]).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+        var bin = '', bytes = new Uint8Array(buf);
+        for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return '@font-face{font-family:Vazirmatn;font-weight:' + f[1] + ';src:url(data:font/ttf;base64,' + btoa(bin) + ')}';
+      });
+    })).then(function (rules) { fontCss = rules.join(''); return fontCss; }, function () { fontCss = ''; return ''; });
+  }
+
+  function downloadCover(book, theme, button) {
+    if (!book) return;
+    button.disabled = true;
+    inlineFonts().then(function (css) {
+      var img = new Image();
+      img.onload = function () {
+        var c = document.createElement('canvas');
+        c.width = 960; c.height = 1440;
+        c.getContext('2d').drawImage(img, 0, 0, 960, 1440);
+        c.toBlob(function (blob) {
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = (val('id_slug') || 'cover') + '-' + theme + '.png';
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+          button.disabled = false;
+        }, 'image/png');
+      };
+      img.onerror = function () { button.disabled = false; button.textContent = 'ساخت عکس جلد نشد'; };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(P.coverSvg(book, theme, css));
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.lp-cover').forEach(function (el) {
       var d = el.dataset;
-      el.innerHTML = P.coverHtml({ title: d.title, title_en: d.en, author: d.author, edition: d.edition, motif: d.motif, major: d.major, strip: d.strip }, 'dark', Number(d.width || 44));
+      var drawing = null;
+      try { drawing = d.drawing ? JSON.parse(d.drawing) : null; } catch (e) { drawing = null; }
+      el.innerHTML = P.coverHtml({ title: d.title, title_en: d.en, author: d.author, edition: d.edition, motif: d.motif, major: d.major, strip: d.strip, drawing: drawing }, 'dark', Number(d.width || 44));
       el.style.display = 'inline-block';
     });
     var motif = document.getElementById('id_cover_motif');
     if (!motif) return;
     var majors = {};
-    try { majors = JSON.parse(document.getElementById('lp-majors').textContent); } catch (e) { /* ignore */ }
+    try {
+      majors = JSON.parse(document.getElementById('lp-majors').textContent);
+      if (typeof majors === 'string') majors = JSON.parse(majors); // json_script of an already-encoded string
+    } catch (e) { majors = {}; }
+    var savedDrawing = null;
+    try { var raw = JSON.parse(document.getElementById('lp-drawing').textContent); savedDrawing = raw ? JSON.parse(raw) : null; } catch (e) { /* ignore */ }
     var box = document.createElement('div');
     box.style.cssText = 'display:flex;gap:18px;margin:12px 0 4px;flex-wrap:wrap;align-items:flex-start';
     var hint = document.createElement('p');
     hint.className = 'help';
     hint.textContent = 'پیش‌نمایش جلد در اپ (تیره و روشن؛ هر کاربر در پروفایل یکی را انتخاب می‌کند). اگر «عکس جلد» بگذارید، عکس جای این جلد را می‌گیرد.';
-    motif.parentNode.appendChild(box);
-    motif.parentNode.appendChild(hint);
-    function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+    // Below the whole field row (Django wraps the select in a flex row, which would squeeze the preview).
+    var panel = document.createElement('div');
+    panel.style.cssText = 'margin:8px 0 0;width:100%';
+    var row = motif.closest('.flex-container') || motif.parentNode;
+    row.parentNode.insertBefore(panel, row.nextSibling);
+    panel.appendChild(box);
+    var current = null;
+    if (P.coverSvg) {
+      var dl = document.createElement('div');
+      dl.style.cssText = 'display:flex;gap:8px;margin:6px 0 2px;flex-wrap:wrap';
+      [['dark', 'دریافت جلد تیره (PNG)'], ['light', 'دریافت جلد روشن (PNG)']].forEach(function (t) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'button lp-cover-download';
+        b.textContent = t[1];
+        b.addEventListener('click', function () { downloadCover(current, t[0], b); });
+        dl.appendChild(b);
+      });
+      panel.appendChild(dl);
+    }
+    panel.appendChild(hint);
     function draw() {
       var checked = document.querySelector('input[name=majors]:checked');
       var m = checked && majors[checked.value] || { name: 'پزشکی', color: '#3FB8A9' };
-      var book = { title: val('id_title'), title_en: val('id_title_en'), author: val('id_author'), edition: val('id_edition'), motif: motif.value, major: m.name, strip: m.color };
-      box.innerHTML = P.coverHtml(book, 'dark', 180) + P.coverHtml(book, 'light', 180);
+      current = { title: val('id_title'), title_en: val('id_title_en'), author: val('id_author'), edition: val('id_edition'), motif: motif.value, major: m.name, strip: m.color, drawing: savedDrawing };
+      box.innerHTML = P.coverHtml(current, 'dark', 180) + P.coverHtml(current, 'light', 180);
     }
     ['id_title', 'id_title_en', 'id_author', 'id_edition', 'id_cover_motif'].forEach(function (id) {
       var el = document.getElementById(id);
