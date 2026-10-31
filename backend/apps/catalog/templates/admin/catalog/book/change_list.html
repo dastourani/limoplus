@@ -3,11 +3,12 @@
   <li><a href="{% url 'admin:catalog_import' %}">افزودن فصل از فایل</a></li>
   {{ block.super }}
 {% endblock %}
-{% block result_list %}
+{% block search %}
+  {{ block.super }}
   {% if orphans %}
-    <div style="background:#fff6d6;color:#7a4f00;border-radius:10px;padding:10px 14px;margin-bottom:14px">
+    <div style="background:#fff6d6;color:#7a4f00;border-radius:10px;padding:10px 14px;margin:10px 0 14px">
       <b>محتوای بیرون از کتاب‌ها:</b> این‌ها قبلاً دستی ساخته شده‌اند و داخل هیچ کتابی نیستند، برای همین در اپ و در «مدیریت فصل» کار نمی‌کنند.
-      اگر لازمشان ندارید بایگانی کنید (پاک نمی‌شوند).
+      کاری به کتاب‌ها و فصل‌های واقعی ندارند؛ با «بایگانی» از این فهرست و از همه‌جا پنهان می‌شوند.
       <ul style="margin:6px 0 0">
         {% for n in orphans %}
           <li>{{ n.get_kind_display }} «{{ n.title }}» {% if n.slug %}({{ n.slug }}){% endif %}
@@ -17,5 +18,4 @@
       </ul>
     </div>
   {% endif %}
-  {{ block.super }}
 {% endblock %}

@@ -367,6 +367,8 @@ class OrphanTests(_Base):
         page = self.client.get(reverse("admin:catalog_book_changelist"))
         self.assertContains(page, "فصل دستی")
         self.assertEqual(self.client.get(reverse("admin:catalog_chapter_manager", args=[orphan.pk])).status_code, 404)
+        self.assertNotIn('id="changelist-form"', page.content.decode().split("محتوای بیرون از کتاب‌ها")[0][-3000:].split("</form>")[-1],
+                         "the archive button must not sit inside the list's own form")
         self.client.post(reverse("admin:catalog_archive_orphan", args=[orphan.pk]))
         self.assertTrue(ContentNode.objects.get(pk=orphan.pk).is_archived)
         self.assertTrue(Flashcard.objects.get(slug="h1").is_archived)
