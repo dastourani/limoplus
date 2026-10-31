@@ -45,3 +45,16 @@ class AppVersionTests(TestCase):
         self.add(12, required=True, published=False)
         self.assertEqual(self.status(9)["status"], "ok")
         self.assertEqual(self.client.get("/api/v1/majors/", HTTP_X_APP_PLATFORM="android", HTTP_X_APP_BUILD="9").status_code, 200)
+
+
+class MissingTableTests(TestCase):
+    def test_api_keeps_working_without_the_releases_table(self):
+        from unittest import mock
+
+        from django.db import DatabaseError
+
+        cache.clear()
+        with mock.patch("apps.releases.service.AppRelease.objects.filter", side_effect=DatabaseError("no such table")):
+            r = APIClient().get("/api/v1/majors/", HTTP_X_APP_PLATFORM="android", HTTP_X_APP_BUILD="10")
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(APIClient().get("/api/v1/app/version/?platform=android&build=10").json()["status"], "ok")

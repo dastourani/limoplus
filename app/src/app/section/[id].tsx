@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ApiError } from '../../api/client';
 import { endpoints, type NodeDetail, type Note } from '../../api/endpoints';
 import { MarkdownView, type MarkdownViewHandle, type ReaderEvent } from '../../components/MarkdownView';
+import { PageTurn } from '../../components/PageTurn';
 import { ReportSheet } from '../../components/ReportSheet';
 import { ReportButton } from '../../components/Tags';
 import { Text, TextInput } from '../../components/Text';
@@ -14,6 +15,7 @@ import { Watermark } from '../../components/Watermark';
 import { useFeedback } from '../../components/Feedback';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { sendOrQueue } from '../../lib/network';
+import { parseTerms, type Term } from '../../lib/reviewCard';
 import { offlineBooks, offlineSection } from '../../lib/offline';
 import { storage, type ReaderTheme } from '../../lib/storage';
 import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
@@ -41,7 +43,9 @@ const NOTE_COLORS: [string, string][] = [
 type Locked = { title?: string; price?: number | null; slug?: string };
 
 export default function Section() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, turn } = useLocalSearchParams<{ id: string; turn?: string }>();
+  // Coming from «بخش بعد»: the finished page turns over the new one.
+  const [turning, setTurning] = useState<string | null>(turn ?? null);
   const nodeId = Number(id);
   const { user } = useAuth();
   const reader = useRef<MarkdownViewHandle>(null);
@@ -53,6 +57,8 @@ export default function Section() {
   const [loading, setLoading] = useState(true);
 
   const [mode, setMode] = useState<'full' | 'summary'>('full');
+  const [flashTarget, setFlashTarget] = useState<{ q: string; n: number } | null>(null);
+  const [term, setTerm] = useState<Term | null>(null);
   const [fontSize, setFontSize] = useState(17);
   const [theme, setTheme] = useState<ReaderTheme>('paper');
   const [lineHeight, setLineHeight] = useState(2);
@@ -146,8 +152,19 @@ export default function Section() {
     storage.setReader(prefs);
   };
 
+  const terms = useMemo(() => parseTerms(node?.summary ?? ''), [node?.summary]);
+  const termWords = useMemo(() => terms.map((t) => t.fa), [terms]);
+
   const onEvent = (e: ReaderEvent) => {
-    if (e.type === 'selection') setSelection(e.text.trim());
+    if (e.type === 'jump') {
+      // From an important point in the review card to the same place in the notes.
+      setMode('full');
+      if (e.q) setFlashTarget((f) => ({ q: e.q, n: (f?.n ?? 0) + 1 }));
+    } else if (e.type === 'cards') {
+      if (node) router.push(`/flashcards/${node.id}`);
+    } else if (e.type === 'term') {
+      setTerm(terms.find((t) => t.fa === e.fa) ?? null);
+    } else if (e.type === 'selection') setSelection(e.text.trim());
     else if (e.type === 'copy_blocked') flash('کپی متن طولانی مجاز نیست.');
     else if (e.type === 'highlights') setMissing(e.missing);
     else if (e.type === 'note') {
@@ -256,7 +273,18 @@ export default function Section() {
     }
   };
 
-  if (loading) return <Screen><Header /><Loading /></Screen>;
+  if (loading)
+    return (
+      <Screen>
+        <Header />
+        <Loading />
+        {turning !== null && (
+          <View style={StyleSheet.absoluteFill}>
+            <PageTurn kind="paper" title={turning} hold />
+          </View>
+        )}
+      </Screen>
+    );
 
   if (locked) {
     return (
@@ -276,6 +304,7 @@ export default function Section() {
 
   const chapter = node.breadcrumb[node.breadcrumb.length - 1];
   const body = mode === 'summary' && node.summary ? node.summary : node.full;
+  const bookSlug = node.breadcrumb.find((b) => b.kind === 'book')?.slug;
   const { paper, ink } = THEMES[theme];
   const missingNotes = notes.filter((n) => missing.includes(n.id) && n.mode === mode);
 
@@ -311,7 +340,34 @@ export default function Section() {
       )}
 
       <View style={{ flex: 1 }}>
-        <MarkdownView ref={reader} markdown={body} fontSize={fontSize} dark={dark} sepia={theme === 'sepia'} lineHeight={lineHeight} highlights={highlights} onEvent={onEvent} />
+        <MarkdownView
+          ref={reader}
+          markdown={body}
+          variant={mode === 'summary' && node.summary ? 'summary' : 'notes'}
+          hasCards
+          flash={mode === 'full' ? flashTarget : null}
+          terms={mode === 'full' ? termWords : undefined}
+          fontSize={fontSize}
+          dark={dark}
+          sepia={theme === 'sepia'}
+          lineHeight={lineHeight}
+          highlights={highlights}
+          onEvent={onEvent}
+        />
+        <Sheet visible={!!term} onClose={() => setTerm(null)} title={term?.fa ?? ''}>
+          {!!term?.en && <Text style={styles.termEn}>{term.en}</Text>}
+          {!!term?.meaning && <Text style={[styles.termMean, rtl]}>{term.meaning}</Text>}
+          {!!bookSlug && (
+            <Button
+              label="واژه‌نامه‌ی کتاب"
+              variant="outline"
+              onPress={() => {
+                setTerm(null);
+                router.push(`/glossary/${bookSlug}`);
+              }}
+            />
+          )}
+        </Sheet>
         <Watermark text={user?.phone || 'لیمو پلاس'} dark={dark} />
         {!!selection && (
           <View style={styles.selBar}>
@@ -340,7 +396,7 @@ export default function Section() {
             variant="dark"
             onPress={() => {
               if (user && !offline && !progress.current.done) sendOrQueue(`nodes/${node.id}/progress/`, { percent: 100, done: true });
-              router.replace(`/section/${node.next_id}`);
+              router.replace({ pathname: `/section/${node.next_id}`, params: { turn: node.title } });
             }}
             style={{ flex: 1.2 }}
           />
@@ -428,11 +484,18 @@ export default function Section() {
           flash('گزارش داده شد. ممنون!');
         }}
       />
+      {turning !== null && (
+        <View style={StyleSheet.absoluteFill}>
+          <PageTurn kind="paper" title={turning} onDone={() => setTurning(null)} />
+        </View>
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  termEn: { fontSize: 18, fontWeight: '700', color: '#3B44B8', textAlign: 'left', writingDirection: 'ltr' },
+  termMean: { fontSize: 15, color: colors.ink, lineHeight: 26 },
   header: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 4 },
   icon: { width: 40, height: 44, alignItems: 'center', justifyContent: 'center' },
   panelLabel: { fontSize: 14, fontWeight: '700', color: colors.muted },

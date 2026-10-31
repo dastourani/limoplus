@@ -265,3 +265,36 @@ class ReadApiTests(TestCase):
 
         banner = Banner.objects.get(pk=items[0]["id"])
         self.assertEqual((banner.impressions, banner.clicks), (1, 1))
+
+
+class GroupsAndGlossaryTests(TestCase):
+    def setUp(self):
+        Major.objects.create(slug="economics", name="اقتصاد")
+
+    def test_group_lines_label_sections_and_terms_feed_the_glossary(self):
+        text = GOOD.replace("## بخش اول {#one}", "# مبانی\n\n## بخش اول {#one}").replace(
+            ":::خلاصه\nخلاصه‌ی بخش.\n:::",
+            ":::خلاصه\nدر یک نگاه: جمع اعداد.\nمهم:\n- جمع جابه‌جایی است [[جزوه]]\nواژه:\n- جمع | Addition | به هم افزودن دو عدد\n- ضرب | Multiplication\n:::",
+        ).replace("## بخش دوم {#two}", "# کاربردها\n\n## بخش دوم {#two}")
+        chapter, result = import_file("c.md", text.encode(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        one = ContentNode.objects.get(slug="one")
+        self.assertEqual(one.group, "مبانی")
+        self.assertEqual(ContentNode.objects.get(slug="two").group, "کاربردها")
+
+        client = APIClient()
+        book = client.get("/api/v1/books/test-book/").json()
+        self.assertEqual([s["group"] for s in book["chapters"][0]["sections"]], ["مبانی", "کاربردها"])
+        terms = client.get("/api/v1/books/test-book/glossary/").json()["terms"]
+        self.assertEqual([t["fa"] for t in terms], ["جمع", "ضرب"])
+        self.assertEqual(terms[0]["en"], "Addition")
+        self.assertEqual(terms[1]["meaning"], "")
+
+    def test_banner_destinations(self):
+        from .models import Banner
+
+        cases = [("book", "bushberg", "book/bushberg"), ("buy", "bushberg", "buy/bushberg"), ("review", "", "review"),
+                 ("exam", "12", "exam/12"), ("url", "https://example.com", "https://example.com"), ("url", "javascript:alert(1)", "")]
+        for target, value, link in cases:
+            self.assertEqual(Banner(title="b", target=target, target_value=value).resolved_link(), link)
+        self.assertEqual(Banner(title="b", link="book/x").resolved_link(), "book/x")

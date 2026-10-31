@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { endpoints, type Purchases } from '../../api/endpoints';
 import { LemonSlice } from '../../components/LemonSlice';
@@ -11,6 +11,7 @@ import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Card, Screen } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { jalaliDate } from '../../lib/jalali';
+import { play, setSoundEnabled, soundEnabled } from '../../lib/sound';
 import { storage } from '../../lib/storage';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
@@ -28,6 +29,10 @@ export default function Profile() {
   const { confirm } = useFeedback();
   const [major, setMajor] = useState<{ name: string } | null>(null);
   const [purchases, setPurchases] = useState<Purchases | null>(null);
+  const [sound, setSound] = useState(true);
+  useEffect(() => {
+    soundEnabled().then(setSound);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -73,6 +78,19 @@ export default function Profile() {
           {user && <Row label="دستگاه‌های من" onPress={() => router.push('/devices')} />}
           {user && <Row label="سابقه‌ی آزمون‌ها" onPress={() => router.push('/exams')} />}
           <Row label="کتاب‌های آفلاین" onPress={() => router.push('/offline')} />
+          <View style={styles.row}>
+            <Text style={[styles.rowLabel, rtl]}>صدای جشن‌ها</Text>
+            <Switch
+              value={sound}
+              onValueChange={async (on) => {
+                setSound(on);
+                await setSoundEnabled(on);
+                if (on) play('pop');
+              }}
+              trackColor={{ true: colors.green }}
+              accessibilityLabel="صدای جشن‌ها"
+            />
+          </View>
           <Row label="تنظیمات سرور" onPress={() => router.push('/settings')} />
         </View>
 

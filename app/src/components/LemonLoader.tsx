@@ -1,6 +1,7 @@
 /**
  * The app's loading indicators, drawn from the lemon slice:
- * - <LemonLoader />: a lemon slice tossed up, flipping in the air and landing, while its segments light up in turn.
+ * - <LemonLoader />: a lemon slice tossed up (squash and stretch, a pause at the top, a tilted flip), landing with a
+ *   small bounce and a ripple, while its segments light up in turn.
  * - <LemonSpinner />: just the segments lighting up in turn, small enough for buttons.
  * Shown only after a short delay, so fast answers never flash a spinner.
  */
@@ -75,24 +76,35 @@ export function LemonSpinner({ size = 20 }: { size?: number }) {
 
 export function LemonLoader({ size = 64, delay = 300 }: { size?: number; delay?: number }) {
   const show = useDelayed(delay);
-  const t = useLoop(2000, Easing.linear, true);
+  const t = useLoop(2200, Easing.linear, true);
   if (!show) return <View style={{ width: size * 1.6, height: size * 2.4 }} />;
-  // Up and down (fast at the bottom, slow at the top), flipping like a tossed coin.
-  const translateY = t.interpolate({ inputRange: [0, 0.45, 1], outputRange: [0, -size, 0], easing: Easing.out(Easing.quad) });
-  // Half a turn per toss, like a coin flipped gently (a full turn looked too fast).
-  const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
-  const scaleX = t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.35, 1] });
-  const shadow = t.interpolate({ inputRange: [0, 0.45, 1], outputRange: [1, 0.45, 1] });
+  // Toss: crouch, stretch on the way up, hang at the top, a tilted one-and-a-half flip, squash on landing,
+  // a small bounce, and a ripple on the ground.
+  const ip = (input: number[], output: number[]) => t.interpolate({ inputRange: input, outputRange: output });
+  const keys = [0, 0.1, 0.18, 0.36, 0.46, 0.66, 0.7, 0.78, 0.86, 0.92, 1];
+  const lift = ip(keys, [0, 0, -0.14, -0.46, -0.48, -0.04, 0, -0.06, 0, 0, 0].map((v) => v * size * 1.9));
+  const sx = ip(keys, [1, 1.14, 0.9, 1, 1, 0.94, 1.16, 0.96, 1.03, 1, 1]);
+  const sy = ip(keys, [1, 0.82, 1.14, 1, 1, 1.08, 0.8, 1.05, 0.97, 1, 1]);
+  // keep the bottom on the ground while squashing
+  const translateY = Animated.add(lift, Animated.multiply(Animated.subtract(1, sy), size / 2));
+  const flip = t.interpolate({ inputRange: [0, 0.12, 0.4, 0.68, 1], outputRange: ['0deg', '0deg', '300deg', '540deg', '540deg'] });
+  const tilt = t.interpolate({ inputRange: [0, 0.12, 0.4, 0.68, 1], outputRange: ['0deg', '0deg', '14deg', '0deg', '0deg'] });
+  const shadowScale = ip([0, 0.1, 0.4, 0.46, 0.7, 1], [1.05, 1.05, 0.5, 0.5, 1.15, 1]);
+  const shadowOpacity = ip([0, 0.1, 0.4, 0.46, 0.7, 1], [1, 1, 0.3, 0.3, 1, 1]);
+  const ripple = ip([0, 0.68, 0.7, 0.92, 1], [0, 0, 0.9, 0, 0]);
+  const rippleScale = ip([0, 0.68, 0.7, 0.92, 1], [0.6, 0.6, 0.7, 1.5, 1.5]);
   return (
     <View style={{ width: size * 1.6, height: size * 2.4, alignItems: 'center', justifyContent: 'flex-end' }} accessibilityRole="progressbar" accessibilityLabel="در حال بارگذاری">
-      <Animated.View style={{ transform: [{ translateY }, { rotate }, { scaleX }] }}>
+      <Animated.View style={[styles.ripple, { width: size * 0.9, height: size * 0.2, bottom: size * 0.02, opacity: ripple, transform: [{ scale: rippleScale }] }]} />
+      <Animated.View style={{ transform: [{ perspective: 600 }, { translateY }, { rotateX: tilt }, { rotateY: flip }, { scaleX: sx }, { scaleY: sy }] }}>
         <Slice size={size} />
       </Animated.View>
-      <Animated.View style={[styles.shadow, { width: size * 0.8, transform: [{ scale: shadow }] }]} />
+      <Animated.View style={[styles.shadow, { width: size * 0.8, opacity: shadowOpacity, transform: [{ scaleX: shadowScale }] }]} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   shadow: { height: 8, borderRadius: 999, backgroundColor: '#17201A22', marginTop: 6 },
+  ripple: { position: 'absolute', borderRadius: 999, borderWidth: 2, borderColor: '#F5C518' },
 });

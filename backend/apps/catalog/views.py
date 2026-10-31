@@ -92,6 +92,7 @@ def book_detail(request, slug):
         data = {"id": node.id, "slug": node.slug, "kind": node.kind, "title": node.title, "is_locked": not access.readable(node.id)}
         if node.kind == ContentNode.Kind.SECTION:
             data["has_summary"] = bool(node.summary_body)
+            data["group"] = node.group
             data["question_count"] = counts.get(node.id, {}).get("question_count", 0)
             data["flashcard_count"] = counts.get(node.id, {}).get("flashcard_count", 0)
         return data
@@ -99,6 +100,7 @@ def book_detail(request, slug):
     chapters = []
     for chapter in access.children(book):
         item = summary(chapter)
+        item["has_overview"] = bool(chapter.full_body or chapter.summary_body) and not item["is_locked"]
         item["sections"] = [summary(s) for s in access.children(chapter)]
         chapters.append(item)
     return Response(
@@ -161,7 +163,7 @@ def banners(request):
                 "title": b.title,
                 "subtitle": b.subtitle,
                 "image": request.build_absolute_uri(b.image.url) if b.image else None,
-                "link": b.link,
+                "link": b.resolved_link(),
             }
             for b in items
         ]
@@ -173,3 +175,28 @@ def banners(request):
 def banner_click(request, banner_id):
     Banner.objects.filter(pk=banner_id).update(clicks=F("clicks") + 1)
     return Response({"ok": True})
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def book_glossary(request, slug):
+    """Every term from the review cards of the sections this reader can open, alphabetical, with its section."""
+    from .summary import parse_terms
+
+    book = get_object_or_404(ContentNode, kind=ContentNode.Kind.BOOK, slug=slug, depth=1)
+    access = AccessMap(request.user, book)
+    if not access.visible(book.id):
+        return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    seen, terms = set(), []
+    for node in sorted(access.nodes.values(), key=lambda n: n.path):
+        if node.kind != ContentNode.Kind.SECTION or not access.readable(node.id) or not node.summary_body:
+            continue
+        for term in parse_terms(node.summary_body):
+            key = term["fa"]
+            if key in seen:
+                continue
+            seen.add(key)
+            terms.append({**term, "section_id": node.id, "section_title": node.title})
+    terms.sort(key=lambda t: t["fa"])
+    return Response({"book": book.title, "terms": terms})
+

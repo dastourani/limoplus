@@ -3,12 +3,25 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'rea
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { FONT_FILES, fontFaceCss } from '../lib/fonts';
-import { CONTENT_CSS, READER_SCRIPT, renderMarkdown } from '../lib/renderMarkdown';
+import { CONTENT_CSS, READER_SCRIPT, renderMarkdown, renderSummary } from '../lib/renderMarkdown';
 import type { Highlight, MarkdownViewHandle, ReaderEvent } from './MarkdownView';
 
 export type { Highlight, MarkdownViewHandle, ReaderEvent } from './MarkdownView';
 
-type Props = { markdown: string; compact?: boolean; fontSize?: number; dark?: boolean; sepia?: boolean; lineHeight?: number; highlights?: Highlight[]; onEvent?: (e: ReaderEvent) => void };
+type Props = {
+  markdown: string;
+  compact?: boolean;
+  fontSize?: number;
+  dark?: boolean;
+  sepia?: boolean;
+  lineHeight?: number;
+  highlights?: Highlight[];
+  variant?: 'notes' | 'summary';
+  hasCards?: boolean;
+  flash?: { q: string; n: number } | null;
+  terms?: string[];
+  onEvent?: (e: ReaderEvent) => void;
+};
 
 let cssInjected = false;
 function injectCss() {
@@ -21,11 +34,11 @@ function injectCss() {
 
 /** Lesson text with formulas, tables and boxes. Web version: rendered straight into the page. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, onEvent },
+  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent },
   ref,
 ) {
   injectCss();
-  const html = useMemo(() => renderMarkdown(markdown), [markdown]);
+  const html = useMemo(() => (variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)), [markdown, variant, hasCards]);
   const root = useRef<HTMLDivElement | null>(null);
   const handler = useRef(onEvent);
   handler.current = onEvent;
@@ -40,6 +53,15 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
     const el = root.current as (HTMLDivElement & { __setHighlights?: (h: Highlight[]) => void }) | null;
     if (!compact && highlights && el?.__setHighlights) el.__setHighlights(highlights);
   }, [highlights, html, compact]);
+
+  useEffect(() => {
+    const el = root.current as (HTMLDivElement & { __setTerms?: (t: string[]) => void }) | null;
+    if (!compact && terms?.length && el?.__setTerms) el.__setTerms(terms);
+  }, [terms, html, compact]);
+  useEffect(() => {
+    const el = root.current as (HTMLDivElement & { __flash?: (q: string) => void }) | null;
+    if (!compact && flash?.q && el?.__flash) setTimeout(() => el.__flash?.(flash.q), 200);
+  }, [flash, html, compact]);
 
   useImperativeHandle(ref, () => ({ clearSelection: () => window.getSelection()?.removeAllRanges() }));
 

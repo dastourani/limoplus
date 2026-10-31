@@ -9,6 +9,8 @@
 import katex from 'katex';
 import MarkdownIt from 'markdown-it';
 
+import { jumpTarget, parseParts } from './reviewCard';
+
 const md = new MarkdownIt({ html: false, linkify: false, typographer: false });
 
 const BOX_LABEL: Record<string, string> = { نکته: 'نکته', تله: 'تله‌ی تستی', هشدار: 'هشدار', مثال: 'مثال' };
@@ -16,6 +18,53 @@ const BOX_LABEL: Record<string, string> = { نکته: 'نکته', تله: 'تل�
 function renderMath(tex: string, display: boolean): string {
   const html = katex.renderToString(tex, { output: 'mathml', displayMode: display, throwOnError: false, strict: 'ignore' });
   return display ? `<div class="math-block" dir="ltr">${html}</div>` : `<span class="math" dir="ltr">${html}</span>`;
+}
+
+function renderInline(source: string): string {
+  const html = renderPlain(source).trim();
+  return html.replace(/^<p>([\s\S]*)<\/p>$/, '$1');
+}
+
+function esc(s: string) {
+  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+}
+
+const PART_TITLES: [string, string, string][] = [
+  ['important', 'مهم‌ترین‌ها', 'rc-important'],
+  ['rules', 'قاعده و فرمول', 'rc-rules'],
+  ['memorize', 'حفظی', 'rc-memorize'],
+  ['traps', 'تله‌ها', 'rc-traps'],
+];
+
+/** A summary written in labelled parts becomes a review card; any other summary stays plain Markdown. */
+export function renderSummary(source: string, opts: { hasCards?: boolean } = {}): string {
+  const parts = parseParts(source);
+  if (!parts) return renderMarkdown(source);
+  let html = '<div class="rc">';
+  if (parts.glance?.length) html += `<div class="rc-glance">${renderInline(parts.glance.join(' '))}</div>`;
+  for (const [key, title, cls] of PART_TITLES) {
+    const items = parts[key as keyof typeof parts];
+    if (!items?.length) continue;
+    html += `<section class="rc-part ${cls}"><h4>${title}</h4><ul>`;
+    for (const item of items) {
+      if (key === 'important') {
+        const { text, phrase } = jumpTarget(item);
+        html += `<li><a class="jump" data-q="${esc(phrase)}">${renderInline(text)}<span class="go" aria-hidden="true">‹</span></a></li>`;
+      } else html += `<li>${renderInline(item)}</li>`;
+    }
+    html += '</ul>';
+    if (key === 'memorize' && opts.hasCards) html += '<button class="rc-cards">مرور فلش‌کارت‌های این بخش</button>';
+    html += '</section>';
+  }
+  if (parts.terms?.length) {
+    html += '<section class="rc-part rc-terms"><h4>واژه‌نامه</h4>';
+    for (const item of parts.terms) {
+      const [fa, en = '', meaning = ''] = item.split('|').map((c) => c.trim());
+      html += `<div class="term"><div class="term-head"><b>${esc(fa)}</b>${en ? `<span class="en" dir="ltr">${esc(en)}</span>` : ''}</div>${meaning ? `<div class="mean">${renderInline(meaning)}</div>` : ''}</div>`;
+    }
+    html += '</section>';
+  }
+  return html + '</div>';
 }
 
 function renderPlain(source: string): string {
@@ -106,6 +155,29 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
 .lesson.dark .box-1, .lesson.dark .box-2 { background: #3A3216; } .lesson.dark .box-1 .box-title, .lesson.dark .box-2 .box-title { color: #F5D96B; }
 .lesson.dark .box-3 { background: #23264A; } .lesson.dark .box-3 .box-title { color: #AEB4F5; }
 .lesson.dark mark.hl { color: #17201A; }
+.rc { display: grid; gap: 14px; }
+.rc-glance { font-size: 1.08em; font-weight: 700; background: #FFF6CF; border-radius: 16px; padding: 12px 14px; }
+.rc-part { background: #fff; border: 1px solid #E3E8DE; border-radius: 16px; padding: 10px 14px 12px; }
+.rc-part h4 { margin: 0 0 6px; font-size: .82em; letter-spacing: .02em; color: #56655B; }
+.rc-part ul { margin: 0; padding: 0 18px 0 0; }
+.rc-part li { margin: 4px 0; }
+.rc-important li { list-style: none; margin-right: -18px; }
+.rc-important a.jump { display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 12px; background: #F6F7F2; cursor: pointer; }
+.rc-important a.jump .go { margin-right: auto; color: #B9A23A; font-weight: 800; }
+.rc-traps { border-color: #F2C7C4; background: #FFF8F7; } .rc-traps h4 { color: #9E2F2A; }
+.rc-memorize h4 { color: #6B5200; }
+.rc-cards { margin-top: 8px; border: 0; border-radius: 12px; padding: 8px 12px; background: #17201A; color: #F5C518; font: inherit; font-size: .85em; font-weight: 800; cursor: pointer; }
+.term { padding: 6px 0; border-bottom: 1px dashed #E3E8DE; } .term:last-child { border-bottom: 0; }
+.term-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.term .en { font-family: system-ui, sans-serif; font-size: .88em; color: #3B44B8; }
+.term .mean { font-size: .9em; color: #56655B; }
+.gl { border-bottom: 1.5px dotted #B9A23A; cursor: help; }
+mark.flash { background: #FFD43B; border-radius: 4px; box-shadow: 0 0 0 5px rgba(255,212,59,.45); transition: background 1.4s, box-shadow 1.4s; }
+mark.flash.fade { background: transparent; box-shadow: 0 0 0 0 rgba(255,212,59,0); }
+.lesson.dark .rc-glance { background: #3A3216; } .lesson.dark .rc-part { background: #1E2621; border-color: #33403A; }
+.lesson.dark .rc-important a.jump { background: #26302A; } .lesson.dark .rc-traps { background: #2E1F1E; border-color: #5A3330; }
+.lesson.dark .term .en { color: #AEB4F5; } .lesson.dark mark.flash { color: #17201A; }
+.lesson.sepia .rc-part { background: #FBF5E6; border-color: #E6D8B8; } .lesson.sepia .rc-important a.jump { background: #F1E6CC; }
 `;
 
 /** Longest text a learner may copy at once; longer copies are blocked (the book is protected). */
@@ -152,9 +224,49 @@ root.__setHighlights = function (list) {
   post({ type: 'highlights', missing: missing });
 };
 root.addEventListener('click', function (e) {
-  var m = e.target && e.target.closest ? e.target.closest('mark.hl') : null;
+  var t = e.target && e.target.closest ? e.target : null;
+  if (!t) return;
+  var j = t.closest('a.jump'); if (j) { e.preventDefault(); post({ type: 'jump', q: j.getAttribute('data-q') || '' }); return; }
+  if (t.closest('.rc-cards')) { post({ type: 'cards' }); return; }
+  var g = t.closest('.gl'); if (g) { post({ type: 'term', fa: g.getAttribute('data-t') }); return; }
+  var m = t.closest('mark.hl');
   if (m) post({ type: 'note', id: Number(m.getAttribute('data-note')) });
 });
+// Show where an important point is in the notes: find it, scroll to it, light it up for a moment.
+root.__flash = function (q) {
+  var old = root.querySelectorAll('mark.flash');
+  for (var i = 0; i < old.length; i++) { var o = old[i], p = o.parentNode; while (o.firstChild) p.insertBefore(o.firstChild, o); p.removeChild(o); p.normalize(); }
+  q = norm(q || '').trim(); if (!q) return;
+  var nodes = textNodes(), hit = null;
+  for (var k = 0; k < nodes.length && !hit; k++) {
+    var v = nodes[k].nodeValue.replace(/\s/g, ' '), at = v.indexOf(q);
+    if (at >= 0) { var after = nodes[k].splitText(at + q.length); var mid = nodes[k].splitText(at); void after; hit = mid; }
+  }
+  if (!hit) { post({ type: 'flash_missing' }); return; }
+  var m = document.createElement('mark'); m.className = 'flash'; hit.parentNode.insertBefore(m, hit); m.appendChild(hit);
+  var block = m.closest('li, p, .box, .table-wrap') || m;
+  block.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  setTimeout(function () { m.classList.add('fade'); }, 1800);
+};
+// Glossary words in the notes: dotted underline, tap for the English word and meaning.
+root.__setTerms = function (list) {
+  if (!list || !list.length) return;
+  var words = list.slice().sort(function (a, b) { return b.length - a.length; });
+  var nodes = textNodes();
+  for (var i = 0; i < nodes.length; i++) {
+    var n = nodes[i]; if (!n.parentNode || (n.parentNode.closest && n.parentNode.closest('.gl, mark, .rc, h1, h2, h3, h4'))) continue;
+    for (var w = 0; w < words.length; w++) {
+      var at = n.nodeValue.indexOf(words[w]);
+      if (at < 0) continue;
+      var before = at > 0 ? n.nodeValue.charAt(at - 1) : ' ', after = n.nodeValue.charAt(at + words[w].length) || ' ';
+      if (/[\u0600-\u06FFa-zA-Z]/.test(before)) continue;
+      var rest = n.splitText(at); var tail = rest.splitText(words[w].length); void tail;
+      var s = document.createElement('span'); s.className = 'gl'; s.setAttribute('data-t', words[w]);
+      rest.parentNode.insertBefore(s, rest); s.appendChild(rest);
+      break;
+    }
+  }
+};
 var selTimer = null;
 document.addEventListener('selectionchange', function () {
   clearTimeout(selTimer);

@@ -26,9 +26,16 @@ export default function ExamResult() {
     if (!fresh || shown.current || !data?.submitted_at) return;
     shown.current = true;
     const s = data.score_percent ?? 0;
-    if (s >= 80) celebrate('great', { title: 'عالی بود!', text: `${toPersianDigits(s)}٪ — همین‌طور ادامه بده.` });
-    else if (s >= 50) celebrate('good', { title: 'خوب بود!', text: 'غلط‌ها را مرور کن تا به بالای ۸۰٪ برسی.' });
-    else celebrate('low', { title: 'اشکالی ندارد', text: 'از همین غلط‌ها یاد می‌گیری. پاسخ‌های تشریحی را ببین و دوباره امتحان کن.' });
+    const exam = { score: s, right: data.correct, wrong: data.wrong, blank: data.blank };
+    const back = { label: 'بازگشت به کتاب', onPress: () => router.back() };
+    const misses = data.wrong + data.blank;
+    if (s >= 80)
+      celebrate('great', { title: 'عالی بود!', text: data.wrong ? `فقط ${toPersianDigits(data.wrong)} غلط. همین مسیر را ادامه بده.` : 'بدون غلط! همین مسیر را ادامه بده.', exam, primary: 'دیدن پاسخ‌ها', secondary: back });
+    else if (s >= 50)
+      celebrate('good', { title: 'خوب بود!', text: `${toPersianDigits(misses)} سؤال مانده تا همه را بلد باشی. غلط‌ها را مرور کن.`, exam, primary: `مرور ${toPersianDigits(misses)} غلط و نزده`, secondary: back });
+    else
+      celebrate('low', { title: 'شروع خوبی برای یاد گرفتن است', text: 'پاسخ تشریحی غلط‌ها را بخوان؛ دفعه‌ی بعد خیلی بهتر می‌شود.', exam, primary: 'خواندن پاسخ‌ها', secondary: { label: 'بعداً', onPress: () => router.back() } });
+    if (s < 80 && misses) setFilter('wrong');
   }, [fresh, data, celebrate]);
 
   if (loading) return <Screen><Header title="نتیجه‌ی آزمون" /><Loading /></Screen>;

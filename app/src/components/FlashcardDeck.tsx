@@ -119,7 +119,11 @@ export function FlashcardDeck({
     const next = pos + 1;
     setPos(next);
     if (g !== 'again' && next >= queue.length) {
-      celebrate('deck', { title: 'مرور تمام شد!', text: 'کارت‌های امروز را مرور کردی.' });
+      celebrate('deck', {
+        title: 'مرور تمام شد!',
+        text: againIds.size ? `${toPersianDigits(queue.length - againIds.size)} کارت مرور شد. ${toPersianDigits(againIds.size)} کارت سخت بود و دوباره می‌آید.` : 'همه‌ی کارت‌ها را بلد بودی!',
+        primary: 'بازگشت',
+      });
     }
   };
 

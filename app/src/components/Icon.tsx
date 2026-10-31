@@ -48,6 +48,11 @@ import Gauge from 'lucide-react-native/icons/gauge';
 import UnfoldVertical from 'lucide-react-native/icons/unfold-vertical';
 import BadgeCheck from 'lucide-react-native/icons/badge-check';
 import Type from 'lucide-react-native/icons/type';
+import ChevronDown from 'lucide-react-native/icons/chevron-down';
+import MapIcon from 'lucide-react-native/icons/map';
+import Languages from 'lucide-react-native/icons/languages';
+import Volume2 from 'lucide-react-native/icons/volume-2';
+import VolumeX from 'lucide-react-native/icons/volume-x';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { colors } from '../theme';
@@ -99,6 +104,11 @@ const ICONS = {
   'unfold-vertical': UnfoldVertical,
   'badge-check': BadgeCheck,
   'type': Type,
+  'chevron-down': ChevronDown,
+  'map': MapIcon,
+  'languages': Languages,
+  'volume-2': Volume2,
+  'volume-x': VolumeX,
 } as const;
 
 export type IconName = keyof typeof ICONS;

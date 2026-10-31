@@ -11,8 +11,9 @@ export type NodeSummary = {
   has_summary?: boolean;
   question_count?: number;
   flashcard_count?: number;
+  group?: string;
 };
-export type ChapterSummary = NodeSummary & { sections: NodeSummary[] };
+export type ChapterSummary = NodeSummary & { sections: NodeSummary[]; has_overview?: boolean };
 export type BookDetail = { slug: string; title: string; price: number | null; majors: string[]; chapters: ChapterSummary[]; owned: boolean; done_ids: number[] };
 export type NodeDetail = {
   id: number;
@@ -127,6 +128,7 @@ export const endpoints = {
   books: (major: string) => api<BookListItem[]>(`majors/${encodeURIComponent(major)}/books/`),
   book: (slug: string) => api<BookDetail>(`books/${encodeURIComponent(slug)}/`),
   node: (id: number) => api<NodeDetail>(`nodes/${id}/`),
+  glossary: (slug: string) => api<{ book: string; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(`books/${encodeURIComponent(slug)}/glossary/`),
   questions: (nodeId: number) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/`),
   answer: (questionId: number, choiceId: number) => api<AnswerResult>(`questions/${questionId}/answer/`, { body: { choice_id: choiceId } }),
   flashcards: (nodeId: number) => api<{ flashcards: Flashcard[]; locked_count: number }>(`nodes/${nodeId}/flashcards/`),

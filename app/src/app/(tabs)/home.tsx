@@ -6,6 +6,7 @@ import { Text } from '../../components/Text';
 import { Icon, IconBadge } from '../../components/Icon';
 
 import { endpoints } from '../../api/endpoints';
+import { BannerCarousel } from '../../components/BannerCarousel';
 import { ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { storage, type LastSection } from '../../lib/storage';
@@ -46,6 +47,9 @@ export default function Home() {
   const openLink = (link: string, id: number) => {
     endpoints.bannerClick(id).catch(() => undefined);
     if (link.startsWith('book/')) router.push(`/book/${link.slice(5)}`);
+    else if (link.startsWith('buy/')) router.push(`/buy/${link.slice(4)}`);
+    else if (link.startsWith('exam/')) router.push(`/exam/${link.slice(5)}`);
+    else if (link === 'review') router.push('/review');
     else if (/^https?:\/\//.test(link)) Linking.openURL(link);
   };
 
@@ -97,17 +101,7 @@ export default function Home() {
           </Pressable>
         )}
 
-        {!!banners.data?.length && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.banners} style={{ marginHorizontal: -20 }}>
-            {banners.data.map((b) => (
-              <Pressable key={b.id} onPress={() => openLink(b.link, b.id)} style={styles.banner} accessibilityRole="button">
-                <View style={styles.bannerLemon} />
-                <Text style={[styles.bannerSmall, rtl]}>{b.subtitle || 'ویژه'}</Text>
-                <Text style={[styles.bannerTitle, rtl]} numberOfLines={2}>{b.title}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        )}
+        {!!banners.data?.length && <BannerCarousel banners={banners.data} onOpen={(b) => openLink(b.link, b.id)} />}
 
         <Text style={[styles.sectionTitle, rtl]}>کتاب‌ها</Text>
         {books.loading && !books.data?.length ? (
@@ -171,11 +165,6 @@ const styles = StyleSheet.create({
   pill: { backgroundColor: colors.lemon, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   pillText: { fontWeight: '800', color: colors.ink },
   muted: { fontSize: 13, color: colors.muted },
-  banners: { paddingHorizontal: 20, gap: 12, flexDirection: 'row-reverse' },
-  banner: { width: 300, minHeight: 110, backgroundColor: colors.ink, borderRadius: 22, padding: 18, justifyContent: 'center', overflow: 'hidden' },
-  bannerLemon: { position: 'absolute', left: -30, bottom: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: colors.lemon },
-  bannerSmall: { color: '#B9C4BC', fontSize: 12, paddingLeft: 80 },
-  bannerTitle: { color: colors.lemon, fontSize: 20, fontWeight: '800', lineHeight: 30, paddingLeft: 80 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, marginTop: 4 },
   book: { flexDirection: 'row-reverse', gap: 14, alignItems: 'center', backgroundColor: colors.surface, borderRadius: radius.md, padding: 12, borderWidth: 1, borderColor: colors.line },
   cover: { width: 62, height: 86, borderTopLeftRadius: 10, borderBottomLeftRadius: 10, borderTopRightRadius: 4, borderBottomRightRadius: 4, padding: 6, justifyContent: 'flex-end' },

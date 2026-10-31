@@ -26,7 +26,7 @@ export default function PaymentResult() {
       .order(id, true)
       .then((s) => {
         setStatus(s);
-        if (s.status === 'paid') celebrate('purchase', { title: 'خرید انجام شد', text: s.book_slug ? 'کتاب برایت باز شد. مطالعه‌ی خوبی داشته باشی!' : 'اشتراکت فعال شد.' });
+        if (s.status === 'paid') celebrate('purchase', { title: s.book_slug ? 'کتاب باز شد!' : 'اشتراکت فعال شد!', text: s.book_slug ? 'نسخه‌ی کامل حالا در دسترس توست. مطالعه‌ی خوبی داشته باشی!' : 'همه‌ی کتاب‌های اشتراک برایت باز است.', primary: 'شروع مطالعه' });
       })
       .catch(() => setFailed(true));
   }, [order, celebrate]);

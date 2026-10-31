@@ -36,7 +36,11 @@ function Root() {
   if (!ready) return <View style={{ flex: 1, backgroundColor: colors.ink }} />;
   return (
     <>
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground }, animation: 'slide_from_left' }} />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground }, animation: 'slide_from_left' }}>
+        {/* Books open with their own page turn (PageTurn), so the screen itself only fades in. */}
+        <Stack.Screen name="book/[slug]" options={{ animation: 'fade' }} />
+        <Stack.Screen name="section/[id]" options={{ animation: 'fade' }} />
+      </Stack>
       <UpdateGate />
       <Intro />
     </>

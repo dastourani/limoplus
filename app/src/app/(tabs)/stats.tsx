@@ -45,7 +45,7 @@ export default function StatsTab() {
             .then((seen) => {
               if (seen) return;
               AsyncStorage.setItem(key, '1').catch(() => undefined);
-              celebrate('streak', { title: `${toPersianDigits(milestone)} روز پشت سر هم!`, text: 'عادت مطالعه‌ات دارد شکل می‌گیرد. ادامه بده.' });
+              celebrate('streak', { title: milestone === 7 ? 'یک هفته‌ی کامل!' : `${toPersianDigits(milestone)} روز پشت سر هم!`, text: 'عادت مطالعه‌ات دارد شکل می‌گیرد. فردا هم یک بخش کوتاه بخوان.', days: d.streak_days });
             })
             .catch(() => undefined);
         }

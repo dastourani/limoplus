@@ -64,7 +64,8 @@ class ContentNodeAdmin(TreeAdmin):
 
 @admin.register(Banner)
 class BannerAdmin(admin.ModelAdmin):
-    list_display = ("title", "is_active", "priority", "starts_at", "ends_at", "impressions", "clicks")
+    list_display = ("title", "target", "is_active", "priority", "starts_at", "ends_at", "impressions", "clicks")
+    fields = ("title", "subtitle", "image", "target", "target_value", "link", "majors", "starts_at", "ends_at", "priority", "is_active")
     list_editable = ("is_active", "priority")
     list_filter = ("is_active", "majors")
     filter_horizontal = ("majors",)

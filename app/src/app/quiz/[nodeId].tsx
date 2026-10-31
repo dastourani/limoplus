@@ -1,7 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ApiError } from '../../api/client';
 import { endpoints } from '../../api/endpoints';
@@ -14,21 +15,24 @@ import { Text } from '../../components/Text';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { usePageTurn } from '../../lib/pageTurn';
+import { seeded } from '../../lib/shuffle';
 import { resultForView, type QuizViewState } from '../../lib/quizHtml';
 import { useApi } from '../../lib/useApi';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
 type Answer = { picked: number; result: QuizViewState['result'] };
+type Order = 'book' | 'shuffle' | 'wrong';
+const ORDERS: [Order, string][] = [
+  ['book', 'ترتیب کتاب'],
+  ['shuffle', 'درهم'],
+  ['wrong', 'غلط‌ها و نزده‌ها'],
+];
 
-/**
- * Practice mode. Questions turn like pages (swipe or buttons); answering is never required to move on.
- * Graded on the server one question at a time; the progress strip shows right / wrong / not answered.
- */
 export default function Quiz() {
   const { nodeId } = useLocalSearchParams<{ nodeId: string }>();
   const { data, error, loading, retry } = useApi(() => endpoints.questions(Number(nodeId)), [nodeId]);
   const { user } = useAuth();
-  const { confirm } = useFeedback();
+  const { confirm, toast: flash } = useFeedback();
 
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
@@ -43,11 +47,28 @@ export default function Quiz() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const { style: pageStyle, turn } = usePageTurn();
 
-  const questions = useMemo(() => data?.questions ?? [], [data]);
+  // Order of the questions: as in the book, shuffled (choices too), or only the ones not yet right.
+  const orderKey = `limo.quiz.${nodeId}.order`;
+  const [order, setOrder] = useState<{ order: Order; seed: number; ids?: number[] } | null>(null);
+  useEffect(() => {
+    AsyncStorage.getItem(orderKey)
+      .then((v) => setOrder(v ? JSON.parse(v) : { order: 'book', seed: 0 }))
+      .catch(() => setOrder({ order: 'book', seed: 0 }));
+  }, [orderKey]);
+
+  const questions = useMemo(() => {
+    const base = data?.questions ?? [];
+    if (!order || order.order === 'book') return base;
+    if (order.order === 'wrong') {
+      const keep = new Set(order.ids ?? []);
+      return base.filter((q) => keep.has(q.id));
+    }
+    return seeded(base, order.seed).map((q) => ({ ...q, choices: seeded(q.choices, order.seed + q.id) }));
+  }, [data, order]);
 
   // Signed-in learners continue at the first question they have not answered yet.
   useEffect(() => {
-    if (!user || !data) return;
+    if (!user || !data || !order) return;
     endpoints
       .practiceState(Number(nodeId))
       .then((s) => {
@@ -55,12 +76,13 @@ export default function Quiz() {
         setReported(s.reported);
         if (!resumed.current) {
           resumed.current = true;
-          const first = data.questions.findIndex((q) => !(String(q.id) in s.answered));
+          const first = questions.findIndex((q) => !(String(q.id) in s.answered));
           if (first > 0) setIndex(first);
         }
       })
       .catch(() => undefined);
-  }, [user, data, nodeId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, data, nodeId, order === null]);
 
   const go = useCallback(
     (target: number, alreadyOut = false) => {
@@ -71,7 +93,7 @@ export default function Quiz() {
     [index, questions.length, turn],
   );
 
-  if (loading) return <Screen><Header title="تست" /><Loading /></Screen>;
+  if (loading || !order) return <Screen><Header title="تست" /><Loading /></Screen>;
   if (error) return <Screen><Header title="تست" /><ErrorState message={error.message} onRetry={retry} /></Screen>;
   if (questions.length === 0) {
     return (
@@ -138,6 +160,24 @@ export default function Quiz() {
     }
   };
 
+  const changeOrder = (next: Order) => {
+    if (next === order.order && next !== 'shuffle') return;
+    let value: { order: Order; seed: number; ids?: number[] } = { order: next, seed: order.seed };
+    if (next === 'shuffle') value = { order: next, seed: Math.floor(Math.random() * 1e9) };
+    if (next === 'wrong') {
+      const ids = (data?.questions ?? []).filter((q) => status(q.id) !== 'right').map((q) => q.id);
+      if (!ids.length) {
+        flash('همه‌ی تست‌های این بخش را درست زده‌ای!');
+        return;
+      }
+      value = { order: next, seed: order.seed, ids };
+    }
+    setOrder(value);
+    AsyncStorage.setItem(orderKey, JSON.stringify(value)).catch(() => undefined);
+    setAnswerError(null);
+    setIndex(0);
+  };
+
   const restart = async () => {
     const ok = await confirm({
       title: 'تست‌ها از اول شروع شود؟',
@@ -197,6 +237,13 @@ export default function Quiz() {
           <Text style={[styles.hint, rtl, { paddingHorizontal: 0, paddingBottom: 0 }]}>بکش تا ورق بخورد؛ لیمو را بزن تا به هر سؤال بروی</Text>
         </View>
       </View>
+      <View style={styles.orders}>
+        {ORDERS.map(([key, label]) => (
+          <Pressable key={key} onPress={() => changeOrder(key)} style={[styles.order, order.order === key && styles.orderOn]} accessibilityRole="button" accessibilityState={{ selected: order.order === key }}>
+            <Text style={[styles.orderText, order.order === key && { color: colors.lemon }]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
       <QuestionPicker
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -232,6 +279,10 @@ export default function Quiz() {
 const styles = StyleSheet.create({
   progress: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 6 },
   counts: { fontSize: 14, fontWeight: '800', color: colors.ink },
+  orders: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 16, paddingBottom: 6 },
+  order: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
+  orderOn: { backgroundColor: colors.ink, borderColor: colors.ink },
+  orderText: { fontSize: 12.5, fontWeight: '700', color: colors.ink },
   page: { flex: 1, backfaceVisibility: 'hidden' },
   bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
   hint: { fontSize: 12, color: colors.muted, paddingHorizontal: 16, paddingBottom: 8 },

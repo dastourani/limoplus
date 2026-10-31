@@ -14,6 +14,7 @@ import { Icon } from '../../components/Icon';
 import { Button, Card, Header, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { usePageTurn } from '../../lib/pageTurn';
+import { seeded } from '../../lib/shuffle';
 import { type QuizViewState } from '../../lib/quizHtml';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
@@ -47,6 +48,11 @@ export default function Exam() {
     },
     [exam, index, turn],
   );
+  // Choices in a different order in each exam (graded by id on the server, so nothing else changes).
+  const shownQ = useMemo(() => {
+    const raw = exam?.questions[index];
+    return raw ? { ...raw, choices: seeded(raw.choices, exam!.id * 7919 + raw.id) } : null;
+  }, [exam, index]);
   const currentId = exam?.questions[index]?.id;
   const picked = currentId != null ? (answers[currentId] ?? null) : null;
   const viewState = useMemo<QuizViewState>(
@@ -183,7 +189,7 @@ export default function Exam() {
     );
   }
 
-  const q = exam.questions[index];
+  const q = shownQ!;
   const answeredCount = Object.values(answers).filter((v) => v != null).length;
   const parts: PartState[] = exam.questions.map((x) => (answers[x.id] != null ? 'done' : 'empty'));
   const last = index + 1 >= exam.questions.length;

@@ -58,6 +58,7 @@ _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890
 _ARABIC_LETTERS = str.maketrans({"ي": "ی", "ك": "ک", "ى": "ی"})
 _SLUG = re.compile(r"^[\w\-]+$", re.UNICODE)
 _HEADING = re.compile(r"^##\s+(.+?)\s*(?:\{#([^}]+)\})?\s*$")
+_GROUP = re.compile(r"^#\s+(.+?)\s*$")
 _BLOCK_OPEN = re.compile(r"^:::\s*([^\s{]+)\s*(?:\{#([^}]+)\})?\s*$")
 _CHOICE = re.compile(r"^\s*-\s*\[( |x|X|✓)\]\s*(.*)$")
 _IMAGE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
@@ -149,6 +150,7 @@ class ParsedSection:
     slug: str
     title: str
     line: int
+    group: str = ""
     full_lines: list[str] = field(default_factory=list)
     summary_lines: list[str] = field(default_factory=list)
     questions: list[ParsedQuestion] = field(default_factory=list)
@@ -285,15 +287,22 @@ def parse_chapter(text: str) -> ParsedChapter:
 
     current = ParsedSection(slug="", title="", line=start + 1)
     chapter.intro = current
+    group = ""
     i = start
     while i < len(lines):
         line_no = i + 1
         line = lines[i]
+        grp = _GROUP.match(line)
+        if grp:
+            # "# Title" starts a group: a heading shown above the following sections in the book's list.
+            group = grp.group(1).strip()
+            i += 1
+            continue
         heading = _HEADING.match(line)
         if heading:
             title, slug = heading.group(1).strip(), (heading.group(2) or "").strip()
             auto = f"{chapter.meta.get('chapter_slug', 'ch')}-s{len(chapter.sections) + 1}"
-            current = ParsedSection(slug=slug or auto, title=title, line=line_no)
+            current = ParsedSection(slug=slug or auto, title=title, line=line_no, group=group)
             chapter.sections.append(current)
             i += 1
             continue
@@ -635,6 +644,7 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
         node = _place(chapter_node, ContentNode.Kind.SECTION, parsed.slug, parsed.title, search_root=book)
         node.full_body = _rewrite_images(parsed.full_body, image_paths)
         node.summary_body = _rewrite_images(parsed.summary_body, image_paths)
+        node.group = parsed.group
         node.is_archived = False
         if publish:
             node.is_published = True

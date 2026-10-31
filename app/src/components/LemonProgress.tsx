@@ -23,15 +23,13 @@ function point(r: number, deg: number) {
 }
 
 function wedgePath(i: number, n: number) {
+  // Clockwise from the top, a full sector from the centre; the white stroke drawn over it makes the gaps,
+  // so two items give two clean halves and three give three clean thirds.
   const step = 360 / n;
-  const gap = Math.min(4.5, step / 5);
-  // Clockwise from the top; mirrored for right-to-left reading order (first item at the top, going right-to-left).
-  const a0 = -(i + 1) * step + gap;
-  const a1 = -i * step - gap;
-  const inner = n > 16 ? 16 : 13;
-  const outer = 74;
-  const mid = (a0 + a1) / 2;
-  return `M ${point(inner, mid)} L ${point(outer, a0)} A ${outer} ${outer} 0 0 1 ${point(outer, a1)} Z`;
+  const a0 = i * step;
+  const a1 = (i + 1) * step;
+  const outer = 76;
+  return `M 0 0 L ${point(outer, a0)} A ${outer} ${outer} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${point(outer, a1)} Z`;
 }
 
 /** Squeeze many items into at most MAX_WEDGES wedges. */
@@ -98,15 +96,11 @@ export function LemonProgress({
             <Circle r={70} fill={FILL[wedges[0] ?? 'empty']} />
           ) : (
             wedges.map((w, i) => (
-              <Path
-                key={i}
-                d={wedgePath(i, n)}
-                fill={FILL[w]}
-                stroke={i === currentWedge ? '#17201A' : FILL[w]}
-                strokeWidth={i === currentWedge ? 5 : n > 16 ? 5 : 8}
-                strokeLinejoin="round"
-              />
+              <Path key={i} d={wedgePath(i, n)} fill={FILL[w]} stroke="#FFFFFF" strokeWidth={n > 16 ? 3.5 : n > 8 ? 4.5 : 6} strokeLinejoin="round" />
             ))
+          )}
+          {n > 1 && currentWedge >= 0 && currentWedge < n && (
+            <Path d={wedgePath(currentWedge, n)} fill="none" stroke="#17201A" strokeWidth={4} strokeLinejoin="round" />
           )}
         </G>
         <Circle r={9} fill="#FFFFFF" />
