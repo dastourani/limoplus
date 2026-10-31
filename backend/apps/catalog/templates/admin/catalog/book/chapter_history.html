@@ -1,0 +1,48 @@
+{% extends "admin/base_site.html" %}
+{% block nav-sidebar %}{% endblock %}
+{% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">مدیریت</a> ›
+  <a href="{% url 'admin:catalog_book_changelist' %}">کتاب‌ها</a> ›
+  <a href="{% url 'admin:catalog_book_change' book.pk %}">{{ book.title }}</a> ›
+  <a href="{% url 'admin:catalog_chapter_manager' chapter.pk %}">{{ chapter.title }}</a> › نسخه‌ها
+</div>
+{% endblock %}
+{% block content %}
+<div id="content-main" class="lp">
+  <p>بعد از هر تغییر در پنل یا بارگذاری فایل، یک نسخه از کل فصل نگه داشته می‌شود (ویرایش‌های پشت سر هم یک نفر در چند دقیقه، یک نسخه حساب می‌شوند).
+     با «مقایسه» فرقش با فصل فعلی را می‌بینید و با «بازگرداندن»، فصل به آن نسخه برمی‌گردد (اول تغییرات را نشان می‌دهد).</p>
+  {% if compare %}
+    <div class="cm-card">
+      <b>فرق نسخه‌ی {{ compare.when }} با فصل فعلی</b> <span class="hint">(سبز = در فصل فعلی هست، قرمز = در آن نسخه بود)</span>
+      {% if diff %}
+        <div class="diff" style="margin-top:8px">{% for kind, line in diff %}<div class="{% if kind == '+' %}a{% elif kind == '-' %}d{% elif kind == '@' %}g{% endif %}">{% if kind == '+' %}+ {% elif kind == '-' %}− {% else %}  {% endif %}{{ line }}</div>{% endfor %}</div>
+      {% else %}<p>فرقی ندارد.</p>{% endif %}
+    </div>
+  {% endif %}
+  <table class="lp-table">
+    <thead><tr><th>زمان</th><th>منشأ</th><th>توضیح</th><th>کاربر</th><th>خط</th><th></th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td>{{ row.when }}</td>
+        <td>{{ row.r.get_source_display }}</td>
+        <td>{{ row.r.note|default:"" }}</td>
+        <td>{{ row.r.user.phone|default:"" }}</td>
+        <td>{{ row.size }}</td>
+        <td>
+          {% if row.is_current %}<span class="pill ok">نسخه‌ی فعلی</span>{% else %}
+            <a class="btn small" href="?compare={{ row.r.pk }}">مقایسه</a>
+            <a class="btn small" href="{% url 'admin:catalog_chapter_file' chapter.pk %}?revision={{ row.r.pk }}">بازگرداندن</a>
+          {% endif %}
+          <a class="btn small" href="{% url 'admin:catalog_revision_text' chapter.pk row.r.pk %}">دریافت</a>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6">هنوز نسخه‌ای نیست؛ با اولین تغییر ساخته می‌شود.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

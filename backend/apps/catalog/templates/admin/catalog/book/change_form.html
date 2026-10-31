@@ -1,0 +1,77 @@
+{% extends "admin/change_form.html" %}
+{% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
+{% block object-tools-items %}
+  {% if original %}
+    <li><a href="{% url 'admin:catalog_book_export' original.pk %}">دریافت کل کتاب (ZIP)</a></li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
+{% block content %}
+{{ block.super }}
+{% if original %}
+<div class="lp chapters-box" id="chapters">
+  <h2>فصل‌های کتاب</h2>
+  <p class="hint">ترتیب این فهرست، ترتیب فصل‌ها در اپ است. «رایگان» یعنی کاربر بدون خرید هم این فصل را می‌خواند.
+    فصل منتشرنشده در اپ دیده نمی‌شود. بایگانی یعنی پنهان شدن، نه پاک شدن.</p>
+  <table class="lp-table">
+    <thead><tr><th>#</th><th>فصل</th><th>بخش</th><th>تست</th><th>فلش‌کارت</th><th>رایگان</th><th>منتشر</th><th></th></tr></thead>
+    <tbody>
+    {% for c in chapters %}
+      <tr{% if c.node.is_archived %} style="opacity:.5"{% endif %}>
+        <td>{{ c.node.position|default:"" }}</td>
+        <td><a href="{% url 'admin:catalog_chapter_manager' c.node.pk %}"><b>{{ c.node.title }}</b></a> <span class="hint">{{ c.node.slug }}</span>
+          {% if c.node.is_archived %}<span class="pill warn">بایگانی</span>{% endif %}</td>
+        <td>{{ c.sections }}</td><td>{{ c.questions }}</td><td>{{ c.flashcards }}</td>
+        <td>
+          <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+            <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="free">
+            <input type="hidden" name="value" value="{% if c.node.is_free %}0{% else %}1{% endif %}">
+            <button class="btn small" type="submit" title="عوض کردن">{% if c.node.is_free %}✓ رایگان{% else %}پولی{% endif %}</button></form>
+        </td>
+        <td>
+          <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+            <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="publish">
+            <input type="hidden" name="value" value="{% if c.node.is_published %}0{% else %}1{% endif %}">
+            <button class="btn small" type="submit" title="عوض کردن">{% if c.node.is_published %}✓ منتشر{% else %}پیش‌نویس{% endif %}</button></form>
+        </td>
+        <td class="row" style="gap:4px">
+          <a class="btn small primary" href="{% url 'admin:catalog_chapter_manager' c.node.pk %}">مدیریت فصل</a>
+          <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+            <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="up">
+            <button class="btn small icon" type="submit" title="بالا">▲</button></form>
+          <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+            <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="down">
+            <button class="btn small icon" type="submit" title="پایین">▼</button></form>
+          <a class="btn small" href="{% url 'admin:catalog_chapter_export' c.node.pk %}">دریافت فایل</a>
+          <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+            <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="archive">
+            <input type="hidden" name="value" value="{% if c.node.is_archived %}0{% else %}1{% endif %}">
+            <button class="btn small {% if not c.node.is_archived %}danger{% endif %}" type="submit">{% if c.node.is_archived %}بازگرداندن{% else %}بایگانی{% endif %}</button></form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8">هنوز فصلی ندارد.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="row" style="margin-top:16px;align-items:flex-start;gap:20px">
+    <form class="cm-card" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}" style="flex:1;min-width:300px">{% csrf_token %}
+      <input type="hidden" name="action" value="new">
+      <b>فصل تازه (خالی)</b>
+      <div class="row" style="margin-top:8px">
+        <div class="grow"><label class="f">عنوان</label><input type="text" name="title" required></div>
+        <div style="width:90px"><label class="f">شماره</label><input type="text" name="number" placeholder="بعدی"></div>
+        <div style="width:160px"><label class="f">شناسه (لاتین)</label><input type="text" name="slug" dir="ltr" required placeholder="bb-ch3"></div>
+      </div>
+      <button class="btn primary" type="submit" style="margin-top:10px">ساختن و باز کردن</button>
+    </form>
+    <div class="cm-card" style="flex:1;min-width:300px">
+      <b>فصل از فایل</b>
+      <p class="hint">فصل تازه یا به‌روزرسانی یک فصل با فایل <code>chapter.md</code> یا ZIP. قبل از اعمال، تغییرات را نشان می‌دهد.</p>
+      <a class="btn primary" href="{% url 'admin:catalog_book_import' original.pk %}">انتخاب فایل</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

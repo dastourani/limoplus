@@ -54,6 +54,9 @@ def major_books(request, slug):
             {
                 "slug": book.slug,
                 "title": book.title,
+                "author": book.author,
+                "edition": book.edition,
+                "cover": request.build_absolute_uri(book.cover.url) if book.cover else None,
                 "price": book.price,
                 "chapter_count": len(chapters),
                 "has_free_part": any(n.is_free for n in access.nodes.values() if access.visible(n.id)),
@@ -107,6 +110,10 @@ def book_detail(request, slug):
         {
             "slug": book.slug,
             "title": book.title,
+            "author": book.author,
+            "edition": book.edition,
+            "cover": request.build_absolute_uri(book.cover.url) if book.cover else None,
+            "about": media_urls(request, book.about),
             "price": book.price,
             "majors": list(book.majors.values_list("slug", flat=True)),
             "chapters": chapters,

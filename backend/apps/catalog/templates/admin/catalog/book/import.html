@@ -1,0 +1,61 @@
+{% extends "admin/base_site.html" %}
+{% block nav-sidebar %}{% endblock %}
+{% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">مدیریت</a> ›
+  <a href="{% url 'admin:catalog_book_changelist' %}">کتاب‌ها</a> ›
+  {% if book %}<a href="{% url 'admin:catalog_book_change' book.pk %}">{{ book.title }}</a> ›{% endif %}
+  فصل از فایل
+</div>
+{% endblock %}
+{% block content %}
+<div id="content-main" class="lp">
+  {% if not report or report.errors %}
+  <p>یک فایل <code>.md</code> یا <code>.zip</code> (فایل <code>.md</code> به‌همراه پوشه‌ی <code>images</code>) انتخاب کنید.
+    {% if book %}فصل به کتاب «<b>{{ book.title }}</b>» اضافه می‌شود؛ لازم نیست خط‌های کتاب (شناسه-کتاب، کتاب) در فایل باشد.{% endif %}
+    اگر فصلی با همین شناسه‌ی فصل قبلاً وارد شده باشد، به‌روز می‌شود و پیشرفت کاربران حفظ می‌شود. قبل از اعمال، تغییرات را نشان می‌دهد.</p>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="row"><input type="file" name="file" accept=".md,.zip" required> <button class="btn primary" type="submit">بررسی فایل</button></div>
+  </form>
+  {% endif %}
+
+  {% if report %}
+    <h2 style="margin-top:20px">{{ report.filename }}</h2>
+    {% if report.errors %}
+      <div class="msg err"><b>{{ report.errors|length }} خطا؛ چیزی وارد نشد.</b> خطاها را در فایل درست کنید و دوباره انتخابش کنید.
+        <ul>{% for issue in report.errors %}<li>{{ issue }}</li>{% endfor %}</ul></div>
+    {% else %}
+      <div class="msg ok">فایل بدون خطاست:
+        {% if report.existing %}فصل موجود «<b>{{ report.target_chapter }}</b>» در کتاب «{{ report.target_book }}» به‌روز می‌شود.
+        {% else %}فصل تازه‌ی «<b>{{ report.target_chapter }}</b>» در کتاب «{{ report.target_book }}» ساخته می‌شود
+          ({{ report.counts.sections }} بخش، {{ report.counts.questions }} تست، {{ report.counts.flashcards }} فلش‌کارت).{% endif %}</div>
+    {% endif %}
+    {% if report.warnings %}
+      <div class="msg warn"><b>هشدارها ({{ report.warnings|length }})</b><ul>{% for issue in report.warnings %}<li>{{ issue }}</li>{% endfor %}</ul></div>
+    {% endif %}
+    {% if report.token %}
+      {% if report.existing %}
+        <div id="plan"></div>
+        {{ report.plan|json_script:"plan-data" }}
+        {{ report.diff|json_script:"diff-data" }}
+        <script>
+          document.addEventListener('DOMContentLoaded', function () {
+            var el = document.getElementById('plan');
+            el.appendChild(LimoReport({ plan: JSON.parse(document.getElementById('plan-data').textContent), diff: JSON.parse(document.getElementById('diff-data').textContent) }));
+          });
+        </script>
+      {% endif %}
+      <form method="post" class="cm-save">
+        {% csrf_token %}
+        <input type="hidden" name="token" value="{{ report.token }}">
+        <input type="hidden" name="filename" value="{{ report.filename }}">
+        <label class="btn"><input type="checkbox" name="publish"> انتشار فوری (بدون این گزینه، بخش‌های تازه پیش‌نویس می‌مانند)</label>
+        <button class="btn primary" type="submit">اعمال تغییرات</button>
+        <a class="btn" href="{{ request.path }}">انصراف</a>
+      </form>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

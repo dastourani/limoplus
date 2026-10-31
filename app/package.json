@@ -50,7 +50,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:admin-preview": "npx --yes esbuild@0.28.2 admin-preview/entry.ts --bundle --minify --format=iife --target=es2019 --legal-comments=none --outfile=../backend/apps/catalog/static/catalog/limo-preview.js"
   },
   "private": true
 }

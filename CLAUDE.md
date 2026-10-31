@@ -36,8 +36,16 @@ Code, identifiers and commit messages are in English.
 - `docker-compose.yml` — local Postgres + backend (mounts `content/` read-only).
 - `content/samples/` — sample book in the chapter format; `python manage.py load_samples` loads it.
 - `docs/content-format.md` — the chapter Markdown format (Persian) and the prompt for AI content writers.
-- Content import: `apps/catalog/importer.py` (admin page «بارگذاری فصل از فایل», or `manage.py import_chapter`).
-  Items are matched by slug across the whole book and moved, never duplicated; missing items are archived.
+- Content import: `apps/catalog/importer.py` (admin «کتاب‌ها» › book › «فصل از فایل», with a preview of changes; or
+  `manage.py import_chapter`). Items are matched by slug across the whole book and moved, never duplicated; missing items
+  are archived.
+- Content panel (`apps/catalog/panel.py`, `editing.py`, `exporter.py`): the database is the source of truth; `exporter`
+  writes a chapter back as chapter.md (round trip is exact). Every panel edit goes DB → ParsedChapter → change → text →
+  parse (all file rules) → `apply_chapter`, then a `ChapterRevision` copy is kept. Slugs of existing items never change in
+  the panel. Pages: books (proxy `Book`), «مدیریت فصل» (JS in `static/catalog/panel.js`), whole-file edit, versions.
+  The live preview uses the app's own renderer bundled into `static/catalog/limo-preview.js`; after changing
+  `renderMarkdown.ts` or `reviewCard.ts`, run `cd app && npm run build:admin-preview` and commit the bundle.
+  Question/flashcard/section admin lists are for filtering; their «ویرایش» opens the chapter manager.
 - Access rules live only in `apps/catalog/access.py` (`AccessMap`): visible = node and all ancestors published and
   not archived; readable = visible and (staff, or free node/ancestor, or owned / covered by an active subscription — `owns_book`).
   Every content endpoint must use it.

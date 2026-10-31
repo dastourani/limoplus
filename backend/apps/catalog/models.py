@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from treebeard.mp_tree import MP_Node
 
@@ -42,6 +43,13 @@ class ContentNode(MP_Node):
     position = models.PositiveSmallIntegerField("شماره‌ی فصل", null=True, blank=True)
     group = models.CharField("گروه", max_length=120, blank=True, help_text="سرتیتر گروه بخش‌ها در فهرست کتاب (از خط «# ...» در فایل فصل)")
     price = models.PositiveIntegerField("قیمت (تومان)", null=True, blank=True, help_text="فقط برای کتاب")
+    # Book only.
+    author = models.CharField("نویسنده", max_length=200, blank=True)
+    edition = models.CharField("ویرایش", max_length=80, blank=True, help_text="مثلاً «ویرایش چهارم»")
+    cover = models.ImageField(
+        "عکس جلد", upload_to="covers/", blank=True, help_text="عمودی، ۸۰۰ در ۱۲۰۰ پیکسل (نسبت ۲ به ۳)؛ بدون عکس، جلد لیمویی نشان داده می‌شود."
+    )
+    about = models.TextField("درباره‌ی کتاب (Markdown)", blank=True)
     is_published = models.BooleanField("منتشر شده", default=False)
     is_archived = models.BooleanField("بایگانی", default=False, help_text="به‌جای حذف؛ داده‌ی کاربران حفظ می‌شود")
     updated_at = models.DateTimeField(auto_now=True)
@@ -61,6 +69,49 @@ class ContentNode(MP_Node):
     def is_accessible_free(self) -> bool:
         """Free if this node or any ancestor is marked free."""
         return self.is_free or self.get_ancestors().filter(is_free=True).exists()
+
+
+class Book(ContentNode):
+    """Books only (the top of the content tree), for the panel's «کتاب‌ها» page."""
+
+    class Meta:
+        proxy = True
+        verbose_name = "کتاب"
+        verbose_name_plural = "کتاب‌ها"
+
+
+class Section(ContentNode):
+    """Sections only, for searching and filtering notes and summaries in the panel."""
+
+    class Meta:
+        proxy = True
+        verbose_name = "بخش (جزوه و خلاصه)"
+        verbose_name_plural = "بخش‌ها (جزوه و خلاصه)"
+
+
+class ChapterRevision(models.Model):
+    """A saved copy of a whole chapter as a chapter.md text, taken after every change from the panel or a file."""
+
+    class Source(models.TextChoices):
+        PANEL = "panel", "ویرایش در پنل"
+        FILE = "file", "بارگذاری فایل"
+        RESTORE = "restore", "بازگرداندن نسخه"
+
+    chapter = models.ForeignKey(ContentNode, on_delete=models.CASCADE, related_name="revisions", verbose_name="فصل")
+    text = models.TextField("متن فصل")
+    source = models.CharField("منشأ", max_length=10, choices=Source.choices)
+    note = models.CharField("توضیح", max_length=300, blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name="کاربر")
+    created_at = models.DateTimeField("زمان", auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "نسخه‌ی فصل"
+        verbose_name_plural = "نسخه‌های فصل"
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return f"{self.chapter.title} ({self.get_source_display()})"
 
 
 class Banner(models.Model):

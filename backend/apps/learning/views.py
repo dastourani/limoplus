@@ -31,7 +31,7 @@ def node_questions(request, node_id):
     questions = (
         Question.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False)
         .prefetch_related("choices", "questionsource_set__source")
-        .order_by("node__path", "id")
+        .order_by("node__path", "order", "id")
     )
     items, locked = [], 0
     for q in questions:
@@ -103,7 +103,7 @@ def node_flashcards(request, node_id):
     access = AccessMap(request.user, node)
     if not access.visible(node.id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-    cards = Flashcard.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False).order_by("node__path", "id")
+    cards = Flashcard.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False).order_by("node__path", "order", "id")
     items, locked = [], 0
     for f in cards:
         if not _usable(access, f):

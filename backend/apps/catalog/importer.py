@@ -194,16 +194,17 @@ class ParsedChapter:
 # --- Reading the upload --------------------------------------------------------------------------------------
 
 
-def read_upload(filename: str, data: bytes) -> ParsedChapter:
-    """Accept a .md file or a .zip containing one .md file and optional images/ folder."""
+def read_upload(filename: str, data: bytes, book: ContentNode | None = None) -> ParsedChapter:
+    """Accept a .md file or a .zip containing one .md file and optional images/ folder.
+    With `book`, the file may leave out the book lines; if it names another book, that is an error."""
     if filename.lower().endswith(".zip"):
-        return _read_zip(data)
+        return _read_zip(data, book)
     if filename.lower().endswith(".md"):
         if len(data) > MAX_MARKDOWN_BYTES:
             chapter = ParsedChapter()
             chapter.error("فایل متن بیشتر از ۲ مگابایت است؛ فصل را کوچک‌تر کنید.")
             return chapter
-        chapter = parse_chapter(data.decode("utf-8-sig", errors="replace"))
+        chapter = parse_chapter(data.decode("utf-8-sig", errors="replace"), book=book)
         _check_images(chapter)
         return chapter
     chapter = ParsedChapter()
@@ -211,7 +212,7 @@ def read_upload(filename: str, data: bytes) -> ParsedChapter:
     return chapter
 
 
-def _read_zip(data: bytes) -> ParsedChapter:
+def _read_zip(data: bytes, book: ContentNode | None = None) -> ParsedChapter:
     failed = ParsedChapter()
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
@@ -230,7 +231,7 @@ def _read_zip(data: bytes) -> ParsedChapter:
             failed.error("فایل متن بیشتر از ۲ مگابایت است؛ فصل را کوچک‌تر کنید.")
             return failed
         base = posixpath.dirname(markdown[0].filename)
-        chapter = parse_chapter(archive.read(markdown[0]).decode("utf-8-sig", errors="replace"))
+        chapter = parse_chapter(archive.read(markdown[0]).decode("utf-8-sig", errors="replace"), book=book)
         for info in infos:
             name = info.filename
             if posixpath.splitext(name)[1].lower() not in IMAGE_EXTENSIONS:
@@ -256,6 +257,14 @@ def _check_images(chapter: ParsedChapter):
         for line_no, text in _texts_with_lines(section):
             for match in _IMAGE.finditer(text):
                 target = match.group(2)
+                if target.startswith(MEDIA_PREFIX):
+                    # An image already on this server (files exported from the panel, or images added in the panel).
+                    stored = target[len(MEDIA_PREFIX) :]
+                    if posixpath.normpath(stored) != stored or not stored.startswith("content/") or not default_storage.exists(stored):
+                        chapter.error(f"عکس «{target}» روی سرور پیدا نشد.", line_no)
+                    elif not match.group(1).strip():
+                        chapter.warn(f"عکس «{target}» زیرنویس ندارد.", line_no)
+                    continue
                 if target.startswith(("http://", "https://")):
                     chapter.warn(f"عکس از اینترنت لود می‌شود ({target}); بهتر است داخل ZIP باشد.", line_no)
                     continue
@@ -277,11 +286,11 @@ def _texts_with_lines(section: ParsedSection):
 # --- Parsing ------------------------------------------------------------------------------------------------
 
 
-def parse_chapter(text: str) -> ParsedChapter:
+def parse_chapter(text: str, book: ContentNode | None = None) -> ParsedChapter:
     chapter = ParsedChapter()
     lines = text.replace("\r\n", "\n").replace("\r", "\n").translate(_ARABIC_LETTERS).split("\n")
 
-    start = _parse_front_matter(lines, chapter)
+    start = _parse_front_matter(lines, chapter, book)
     if chapter.errors:
         return chapter
 
@@ -357,7 +366,7 @@ def _find_block_end(lines, start):
     return None
 
 
-def _parse_front_matter(lines, chapter) -> int:
+def _parse_front_matter(lines, chapter, book: ContentNode | None = None) -> int:
     if not lines or lines[0].strip() != "---":
         chapter.error("فایل باید با بخش مشخصات بین دو خط --- شروع شود.", 1)
         return 0
@@ -381,6 +390,11 @@ def _parse_front_matter(lines, chapter) -> int:
         return len(lines)
 
     meta = chapter.meta
+    if book is not None:
+        if meta.get("book_slug") and meta["book_slug"] != book.slug:
+            chapter.error(f"این فایل مال کتاب «{meta['book_slug']}» است، نه «{book.slug}».", 1)
+        meta.setdefault("book_slug", book.slug)
+        meta.setdefault("book_title", book.title)
     for key, label in [("book_slug", "شناسه-کتاب"), ("book_title", "کتاب"), ("chapter_slug", "شناسه-فصل"), ("chapter_title", "عنوان")]:
         if not meta.get(key):
             chapter.error(f"«{label}» در مشخصات فایل نیامده است.", 1)
@@ -557,6 +571,22 @@ def _validate(chapter: ParsedChapter):
     for section in chapter.sections:
         if not section.full_body and not section.summary_body:
             chapter.warn(f"بخش «{section.title}» متنی ندارد.", section.line)
+    for section in chapter.all_sections():
+        for phrase in missing_jump_phrases(section.full_body, section.summary_body):
+            chapter.warn(f"بخش «{section.title or 'مقدمه'}»: عبارت «{phrase}» در خلاصه هست ولی در جزوه پیدا نشد؛ پرش به جزوه کار نمی‌کند.", section.line)
+
+
+_JUMP = re.compile(r"\[\[(.+?)\]\]")
+
+
+def _plain(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[*_`]", "", text or ""))
+
+
+def missing_jump_phrases(full_body: str, summary_body: str) -> list[str]:
+    """[[phrases]] of the review card that the app cannot find in the notes."""
+    plain = _plain(full_body)
+    return [p for p in _JUMP.findall(summary_body or "") if _plain(p).strip() not in plain]
 
 
 # --- Checks that need the database ---------------------------------------------------------------------------
@@ -669,13 +699,13 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
 
     flashcard_by_slug, kept_flashcards = {}, set()
     for node, parsed in targets:
-        for f in parsed.flashcards:
+        for order, f in enumerate(parsed.flashcards, start=1):
             obj = Flashcard.objects.filter(slug=f.slug, **in_book).first()
             created = obj is None
             obj = obj or Flashcard(slug=f.slug)
             obj.node = node
             obj.title, obj.point, obj.formula = f.title, _rewrite_images(f.point, image_paths), f.formula
-            obj.is_free, obj.is_archived = f.is_free, False
+            obj.is_free, obj.is_archived, obj.order = f.is_free, False, order
             obj.save()
             (result.created if created else result.updated)["flashcard"] += 1
             flashcard_by_slug[f.slug] = obj
@@ -686,7 +716,7 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
 
     kept_questions = set()
     for node, parsed in targets:
-        for q in parsed.questions:
+        for order, q in enumerate(parsed.questions, start=1):
             obj = Question.objects.filter(slug=q.slug, **in_book).first()
             created = obj is None
             obj = obj or Question(slug=q.slug)
@@ -697,6 +727,7 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
             obj.alternative_view = _rewrite_images(q.alternative_view, image_paths)
             obj.difficulty, obj.domain, obj.kind = q.difficulty, q.domain, q.kind
             obj.estimated_seconds, obj.is_original, obj.is_free, obj.is_archived = q.seconds, q.is_original, q.is_free, False
+            obj.order = order
             obj.save()
             (result.created if created else result.updated)["question"] += 1
             kept_questions.add(obj.pk)
@@ -761,9 +792,9 @@ def _rewrite_images(text: str, image_paths: dict[str, str]) -> str:
     return _IMAGE.sub(replace, text) if text else text
 
 
-def import_file(filename: str, data: bytes, publish: bool = False, dry_run: bool = False):
+def import_file(filename: str, data: bytes, publish: bool = False, dry_run: bool = False, book: ContentNode | None = None):
     """Parse, validate and (unless dry_run or invalid) apply. Returns (parsed chapter, result or None)."""
-    chapter = read_upload(filename, data)
+    chapter = read_upload(filename, data, book)
     check_against_db(chapter)
     if chapter.errors or dry_run:
         return chapter, None

@@ -30,6 +30,7 @@ class Flashcard(models.Model):
     title = models.CharField("عنوان (رو)", max_length=160)
     point = models.TextField("نکته (پشت)")
     formula = models.CharField("فرمول (LaTeX)", max_length=300, blank=True)
+    order = models.PositiveIntegerField("ترتیب در بخش", default=0)
     is_free = models.BooleanField("رایگان", default=False)
     is_archived = models.BooleanField("بایگانی", default=False)
 
@@ -68,6 +69,7 @@ class Question(models.Model):
     domain = models.CharField("حوزه", max_length=12, choices=Domain.choices, blank=True)
     kind = models.CharField("نوع", max_length=10, choices=Kind.choices, blank=True)
     estimated_seconds = models.PositiveSmallIntegerField("زمان تخمینی (ثانیه)", null=True, blank=True)
+    order = models.PositiveIntegerField("ترتیب در بخش", default=0)
     is_original = models.BooleanField("تألیفی", default=False)
     sources = models.ManyToManyField(ExamSource, through="QuestionSource", blank=True, verbose_name="منابع کنکور")
     flashcards = models.ManyToManyField(Flashcard, blank=True, related_name="questions", verbose_name="فلش‌کارت‌های مرتبط")
