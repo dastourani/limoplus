@@ -188,6 +188,16 @@ def _title(value, label):
     return value
 
 
+def set_chapter_published(chapter: ContentNode, value: bool) -> int:
+    """Publish or hide a chapter. Publishing also publishes its draft sections (a published chapter with draft
+    sections shows in the app as a title with nothing inside). Hiding leaves the sections as they are: the hidden
+    chapter hides them anyway, and publishing again brings them back. Returns how many drafts were published."""
+    ContentNode.objects.filter(pk=chapter.pk).update(is_published=value)
+    if not value:
+        return 0
+    return ContentNode.objects.filter(path__startswith=chapter.path, depth__gt=chapter.depth, is_published=False, is_archived=False).update(is_published=True)
+
+
 def apply_op(chapter: ContentNode, data: dict, user) -> dict:
     """Run one panel operation. Returns {"ok": True, "note": …, "warnings": […]} or raises EditError."""
     op = data.get("op", "")
@@ -196,8 +206,8 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
 
     # Visibility lives only in the panel (not in the file).
     if op == "chapter.publish":
-        ContentNode.objects.filter(pk=chapter.pk).update(is_published=bool(data.get("value")))
-        return {"ok": True}
+        drafts = set_chapter_published(chapter, bool(data.get("value")))
+        return {"ok": True, "note": f"{drafts} بخش پیش‌نویس هم منتشر شد." if drafts else ""}
     if op == "section.publish":
         n = chapter.get_children().filter(slug=data.get("slug"), kind=ContentNode.Kind.SECTION).update(is_published=bool(data.get("value")))
         if not n:
@@ -636,6 +646,10 @@ def _chapter_action(request, book, chapter, action):
             parsed = editing.load(chapter)
             parsed.meta["chapter_free"] = value
             editing.save(chapter, parsed, user=request.user, note="رایگان" if value else "پولی")
+        elif field == "is_published":
+            drafts = set_chapter_published(chapter, value)
+            messages.success(request, f"انجام شد؛ {drafts} بخش پیش‌نویس این فصل هم منتشر شد." if drafts else "انجام شد.")
+            return
         else:
             ContentNode.objects.filter(pk=chapter.pk).update(**{field: value})
         messages.success(request, "انجام شد.")

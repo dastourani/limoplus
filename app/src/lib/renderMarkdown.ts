@@ -281,4 +281,55 @@ root.addEventListener('copy', function (e) {
   if (text.length > MAX_COPY) { e.preventDefault(); post({ type: 'copy_blocked' }); }
 });
 root.addEventListener('contextmenu', function (e) { if (e.target && e.target.tagName === 'IMG') e.preventDefault(); });
+// Turning the page with a finger: a clear sideways drag (not a scroll, not a long press, not inside a wide table)
+// is handed to the app, which folds the page from the corner under the finger.
+(function () {
+  if (root.__turnBound) return;
+  root.__turnBound = true;
+  var target = window.ReactNativeWebView ? document : root;
+  var t = null;
+  function box() {
+    if (!window.ReactNativeWebView) {
+      for (var e = root; e && e !== document.body; e = e.parentElement) {
+        var o = getComputedStyle(e).overflowY;
+        if (o === 'auto' || o === 'scroll') return e.getBoundingClientRect();
+      }
+    }
+    return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+  }
+  function scrollsSideways(el) {
+    for (; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+      if (el.scrollWidth > el.clientWidth + 2) { var o = getComputedStyle(el).overflowX; if (o === 'auto' || o === 'scroll') return true; }
+    }
+    return false;
+  }
+  function send(phase, x, y, extra) {
+    var m = { type: 'turn', phase: phase, x: x - t.r.left, y: y - t.r.top, w: t.r.width, h: t.r.height };
+    for (var k in extra) m[k] = extra[k];
+    post(m);
+  }
+  target.addEventListener('touchstart', function (e) {
+    if (e.touches.length !== 1) { t = null; return; }
+    var p = e.touches[0], sel = window.getSelection ? String(window.getSelection()) : '';
+    t = { x0: p.clientX, y0: p.clientY, at: Date.now(), on: false, off: !!sel || scrollsSideways(e.target), r: null, px: p.clientX, pt: Date.now(), vx: 0 };
+  }, { passive: true });
+  target.addEventListener('touchmove', function (e) {
+    if (!t || t.off) return;
+    var p = e.touches[0], dx = p.clientX - t.x0, dy = p.clientY - t.y0;
+    if (!t.on) {
+      if (Date.now() - t.at > 450 || (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx))) { t.off = true; return; }
+      if (Math.abs(dx) < 14 || Math.abs(dx) < 1.6 * Math.abs(dy)) return;
+      t.on = true; t.r = box();
+      if (window.getSelection) window.getSelection().removeAllRanges();
+      send('start', t.x0, t.y0, { dir: dx > 0 ? 1 : -1 });
+    }
+    e.preventDefault();
+    var now = Date.now();
+    if (now > t.pt) { t.vx = (p.clientX - t.px) / (now - t.pt); t.px = p.clientX; t.pt = now; }
+    send('move', p.clientX, p.clientY);
+  }, { passive: false });
+  function end() { if (t && t.on) send('end', t.px, t.y0, { vx: t.vx }); t = null; }
+  target.addEventListener('touchend', end);
+  target.addEventListener('touchcancel', end);
+})();
 `;

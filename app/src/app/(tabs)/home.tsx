@@ -1,3 +1,4 @@
+import { accessLabel } from '../../lib/access';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewInstance } from 'react-native';
@@ -217,7 +218,7 @@ export default function Home() {
                     {book.owned && !book.is_coming_soon && (
                       <View style={[styles.ribbon, styles.ribbonOwned]}>
                         <Icon name="circle-check" size={12} color="#FFFFFF" />
-                        <Text style={styles.ribbonOwnedText}>مال تو</Text>
+                        <Text style={styles.ribbonOwnedText}>{accessLabel(book)}</Text>
                       </View>
                     )}
                     {book.progress != null && (

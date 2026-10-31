@@ -162,6 +162,7 @@ class BookAdmin(admin.ModelAdmin):
                 chapters.append({
                     "node": c,
                     "sections": c.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False).count(),
+                    "drafts": c.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False, is_published=False).count(),
                     "questions": Question.objects.filter(node_id__in=ids, is_archived=False).count(),
                     "flashcards": Flashcard.objects.filter(node_id__in=ids, is_archived=False).count(),
                 })

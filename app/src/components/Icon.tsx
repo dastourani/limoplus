@@ -10,6 +10,7 @@ import BookmarkCheck from 'lucide-react-native/icons/bookmark-check';
 import ChartColumn from 'lucide-react-native/icons/chart-column';
 import Check from 'lucide-react-native/icons/check';
 import ChevronLeft from 'lucide-react-native/icons/chevron-left';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import CircleAlert from 'lucide-react-native/icons/circle-alert';
 import CircleCheck from 'lucide-react-native/icons/circle-check';
 import CircleUserRound from 'lucide-react-native/icons/circle-user-round';
@@ -71,6 +72,7 @@ const ICONS = {
   'chart-column': ChartColumn,
   check: Check,
   'chevron-left': ChevronLeft,
+  'chevron-right': ChevronRight,
   'circle-alert': CircleAlert,
   'circle-check': CircleCheck,
   'circle-user-round': CircleUserRound,

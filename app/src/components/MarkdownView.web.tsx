@@ -47,6 +47,7 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
     if (compact || !root.current) return;
     // Same reader behaviour as the phone app (highlights, selection, copy limit).
     new Function('root', 'post', READER_SCRIPT)(root.current, (m: ReaderEvent) => handler.current?.(m));
+    requestAnimationFrame(() => handler.current?.({ type: 'ready' }));
   }, [compact, html]);
 
   useEffect(() => {

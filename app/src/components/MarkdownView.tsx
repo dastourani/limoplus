@@ -18,7 +18,11 @@ export type ReaderEvent =
   | { type: 'jump'; q: string }
   | { type: 'cards' }
   | { type: 'term'; fa: string }
-  | { type: 'flash_missing' };
+  | { type: 'flash_missing' }
+  /** The page is drawn (time to take away a stand-in). */
+  | { type: 'ready' }
+  /** A finger turning the page: start (with the direction), moves, end (with the speed in px/ms). */
+  | { type: 'turn'; phase: 'start' | 'move' | 'end'; x: number; y: number; w: number; h: number; dir?: 1 | -1; vx?: number };
 
 type Props = {
   markdown: string;
@@ -67,6 +71,7 @@ const READER_BOOT = `
       var h = document.documentElement.scrollHeight - window.innerHeight;
       if (h <= 0) post({ type: 'scroll', percent: 100 });
     }, 800);
+    requestAnimationFrame(function () { post({ type: 'ready' }); });
   })();
   true;
 `;

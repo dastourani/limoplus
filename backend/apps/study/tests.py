@@ -120,6 +120,21 @@ class StudyTests(TestCase):
         again = self.client.post(f"/api/v1/exams/{r.data['id']}/submit/", {"answers": {}}, format="json").data
         self.assertEqual(again["correct"], 1)  # submitting twice changes nothing
 
+    def test_exam_history_pages_and_summary(self):
+        for _ in range(12):
+            r = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 2}, format="json")
+            self.client.post(f"/api/v1/exams/{r.data['id']}/submit/", {"answers": {}}, format="json")
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 2}, format="json")  # left unfinished
+        self.assertEqual(len(self.client.get("/api/v1/me/exams/").data), 13)  # old plain list still works
+        first = self.client.get("/api/v1/me/exams/?page=1").data
+        self.assertEqual((len(first["results"]), first["has_more"]), (10, True))
+        self.assertEqual(first["summary"]["count"], 12)
+        self.assertEqual(len(first["summary"]["trend"]), 12)
+        self.assertEqual(first["books"], [{"slug": "math-1", "title": first["results"][0]["book_title"]}])
+        second = self.client.get("/api/v1/me/exams/?page=2&book=math-1").data
+        self.assertEqual((len(second["results"]), second["has_more"]), (3, False))
+        self.assertEqual(self.client.get("/api/v1/me/exams/?page=1&book=nope").data["summary"]["count"], 12)
+
     def test_exam_excludes_locked_questions(self):
         book = self.chapter.get_parent()
         r = self.client.post(f"/api/v1/nodes/{book.id}/exams/", {"count": 50}, format="json")

@@ -1,3 +1,4 @@
+import { accessLabel } from '../../lib/access';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, LayoutAnimation, Platform, Pressable, ScrollView, Share, StyleSheet, UIManager, useWindowDimensions, View } from 'react-native';
@@ -143,7 +144,7 @@ export default function Book() {
               {book.owned && (
                 <View style={styles.ownedRibbon}>
                   <Icon name="circle-check" size={12} color="#FFFFFF" />
-                  <Text style={styles.ownedRibbonText}>خریداری شده</Text>
+                  <Text style={styles.ownedRibbonText}>{accessLabel(book)}</Text>
                 </View>
               )}
             </View>

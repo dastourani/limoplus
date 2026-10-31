@@ -1,11 +1,11 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, Pressable, StyleSheet, View } from 'react-native';
 
 import { ApiError } from '../../api/client';
 import { endpoints, type NodeDetail, type Note } from '../../api/endpoints';
 import { MarkdownView, type MarkdownViewHandle, type ReaderEvent } from '../../components/MarkdownView';
-import { PageTurn } from '../../components/PageTurn';
+import { CornerHint, FoldLayer, PaperFace, corner, useFold, type Pt } from '../../components/Fold';
 import { ReportSheet } from '../../components/ReportSheet';
 import { ReportButton } from '../../components/Tags';
 import { Text, TextInput } from '../../components/Text';
@@ -43,9 +43,16 @@ const NOTE_COLORS: [string, string][] = [
 type Locked = { title?: string; price?: number | null; slug?: string };
 
 export default function Section() {
-  const { id, turn } = useLocalSearchParams<{ id: string; turn?: string }>();
-  // Coming from «بخش بعد»: the finished page turns over the new one.
-  const [turning, setTurning] = useState<string | null>(turn ?? null);
+  const { id, cover: coverParam, turn } = useLocalSearchParams<{ id: string; cover?: string; turn?: string }>();
+  // Arriving by a page turn: the page drawn under the turning one stays until the real page is drawn.
+  const [cover, setCover] = useState<string | null>(coverParam ?? turn ?? null);
+  const coverFade = useRef(new Animated.Value(1)).current;
+  const main = useFold();
+  const over = useFold();
+  const [stage, setStage] = useState({ W: 0, H: 0 });
+  const [turnMode, setTurnMode] = useState<null | 'forward' | 'back'>(null);
+  const drag = useRef<{ dir: 1 | -1; C: Pt; x0: number; y0: number; base: Pt } | null>(null);
+  const leaving = useRef(false);
   const nodeId = Number(id);
   const { user } = useAuth();
   const reader = useRef<MarkdownViewHandle>(null);
@@ -63,7 +70,6 @@ export default function Section() {
   const [theme, setTheme] = useState<ReaderTheme>('paper');
   const [lineHeight, setLineHeight] = useState(2);
   const [panelOpen, setPanelOpen] = useState(false);
-  const dark = theme === 'dark';
   const [bookmarked, setBookmarked] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
   const [missing, setMissing] = useState<number[]>([]);
@@ -152,11 +158,91 @@ export default function Section() {
     storage.setReader(prefs);
   };
 
+  const dropCover = useCallback(() => {
+    Animated.timing(coverFade, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => setCover(null));
+  }, [coverFade]);
+  useEffect(() => {
+    if (!node || cover === null) return;
+    const t = setTimeout(dropCover, 1800); // in case the page never says it is ready
+    return () => clearTimeout(t);
+  }, [node, cover, dropCover]);
+
+  // ---- turning to the next or previous section ----
+  const goTo = (dir: 1 | -1) => {
+    if (!node) return;
+    const target = dir > 0 ? node.next_id : node.previous_id;
+    if (!target) return;
+    if (dir > 0 && user && !offline && !progress.current.done) sendOrQueue(`nodes/${node.id}/progress/`, { percent: 100, done: true });
+    router.replace({ pathname: `/section/${target}`, params: { cover: (dir > 0 ? node.next_title : node.previous_title) ?? '' } });
+  };
+  const canTurn = (dir: 1 | -1) => !!node && (dir > 0 ? !!node.next_id : !!node.previous_id);
+  const turnBy = async (dir: 1 | -1) => {
+    if (!canTurn(dir) || leaving.current || drag.current) return;
+    leaving.current = true;
+    const C = corner(true, main.size.H);
+    const reduce = await AccessibilityInfo.isReduceMotionEnabled().catch(() => false);
+    if (!reduce) {
+      if (dir > 0) {
+        setTurnMode('forward');
+        await main.play(true, C, 760);
+      } else {
+        over.gone(C.y);
+        setTurnMode('back');
+        await over.play(false, C, 760);
+      }
+    }
+    goTo(dir);
+  };
+  const onTurn = (e: Extract<ReaderEvent, { type: 'turn' }>) => {
+    if (leaving.current) return;
+    const { W, H } = main.size;
+    const x = (e.x * W) / (e.w || W);
+    const y = (e.y * H) / (e.h || H);
+    if (e.phase === 'start') {
+      const dir = e.dir ?? 1;
+      if (!canTurn(dir)) {
+        drag.current = null;
+        return;
+      }
+      const C = corner(y < H / 2, H);
+      drag.current = { dir, C, x0: x, y0: y, base: dir > 0 ? C : { x: 2 * W, y: C.y } };
+      setSelection('');
+      if (dir < 0) over.gone(C.y);
+      setTurnMode(dir > 0 ? 'forward' : 'back');
+      return;
+    }
+    const d = drag.current;
+    if (!d) return;
+    const fold = d.dir > 0 ? main : over;
+    if (e.phase === 'move') {
+      fold.set({ x: d.base.x + (x - d.x0) * 1.25, y: d.base.y + (y - d.y0) }, d.C);
+      return;
+    }
+    drag.current = null;
+    const P = fold.at()?.P ?? d.base;
+    const t = (P.x - d.C.x) / (2 * W);
+    const vx = e.vx ?? 0;
+    const flick = Math.abs(vx) > 0.3 ? Math.sign(vx) : 0;
+    const done = d.dir > 0 ? flick > 0 || (flick === 0 && t > 0.28) : flick < 0 || (flick === 0 && t < 0.72);
+    const over_ = { x: 2 * W, y: d.C.y };
+    if (done) {
+      leaving.current = true;
+      fold.slide(d.dir > 0 ? over_ : d.C, d.C, 320).then(() => goTo(d.dir));
+    } else
+      fold.slide(d.dir > 0 ? d.C : over_, d.C, 260).then(() => {
+        main.rest();
+        setTurnMode(null);
+      });
+  };
+
   const terms = useMemo(() => parseTerms(node?.summary ?? ''), [node?.summary]);
   const termWords = useMemo(() => terms.map((t) => t.fa), [terms]);
 
   const onEvent = (e: ReaderEvent) => {
-    if (e.type === 'jump') {
+    if (e.type === 'turn') onTurn(e);
+    else if (e.type === 'ready') {
+      if (cover !== null) dropCover();
+    } else if (e.type === 'jump') {
       // From an important point in the review card to the same place in the notes.
       setMode('full');
       if (e.q) setFlashTarget((f) => ({ q: e.q, n: (f?.n ?? 0) + 1 }));
@@ -273,16 +359,28 @@ export default function Section() {
     }
   };
 
+  const { paper, ink } = THEMES[theme];
+  const dark = theme === 'dark';
+  const lines = dark ? '#2A332D' : '#E2E5DA';
+  const back = dark ? '#1E2622' : theme === 'sepia' ? '#E8DEC4' : '#EEE6D2';
+
   if (loading)
-    return (
+    return cover !== null ? (
+      <Screen background={paper}>
+        <View style={styles.header}>
+          <View style={styles.icon}>
+            <Icon name="arrow-right" size={24} color={ink} />
+          </View>
+          <Text style={[styles.title, rtl, { color: ink, flex: 1 }]} numberOfLines={1}>{cover}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <PaperFace title={cover} paper={paper} ink={ink} line={lines} />
+        </View>
+      </Screen>
+    ) : (
       <Screen>
         <Header />
         <Loading />
-        {turning !== null && (
-          <View style={StyleSheet.absoluteFill}>
-            <PageTurn kind="paper" title={turning} hold />
-          </View>
-        )}
       </Screen>
     );
 
@@ -305,7 +403,6 @@ export default function Section() {
   const chapter = node.breadcrumb[node.breadcrumb.length - 1];
   const body = mode === 'summary' && node.summary ? node.summary : node.full;
   const bookSlug = node.breadcrumb.find((b) => b.kind === 'book')?.slug;
-  const { paper, ink } = THEMES[theme];
   const missingNotes = notes.filter((n) => missing.includes(n.id) && n.mode === mode);
 
   return (
@@ -339,7 +436,17 @@ export default function Section() {
         </View>
       )}
 
-      <View style={{ flex: 1 }}>
+      <View
+        style={{ flex: 1, overflow: 'hidden' }}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          main.setSize(width, height);
+          over.setSize(width, height);
+          setStage({ W: width, H: height });
+        }}
+      >
+        {turnMode === 'forward' && <PaperFace title={node.next_title ?? ''} paper={paper} ink={ink} line={lines} />}
+        <FoldLayer fold={main} W={stage.W} H={stage.H} back={back} paper={paper} id="sec">
         <MarkdownView
           ref={reader}
           markdown={body}
@@ -354,6 +461,19 @@ export default function Section() {
           highlights={highlights}
           onEvent={onEvent}
         />
+        <Watermark text={user?.phone || 'لیمو پلاس'} dark={dark} />
+        </FoldLayer>
+        {turnMode === 'back' && (
+          <FoldLayer fold={over} W={stage.W} H={stage.H} back={back} id="prev">
+            <PaperFace title={node.previous_title ?? ''} paper={paper} ink={ink} line={lines} />
+          </FoldLayer>
+        )}
+        {!!node.next_id && turnMode === null && <CornerHint back={back} under={dark ? '#0B0E0C' : '#D6D0BF'} />}
+        {cover !== null && (
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: coverFade }]}>
+            <PaperFace title={cover} paper={paper} ink={ink} line={lines} />
+          </Animated.View>
+        )}
         <Sheet visible={!!term} onClose={() => setTerm(null)} title={term?.fa ?? ''}>
           {!!term?.en && <Text style={styles.termEn}>{term.en}</Text>}
           {!!term?.meaning && <Text style={[styles.termMean, rtl]}>{term.meaning}</Text>}
@@ -368,7 +488,6 @@ export default function Section() {
             />
           )}
         </Sheet>
-        <Watermark text={user?.phone || 'لیمو پلاس'} dark={dark} />
         {!!selection && (
           <View style={styles.selBar}>
             {NOTE_COLORS.map(([name, hex]) => (
@@ -388,19 +507,28 @@ export default function Section() {
       </View>
 
       <View style={[styles.bar, { backgroundColor: paper, borderTopColor: dark ? '#26302A' : '#ECEFE6' }]}>
+        <Pressable
+          onPress={() => turnBy(-1)}
+          disabled={!node.previous_id}
+          style={[styles.step2, { borderColor: dark ? '#3A463E' : colors.line }, !node.previous_id && { opacity: 0.35 }]}
+          accessibilityRole="button"
+          accessibilityLabel="بخش قبل"
+        >
+          <Icon name="chevron-right" size={20} color={ink} />
+          <Text style={[styles.step2Text, { color: ink }]}>قبلی</Text>
+        </Pressable>
         <Button label="تست‌ها" variant={dark ? 'primary' : 'outline'} onPress={() => router.push(`/quiz/${node.id}`)} style={{ flex: 1 }} />
         <Button label="فلش‌کارت" variant={dark ? 'primary' : 'outline'} onPress={() => router.push(`/flashcards/${node.id}`)} style={{ flex: 1 }} />
-        {node.next_id ? (
-          <Button
-            label="بخش بعد"
-            variant="dark"
-            onPress={() => {
-              if (user && !offline && !progress.current.done) sendOrQueue(`nodes/${node.id}/progress/`, { percent: 100, done: true });
-              router.replace({ pathname: `/section/${node.next_id}`, params: { turn: node.title } });
-            }}
-            style={{ flex: 1.2 }}
-          />
-        ) : null}
+        <Pressable
+          onPress={() => turnBy(1)}
+          disabled={!node.next_id}
+          style={[styles.step2, styles.step2Next, !node.next_id && { opacity: 0.35 }]}
+          accessibilityRole="button"
+          accessibilityLabel="بخش بعد"
+        >
+          <Text style={[styles.step2Text, { color: colors.lemon }]}>بعدی</Text>
+          <Icon name="chevron-left" size={20} color={colors.lemon} />
+        </Pressable>
       </View>
 
       <Sheet visible={panelOpen} onClose={() => setPanelOpen(false)} title="نمایش متن">
@@ -484,11 +612,6 @@ export default function Section() {
           flash('گزارش داده شد. ممنون!');
         }}
       />
-      {turning !== null && (
-        <View style={StyleSheet.absoluteFill}>
-          <PageTurn kind="paper" title={turning} onDone={() => setTurning(null)} />
-        </View>
-      )}
     </Screen>
   );
 }
@@ -515,7 +638,10 @@ const styles = StyleSheet.create({
   toggleOn: { backgroundColor: colors.ink },
   toggleText: { fontWeight: '700', color: colors.muted },
   toggleTextOn: { color: colors.lemon },
-  bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1 },
+  bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, alignItems: 'stretch' },
+  step2: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1.5, minHeight: 48 },
+  step2Next: { backgroundColor: colors.ink, borderColor: colors.ink },
+  step2Text: { fontSize: 14, fontWeight: '800' },
   locked: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
   lockIcon: { fontSize: 44 },
   lockTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, textAlign: 'center', writingDirection: 'rtl' },

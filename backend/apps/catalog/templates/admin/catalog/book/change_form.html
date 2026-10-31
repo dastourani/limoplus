@@ -23,7 +23,7 @@
         <td>{{ c.node.position|default:"" }}</td>
         <td><a href="{% url 'admin:catalog_chapter_manager' c.node.pk %}"><b>{{ c.node.title }}</b></a> <span class="hint">{{ c.node.slug }}</span>
           {% if c.node.is_archived %}<span class="pill warn">بایگانی</span>{% endif %}</td>
-        <td>{{ c.sections }}</td><td>{{ c.questions }}</td><td>{{ c.flashcards }}</td>
+        <td>{{ c.sections }}{% if c.drafts and not c.node.is_archived %}<br><span class="pill warn" title="این بخش‌ها در اپ دیده نمی‌شوند">{{ c.drafts }} پیش‌نویس</span>{% endif %}</td><td>{{ c.questions }}</td><td>{{ c.flashcards }}</td>
         <td>
           <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
             <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="free">

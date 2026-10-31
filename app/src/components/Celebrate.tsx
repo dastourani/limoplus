@@ -14,6 +14,8 @@ import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View, useWi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Ellipse, G, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 
+import * as Device from 'expo-device';
+
 import { buzz, play, preloadSounds } from '../lib/sound';
 import { colors, rtl, toPersianDigits } from '../theme';
 import { Text } from './Text';
@@ -124,6 +126,8 @@ function Drop({ size }: { size: number }) {
 type Sample = { x: number; y: number; r: number; sx: number; sy: number; o: number };
 type Track = { kind: 'drop' | 'stain' | 'crown'; size: number; samples: Sample[] };
 const FPS = 30;
+/** Phones with little memory (like the Galaxy A03) get half the drops, so the juice never stutters. */
+const LIGHT = (Device.totalMemory ?? 4e9) < 3.5e9;
 const DURATION = 1.8;
 
 function simulate(spawns: { x: number; y: number; vx: number; vy: number; s: number; delay: number }[], floor: number): Track[] {
@@ -198,10 +202,10 @@ function splashTrack(kind: 'stain' | 'crown', x: number, y: number, s: number, a
   return { kind, size: kind === 'stain' ? 28 : 40, samples };
 }
 
-function Juice({ tracks, cx, cy, onLand }: { tracks: Track[]; cx: number; cy: number; onLand?: () => void }) {
+function Juice({ tracks, cx, cy, onLand, onEnd }: { tracks: Track[]; cx: number; cy: number; onLand?: () => void; onEnd?: () => void }) {
   const v = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(v, { toValue: 1, duration: DURATION * 1000, easing: Easing.linear, useNativeDriver: true }).start();
+    Animated.timing(v, { toValue: 1, duration: DURATION * 1000, easing: Easing.linear, useNativeDriver: true }).start(() => onEnd?.());
     // A drop sound for each landing (the sound helper throttles bursts).
     const timers = tracks
       .filter((t) => t.kind === 'crown')
@@ -320,20 +324,20 @@ function LemonScene({ c, onClose, reduce }: { c: Celebration; onClose: () => voi
           ]).start(() => {
             buzz('success');
             play('pop');
-            setSpray(simulate(rimSpray(16, 420, size * 0.42), size * 0.78));
-            Animated.timing(glow, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+            setSpray(simulate(rimSpray(LIGHT ? 8 : 16, 420, size * 0.42), size * 0.78));
+            Animated.sequence([Animated.timing(glow, { toValue: 1, duration: 450, useNativeDriver: true }), Animated.timing(glow, { toValue: 0, duration: 900, delay: 350, easing: Easing.out(Easing.quad), useNativeDriver: true })]).start();
             Animated.spring(sx, { toValue: 1, friction: 3.2, tension: 160, useNativeDriver: true }).start();
             Animated.spring(sy, { toValue: 1, friction: 3.2, tension: 160, useNativeDriver: true }).start();
             Animated.spring(ty, { toValue: 0, friction: 4, useNativeDriver: true }).start();
           });
         } else if (c.kind === 'deck') {
           buzz('success');
-          Animated.timing(glow, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+          Animated.sequence([Animated.timing(glow, { toValue: 1, duration: 450, useNativeDriver: true }), Animated.timing(glow, { toValue: 0, duration: 900, delay: 350, easing: Easing.out(Easing.quad), useNativeDriver: true })]).start();
           Animated.spring(rot, { toValue: 1, friction: 6, tension: 30, useNativeDriver: true }).start();
           timers.push(
             setTimeout(() => {
               play('pop');
-              setSpray(simulate(rimSpray(12, 380, size * 0.42), size * 0.78));
+              setSpray(simulate(rimSpray(LIGHT ? 6 : 12, 380, size * 0.42), size * 0.78));
             }, 350),
           );
         } else if (c.kind === 'good') {
@@ -364,7 +368,7 @@ function LemonScene({ c, onClose, reduce }: { c: Celebration; onClose: () => voi
         <Animated.View style={{ transform: [{ translateY: ty }, { rotate: spin }, { scale: breath }, { scaleX: sx }, { scaleY: sy }] }}>
           <Lemon fills={fills} size={size} />
         </Animated.View>
-        {spray && <Juice tracks={spray} cx={size / 2} cy={size / 2} />}
+        {spray && <Juice tracks={spray} cx={size / 2} cy={size / 2} onEnd={() => setSpray(null)} />}
       </View>
       {exam && (
         <Text style={styles.score}>
@@ -505,7 +509,10 @@ function PurchaseScene({ c, onClose }: { c: Celebration; onClose: () => void }) 
     }, 760);
     const t3 = setTimeout(() => {
       Animated.timing(fall, { toValue: 1, duration: 560, easing: Easing.in(Easing.quad), useNativeDriver: true }).start();
-      Animated.timing(halo, { toValue: 1, duration: 600, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+      Animated.sequence([
+        Animated.timing(halo, { toValue: 1, duration: 600, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(halo, { toValue: 0.35, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ]).start();
       revealText();
     }, 1110);
     return () => [t1, t2, t3].forEach(clearTimeout);
@@ -515,11 +522,12 @@ function PurchaseScene({ c, onClose }: { c: Celebration; onClose: () => void }) 
       <Animated.View style={{ width: 150, height: 196, transform: [{ scale: appear }] }}>
         <Animated.View style={[styles.halo, { opacity: halo.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] }) }]} />
         <View style={styles.pages} />
-        <Animated.View style={[styles.book, { borderColor: halo.interpolate({ inputRange: [0, 1], outputRange: ['#3A4A40', '#F5C518'] }) }]}>
+        <View style={[styles.book, { borderColor: '#3A4A40' }]}>
+          <Animated.View pointerEvents="none" style={[styles.bookLit, { opacity: halo.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 1, 1] }) }]} />
           <View style={[styles.bookLine, { width: '70%', backgroundColor: colors.lemon }]} />
           <View style={[styles.bookLine, { width: '85%' }]} />
           <View style={[styles.bookLine, { width: '55%' }]} />
-        </Animated.View>
+        </View>
         <Animated.View
           style={[
             styles.lock,
@@ -672,6 +680,7 @@ const styles = StyleSheet.create({
   week: { flexDirection: 'row-reverse', gap: 6, marginTop: 6, marginBottom: 10 },
   halo: { position: 'absolute', left: -40, right: -40, top: -40, bottom: -40, borderRadius: 200, backgroundColor: 'rgba(245,197,24,0.6)' },
   pages: { position: 'absolute', top: 6, bottom: 6, left: -6, width: 8, borderTopLeftRadius: 3, borderBottomLeftRadius: 3, backgroundColor: '#EDE6D2' },
+  bookLit: { position: 'absolute', left: -2, right: -2, top: -2, bottom: -2, borderWidth: 2, borderColor: '#F5C518', borderTopLeftRadius: 14, borderBottomLeftRadius: 14, borderTopRightRadius: 22, borderBottomRightRadius: 22 },
   book: { flex: 1, borderTopLeftRadius: 14, borderBottomLeftRadius: 14, borderTopRightRadius: 22, borderBottomRightRadius: 22, backgroundColor: '#1F2A22', borderWidth: 2, justifyContent: 'flex-end', padding: 16, gap: 6 },
   bookLine: { height: 8, borderRadius: 4, backgroundColor: '#3A4A40', alignSelf: 'flex-end' },
   lock: { position: 'absolute', left: 46, top: 78, width: 58, height: 48, borderRadius: 11, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 6 },

@@ -18,6 +18,8 @@ export type BookListItem = {
   /** Number of the first free chapter, if a whole chapter is free. */
   free_chapter: number | null;
   owned: boolean;
+  /** Why the whole book is open: bought, by subscription, or as a staff member. */
+  access?: 'purchase' | 'subscription' | 'staff' | null;
   /** Share of sections read (0–1), once the learner has started. */
   progress: number | null;
   /** «خبرم کن» is on. */
@@ -45,6 +47,8 @@ export type NodeDetail = {
   full: string;
   previous_id: number | null;
   next_id: number | null;
+  previous_title?: string | null;
+  next_title?: string | null;
 };
 export type Question = {
   id: number;
@@ -109,6 +113,12 @@ export type ExamSummary = {
   wrong: number;
   blank: number;
   score_percent: number | null;
+};
+export type ExamPage = {
+  results: (ExamSummary & { book_title: string })[];
+  has_more: boolean;
+  summary: { count: number; average: number | null; best: number | null; trend: number[] };
+  books: { slug: string; title: string }[];
 };
 export type ExamDetail = ExamSummary & { questions: ExamQuestion[]; review?: ExamReview[] };
 export type Library = {
@@ -187,6 +197,7 @@ export const endpoints = {
   exam: (id: number) => api<ExamDetail>(`exams/${id}/`),
   submitExam: (id: number, answers: Record<string, number | null>) => api<ExamDetail>(`exams/${id}/submit/`, { body: { answers } }),
   myExams: () => api<ExamSummary[]>('me/exams/'),
+  examPage: (page: number, book = '') => api<ExamPage>(`me/exams/?page=${page}${book ? `&book=${encodeURIComponent(book)}` : ''}`),
   library: () => api<Library>('me/library/'),
   appVersion: (platform: string, build: number) => api<AppVersion>(`app/version/?platform=${platform}&build=${build}`),
   stats: () => api<Stats>('me/stats/'),

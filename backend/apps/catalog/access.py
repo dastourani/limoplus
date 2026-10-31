@@ -23,6 +23,25 @@ def owns_book(user, book: ContentNode) -> bool:
     return Entitlement.active_for(user).filter(Q(book=book) | Q(all_majors=True) | Q(major_id__in=majors, book__isnull=True)).exists()
 
 
+def access_kind(user, book: ContentNode) -> str | None:
+    """Why the user can read the whole book: "staff", "purchase", "subscription", or None."""
+    if not (user and user.is_authenticated):
+        return None
+    if user.is_staff:
+        return "staff"
+    from django.db.models import Q
+
+    from apps.commerce.models import Entitlement
+
+    active = Entitlement.active_for(user)
+    if active.filter(book=book).exists():
+        return "purchase"
+    majors = list(book.majors.values_list("id", flat=True))
+    if active.filter(Q(all_majors=True) | Q(major_id__in=majors, book__isnull=True)).exists():
+        return "subscription"
+    return None
+
+
 def access_until(user, book: ContentNode):
     """When the user's paid access to the book ends: None if it never does (bought, staff) or there is none."""
     if not (user and user.is_authenticated) or user.is_staff:
@@ -52,8 +71,8 @@ class AccessMap:
         self.nodes = {n.id: n for n in ContentNode.objects.filter(path__startswith=self.book.path)}
         hidden = [n.path for n in self.nodes.values() if not n.is_published or n.is_archived]
         free = [n.path for n in self.nodes.values() if n.is_free]
-        is_staff = bool(user and user.is_authenticated and user.is_staff)
-        self.owned = is_staff or owns_book(user, self.book)
+        self.access = access_kind(user, self.book)
+        self.owned = self.access is not None
         self._visible, self._readable = {}, {}
         for n in self.nodes.values():
             visible = not any(n.path.startswith(h) for h in hidden)

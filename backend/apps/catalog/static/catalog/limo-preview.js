@@ -441,4 +441,55 @@ root.addEventListener('copy', function (e) {
   if (text.length > MAX_COPY) { e.preventDefault(); post({ type: 'copy_blocked' }); }
 });
 root.addEventListener('contextmenu', function (e) { if (e.target && e.target.tagName === 'IMG') e.preventDefault(); });
+// Turning the page with a finger: a clear sideways drag (not a scroll, not a long press, not inside a wide table)
+// is handed to the app, which folds the page from the corner under the finger.
+(function () {
+  if (root.__turnBound) return;
+  root.__turnBound = true;
+  var target = window.ReactNativeWebView ? document : root;
+  var t = null;
+  function box() {
+    if (!window.ReactNativeWebView) {
+      for (var e = root; e && e !== document.body; e = e.parentElement) {
+        var o = getComputedStyle(e).overflowY;
+        if (o === 'auto' || o === 'scroll') return e.getBoundingClientRect();
+      }
+    }
+    return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+  }
+  function scrollsSideways(el) {
+    for (; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+      if (el.scrollWidth > el.clientWidth + 2) { var o = getComputedStyle(el).overflowX; if (o === 'auto' || o === 'scroll') return true; }
+    }
+    return false;
+  }
+  function send(phase, x, y, extra) {
+    var m = { type: 'turn', phase: phase, x: x - t.r.left, y: y - t.r.top, w: t.r.width, h: t.r.height };
+    for (var k in extra) m[k] = extra[k];
+    post(m);
+  }
+  target.addEventListener('touchstart', function (e) {
+    if (e.touches.length !== 1) { t = null; return; }
+    var p = e.touches[0], sel = window.getSelection ? String(window.getSelection()) : '';
+    t = { x0: p.clientX, y0: p.clientY, at: Date.now(), on: false, off: !!sel || scrollsSideways(e.target), r: null, px: p.clientX, pt: Date.now(), vx: 0 };
+  }, { passive: true });
+  target.addEventListener('touchmove', function (e) {
+    if (!t || t.off) return;
+    var p = e.touches[0], dx = p.clientX - t.x0, dy = p.clientY - t.y0;
+    if (!t.on) {
+      if (Date.now() - t.at > 450 || (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx))) { t.off = true; return; }
+      if (Math.abs(dx) < 14 || Math.abs(dx) < 1.6 * Math.abs(dy)) return;
+      t.on = true; t.r = box();
+      if (window.getSelection) window.getSelection().removeAllRanges();
+      send('start', t.x0, t.y0, { dir: dx > 0 ? 1 : -1 });
+    }
+    e.preventDefault();
+    var now = Date.now();
+    if (now > t.pt) { t.vx = (p.clientX - t.px) / (now - t.pt); t.px = p.clientX; t.pt = now; }
+    send('move', p.clientX, p.clientY);
+  }, { passive: false });
+  function end() { if (t && t.on) send('end', t.px, t.y0, { vx: t.vx }); t = null; }
+  target.addEventListener('touchend', end);
+  target.addEventListener('touchcancel', end);
+})();
 `;function s0(e){return(e!=null?e:"").replace(/[&<>"]/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[t])}var oi=e=>`<svg width="${e}" height="${e}" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#F5C518"/><circle cx="10" cy="10" r="6.5" fill="#FFE98A"/><path d="M10,3.5 L10,16.5 M3.5,10 L16.5,10 M5.4,5.4 L14.6,14.6 M14.6,5.4 L5.4,14.6" stroke="#F5C518" stroke-width="1.1"/></svg>`;function V4(e,t){let r=[],n="";for(let a of(e||"").split(/\s+/).filter(Boolean))n&&(n+" "+a).length>t?(r.push(n),n=a):n=n?n+" "+a:a;return n&&r.push(n),r.slice(0,3)}function K4(e,t,r=""){let n=et(t),a=e.strip||"#3FB8A9",i=Ht(e.author,e.edition),s=V4(e.title||"\u0646\u0627\u0645 \u06A9\u062A\u0627\u0628",17),o=Pt(e.motif||"ct",t,e.drawing).replace("<svg ",'<svg x="16" y="70" width="208" height="146" '),u=[],h=312;i&&(u.push(`<text x="222" y="${h}" direction="rtl" text-anchor="start" font-size="11" fill="${n.muted}">${s0(i)}</text>`),h-=17),e.title_en&&(u.push(`<text x="222" y="${h}" font-size="11" fill="${n.muted}" font-style="italic" font-family="Georgia, serif" direction="ltr" text-anchor="end">${s0(e.title_en)}</text>`),h-=17),h-=6;for(let f of s.slice(0,2).reverse())u.push(`<text x="222" y="${h}" direction="rtl" text-anchor="start" font-size="21" font-weight="900" fill="${n.title}">${s0(f)}</text>`),h-=30;return'<svg xmlns="http://www.w3.org/2000/svg" width="240" height="360" viewBox="0 0 240 360" font-family="Vazirmatn, Tahoma, sans-serif">'+(r?`<style>${r}</style>`:"")+`<defs><clipPath id="c"><rect width="240" height="360" rx="10"/></clipPath></defs><g clip-path="url(#c)"><rect width="240" height="360" fill="${n.bg}"/><rect width="240" height="6" fill="${a}"/>`+(e.major?`<text x="222" y="30" direction="rtl" text-anchor="start" font-size="10" font-weight="700" fill="${a}">\u0644\u06CC\u0645\u0648 ${s0(e.major)}</text>`:"")+o+u.join("")+`<rect x="188" y="324" width="34" height="2" rx="1" fill="${n.rule}"/><g transform="translate(206 328)">${oi(16).replace("<svg ",'<svg x="0" y="0" ')}</g><text x="200" y="340" direction="rtl" text-anchor="start" font-size="10" font-weight="700" fill="${n.brand}">\u0644\u06CC\u0645\u0648 \u067E\u0644\u0627\u0633</text></g></svg>`}function Q4(e,t,r=240){let n=et(t),a=r/240,i=e.strip||"#3FB8A9",s=Ht(e.author,e.edition);return`<div style="width:${r}px;height:${r*1.5}px;box-sizing:border-box;position:relative;overflow:hidden;border-radius:${10*a}px;background:${n.bg};font-family:Vazirmatn,Tahoma,sans-serif;direction:rtl;display:flex;flex-direction:column;box-shadow:0 ${10*a}px ${28*a}px rgba(23,32,26,.25)"><div style="height:${6*a}px;background:${i}"></div><div style="padding:${12*a}px ${18*a}px 0;font-size:${10*a}px;font-weight:700;color:${i}">\u0644\u06CC\u0645\u0648 ${s0(e.major||"")}</div><div style="flex:1;display:flex;align-items:center;justify-content:center;padding:${6*a}px ${14*a}px 0"><div style="width:${208*a}px;height:${146*a}px">${Pt(e.motif||"ct",t,e.drawing).replace("<svg ",'<svg width="100%" height="100%" ')}</div></div><div style="padding:0 ${18*a}px ${16*a}px;display:flex;flex-direction:column;gap:${4*a}px"><div style="font-size:${21*a}px;font-weight:900;line-height:1.45;color:${n.title}">${s0(e.title||"\u0646\u0627\u0645 \u06A9\u062A\u0627\u0628")}</div>`+(e.title_en?`<div style="font-size:${11*a}px;color:${n.muted};direction:ltr;text-align:right;font-family:Georgia,serif;font-style:italic">${s0(e.title_en)}</div>`:"")+(s?`<div style="font-size:${11*a}px;color:${n.muted}">${s0(s)}</div>`:"")+`<div style="height:${2*a}px;width:${34*a}px;background:${n.rule};border-radius:2px;margin:${8*a}px 0 ${6*a}px"></div><div style="display:flex;align-items:center;gap:${6*a}px;font-size:${10*a}px;font-weight:700;color:${n.brand}">${oi(16*a)}\u0644\u06CC\u0645\u0648 \u067E\u0644\u0627\u0633</div></div></div>`}globalThis.LimoPreview={CONTENT_CSS:si,renderMarkdown:s1,renderSummary:ii,parseParts:qt,jumpTarget:Nt,coverHtml:Q4,coverSvg:K4,MOTIFS:y1};})();

@@ -492,3 +492,23 @@ class DrawingTests(_Base):
         r = self.client.post(url, data)
         self.assertEqual(r.status_code, 200)
         self.assertNotEqual(ContentNode.objects.get(pk=self.book.pk).cover_motif, "custom")
+
+
+class PublishTests(_Base):
+    def test_publishing_a_chapter_publishes_its_draft_sections(self):
+        ContentNode.objects.filter(path__startswith=self.chapter.path).update(is_published=False)
+        page = self.client.get(reverse("admin:catalog_book_change", args=[self.book.pk]))
+        self.assertContains(page, "پیش‌نویس</span>")
+        self.client.post(reverse("admin:catalog_book_chapter_action", args=[self.book.pk]), {"action": "publish", "chapter": self.chapter.pk, "value": "1"})
+        self.assertFalse(ContentNode.objects.filter(path__startswith=self.chapter.path, is_published=False).exists())
+        from rest_framework.test import APIClient
+
+        detail = APIClient().get("/api/v1/books/test-book/").json()
+        self.assertTrue(detail["chapters"][0]["sections"])
+        self.assertIsNone(detail["access"])
+        section = detail["chapters"][0]["sections"][0]
+        staff = APIClient()
+        staff.force_authenticate(self.admin)
+        node = staff.get(f"/api/v1/nodes/{section['id']}/").json()
+        self.assertIn("next_title", node)
+        self.assertEqual(staff.get("/api/v1/books/test-book/").json()["access"], "staff")

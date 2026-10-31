@@ -2,7 +2,7 @@ import random
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Count, F, Q
+from django.db.models import Avg, Count, F, Max, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -399,10 +399,43 @@ def submit_exam(request, attempt_id):
     return Response(_exam_detail(request, attempt))
 
 
+EXAM_PAGE = 10
+
+
 @api_view(["GET"])
 def my_exams(request):
-    attempts = ExamAttempt.objects.filter(user=request.user, is_archived=False).select_related("node")[:50]
-    return Response([_exam_summary(a) for a in attempts])
+    """The learner's exams, newest first. Without ?page: the old plain list (last 50). With ?page=N (and optional
+    ?book=slug): ten per page, plus a summary of all of them and the books they were taken in."""
+    attempts = ExamAttempt.objects.filter(user=request.user, is_archived=False).select_related("node")
+    if "page" not in request.query_params:
+        return Response([_exam_summary(a) for a in attempts[:50]])
+    steplen = ContentNode.steplen
+    books = {n.path: n for n in ContentNode.objects.filter(depth=1, path__in={p[:steplen] for p in attempts.values_list("node__path", flat=True)})}
+    slug = request.query_params.get("book") or ""
+    chosen = next((b for b in books.values() if b.slug == slug), None)
+    if chosen:
+        attempts = attempts.filter(node__path__startswith=chosen.path)
+    try:
+        page = max(1, int(request.query_params.get("page") or 1))
+    except ValueError:
+        page = 1
+    done = attempts.filter(submitted_at__isnull=False)
+    stats = done.aggregate(count=Count("id"), average=Avg("score_percent"), best=Max("score_percent"))
+    rows = list(attempts[(page - 1) * EXAM_PAGE : page * EXAM_PAGE + 1])
+    return Response(
+        {
+            "results": [_exam_summary(a) | {"book_title": books.get(a.node.path[:steplen]).title if a.node.path[:steplen] in books else ""} for a in rows[:EXAM_PAGE]],
+            "has_more": len(rows) > EXAM_PAGE,
+            "summary": {
+                "count": stats["count"],
+                "average": round(stats["average"], 1) if stats["average"] is not None else None,
+                "best": stats["best"],
+                # Oldest to newest, for the small trend chart.
+                "trend": [round(x, 1) for x in reversed(list(done.values_list("score_percent", flat=True)[:12]))],
+            },
+            "books": [{"slug": b.slug, "title": b.title} for b in sorted(books.values(), key=lambda b: b.title)],
+        }
+    )
 
 
 # --- Library and statistics ----------------------------------------------------------------------------------------------

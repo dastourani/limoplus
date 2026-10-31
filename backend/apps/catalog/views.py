@@ -76,6 +76,7 @@ def book_card(request, book, access) -> dict:
         "has_free_part": any(n.is_free for n in access.nodes.values() if access.visible(n.id)),
         "free_chapter": free_chapter,
         "owned": access.owned,
+        "access": access.access,
         "progress": round(len(done) / len(sections), 3) if done and sections else None,
         "notify": _notify(request.user, book),
     }
@@ -163,6 +164,9 @@ def node_detail(request, node_id):
             "full": media_urls(request, node.full_body),
             "previous_id": siblings[index - 1] if index > 0 else None,
             "next_id": siblings[index + 1] if index + 1 < len(siblings) else None,
+            # Titles of the neighbours, for the page drawn while turning to them.
+            "previous_title": access.nodes[siblings[index - 1]].title if index > 0 else None,
+            "next_title": access.nodes[siblings[index + 1]].title if index + 1 < len(siblings) else None,
             "updated_at": node.updated_at,
         }
     )
