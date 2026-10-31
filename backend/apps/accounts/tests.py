@@ -227,3 +227,14 @@ class AdminLoginThrottleTests(TestCase):
             self.assertEqual(r.status_code, 200)
         r = c.post("/admin/login/", {"username": "09120000009", "password": "Right-Pass-123"})
         self.assertEqual(r.status_code, 429)
+
+
+class OtpHashSettingTests(TestCase):
+    def test_hash_line_can_be_turned_off(self):
+        from django.test import override_settings
+
+        from .views import _otp_message
+
+        self.assertTrue(_otp_message("123456", "AbCdEfGhIjK").endswith("\nAbCdEfGhIjK"))
+        with override_settings(OTP_SMS_APP_HASH=False):
+            self.assertNotIn("AbCdEfGhIjK", _otp_message("123456", "AbCdEfGhIjK"))

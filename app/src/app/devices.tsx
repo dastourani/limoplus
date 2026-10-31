@@ -28,7 +28,7 @@ export default function Devices() {
                 {s.device_name}
                 {s.is_current ? '  (همین دستگاه)' : ''}
               </Text>
-              <Text style={[styles.help, rtl]}>ورود: {jalaliDate(s.created_at)} · آخرین استفاده: {relativeDay(s.last_seen_at)}</Text>
+              <Text style={[styles.help, rtl]}>ورود: {jalaliDate(s.created_at)}، آخرین استفاده: {relativeDay(s.last_seen_at)}</Text>
               {!s.is_current && <Button label="خروج این دستگاه" variant="outline" onPress={async () => {
                     const ok = await confirm({ title: `«${s.device_name}» خارج شود؟`, message: 'روی آن دستگاه باید دوباره با کد پیامکی وارد شد.', confirmLabel: 'خروج دستگاه', destructive: true, icon: 'monitor-smartphone' });
                     if (ok) endpoints.revokeSession(s.id).then(retry);

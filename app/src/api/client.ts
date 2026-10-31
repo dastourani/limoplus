@@ -1,4 +1,4 @@
-import { getApiUrl } from '../config';
+import { APP_BUILD, APP_PLATFORM, getApiUrl } from '../config';
 
 /** Error returned by the server, with its machine code and a Persian message for the user. */
 export class ApiError extends Error {
@@ -20,6 +20,12 @@ export function setOnline(value: boolean) {
   online = value;
 }
 let onUnauthorized: (() => void) | null = null;
+let onUpdateRequired: ((data: Record<string, unknown>) => void) | null = null;
+
+/** Called when the server refuses this (too old) build; the app then shows its update screen. */
+export function setUpdateRequiredHandler(handler: ((data: Record<string, unknown>) => void) | null) {
+  onUpdateRequired = handler;
+}
 
 export function setAuthToken(token: string | null) {
   authToken = token;
@@ -37,6 +43,10 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  if (APP_PLATFORM) {
+    headers['X-App-Platform'] = APP_PLATFORM;
+    headers['X-App-Build'] = String(APP_BUILD);
+  }
 
   let response: Response;
   const controller = new AbortController();
@@ -62,6 +72,7 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   clearTimeout(timer);
   if (!response.ok) {
     if (response.status === 401) onUnauthorized?.();
+    if (response.status === 426) onUpdateRequired?.(data);
     throw new ApiError(
       response.status,
       typeof data.code === 'string' ? data.code : 'error',

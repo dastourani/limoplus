@@ -1,11 +1,11 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { endpoints, type Library } from '../../api/endpoints';
 import { Text } from '../../components/Text';
 import { IconBadge } from '../../components/Icon';
-import { Button, Card, Empty, ErrorState, Loading, Screen } from '../../components/ui';
+import { Button, Card, Empty, ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { relativeDay } from '../../lib/jalali';
 import { colors, rtl } from '../../theme';
@@ -38,6 +38,7 @@ export default function LibraryTab() {
       .finally(() => setLoading(false));
   }, [user]);
   useFocusEffect(load);
+  const refresh = usePullRefresh(loading, load);
 
   if (!user) {
     return (
@@ -66,7 +67,7 @@ export default function LibraryTab() {
       {!data ? (
         error ? <ErrorState message={error} onRetry={load} /> : <Loading />
       ) : (
-        <ScrollView contentContainerStyle={styles.page} refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
+        <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
           {tab === 'reading' &&
             (data!.reading.length === 0 ? (
               <Empty title="هنوز کتابی را شروع نکرده‌ای" text="از صفحه‌ی خانه یک کتاب باز کن." />
@@ -75,7 +76,7 @@ export default function LibraryTab() {
                 <Pressable key={r.book_slug} onPress={() => router.push(`/book/${r.book_slug}`)}>
                   <Card>
                     <Text style={[styles.itemTitle, rtl]}>{r.book_title}</Text>
-                    <Text style={[styles.muted, rtl]}>آخرین بخش: {r.last_section.title} · {relativeDay(r.updated_at)}</Text>
+                    <Text style={[styles.muted, rtl]}>آخرین بخش: {r.last_section.title}، {relativeDay(r.updated_at)}</Text>
                     <Button label="ادامه‌ی مطالعه" variant="dark" onPress={() => router.push(`/section/${r.last_section.id}`)} />
                   </Card>
                 </Pressable>
@@ -100,7 +101,7 @@ export default function LibraryTab() {
               data!.notes.map((n) => (
                 <Pressable key={n.id} onPress={() => router.push(`/section/${n.node_id}`)}>
                   <Card>
-                    <Text style={[styles.muted, rtl]}>{n.node_title} · {relativeDay(n.updated_at)}</Text>
+                    <Text style={[styles.muted, rtl]}>{n.node_title}، {relativeDay(n.updated_at)}</Text>
                     {!!n.quote && <Text style={[styles.quote, rtl, { backgroundColor: NOTE_COLORS[n.color] ?? NOTE_COLORS.yellow }]}>{n.quote}</Text>}
                     {!!n.body && <Text style={[styles.body, rtl]}>{n.body}</Text>}
                   </Card>

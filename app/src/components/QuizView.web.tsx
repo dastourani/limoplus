@@ -2,9 +2,8 @@ import { Asset } from 'expo-asset';
 import { useEffect, useMemo, useRef } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 
-import type { Question } from '../api/endpoints';
 import { FONT_FILES, fontFaceCss } from '../lib/fonts';
-import { QUIZ_CSS, QUIZ_SCRIPT, questionHtml, type QuizViewState } from '../lib/quizHtml';
+import { QUIZ_CSS, QUIZ_SCRIPT, questionHtml, type QuizQuestion, type QuizViewState } from '../lib/quizHtml';
 import { CONTENT_CSS } from '../lib/renderMarkdown';
 import type { QuizEvent } from './QuizView';
 
@@ -20,9 +19,19 @@ function injectCss() {
 }
 
 /** One practice question drawn straight into the page (web). */
-export function QuizView({ question, state, onEvent }: { question: Question; state: QuizViewState; onEvent: (e: QuizEvent) => void }) {
+export function QuizView({
+  question,
+  state,
+  onEvent,
+  mode = 'practice',
+}: {
+  question: QuizQuestion;
+  state: QuizViewState;
+  onEvent: (e: QuizEvent) => void;
+  mode?: 'practice' | 'exam';
+}) {
   injectCss();
-  const html = useMemo(() => questionHtml(question), [question]);
+  const html = useMemo(() => questionHtml(question, mode), [question, mode]);
   const root = useRef<(HTMLDivElement & { __setState?: (s: QuizViewState) => void }) | null>(null);
   const handler = useRef(onEvent);
   handler.current = onEvent;

@@ -286,7 +286,7 @@ export default function Section() {
           <Icon name="arrow-right" size={24} color={ink} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین · ${chapter?.title ?? ''}` : chapter?.title}</Text>
+          <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین، ${chapter?.title ?? ''}` : chapter?.title}</Text>
           <Text style={[styles.title, rtl, { color: ink }]} numberOfLines={1}>{node.title}</Text>
         </View>
         <Pressable onPress={toggleBookmark} disabled={bookmarkBusy} style={[styles.icon, bookmarkBusy && { opacity: 0.35 }]} accessibilityLabel="نشان کردن">

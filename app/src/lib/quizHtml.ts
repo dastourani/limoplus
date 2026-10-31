@@ -35,20 +35,23 @@ const KIND: Record<string, [string, IconData]> = {
   analysis: ['تحلیلی', SearchIcon as IconData],
 };
 
-export function questionHtml(q: Question): string {
+/** Practice questions carry tags; exam questions only stem and choices. */
+export type QuizQuestion = Pick<Question, 'id' | 'stem' | 'choices'> & Partial<Pick<Question, 'sources' | 'is_original' | 'kind'>> & { difficulty?: string };
+
+export function questionHtml(q: QuizQuestion, mode: 'practice' | 'exam' = 'practice'): string {
   const tags: string[] = [];
-  for (const s of q.sources) {
-    tags.push(`<span class="tag t-konkur">${svg(CapIcon as IconData)}${esc(s.name)} ${toPersianDigits(s.year)}${s.number ? ` · سؤال ${toPersianDigits(s.number)}` : ''}</span>`);
+  for (const s of mode === 'exam' ? [] : (q.sources ?? [])) {
+    tags.push(`<span class="tag t-konkur">${svg(CapIcon as IconData)}${esc(s.name)} ${toPersianDigits(s.year)}${s.number ? `، سؤال ${toPersianDigits(s.number)}` : ''}</span>`);
   }
   if (q.is_original) tags.push(`<span class="tag t-orig">${svg(PenIcon as IconData)}تألیفی</span>`);
-  const d = DIFF[q.difficulty];
+  const d = mode === 'exam' ? null : DIFF[q.difficulty ?? ''];
   if (d) tags.push(`<span class="tag t-${d[1]}">${svg(GaugeIcon as IconData)}${d[0]}</span>`);
   const k = q.kind ? KIND[q.kind] : null;
   if (k) tags.push(`<span class="tag t-kind">${svg(k[1])}${k[0]}</span>`);
   const choices = q.choices
     .map((c, i) => `<button class="choice" data-id="${c.id}"><span class="key">${KEYS[i]}</span><span class="ctext">${renderMarkdown(c.text)}</span></button>`)
     .join('');
-  return `<div class="tags">${tags.join('')}</div>
+  return `${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
 <div class="stem">${renderMarkdown(q.stem)}</div>
 <div class="choices">${choices}</div>
 <div class="feedback" hidden></div>
@@ -61,6 +64,10 @@ export type QuizViewState = {
   sending: boolean;
   error: string | null;
   reported: boolean;
+  /** False on the first question: dragging backwards only springs back. */
+  canPrev?: boolean;
+  /** False on the last exam question (practice goes on to the summary). */
+  canNext?: boolean;
   result: (Pick<AnswerResult, 'correct_choice_id' | 'is_correct'> & { tabs: { key: string; label: string; html: string }[]; flashcards: string }) | null;
 };
 
@@ -97,7 +104,8 @@ export const QUIZ_CSS = `
 .quiz .choice .key { flex: none; width: 30px; height: 30px; border-radius: 10px; background: #F1F3EC; display: flex; align-items: center;
   justify-content: center; font-weight: 800; }
 .quiz .ctext { flex: 1; } .quiz .ctext p { margin: 0; }
-.quiz .choice.picked { border-color: #17201A; }
+.quiz .choice.picked { border-color: #17201A; background: #FFF6CF; }
+.quiz .choice.picked .key { background: #17201A; color: #F5C518; }
 .quiz .choice.right { background: #E3F3E9; border-color: #2F7D4F; } .quiz .choice.right .key { background: #2F7D4F; color: #fff; }
 .quiz .choice.wrong { background: #FBE7E6; border-color: #C2413B; } .quiz .choice.wrong .key { background: #C2413B; color: #fff; }
 .quiz .choice:disabled { cursor: default; }
@@ -129,14 +137,40 @@ root.addEventListener('click', function (e) {
   var tb = t.closest && t.closest('.tab');
   if (tb) { tab = Number(tb.getAttribute('data-i')); render(); }
 });
-var x0 = null, y0 = null;
-root.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
-root.addEventListener('touchend', function (e) {
-  if (x0 === null) return;
-  var dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
-  // Persian book: drag the page from left to right to go forward.
-  if (Math.abs(dx) > 60 && Math.abs(dy) < 50) post({ type: 'swipe', dir: dx > 0 ? 'next' : 'prev' });
+// Page drag: the page follows the finger; past a quarter of the width (or a quick flick) it flies off and the next
+// one comes in. Persian book: dragging from left to right goes forward. Vertical moves are left to scrolling.
+var sx = null, sy = null, st = 0, lock = null, dx = 0;
+function pageStyle(x, animate) {
+  root.style.transition = animate ? 'transform .17s ease-out, opacity .17s ease-out' : 'none';
+  root.style.transform = x ? 'translateX(' + x + 'px) rotate(' + (x / 45).toFixed(2) + 'deg)' : '';
+  root.style.opacity = x ? String(Math.max(0.25, 1 - Math.abs(x) / 500)) : '';
+}
+root.addEventListener('touchstart', function (e) {
+  if (e.touches.length > 1) { sx = null; return; }
+  sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now(); lock = null; dx = 0;
 }, { passive: true });
+root.addEventListener('touchmove', function (e) {
+  if (sx === null) return;
+  var mx = e.touches[0].clientX - sx, my = e.touches[0].clientY - sy;
+  if (lock === null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) lock = Math.abs(mx) > Math.abs(my) ? 'x' : 'y';
+  if (lock !== 'x') return;
+  dx = mx;
+  if ((dx < 0 && !(state && state.canPrev)) || (dx > 0 && state && state.canNext === false)) dx = dx / 4;
+  pageStyle(dx, false);
+}, { passive: true });
+function endDrag() {
+  if (sx === null) return;
+  sx = null;
+  if (lock !== 'x') return;
+  var w = window.innerWidth || 360, speed = Math.abs(dx) / Math.max(1, Date.now() - st);
+  var dir = dx > 0 ? 'next' : 'prev';
+  var go = (Math.abs(dx) > w * 0.22 || (speed > 0.3 && Math.abs(dx) > 28)) && (dir === 'next' ? !(state && state.canNext === false) : !!(state && state.canPrev));
+  if (!go) { pageStyle(0, true); return; }
+  pageStyle(dx > 0 ? w : -w, true);
+  setTimeout(function () { post({ type: 'swipe', dir: dir, flung: true }); }, 150);
+}
+root.addEventListener('touchend', endDrag, { passive: true });
+root.addEventListener('touchcancel', endDrag, { passive: true });
 function render() {
   if (!state) return;
   var r = state.result;

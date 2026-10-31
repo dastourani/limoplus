@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
-import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Text } from './Text';
 import { Icon, IconBadge, type IconName } from './Icon';
@@ -173,3 +173,26 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 24, marginBottom: 8 },
   chipText: { fontSize: 12, fontWeight: '700' },
 });
+
+/**
+ * Pull-to-refresh that spins only after the learner actually pulled. (A spinner tied to every background load showed
+ * a second loader at the top of the screen next to the lemon.)
+ */
+export function usePullRefresh(loading: boolean, reload: () => void) {
+  const [pulled, setPulled] = useState(false);
+  useEffect(() => {
+    if (!loading) setPulled(false);
+  }, [loading]);
+  return (
+    <RefreshControl
+      refreshing={pulled}
+      onRefresh={() => {
+        setPulled(true);
+        reload();
+      }}
+      colors={[colors.ink]}
+      progressBackgroundColor={colors.lemon}
+      tintColor={colors.ink}
+    />
+  );
+}

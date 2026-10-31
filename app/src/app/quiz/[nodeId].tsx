@@ -1,16 +1,19 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Animated, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ApiError } from '../../api/client';
 import { endpoints } from '../../api/endpoints';
 import { useFeedback } from '../../components/Feedback';
+import { LemonProgress, type PartState } from '../../components/LemonProgress';
+import { QuestionPicker } from '../../components/QuestionPicker';
 import { QuizView, type QuizEvent } from '../../components/QuizView';
 import { ReportSheet } from '../../components/ReportSheet';
 import { Text } from '../../components/Text';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { usePageTurn } from '../../lib/pageTurn';
 import { resultForView, type QuizViewState } from '../../lib/quizHtml';
 import { useApi } from '../../lib/useApi';
 import { colors, rtl, toPersianDigits } from '../../theme';
@@ -26,7 +29,6 @@ export default function Quiz() {
   const { data, error, loading, retry } = useApi(() => endpoints.questions(Number(nodeId)), [nodeId]);
   const { user } = useAuth();
   const { confirm } = useFeedback();
-  const { width } = useWindowDimensions();
 
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
@@ -38,7 +40,8 @@ export default function Quiz() {
   const [reportOpen, setReportOpen] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const resumed = useRef(false);
-  const page = useRef(new Animated.Value(0)).current;
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const { style: pageStyle, turn } = usePageTurn();
 
   const questions = useMemo(() => data?.questions ?? [], [data]);
 
@@ -59,19 +62,13 @@ export default function Quiz() {
       .catch(() => undefined);
   }, [user, data, nodeId]);
 
-  // Page turn: the current question slides away with a slight paper tilt, the next one comes in from the other side.
   const go = useCallback(
-    (target: number) => {
+    (target: number, alreadyOut = false) => {
       if (target === index || target < 0 || target >= questions.length) return;
-      const forward = target > index;
       setAnswerError(null);
-      Animated.timing(page, { toValue: forward ? 1 : -1, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => {
-        setIndex(target);
-        page.setValue(forward ? -1 : 1);
-        Animated.timing(page, { toValue: 0, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-      });
+      turn(target > index, () => setIndex(target), alreadyOut);
     },
-    [index, questions.length, page],
+    [index, questions.length, turn],
   );
 
   if (loading) return <Screen><Header title="تست" /><Loading /></Screen>;
@@ -107,6 +104,7 @@ export default function Quiz() {
     error: answerError,
     reported: reported.includes(q.id),
     result: current?.result ?? null,
+    canPrev: index > 0,
   };
 
   const choose = async (choiceId: number) => {
@@ -134,9 +132,9 @@ export default function Quiz() {
       if (requireLogin(user, 'برای گزارش اشکال وارد شوید.')) setReportOpen(true);
     } else if (e.type === 'swipe') {
       if (e.dir === 'next') {
-        if (index + 1 < questions.length) go(index + 1);
+        if (index + 1 < questions.length) go(index + 1, e.flung);
         else setShowSummary(true);
-      } else go(index - 1);
+      } else go(index - 1, e.flung);
     }
   };
 
@@ -165,7 +163,7 @@ export default function Quiz() {
         <ScrollView contentContainerStyle={styles.result}>
           <Text style={styles.resultPercent}>{toPersianDigits(percent)}٪</Text>
           <Text style={styles.resultLine}>
-            {toPersianDigits(counts.right)} درست · {toPersianDigits(counts.wrong)} غلط · {toPersianDigits(counts.none)} بی‌جواب
+            {toPersianDigits(counts.right)} درست، {toPersianDigits(counts.wrong)} غلط، {toPersianDigits(counts.none)} بی‌جواب
           </Text>
           {firstOpen >= 0 && (
             <Button
@@ -185,30 +183,29 @@ export default function Quiz() {
     );
   }
 
-  const translateX = page.interpolate({ inputRange: [-1, 0, 1], outputRange: [-width * 0.35, 0, width * 0.35] });
-  const rotateY = page.interpolate({ inputRange: [-1, 0, 1], outputRange: ['-18deg', '0deg', '18deg'] });
-  const opacity = page.interpolate({ inputRange: [-1, 0, 1], outputRange: [0, 1, 0] });
+  const parts: PartState[] = questions.map((x) => ({ right: 'done', wrong: 'wrong', none: 'empty' })[status(x.id)] as PartState);
 
   return (
     <Screen>
       <Header title={`سؤال ${toPersianDigits(index + 1)} از ${toPersianDigits(questions.length)}`} />
       <View style={styles.progress}>
-        {questions.map((item, i) => {
-          const st = status(item.id);
-          return (
-            <Pressable key={item.id} onPress={() => go(i)} style={styles.segHit} accessibilityLabel={`سؤال ${i + 1}`}>
-              <View
-                style={[
-                  styles.seg,
-                  { backgroundColor: st === 'right' ? colors.green : st === 'wrong' ? colors.red : colors.line },
-                  i === index && styles.segNow,
-                ]}
-              />
-            </Pressable>
-          );
-        })}
+        <LemonProgress parts={parts} current={index} size={54} onPress={() => setPickerOpen(true)} accessibilityLabel="پیشرفت تست‌ها؛ برای رفتن به سؤال دیگر بزنید" />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={[styles.counts, rtl]}>
+            {toPersianDigits(counts.right)} درست، {toPersianDigits(counts.wrong)} غلط، {toPersianDigits(counts.none)} مانده
+          </Text>
+          <Text style={[styles.hint, rtl, { paddingHorizontal: 0, paddingBottom: 0 }]}>بکش تا ورق بخورد؛ لیمو را بزن تا به هر سؤال بروی</Text>
+        </View>
       </View>
-      <Animated.View style={[styles.page, { opacity, transform: [{ perspective: 900 }, { translateX }, { rotateY }] }]}>
+      <QuestionPicker
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        parts={parts}
+        current={index}
+        onPick={(i) => go(i)}
+        legend="زرد: درست، صورتی: غلط، سفید: بی‌جواب"
+      />
+      <Animated.View style={[styles.page, pageStyle]}>
         <QuizView key={q.id} question={q} state={viewState} onEvent={onEvent} />
       </Animated.View>
       <ReportSheet
@@ -226,17 +223,15 @@ export default function Quiz() {
         )}
       </View>
       {!!counts.none && index + 1 === questions.length && (
-        <Text style={[styles.hint, rtl]}>{toPersianDigits(counts.none)} تست بی‌جواب مانده؛ از نوار بالا می‌توانی برگردی.</Text>
+        <Text style={[styles.hint, rtl]}>{toPersianDigits(counts.none)} تست بی‌جواب مانده؛ با زدن لیمو می‌توانی برگردی.</Text>
       )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  progress: { flexDirection: 'row-reverse', paddingHorizontal: 12 },
-  segHit: { flex: 1, paddingVertical: 8, paddingHorizontal: 1.5 },
-  seg: { height: 6, borderRadius: 3 },
-  segNow: { height: 10, marginTop: -2, borderWidth: 2, borderColor: colors.ink },
+  progress: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 6 },
+  counts: { fontSize: 14, fontWeight: '800', color: colors.ink },
   page: { flex: 1, backfaceVisibility: 'hidden' },
   bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
   hint: { fontSize: 12, color: colors.muted, paddingHorizontal: 16, paddingBottom: 8 },

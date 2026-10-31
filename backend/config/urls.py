@@ -6,6 +6,7 @@ from django.urls import include, path
 from apps.catalog import views as catalog
 from apps.commerce import views as commerce
 from apps.learning import views as learning
+from apps.releases import views as releases
 from apps.study import views as study
 
 admin.site.site_header = "پنل مدیریت لیمو پلاس"
@@ -21,6 +22,7 @@ api = [
     path("nodes/<int:node_id>/questions/", learning.node_questions),
     path("nodes/<int:node_id>/flashcards/", learning.node_flashcards),
     path("questions/<int:question_id>/answer/", learning.answer),
+    path("app/version/", releases.app_version),
     path("banners/", catalog.banners),
     path("banners/<int:banner_id>/click/", catalog.banner_click),
     # The learner's own data

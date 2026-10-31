@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "apps.learning",
     "apps.study",
     "apps.commerce",
+    "apps.releases",
 ]
 
 MIDDLEWARE = [
@@ -69,6 +70,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.accounts.middleware.SimpleCorsMiddleware",
     "apps.accounts.middleware.AdminLoginThrottleMiddleware",
+    "apps.releases.middleware.MinimumAppVersionMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -152,6 +154,9 @@ SMS_BACKEND = env("SMS_BACKEND", default="console")
 RAYGAN_USERNAME = env("RAYGAN_USERNAME", default="")
 RAYGAN_PASSWORD = env("RAYGAN_PASSWORD", default="")
 RAYGAN_SENDER_NUMBER = env("RAYGAN_SENDER_NUMBER", default="")
+# Adds the Android app's hash line to the login SMS so the phone reads the code by itself. Turn off if the SMS
+# provider or operator holds back messages with it.
+OTP_SMS_APP_HASH = env.bool("OTP_SMS_APP_HASH", default=True)
 
 if not DEBUG and not TESTING and SMS_BACKEND == "console":
     raise ImproperlyConfigured("SMS_BACKEND=console is for development only. Set SMS_BACKEND=raygan on the server.")

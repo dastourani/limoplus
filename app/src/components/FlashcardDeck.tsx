@@ -15,9 +15,8 @@ import { sendOrQueue } from '../lib/network';
 import { colors, rtl, toPersianDigits } from '../theme';
 import { useCelebrate } from './Celebrate';
 import { Icon } from './Icon';
-import { LemonSlice } from './LemonSlice';
+import { LemonProgress, type PartState } from './LemonProgress';
 import { MarkdownView } from './MarkdownView';
-import { Puzzle } from './Puzzle';
 import { ReportSheet } from './ReportSheet';
 import { ReportButton } from './Tags';
 import { Text } from './Text';
@@ -73,6 +72,8 @@ export function FlashcardDeck({
   const [againIds, setAgainIds] = useState<Set<number>>(new Set());
   const [reported, setReported] = useState<number[]>(initialReported);
   const [reportOpen, setReportOpen] = useState(false);
+  // Last grade given to each card in this session: fills its wedge of the lemon.
+  const [graded, setGraded] = useState<Record<number, Grade>>({});
   const flip = useRef(new Animated.Value(0)).current;
   const drag = useRef(new Animated.ValueXY()).current;
   const cardRef = useRef<HostInstance>(null);
@@ -83,6 +84,11 @@ export function FlashcardDeck({
   );
 
   const done = pos >= queue.length;
+  const parts: PartState[] = cards.map((c) => {
+    const g = graded[c.id];
+    return !g ? 'empty' : g === 'again' ? 'wrong' : g === 'hard' ? 'soft' : 'done';
+  });
+  const gradedCount = Object.keys(graded).length;
   const card = done ? null : byId.get(queue[pos])!;
   const hints = card ? (boxes[card.id]?.hints ?? newHints) : newHints;
 
@@ -96,6 +102,7 @@ export function FlashcardDeck({
     const box = boxes[card.id]?.box ?? 1;
     const nb = nextBox(box, g);
     setBoxes((b) => ({ ...b, [card.id]: { box: nb, hints: b[card.id]?.hints ?? newHints } }));
+    setGraded((m) => ({ ...m, [card.id]: g }));
     if (user) sendOrQueue(`flashcards/${card.id}/review/`, { grade: g });
     if (g === 'again') {
       setAgainIds((s) => new Set(s).add(card.id));
@@ -119,10 +126,10 @@ export function FlashcardDeck({
   const responder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, g) => flipped && Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy),
+        onMoveShouldSetPanResponder: (_, g) => flipped && Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
         onPanResponderMove: Animated.event([null, { dx: drag.x }], { useNativeDriver: false }),
         onPanResponderRelease: (_, g) => {
-          if (Math.abs(g.dx) > 110) {
+          if (Math.abs(g.dx) > 80 || (Math.abs(g.vx) > 0.5 && Math.abs(g.dx) > 30)) {
             const right = g.dx > 0;
             Animated.timing(drag, { toValue: { x: right ? 500 : -500, y: 0 }, duration: 180, useNativeDriver: false }).start(() =>
               grade(right ? 'good' : 'again'),
@@ -151,10 +158,10 @@ export function FlashcardDeck({
       <Screen>
         <Header title={title} />
         <View style={styles.done}>
-          {puzzle && cards.length > 1 ? <Puzzle total={cards.length} mastered={masteredIdx} size={200} /> : <LemonSlice size={90} />}
-          {puzzle && cards.length > 1 && (
+          <LemonProgress parts={parts} size={150} />
+          {puzzle && user && (
             <Text style={[styles.doneText, rtl]}>
-              {toPersianDigits(masteredIdx.size)} از {toPersianDigits(cards.length)} تکه‌ی پازل کامل شده
+              {toPersianDigits(masteredIdx.size)} از {toPersianDigits(cards.length)} کارت این بخش را دیگر کامل بلدی
             </Text>
           )}
           <Text style={styles.doneTitle}>مرور تمام شد</Text>
@@ -190,14 +197,13 @@ export function FlashcardDeck({
           ) : undefined
         }
       />
-      {puzzle && cards.length > 1 && (
-        <View style={styles.puzzleRow}>
-          <Puzzle total={cards.length} mastered={masteredIdx} size={64} />
-          <Text style={[styles.puzzleText, rtl]}>
-            پازل این بخش: {toPersianDigits(masteredIdx.size)} از {toPersianDigits(cards.length)}
-          </Text>
-        </View>
-      )}
+      <View style={styles.puzzleRow}>
+        <LemonProgress parts={parts} current={cards.findIndex((c) => c.id === card!.id)} size={50} />
+        <Text style={[styles.puzzleText, rtl]}>
+          {toPersianDigits(gradedCount)} از {toPersianDigits(cards.length)} کارت مرور شد
+          {puzzle && user && masteredIdx.size ? `، ${toPersianDigits(masteredIdx.size)} کارت کاملاً بلدی` : ''}
+        </Text>
+      </View>
       <View style={styles.stage}>
         <View style={[styles.stack, { top: 34, left: 34, right: 34 }]} />
         <View style={[styles.stack, { top: 26, left: 26, right: 26, backgroundColor: '#ECEFE7' }]} />
@@ -258,7 +264,7 @@ export function FlashcardDeck({
           <Button label="برگرداندن کارت" variant="dark" onPress={() => turn(1)} style={{ flex: 1 }} />
         )}
       </View>
-      {flipped && <Text style={[styles.swipeHint]}>یا بکش: راست = خوب · چپ = دوباره</Text>}
+      {flipped && <Text style={[styles.swipeHint]}>یا بکش: راست = خوب، چپ = دوباره</Text>}
       <ReportSheet
         visible={reportOpen}
         onClose={() => setReportOpen(false)}

@@ -41,7 +41,11 @@ jobs:
 
       - name: Default server address for test builds
         # Can be changed later in the app (Settings). Set a repository variable EXPO_PUBLIC_API_URL to change the default.
-        run: echo "EXPO_PUBLIC_API_URL=${{ vars.EXPO_PUBLIC_API_URL || 'http://192.168.1.100:8000' }}" > .env
+        run: |
+          echo "EXPO_PUBLIC_API_URL=${{ vars.EXPO_PUBLIC_API_URL || 'http://192.168.1.100:8000' }}" > .env
+          # The build number lets the server offer newer versions and turn away versions marked as too old.
+          echo "EXPO_PUBLIC_APP_BUILD=${{ github.run_number }}" >> .env
+          node -e "const f='app.json',j=require('./'+f);j.expo.android=j.expo.android||{};j.expo.android.versionCode=${{ github.run_number }};j.expo.version='1.0.${{ github.run_number }}';require('fs').writeFileSync(f,JSON.stringify(j,null,2))"
 
       - name: Generate the Android project
         run: npx expo prebuild --platform android --no-install

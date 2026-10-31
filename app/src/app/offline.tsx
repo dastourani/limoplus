@@ -28,7 +28,7 @@ export default function Offline() {
               <Pressable style={{ flex: 1, gap: 4 }} onPress={() => router.push(`/book/${b.slug}`)}>
                 <Text style={[styles.title, rtl]}>{b.title}</Text>
                 <Text style={[styles.muted, rtl]}>
-                  {toPersianDigits(b.sectionIds.length)} بخش · معتبر تا {jalaliDate(b.validUntil)}
+                  {toPersianDigits(b.sectionIds.length)} بخش، معتبر تا {jalaliDate(b.validUntil)}
                 </Text>
               </Pressable>
               <Pressable onPress={async () => (await confirm({ title: `نسخه‌ی آفلاین «${b.title}» حذف شود؟`, confirmLabel: 'حذف', destructive: true, icon: 'trash' })) && removeOfflineBook(b.slug).then(() => offlineBooks().then(setBooks))}>

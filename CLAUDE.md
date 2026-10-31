@@ -28,6 +28,11 @@ Code, identifiers and commit messages are in English.
 - `.github/workflows/android-apk.yml` — builds a test APK on every push to main touching `app/`, published as a
   GitHub prerelease. It is signed with the debug key and allows cleartext HTTP (for laptop testing).
   TODO before store release: real signing key, HTTPS only (remove `usesCleartextTraffic`).
+- App updates: `apps.releases` (`AppRelease` in admin). The Android app sends `X-App-Platform`/`X-App-Build`
+  (build = CI run number, `EXPO_PUBLIC_APP_BUILD`); `GET app/version/` offers newer builds; builds older than the newest
+  required release get HTTP 426 from `MinimumAppVersionMiddleware` and the app shows `UpdateGate`'s full-screen notice.
+- Progress is drawn as a lemon (`LemonProgress`, one wedge per item); quiz and exam share `QuizView` (single web view,
+  finger-following page drag) and `usePageTurn`. Don't use «·» next to Persian digits (۰ looks like a dot).
 - `docker-compose.yml` — local Postgres + backend (mounts `content/` read-only).
 - `content/samples/` — sample book in the chapter format; `python manage.py load_samples` loads it.
 - `docs/content-format.md` — the chapter Markdown format (Persian) and the prompt for AI content writers.

@@ -36,7 +36,7 @@ export function QuestionTags({ q }: { q: Question }) {
         <Tag
           key={`${s.name}${s.year}`}
           icon="graduation-cap"
-          label={`${s.name} ${toPersianDigits(s.year)}${s.number ? ` · سؤال ${toPersianDigits(s.number)}` : ''}`}
+          label={`${s.name} ${toPersianDigits(s.year)}${s.number ? `، سؤال ${toPersianDigits(s.number)}` : ''}`}
           color={colors.ink}
           background={colors.lemon}
         />

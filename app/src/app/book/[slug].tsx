@@ -6,6 +6,7 @@ import { ApiError } from '../../api/client';
 import { endpoints, type NodeSummary } from '../../api/endpoints';
 import { Text } from '../../components/Text';
 import { useFeedback } from '../../components/Feedback';
+import { LemonProgress } from '../../components/LemonProgress';
 import { Icon } from '../../components/Icon';
 import { Button, Chip, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
@@ -58,8 +59,6 @@ export default function Book() {
   const book = data;
   const done = new Set(book.done_ids);
   const sections = book.chapters.flatMap((c) => c.sections);
-  const readable = sections.filter((s) => !s.is_locked);
-  const percent = sections.length ? Math.round((readable.filter((s) => done.has(s.id)).length / sections.length) * 100) : 0;
 
   return (
     <Screen>
@@ -68,12 +67,14 @@ export default function Book() {
         <View style={styles.hero}>
           <Text style={[styles.heroTitle, rtl]}>{book.title}</Text>
           <Text style={[styles.heroMeta, rtl]}>
-            {toPersianDigits(book.chapters.length)} فصل · {toPersianDigits(sections.length)} بخش
-            {user ? ` · ${toPersianDigits(percent)}٪ خوانده‌شده` : ''}
+            {toPersianDigits(book.chapters.length)} فصل، {toPersianDigits(sections.length)} بخش
           </Text>
           {user && (
-            <View style={styles.track}>
-              <View style={[styles.fill, { width: `${percent}%` }]} />
+            <View style={styles.readRow}>
+              <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : 'empty'))} size={48} />
+              <Text style={[styles.heroMeta, rtl, { flex: 1 }]}>
+                {toPersianDigits(sections.filter((x) => done.has(x.id)).length)} از {toPersianDigits(sections.length)} بخش خوانده شده؛ هر قاچ یک بخش است.
+              </Text>
             </View>
           )}
           {book.owned ? (
@@ -82,7 +83,7 @@ export default function Book() {
               <Text style={[styles.owned, rtl]}>نسخه‌ی کامل در دسترس شماست</Text>
             </View>
           ) : book.price ? (
-            <Button label={`خرید نسخه‌ی کامل · ${formatToman(book.price)}`} onPress={() => router.push(`/buy/${book.slug}`)} />
+            <Button label={`خرید نسخه‌ی کامل — ${formatToman(book.price)}`} onPress={() => router.push(`/buy/${book.slug}`)} />
           ) : null}
           {offlineSupported && (
             <View style={styles.offlineRow}>
@@ -110,7 +111,7 @@ export default function Book() {
           <View key={chapter.id} style={styles.chapter}>
             <View style={styles.chapterHead}>
               <Text style={[styles.chapterTitle, rtl]}>
-                فصل {toPersianDigits(index + 1)} · {chapter.title}
+                فصل {toPersianDigits(index + 1)}، {chapter.title}
               </Text>
               {chapter.is_locked ? <Chip label="نسخه‌ی کامل" icon="lock" /> : !book.owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
             </View>
@@ -149,7 +150,7 @@ function SectionRow({ section, done }: { section: NodeSummary; done: boolean }) 
       {section.is_locked ? (
         <Icon name="lock" size={16} color={colors.muted} />
       ) : (
-        <Text style={styles.sectionMeta}>{`${toPersianDigits(section.question_count ?? 0)} تست · ${toPersianDigits(section.flashcard_count ?? 0)} کارت`}</Text>
+        <Text style={styles.sectionMeta}>{`${toPersianDigits(section.question_count ?? 0)} تست، ${toPersianDigits(section.flashcard_count ?? 0)} کارت`}</Text>
       )}
     </Pressable>
   );
@@ -160,8 +161,7 @@ const styles = StyleSheet.create({
   hero: { backgroundColor: colors.ink, borderRadius: radius.lg, padding: 18, gap: 10 },
   heroTitle: { fontSize: 22, fontWeight: '800', color: colors.lemon },
   heroMeta: { fontSize: 13, color: '#C9D0C6' },
-  track: { height: 8, borderRadius: 4, backgroundColor: '#2C3A31', overflow: 'hidden', flexDirection: 'row-reverse' },
-  fill: { backgroundColor: colors.lemon, borderRadius: 4 },
+  readRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
   owned: { color: '#9BE3B4', fontWeight: '800' },
   inline: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   offlineRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },

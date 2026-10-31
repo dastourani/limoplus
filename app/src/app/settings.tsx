@@ -7,8 +7,8 @@ import { Text, TextInput } from '../components/Text';
 import { ApiError } from '../api/client';
 import { endpoints } from '../api/endpoints';
 import { Button, Header, Screen } from '../components/ui';
-import { getApiUrl, getDefaultApiUrl, setApiUrlOverride } from '../config';
-import { colors, radius, rtl } from '../theme';
+import { APP_BUILD, getApiUrl, getDefaultApiUrl, setApiUrlOverride } from '../config';
+import { colors, radius, rtl, toPersianDigits } from '../theme';
 
 /** Test builds: point the app at a server, e.g. the laptop running the backend on the same Wi-Fi. */
 export default function Settings() {
@@ -70,6 +70,7 @@ export default function Settings() {
         <Button label="آزمایش اتصال" variant="outline" onPress={test} loading={busy} />
         <Button label="ذخیره" onPress={save} />
         <Button label="برگشت به آدرس پیش‌فرض" variant="outline" onPress={reset} />
+        <Text style={[styles.help, { textAlign: 'center' }]}>نسخه‌ی برنامه: {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}</Text>
       </View>
     </Screen>
   );

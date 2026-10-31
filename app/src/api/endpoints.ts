@@ -62,6 +62,8 @@ export type FlashcardState = {
   mastered_box: number;
 };
 export type DueFlashcard = Flashcard & { box: number; hints: GradeHints };
+export type AppReleaseInfo = { build: number; version_name: string; notes: string[]; download_url: string; required: boolean };
+export type AppVersion = { status: 'ok' | 'optional' | 'required'; min_build: number; latest: AppReleaseInfo | null };
 export type ExamQuestion = { id: number; stem: string; choices: { id: number; text: string }[]; difficulty: string };
 export type ExamReview = {
   question_id: number;
@@ -162,6 +164,7 @@ export const endpoints = {
   submitExam: (id: number, answers: Record<string, number | null>) => api<ExamDetail>(`exams/${id}/submit/`, { body: { answers } }),
   myExams: () => api<ExamSummary[]>('me/exams/'),
   library: () => api<Library>('me/library/'),
+  appVersion: (platform: string, build: number) => api<AppVersion>(`app/version/?platform=${platform}&build=${build}`),
   stats: () => api<Stats>('me/stats/'),
   offline: (slug: string) => api<OfflineBundle>(`books/${encodeURIComponent(slug)}/offline/`, { timeoutMs: 90_000 }),
 

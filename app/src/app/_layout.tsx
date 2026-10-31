@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CelebrationProvider } from '../components/Celebrate';
 import { FeedbackProvider } from '../components/Feedback';
 import { Intro } from '../components/Intro';
+import { UpdateGate } from '../components/UpdateGate';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { FONT_FILES } from '../lib/fonts';
 import { NetworkProvider } from '../lib/network';
@@ -36,6 +37,7 @@ function Root() {
   return (
     <>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground }, animation: 'slide_from_left' }} />
+      <UpdateGate />
       <Intro />
     </>
   );

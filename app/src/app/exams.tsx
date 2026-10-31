@@ -26,7 +26,7 @@ export default function Exams() {
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={[styles.title, rtl]}>{e.node_title}</Text>
                 <Text style={[styles.muted, rtl]}>
-                  {jalaliDateTime(e.started_at)} · {toPersianDigits(e.question_count)} سؤال
+                  {jalaliDateTime(e.started_at)}، {toPersianDigits(e.question_count)} سؤال
                 </Text>
               </View>
               <Text style={styles.score}>{e.submitted_at ? `${toPersianDigits(e.score_percent ?? 0)}٪` : 'ناتمام'}</Text>

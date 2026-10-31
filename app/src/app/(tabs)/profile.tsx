@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { endpoints, type Purchases } from '../../api/endpoints';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
+import { APP_BUILD } from '../../config';
 import { useFeedback } from '../../components/Feedback';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Card, Screen } from '../../components/ui';
@@ -59,7 +60,7 @@ export default function Profile() {
               {purchases.active.map((p) => (
                 <Text key={p.id} style={[styles.line, rtl]}>
                   {p.title}
-                  {p.ends_at ? ` · تا ${jalaliDate(p.ends_at)}` : ' · همیشگی'}
+                  {p.ends_at ? `، تا ${jalaliDate(p.ends_at)}` : '، همیشگی'}
                 </Text>
               ))}
             </Card>
@@ -101,7 +102,7 @@ export default function Profile() {
             />
           </View>
         )}
-        <Text style={styles.version}>لیمو پلاس · نسخه‌ی آزمایشی</Text>
+        <Text style={styles.version}>لیمو پلاس، نسخه‌ی {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}</Text>
       </ScrollView>
     </Screen>
   );

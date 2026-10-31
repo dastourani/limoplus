@@ -1,13 +1,13 @@
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { endpoints, type Stats } from '../../api/endpoints';
 import { useCelebrate } from '../../components/Celebrate';
 import { IconBadge, type IconName } from '../../components/Icon';
 import { Text } from '../../components/Text';
-import { Button, Card, Empty, ErrorState, Loading, Screen } from '../../components/ui';
+import { Button, Card, Empty, ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { weekdayShort } from '../../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../../theme';
@@ -54,6 +54,7 @@ export default function StatsTab() {
       .finally(() => setLoading(false));
   }, [user, celebrate]);
   useFocusEffect(load);
+  const refresh = usePullRefresh(loading, load);
 
   if (!user) {
     return (
@@ -74,7 +75,7 @@ export default function StatsTab() {
 
   return (
     <Screen tab>
-      <ScrollView contentContainerStyle={styles.page} refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
+      <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
         <Text style={[styles.title, rtl, { padding: 0 }]}>آمار من</Text>
         <View style={styles.tiles}>
           <Tile accent icon="flame" label="روز پیاپی" value={toPersianDigits(data.streak_days)} />

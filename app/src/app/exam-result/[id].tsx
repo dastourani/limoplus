@@ -56,10 +56,10 @@ export default function ExamResult() {
         <View style={styles.hero}>
           <Text style={styles.score}>{toPersianDigits(score)}٪</Text>
           <Text style={styles.heroText}>
-            {toPersianDigits(data.correct)} درست · {toPersianDigits(data.wrong)} غلط · {toPersianDigits(data.blank)} نزده
+            {toPersianDigits(data.correct)} درست، {toPersianDigits(data.wrong)} غلط، {toPersianDigits(data.blank)} نزده
           </Text>
           <Text style={styles.heroSmall}>
-            {data.negative_marking ? 'با نمره‌ی منفی' : 'بدون نمره‌ی منفی'} · {jalaliDateTime(data.submitted_at)}
+            {data.negative_marking ? 'با نمره‌ی منفی' : 'بدون نمره‌ی منفی'}، {jalaliDateTime(data.submitted_at)}
           </Text>
         </View>
         <View style={styles.filters}>

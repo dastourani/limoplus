@@ -95,7 +95,7 @@ export default function Buy() {
             key={plan.id}
             on={choice?.kind === 'plan' && choice.plan.id === plan.id}
             title={plan.title}
-            sub={`${toPersianDigits(plan.months)} ماه · ${plan.scope === 'all' ? 'همه‌ی رشته‌ها' : 'همه‌ی کتاب‌های یک رشته'}`}
+            sub={`${toPersianDigits(plan.months)} ماه، ${plan.scope === 'all' ? 'همه‌ی رشته‌ها' : 'همه‌ی کتاب‌های یک رشته'}`}
             price={plan.price}
             onPress={() => setChoice({ kind: 'plan', plan })}
           />

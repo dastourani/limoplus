@@ -1,4 +1,11 @@
+import { Platform } from 'react-native';
+
 import { storage } from './lib/storage';
+
+/** Build number of this app (set by the APK build from its run number; 0 in development and on the web). */
+export const APP_BUILD = Number(process.env.EXPO_PUBLIC_APP_BUILD ?? 0) || 0;
+/** Only the Android app names its build to the server; the web version is always the latest. */
+export const APP_PLATFORM = Platform.OS === 'android' && APP_BUILD > 0 ? 'android' : null;
 
 /**
  * Server address. The default comes from app/.env (EXPO_PUBLIC_API_URL) — never written in code.

@@ -1,12 +1,12 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components/Text';
 import { Icon, IconBadge } from '../../components/Icon';
 
 import { endpoints } from '../../api/endpoints';
-import { ErrorState, Loading, Screen } from '../../components/ui';
+import { ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { storage, type LastSection } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
@@ -36,6 +36,11 @@ export default function Home() {
     }, [user]),
   );
 
+  const refresh = usePullRefresh(books.loading, () => {
+    books.retry();
+    banners.retry();
+  });
+
   if (!major) return <Loading />;
 
   const openLink = (link: string, id: number) => {
@@ -48,7 +53,7 @@ export default function Home() {
     <Screen tab>
       <ScrollView
         contentContainerStyle={styles.page}
-        refreshControl={<RefreshControl refreshing={books.loading && !!books.data} onRefresh={() => { books.retry(); banners.retry(); }} />}
+        refreshControl={refresh}
       >
         <View style={styles.top}>
           <View style={{ gap: 2 }}>
@@ -119,7 +124,7 @@ export default function Home() {
               </View>
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={[styles.bookTitle, rtl]}>{book.title}</Text>
-                <Text style={[styles.muted, rtl]}>{toPersianDigits(book.chapter_count)} فصل{book.price ? ` · ${formatToman(book.price)}` : ''}</Text>
+                <Text style={[styles.muted, rtl]}>{toPersianDigits(book.chapter_count)} فصل{book.price ? `، ${formatToman(book.price)}` : ''}</Text>
                 {book.owned ? (
                   <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
                     <Icon name="circle-check" size={15} color={colors.greenDark} />

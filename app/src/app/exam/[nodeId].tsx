@@ -1,19 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { ApiError } from '../../api/client';
 import { endpoints, type ExamDetail } from '../../api/endpoints';
-import { RichText } from '../../components/RichText';
+import { LemonProgress, type PartState } from '../../components/LemonProgress';
+import { QuestionPicker } from '../../components/QuestionPicker';
+import { QuizView, type QuizEvent } from '../../components/QuizView';
 import { Text } from '../../components/Text';
 import { useFeedback } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
 import { Button, Card, Header, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
-import { colors, radius, rtl, toPersianDigits } from '../../theme';
+import { usePageTurn } from '../../lib/pageTurn';
+import { type QuizViewState } from '../../lib/quizHtml';
+import { colors, rtl, toPersianDigits } from '../../theme';
 
-const KEYS = ['الف', 'ب', 'ج', 'د', 'ه', 'و'];
 const COUNTS = [10, 20, 30, 50];
 
 function clock(seconds: number) {
@@ -35,6 +38,21 @@ export default function Exam() {
   const [error, setError] = useState<string | null>(null);
   const submitted = useRef(false);
   const { confirm } = useFeedback();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const { style: pageStyle, turn } = usePageTurn();
+  const go = useCallback(
+    (target: number, alreadyOut = false) => {
+      if (!exam || target === index || target < 0 || target >= exam.questions.length) return;
+      turn(target > index, () => setIndex(target), alreadyOut);
+    },
+    [exam, index, turn],
+  );
+  const currentId = exam?.questions[index]?.id;
+  const picked = currentId != null ? (answers[currentId] ?? null) : null;
+  const viewState = useMemo<QuizViewState>(
+    () => ({ picked, sending: false, error: null, reported: false, result: null, canPrev: index > 0, canNext: !!exam && index + 1 < exam.questions.length }),
+    [picked, index, exam],
+  );
   type BeforeRemove = { preventDefault: () => void; data: { action: unknown } };
   const navigation = useNavigation() as unknown as {
     addListener: (event: 'beforeRemove', cb: (e: BeforeRemove) => void) => () => void;
@@ -167,68 +185,55 @@ export default function Exam() {
 
   const q = exam.questions[index];
   const answeredCount = Object.values(answers).filter((v) => v != null).length;
+  const parts: PartState[] = exam.questions.map((x) => (answers[x.id] != null ? 'done' : 'empty'));
+  const last = index + 1 >= exam.questions.length;
+
+  const onEvent = (e: QuizEvent) => {
+    if (e.type === 'choose') setAnswers((a) => ({ ...a, [q.id]: a[q.id] === e.id ? null : e.id }));
+    else if (e.type === 'swipe') go(index + (e.dir === 'next' ? 1 : -1), e.flung);
+  };
+
+  const finish = async () =>
+    (await confirm({
+      title: 'آزمون تمام شود؟',
+      message: answeredCount < exam.questions.length ? `${toPersianDigits(exam.questions.length - answeredCount)} سؤال بی‌پاسخ است.` : 'همه‌ی سؤال‌ها پاسخ داده شده‌اند.',
+      confirmLabel: 'پایان آزمون',
+      icon: 'circle-check',
+    })) && submit();
 
   return (
     <Screen>
       <View style={styles.top}>
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-          <Icon name="timer" size={22} color={left < 60 ? colors.red : colors.ink} />
+        <LemonProgress parts={parts} current={index} size={50} onPress={() => setPickerOpen(true)} accessibilityLabel="پیشرفت آزمون؛ برای رفتن به سؤال دیگر بزنید" />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={[styles.label, rtl]}>
+            سؤال {toPersianDigits(index + 1)} از {toPersianDigits(exam.questions.length)}
+          </Text>
+          <Text style={[styles.help, rtl]}>{toPersianDigits(answeredCount)} پاسخ داده‌شده</Text>
+        </View>
+        <View style={styles.clock}>
+          <Icon name="timer" size={20} color={left < 60 ? colors.red : colors.ink} />
           <Text style={[styles.timer, left < 60 && { color: colors.red }]}>{clock(left)}</Text>
         </View>
-        <Text style={styles.help}>
-          {toPersianDigits(answeredCount)} از {toPersianDigits(exam.questions.length)} پاسخ داده‌شده
-        </Text>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.grid}>
-        {exam.questions.map((item, i) => (
-          <Pressable key={item.id} onPress={() => setIndex(i)} style={[styles.dot, answers[item.id] != null && styles.dotDone, i === index && styles.dotNow]}>
-            <Text style={[styles.dotText, (answers[item.id] != null || i === index) && { color: i === index ? colors.lemon : '#fff' }]}>{toPersianDigits(i + 1)}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-      <ScrollView contentContainerStyle={styles.page}>
-        <Text style={[styles.help, rtl]}>سؤال {toPersianDigits(index + 1)}</Text>
-        <RichText text={q.stem} size={17} />
-        {q.choices.map((c, i) => {
-          const on = answers[q.id] === c.id;
-          return (
-            <Pressable
-              key={c.id}
-              onPress={() => setAnswers((a) => ({ ...a, [q.id]: on ? null : c.id }))}
-              style={[styles.choice, on && styles.choiceOn]}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: on }}
-            >
-              <View style={[styles.key, on && { backgroundColor: colors.ink }]}>
-                <Text style={[styles.keyText, on && { color: colors.lemon }]}>{KEYS[i]}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <RichText text={c.text} size={15} />
-              </View>
-            </Pressable>
-          );
-        })}
-        <Text style={[styles.help, rtl]}>برای پاک کردن پاسخ (نزدن)، دوباره روی همان گزینه بزنید.</Text>
-        {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}
-      </ScrollView>
+      <QuestionPicker
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        parts={parts}
+        current={index}
+        onPick={(i) => go(i)}
+        legend="زرد: پاسخ داده‌شده، سفید: بی‌پاسخ. برای پاک کردن یک پاسخ، دوباره روی همان گزینه بزنید."
+      />
+      <Animated.View style={[{ flex: 1 }, pageStyle]}>
+        <QuizView key={q.id} mode="exam" question={q} state={viewState} onEvent={onEvent} />
+      </Animated.View>
+      {!!error && <Text style={[styles.error, rtl, { paddingHorizontal: 16 }]}>{error}</Text>}
       <View style={styles.bar}>
-        <Button label="قبلی" variant="outline" disabled={index === 0} onPress={() => setIndex((i) => i - 1)} style={{ flex: 1 }} />
-        {index + 1 < exam.questions.length ? (
-          <Button label="بعدی" variant="dark" onPress={() => setIndex((i) => i + 1)} style={{ flex: 1 }} />
+        <Button label="قبلی" variant="outline" disabled={index === 0} onPress={() => go(index - 1)} style={{ flex: 1 }} />
+        {last ? (
+          <Button label="پایان آزمون" loading={busy} onPress={finish} style={{ flex: 1.3 }} />
         ) : (
-          <Button
-            label="پایان آزمون"
-            loading={busy}
-            onPress={async () =>
-              (await confirm({
-                title: 'آزمون تمام شود؟',
-                message: answeredCount < exam.questions.length ? `${toPersianDigits(exam.questions.length - answeredCount)} سؤال بی‌پاسخ است.` : 'همه‌ی سؤال‌ها پاسخ داده شده‌اند.',
-                confirmLabel: 'پایان آزمون',
-                icon: 'circle-check',
-              })) && submit()
-            }
-            style={{ flex: 1.3 }}
-          />
+          <Button label="بعدی" variant="dark" onPress={() => go(index + 1)} style={{ flex: 1 }} />
         )}
       </View>
     </Screen>
@@ -244,16 +249,8 @@ const styles = StyleSheet.create({
   count: { flex: 1, paddingVertical: 12, borderRadius: 14, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center' },
   countOn: { backgroundColor: colors.ink, borderColor: colors.ink },
   switchRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-  top: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 10 },
+  top: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
+  clock: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
   timer: { fontSize: 22, fontWeight: '800', color: colors.ink },
-  grid: { gap: 6, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row-reverse' },
-  dot: { width: 36, height: 36, borderRadius: 12, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
-  dotDone: { backgroundColor: colors.green, borderColor: colors.green },
-  dotNow: { backgroundColor: colors.ink, borderColor: colors.ink },
-  dotText: { fontSize: 13, fontWeight: '700', color: colors.muted },
-  choice: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, minHeight: 58, padding: 12, borderRadius: radius.md, borderWidth: 2, borderColor: colors.line, backgroundColor: colors.surface },
-  choiceOn: { borderColor: colors.ink, backgroundColor: colors.lemonSoft },
-  key: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#F1F3EC', alignItems: 'center', justifyContent: 'center' },
-  keyText: { fontWeight: '800', color: colors.ink },
   bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
 });
