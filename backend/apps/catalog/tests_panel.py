@@ -97,7 +97,11 @@ class ExportTests(_Base):
 
     def test_unknown_server_image_is_an_error(self):
         text = export_chapter(self.chapter).replace("متن دوم.", "![شکل](media:content/nope/x.png)")
-        self.assertTrue(any("روی سرور پیدا نشد" in str(e) for e in editing.check_text(text, self.book, self.chapter).errors))
+        checked = editing.check_text(text, self.book, self.chapter)
+        self.assertEqual(checked.errors, [], "a missing picture must not block other edits")
+        self.assertTrue(any("روی سرور نیست" in str(w) for w in checked.warnings))
+        bad = export_chapter(self.chapter).replace("متن دوم.", "![شکل](media:../secret.png)")
+        self.assertTrue(editing.check_text(bad, self.book, self.chapter).errors)
 
 
 class ChapterOpsTests(_Base):

@@ -260,8 +260,12 @@ def _check_images(chapter: ParsedChapter):
                 if target.startswith(MEDIA_PREFIX):
                     # An image already on this server (files exported from the panel, or images added in the panel).
                     stored = target[len(MEDIA_PREFIX) :]
-                    if posixpath.normpath(stored) != stored or not stored.startswith("content/") or not default_storage.exists(stored):
-                        chapter.error(f"عکس «{target}» روی سرور پیدا نشد.", line_no)
+                    if posixpath.normpath(stored) != stored or not stored.startswith("content/"):
+                        chapter.error(f"آدرس عکس «{target}» معتبر نیست.", line_no)
+                    elif not default_storage.exists(stored):
+                        # Not a reason to block other edits: the picture just does not show until it is back
+                        # (usually the media folder was not kept when the server was updated).
+                        chapter.warn(f"فایل عکس «{target}» روی سرور نیست و نشان داده نمی‌شود؛ پوشه‌ی media را بررسی کنید.", line_no)
                     elif not match.group(1).strip():
                         chapter.warn(f"عکس «{target}» زیرنویس ندارد.", line_no)
                     continue

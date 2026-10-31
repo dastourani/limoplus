@@ -96,8 +96,10 @@ export default function Home() {
 
   const list = books.data ?? [];
   const lastBook = last ? list.find((b) => b.slug === last.bookSlug) : undefined;
-  const pageWidth = Math.min(width, 760);
-  const coverWidth = Math.floor((pageWidth - 40 - 18) / 2);
+  // Phones show two covers a row; tablets, desktop browsers and Windows show more, up to six.
+  const pageWidth = Math.min(width, 1200);
+  const columns = Math.max(2, Math.min(6, Math.floor((pageWidth - 40 + 18) / 200)));
+  const coverWidth = Math.floor((pageWidth - 40 - 18 * (columns - 1)) / columns);
   const majorRef = { name: major.name, color: major.color };
 
   return (
@@ -259,7 +261,7 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
-  page: { padding: 20, gap: 16, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  page: { padding: 20, gap: 16, maxWidth: 1200, width: '100%', alignSelf: 'center' },
   top: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   hello: { fontSize: 20, fontWeight: '900', color: colors.ink },
   muted: { fontSize: 13, color: colors.muted },
