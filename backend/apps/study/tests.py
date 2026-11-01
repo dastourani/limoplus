@@ -234,6 +234,8 @@ class StudyTests(TestCase):
         self.assertEqual(self.client.post(f"/api/v1/me/mistakes/{q.id}/reason/", {"reason": "careless"}, format="json").data["reason"], "careless")
         self.assertEqual(self.client.get("/api/v1/me/mistakes/").data["items"][0]["reason"], "careless")
         self.assertEqual(self.client.post(f"/api/v1/me/mistakes/{q.id}/reason/", {"reason": "x"}, format="json").status_code, 400)
+        never = Question.objects.exclude(pk=q.pk).filter(is_archived=False).first()
+        self.assertEqual(self.client.post(f"/api/v1/me/mistakes/{never.id}/reason/", {"reason": "time"}, format="json").status_code, 404)
         practice = self.client.get("/api/v1/me/mistakes/questions/").data["questions"]
         self.assertEqual([p["id"] for p in practice], [q.id])
         self.assertNotIn("is_correct", str(practice))

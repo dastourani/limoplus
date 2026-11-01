@@ -587,6 +587,7 @@ class SearchTests(_Base):
         self.assertNotIn("is_correct", str(r))
         self.assertEqual(api.get("/api/v1/search/", {"q": "خلاصه‌ی بخش"}).json()["results"][0]["mode"], "summary")
         self.assertTrue(api.get("/api/v1/search/", {"q": "ا"}).json()["too_short"])
+        self.assertEqual(api.get("/api/v1/search/", {"q": "a²"}).status_code, 200)
         # A paid chapter's text is not found by someone who can't read it.
         ContentNode.objects.filter(pk=self.chapter.pk).update(is_free=False)
         ContentNode.objects.filter(path__startswith=self.chapter.path).update(is_free=False)
@@ -630,10 +631,13 @@ class SampleAndBannerTests(_Base):
 
         Banner.objects.create(title="۳۰٪ تخفیف", template="sale", button="بخر", countdown=True, ends_at=timezone.now() + timedelta(hours=5))
         Banner.objects.create(title="کتاب تازه", template="book", target="book", target_value="test-book")
+        Banner.objects.create(title="پیش‌نویس", template="book", target="book", target_value="draft-book")
+        ContentNode.add_root(kind="book", title="کتاب پنهان", slug="draft-book", is_published=False)
         data = APIClient().get("/api/v1/banners/").json()
         sale = next(b for b in data if b["template"] == "sale")
         self.assertIsNotNone(sale["ends_at"])
         self.assertEqual(sale["button"], "بخر")
-        book = next(b for b in data if b["template"] == "book")
+        book = next(b for b in data if b["title"] == "کتاب تازه")
         self.assertEqual(book["book"]["title"], "کتاب آزمایشی")
+        self.assertIsNone(next(b for b in data if b["title"] == "پیش‌نویس")["book"])
         self.assertEqual(self.client.get(reverse("admin:catalog_banner_add")).status_code, 200)

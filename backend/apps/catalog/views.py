@@ -217,24 +217,24 @@ def banners(request):
                 # The countdown runs on the server's clock, so a phone with the wrong time still counts right.
                 "ends_at": b.ends_at if b.countdown else None,
                 "server_now": now,
-                "book": _banner_book(b),
+                "book": _banner_book(request, b),
             }
             for b in items
         ]
     )
 
 
-def _banner_book(b):
+def _banner_book(request, b):
     """The book a «کتاب تازه» banner points at, enough to draw its cover."""
     if b.template != Banner.Template.BOOK or b.target not in (Banner.Target.BOOK, Banner.Target.BUY):
         return None
-    book = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, slug=b.target_value.strip(), is_archived=False).first()
+    book = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, slug=b.target_value.strip(), is_published=True, is_archived=False).first()
     if not book:
-        return None
+        return None  # a draft book is never shown, even if a banner points at it
     major = book.majors.order_by("order", "name").first()
     return {
         "title": book.title, "title_en": book.title_en, "author": book.author, "edition": book.edition, "motif": book.cover_motif,
-        "drawing": loads_drawing(book.cover_drawing), "cover": None,
+        "drawing": loads_drawing(book.cover_drawing), "cover": request.build_absolute_uri(book.cover.url) if book.cover else None,
         "major": {"name": major.name, "color": major.color} if major else None,
     }
 

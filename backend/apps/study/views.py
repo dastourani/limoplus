@@ -502,16 +502,19 @@ def _section_ref(node):
 def library(request):
     user = request.user
     recent = SectionProgress.objects.filter(user=user).select_related("node", "book").order_by("-updated_at")
-    reading, seen_books = [], set()
+    reading, seen_books, maps = [], set(), {}
     for p in recent[:200]:
         if p.book_id in seen_books or p.book.is_archived or not p.book.is_published:
             continue
-        seen_books.add(p.book_id)
         from apps.catalog.views import book_card
 
-        access = AccessMap(user, p.book)
+        if p.book_id not in maps:
+            maps[p.book_id] = AccessMap(user, p.book)
+        access = maps[p.book_id]
+        # A section hidden since: fall back to the next most recent one of the same book.
         if not access.visible(p.node_id):
             continue
+        seen_books.add(p.book_id)
         reading.append(
             {
                 "book_slug": p.book.slug,

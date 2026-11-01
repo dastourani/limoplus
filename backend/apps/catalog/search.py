@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import re
 
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
+from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.response import Response
 
 from .access import AccessMap
@@ -43,7 +44,7 @@ def pattern(query: str) -> re.Pattern | None:
         alts = _VARIANTS.get(ch)
         if alts:
             parts.append("[" + alts + "]")
-        elif ch.isdigit():
+        elif ch in "0123456789":
             i = int(ch)
             parts.append("[" + ch + "۰۱۲۳۴۵۶۷۸۹"[i] + "٠١٢٣٤٥٦٧٨٩"[i] + "]")
         else:
@@ -72,8 +73,26 @@ def _snippet(text: str, rx: re.Pattern, width=60) -> tuple[str, str] | None:
     return snip, m.group(0)
 
 
+class SearchThrottle(SimpleRateThrottle):
+    """Search reads the whole catalogue: 30 a minute per account, 15 per address for guests."""
+
+    scope = "search"
+
+    def get_rate(self):
+        return "30/min"
+
+    def get_cache_key(self, request, view):
+        if request.user and request.user.is_authenticated:
+            return f"throttle_search_user_{request.user.pk}"
+        from apps.accounts.views import _client_ip
+
+        self.num_requests = 15
+        return f"throttle_search_ip_{_client_ip(request)}"
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
+@throttle_classes([SearchThrottle])
 def search(request):
     from apps.learning.models import Flashcard, Question
 

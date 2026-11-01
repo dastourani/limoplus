@@ -70,28 +70,42 @@ def _plain(text: str, limit=160) -> str:
     return text[:cut].rstrip() + "…"
 
 
+def _maps(request) -> dict[str, AccessMap]:
+    """One AccessMap per book for the whole request (each loads a whole book)."""
+    if not hasattr(request, "_limo_maps"):
+        request._limo_maps = {}
+    return request._limo_maps
+
+
+def _map_for(request, node) -> AccessMap:
+    maps = _maps(request)
+    bpath = node.path[: ContentNode.steplen]
+    if bpath not in maps:
+        maps[bpath] = AccessMap(request.user, node)
+    return maps[bpath]
+
+
 def _mistakes(request, book_slug=""):
+    cached = getattr(request, "_limo_mistakes", None)
+    if cached is not None and not book_slug:
+        return cached
     last = last_answers(request.user)
     ids = [qid for qid, a in last.items() if not a["ok"]]
     questions = Question.objects.filter(pk__in=ids, is_archived=False).select_related("node")
-    steplen = ContentNode.steplen
-    maps: dict[str, AccessMap] = {}
-    books: dict[str, ContentNode] = {}
     items = []
     for q in questions:
-        bpath = q.node.path[:steplen]
-        if bpath not in maps:
-            maps[bpath] = AccessMap(request.user, q.node)
-            books[bpath] = maps[bpath].book
-        access = maps[bpath]
+        access = _map_for(request, q.node)
         if not (access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))):
             continue
-        items.append((q, books[bpath], last[q.id]))
+        items.append((q, access.book, last[q.id]))
     all_books = sorted({b.slug: b for _, b, _ in items}.values(), key=lambda b: b.title)
     if book_slug:
         items = [i for i in items if i[1].slug == book_slug]
     items.sort(key=lambda i: i[2]["at"], reverse=True)
-    return items[:MAX_ITEMS], all_books
+    result = (items[:MAX_ITEMS], all_books)
+    if not book_slug:
+        request._limo_mistakes = result
+    return result
 
 
 @api_view(["GET"])
@@ -152,7 +166,9 @@ def mistake_questions(request):
 
 @api_view(["POST"])
 def mistake_reason(request, question_id):
-    question = get_object_or_404(Question, pk=question_id)
+    question = get_object_or_404(Question, pk=question_id, is_archived=False)
+    if was_mistake(request.user, question.pk) is None:
+        return Response({"code": "not_a_mistake", "message": "این تست در دفترچه‌ی اشتباهات شما نیست."}, status=status.HTTP_404_NOT_FOUND)
     reason = str(request.data.get("reason") or "")
     if reason and reason not in MistakeNote.Reason.values:
         return Response({"code": "invalid_reason", "message": "علت انتخاب‌شده معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
@@ -186,13 +202,10 @@ def _due_cards(request, limit=300):
         .select_related("flashcard__node")
         .order_by("box", "due_at")
     )
-    maps, out = {}, []
+    out = []
     for r in reviews[:limit]:
         card = r.flashcard
-        bpath = card.node.path[: ContentNode.steplen]
-        if bpath not in maps:
-            maps[bpath] = AccessMap(request.user, card.node)
-        access = maps[bpath]
+        access = _map_for(request, card.node)
         if access.visible(card.node_id) and (card.is_free or access.readable(card.node_id)):
             out.append(r)
     return out
@@ -207,13 +220,17 @@ def _away_days(user) -> int:
 
 
 def _continue(request):
+    if hasattr(request, "_limo_continue"):
+        return request._limo_continue
     from .models import SectionProgress
 
+    found = None
     for p in SectionProgress.objects.filter(user=request.user, is_done=False).select_related("node", "book").order_by("-updated_at")[:20]:
-        access = AccessMap(request.user, p.node)
-        if access.readable(p.node_id):
-            return p
-    return None
+        if _map_for(request, p.node).readable(p.node_id):
+            found = p
+            break
+    request._limo_continue = found
+    return found
 
 
 @api_view(["GET"])
@@ -263,7 +280,7 @@ def quick(request):
         cont = _continue(request)
         if cont:
             answered = set(QuizAnswer.objects.filter(user=request.user, is_archived=False).values_list("question_id", flat=True))
-            access = AccessMap(request.user, cont.node)
+            access = _map_for(request, cont.node)
             for q in Question.objects.filter(node=cont.node, is_archived=False).order_by("order", "id"):
                 if len(picked) >= 3:
                     break
