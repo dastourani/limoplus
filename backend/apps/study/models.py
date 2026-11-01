@@ -23,6 +23,9 @@ class SectionProgress(models.Model):
     book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
     percent = models.PositiveSmallIntegerField("درصد خوانده‌شده", default=0)
     is_done = models.BooleanField("خوانده شد", default=False)
+    # Where the reader is now (not the furthest point): for «ادامه بده» on any device.
+    position = models.PositiveSmallIntegerField("جای فعلی (درصد)", default=0)
+    mode = models.CharField("حالت", max_length=10, default="full")
     first_opened_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -91,8 +94,9 @@ class FlashcardReview(models.Model):
     due_at = models.DateTimeField(default=timezone.now)
     review_count = models.PositiveIntegerField(default=0)
     last_reviewed_at = models.DateTimeField(null=True, blank=True)
-    # Id of the last review sent by the app, so a review re-sent after a dropped connection counts once.
-    last_op = models.CharField(max_length=40, blank=True)
+    # Ids of the last few reviews sent by the app (comma-separated), so a review re-sent after a dropped connection
+    # counts once, even if another review of the card came in between.
+    last_op = models.CharField(max_length=250, blank=True)
 
     class Meta:
         verbose_name = "مرور فلش‌کارت"

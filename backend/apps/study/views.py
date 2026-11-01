@@ -61,6 +61,9 @@ def node_state(request, node_id):
             "bookmarked": Bookmark.objects.filter(user=request.user, node=node, is_archived=False).exists(),
             "percent": progress.percent if progress else 0,
             "is_done": progress.is_done if progress else False,
+            "position": progress.position if progress else 0,
+            "mode": progress.mode if progress else "full",
+            "at": progress.updated_at if progress else None,
             "notes": [_note_payload(n) for n in notes],
         }
     )
@@ -79,6 +82,14 @@ def save_progress(request, node_id):
     progress, created = SectionProgress.objects.get_or_create(user=request.user, node=node, defaults={"book": book_of(node)})
     became_done = done and not progress.is_done
     progress.percent = max(progress.percent, percent)
+    # The reader's current place and mode (optional; older app versions don't send them).
+    if "position" in request.data:
+        try:
+            progress.position = max(0, min(100, int(request.data.get("position"))))
+        except (TypeError, ValueError):
+            pass
+    if request.data.get("mode") in ("full", "summary"):
+        progress.mode = request.data["mode"]
     progress.is_done = progress.is_done or done
     progress.save()
     if created or became_done:
@@ -187,10 +198,12 @@ def review_flashcard(request, flashcard_id):
 
 
 def _review(request, review):
-    op = str(request.data.get("op") or "")[:40]
-    if op and op == review.last_op:  # the same review sent again after a dropped connection
+    op = str(request.data.get("op") or "")[:40].replace(",", "")
+    seen = [x for x in review.last_op.split(",") if x]
+    if op and op in seen:  # the same review sent again after a dropped connection
         return Response({"box": review.box, "due_at": review.due_at, "mastered": review.box >= FlashcardReview.MASTERED_BOX})
-    review.last_op = op
+    if op:
+        review.last_op = ",".join((seen + [op])[-5:])
     grade = request.data.get("grade")
     if grade is None and "known" in request.data:
         grade = request.data.get("known") in (True, "true", 1, "1")
@@ -522,6 +535,8 @@ def library(request):
                 "last_section": _section_ref(p.node),
                 # How far into that section (0–100), to open it where the reader left off on another device.
                 "percent": p.percent,
+                "position": p.position,
+                "mode": p.mode,
                 "updated_at": p.updated_at,
                 "book": book_card(request, p.book, access),
             }

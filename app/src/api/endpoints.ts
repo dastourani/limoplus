@@ -139,7 +139,16 @@ export type User = { id: number; phone: string; email: string; first_name: strin
 export type DeviceSessionInfo = { id: number; device_name: string; platform: string; created_at: string; last_seen_at: string; is_current: boolean };
 export type VerifyResult = { token: string; session_id: number; user: User };
 export type Note = { id: number; node_id: number; mode: 'full' | 'summary'; quote: string; body: string; color: string; created_at: string; updated_at: string };
-export type NodeState = { bookmarked: boolean; percent: number; is_done: boolean; notes: Note[] };
+export type NodeState = {
+  bookmarked: boolean;
+  percent: number;
+  is_done: boolean;
+  notes: Note[];
+  /** The reader's current place (0–100) and mode, from whichever device they read on last. */
+  position?: number;
+  mode?: 'full' | 'summary';
+  at?: string | null;
+};
 export type PracticeState = { answered: Record<string, boolean>; reported: number[] };
 export type Grade = 'again' | 'hard' | 'good' | 'easy';
 export type GradeHints = Record<Grade, number>;

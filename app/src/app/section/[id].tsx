@@ -54,6 +54,7 @@ export default function Section() {
   // «ادامه بده»: open in the same mode and at the same place as last time.
   const [startAt, setStartAt] = useState<number | undefined>(undefined);
   const spotPercent = useRef(0);
+  const lastSpotSent = useRef<{ percent: number; mode: string }>({ percent: 0, mode: 'full' });
   // While the old place is being restored, the page's first scroll reports (0%) must not overwrite it.
   const restoring = useRef(resume === '1');
   // Arriving from the next or previous section: the page slides in from that side once it is drawn.
@@ -147,16 +148,24 @@ export default function Section() {
     setMode(find && modeParam === 'summary' && node.summary ? 'summary' : 'full');
     if (find) setFlashTarget({ q: find, n: 1 });
     spotPercent.current = 0;
+    lastSpotSent.current = { percent: 0, mode: 'full' };
     if (restoring.current && book?.slug)
-      storage.getReading().then((all) => {
-        const spot = all[book.slug];
-        if (spot?.id === node.id) {
+      (async () => {
+        // This phone's own spot, or (signed in) the account's, whichever is newer: read on another device, go on here.
+        const local = (await storage.getReading())[book.slug];
+        let spot = local?.id === node.id ? { mode: local.mode, percent: local.percent, at: local.at } : null;
+        if (user && !offline) {
+          const s = await endpoints.nodeState(node.id).catch(() => null);
+          const at = s?.at ? Date.parse(s.at) : 0;
+          if (s && (s.position ?? 0) > 0 && (!spot || at > spot.at + 5000)) spot = { mode: s.mode ?? 'full', percent: s.position ?? 0, at };
+        }
+        if (spot) {
           if (spot.mode === 'summary' && node.summary) setMode('summary');
           spotPercent.current = spot.percent;
           setStartAt(spot.percent / 100);
         }
         setTimeout(() => (restoring.current = false), 1500);
-      });
+      })();
     if (user && !offline) {
       endpoints
         .nodeState(node.id)
@@ -222,6 +231,12 @@ export default function Section() {
     if (!node || !book || restoring.current) return;
     spotPercent.current = percent;
     storage.setReading({ id: node.id, title: node.title, bookTitle: book.title, bookSlug: book.slug, mode, percent, at: Date.now() });
+    // The account keeps the place too (every 10% or on a change of mode), for «ادامه بده» on another device.
+    const last = lastSpotSent.current;
+    if (user && !offline && (last.mode !== mode || Math.abs(last.percent - percent) >= 10)) {
+      lastSpotSent.current = { percent, mode };
+      sendOrQueue(`nodes/${node.id}/progress/`, { percent: mode === 'full' ? percent : 0, done: false, position: percent, mode });
+    }
   };
   useEffect(() => {
     if (node) rememberSpot(mode === 'full' ? spotPercent.current : 0);
@@ -264,7 +279,8 @@ export default function Section() {
       if (e.percent >= p.sent + 10 || (e.percent >= 90 && !p.done)) {
         p.sent = Math.max(p.sent, e.percent);
         p.done = p.done || e.percent >= 90;
-        sendOrQueue(`nodes/${node.id}/progress/`, { percent: e.percent, done: false });
+        sendOrQueue(`nodes/${node.id}/progress/`, { percent: e.percent, done: false, position: e.percent, mode });
+        lastSpotSent.current = { percent: e.percent, mode };
       }
     }
   };

@@ -275,3 +275,17 @@ class StudyTests(TestCase):
         self.assertEqual(quick["questions"][0]["id"], q.id)
         self.assertLessEqual(len(quick["questions"]), 3)
         self.assertNotIn("is_correct", str(quick["questions"]))
+
+    def test_place_and_mode_follow_the_account(self):
+        self.client.post(f"/api/v1/nodes/{self.section.id}/progress/", {"percent": 60, "position": 60, "mode": "full"}, format="json")
+        self.client.post(f"/api/v1/nodes/{self.section.id}/progress/", {"percent": 0, "position": 35, "mode": "summary"}, format="json")
+        state = self.client.get(f"/api/v1/nodes/{self.section.id}/me/").data
+        self.assertEqual((state["percent"], state["position"], state["mode"]), (60, 35, "summary"))
+        reading = self.client.get("/api/v1/me/library/").data["reading"][0]
+        self.assertEqual((reading["position"], reading["mode"]), (35, "summary"))
+
+    def test_review_resent_after_another_still_counts_once(self):
+        card = Flashcard.objects.filter(node=self.section).first()
+        for op in ("a", "b", "a"):
+            self.client.post(f"/api/v1/flashcards/{card.id}/review/", {"grade": "good", "op": op}, format="json")
+        self.assertEqual(FlashcardReview.objects.get(user=self.user, flashcard=card).review_count, 2)
