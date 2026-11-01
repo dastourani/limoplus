@@ -30,7 +30,7 @@ const ORDERS: [Order, string][] = [
 ];
 
 export default function Quiz() {
-  const { nodeId, book: bookParam } = useLocalSearchParams<{ nodeId: string; book?: string }>();
+  const { nodeId, book: bookParam, q: openQuestion } = useLocalSearchParams<{ nodeId: string; book?: string; q?: string }>();
   // /quiz/mistakes: the questions of the mistakes notebook (optionally one book), practised like a section's.
   const notebook = nodeId === 'mistakes';
   // /quiz/quick: the three questions of «فقط ۵ دقیقه».
@@ -87,7 +87,7 @@ export default function Quiz() {
       .then((s) => {
         setServerAnswered(s.answered);
         setReported(s.reported);
-        if (!resumed.current) {
+        if (!resumed.current && !openQuestion) {
           resumed.current = true;
           const first = questions.findIndex((q) => !(String(q.id) in s.answered));
           if (first > 0) setIndex(first);
@@ -96,6 +96,14 @@ export default function Quiz() {
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, data, nodeId, order === null]);
+
+  // From search: open at that question.
+  useEffect(() => {
+    if (!openQuestion || !questions.length || resumed.current) return;
+    resumed.current = true;
+    const at = questions.findIndex((x) => String(x.id) === openQuestion);
+    if (at > 0) setIndex(at);
+  }, [openQuestion, questions]);
 
   const go = useCallback(
     (target: number, alreadyOut = false) => {

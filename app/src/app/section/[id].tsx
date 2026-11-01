@@ -42,7 +42,15 @@ const NOTE_COLORS: [string, string][] = [
 type Locked = { title?: string; price?: number | null; slug?: string };
 
 export default function Section() {
-  const { id, from, title: titleParam, resume } = useLocalSearchParams<{ id: string; from?: string; title?: string; resume?: string }>();
+  const { id, from, title: titleParam, resume, find, mode: modeParam } = useLocalSearchParams<{
+    id: string;
+    from?: string;
+    title?: string;
+    resume?: string;
+    /** From search: these words, lit up where they are, in this mode. */
+    find?: string;
+    mode?: string;
+  }>();
   // «ادامه بده»: open in the same mode and at the same place as last time.
   const [startAt, setStartAt] = useState<number | undefined>(undefined);
   const spotPercent = useRef(0);
@@ -136,7 +144,8 @@ export default function Section() {
     if (!node) return;
     const book = node.breadcrumb[0];
     storage.setLastSection({ id: node.id, title: node.title, bookTitle: book?.title ?? '', bookSlug: book?.slug ?? '' });
-    setMode('full');
+    setMode(find && modeParam === 'summary' && node.summary ? 'summary' : 'full');
+    if (find) setFlashTarget({ q: find, n: 1 });
     spotPercent.current = 0;
     if (restoring.current && book?.slug)
       storage.getReading().then((all) => {
@@ -429,7 +438,7 @@ export default function Section() {
           markdown={body}
           variant={mode === 'summary' && node.summary ? 'summary' : 'notes'}
           hasCards
-          flash={mode === 'full' ? flashTarget : null}
+          flash={flashTarget}
           terms={mode === 'full' ? termWords : undefined}
           fontSize={fontSize}
           dark={dark}

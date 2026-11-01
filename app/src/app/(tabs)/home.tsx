@@ -152,6 +152,9 @@ export default function Home() {
             <Text style={[styles.hello, rtl]}>سلام{user?.first_name ? ` ${user.first_name}` : ''}!</Text>
             <Text style={[styles.muted, rtl]}>امروز کدام لیمو را می‌خوانی؟</Text>
           </View>
+          <Pressable onPress={() => router.push('/search')} style={styles.searchButton} accessibilityRole="button" accessibilityLabel="جست‌وجو">
+            <Icon name="search" size={22} color={colors.ink} />
+          </Pressable>
           {!user && (
             <Pressable onPress={() => router.push('/login')} style={styles.loginPill} accessibilityRole="button">
               <Text style={styles.loginText}>ورود</Text>
@@ -400,6 +403,7 @@ function TodayRow({ icon, text, onPress }: { icon: 'layers' | 'notebook-pen' | '
 }
 
 const styles = StyleSheet.create({
+  searchButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line },
   today: { backgroundColor: colors.ink, borderRadius: 22, padding: 16, gap: 10 },
   todayHead: { flexDirection: 'row-reverse', alignItems: 'baseline', justifyContent: 'space-between' },
   todayTitle: { fontSize: 17, fontWeight: '900', color: '#FFFFFF' },

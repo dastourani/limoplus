@@ -569,3 +569,28 @@ class GiftAndCheckTests(_Base):
         card = api.get("/api/v1/books/test-book/").json()
         self.assertEqual((card["owned"], card["access"]), (False, None))
         self.assertEqual((card["free_chapters"], card["all_free"]), (1, True))
+
+
+class SearchTests(_Base):
+    def test_persian_variants_and_access(self):
+        from rest_framework.test import APIClient
+
+        from .search import normalize, pattern
+
+        self.assertEqual(normalize("كتاب‌ علي ۱۲"), "کتاب علی 12")
+        self.assertTrue(pattern("بهعلاوه").search("دو به‌علاوه‌ی دو"))
+        self.assertTrue(pattern("علي").search("علی"))
+        api = APIClient()
+        r = api.get("/api/v1/search/", {"q": "به علاوه"}).json()
+        kinds = {x["kind"] for x in r["results"]}
+        self.assertIn("question", kinds)
+        self.assertNotIn("is_correct", str(r))
+        self.assertEqual(api.get("/api/v1/search/", {"q": "خلاصه‌ی بخش"}).json()["results"][0]["mode"], "summary")
+        self.assertTrue(api.get("/api/v1/search/", {"q": "ا"}).json()["too_short"])
+        # A paid chapter's text is not found by someone who can't read it.
+        ContentNode.objects.filter(pk=self.chapter.pk).update(is_free=False)
+        ContentNode.objects.filter(path__startswith=self.chapter.path).update(is_free=False)
+        self.assertEqual(api.get("/api/v1/search/", {"q": "متن دوم"}).json()["results"], [])
+        staff = APIClient()
+        staff.force_authenticate(self.admin)
+        self.assertEqual(staff.get("/api/v1/search/", {"q": "متن دوم", "book": "test-book"}).json()["results"][0]["kind"], "section")

@@ -105,6 +105,17 @@ export type Today = {
   continue: { id: number; title: string; book_title: string; book_slug: string } | null;
   minutes: number;
 };
+export type SearchResult = {
+  kind: 'section' | 'question' | 'flashcard' | 'note';
+  id: number;
+  node_id: number;
+  title: string;
+  book_title: string;
+  book_slug: string;
+  snippet: string;
+  match: string;
+  mode?: 'full' | 'summary';
+};
 export type Mistakes = { count: number; items: MistakeItem[]; books: { slug: string; title: string }[]; reasons: { key: string; label: string }[] };
 export type Flashcard = { id: number; title: string; point: string; formula: string };
 export type Banner = { id: number; title: string; subtitle: string; image: string | null; link: string };
@@ -201,6 +212,8 @@ export const endpoints = {
   glossary: (slug: string) => api<{ book: string; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(`books/${encodeURIComponent(slug)}/glossary/`),
   questions: (nodeId: number) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/`),
   today: () => api<Today>('me/today/'),
+  search: (q: string, book = '') =>
+    api<{ query: string; results: SearchResult[]; more?: boolean; too_short?: boolean }>(`search/?q=${encodeURIComponent(q)}${book ? `&book=${encodeURIComponent(book)}` : ''}`),
   quick: () => api<{ cards: (Flashcard & { box: number; hints: GradeHints })[]; questions: Question[] }>('me/quick/'),
   mistakes: (book = '') => api<Mistakes>(`me/mistakes/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
   mistakeQuestions: (book = '') => api<{ questions: Question[]; locked_count: number }>(`me/mistakes/questions/${book ? `?book=${encodeURIComponent(book)}` : ''}`),

@@ -135,6 +135,15 @@ export default function Book() {
             <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={styles.heroButton} accessibilityRole="button" accessibilityLabel="بازگشت">
               <Icon name="arrow-right" size={22} color="#FFFFFF" />
             </Pressable>
+            <View style={{ flex: 1 }} />
+            <Pressable
+              onPress={() => router.push({ pathname: '/search', params: { book: book.slug, bookTitle: book.title } })}
+              style={styles.heroButton}
+              accessibilityRole="button"
+              accessibilityLabel="جست‌وجو در این کتاب"
+            >
+              <Icon name="search" size={20} color="#FFFFFF" />
+            </Pressable>
             <Pressable
               onPress={() => Share.share({ message: `«${book.title}» را در لیمو پلاس بخوان: خلاصه، جزوه، تست و فلش‌کارت.` }).catch(() => undefined)}
               style={styles.heroButton}

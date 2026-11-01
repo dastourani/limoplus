@@ -3,6 +3,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from apps.catalog import search as catalog_search
 from apps.catalog import views as catalog
 from apps.commerce import views as commerce
 from apps.learning import views as learning
@@ -19,6 +20,7 @@ api = [
     path("majors/", catalog.majors),
     path("majors/<slug:slug>/books/", catalog.major_books),
     path("books/", catalog.all_books),
+    path("search/", catalog_search.search),
     path("books/<str:slug>/", catalog.book_detail),
     path("books/<str:slug>/glossary/", catalog.book_glossary),
     path("books/<str:slug>/notify/", catalog.book_notify),

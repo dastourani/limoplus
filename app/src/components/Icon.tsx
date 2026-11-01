@@ -44,6 +44,8 @@ import PenLine from 'lucide-react-native/icons/pen-line';
 import Brain from 'lucide-react-native/icons/brain';
 import Calculator from 'lucide-react-native/icons/calculator';
 import SearchCheck from 'lucide-react-native/icons/search-check';
+import Search from 'lucide-react-native/icons/search';
+import X from 'lucide-react-native/icons/x';
 import CloudOff from 'lucide-react-native/icons/cloud-off';
 import Gauge from 'lucide-react-native/icons/gauge';
 import UnfoldVertical from 'lucide-react-native/icons/unfold-vertical';
@@ -106,6 +108,8 @@ const ICONS = {
   'brain': Brain,
   'calculator': Calculator,
   'search-check': SearchCheck,
+  search: Search,
+  x: X,
   'cloud-off': CloudOff,
   'gauge': Gauge,
   'unfold-vertical': UnfoldVertical,
