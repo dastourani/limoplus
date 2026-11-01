@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ApiError } from '../api/client';
 import { endpoints, type Mistakes } from '../api/endpoints';
 import { Icon } from '../components/Icon';
+import { RichText } from '../components/RichText';
 import { Text } from '../components/Text';
 import { Button, Empty, ErrorState, Header, Loading, Screen, usePullRefresh } from '../components/ui';
 import { requireLogin, useAuth } from '../lib/auth';
@@ -18,6 +19,8 @@ export default function MistakesScreen() {
   const [data, setData] = useState<Mistakes | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
+  // Twenty at a time: each item with a formula is drawn by the lesson renderer.
+  const [shown, setShown] = useState(20);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -94,9 +97,9 @@ export default function MistakesScreen() {
               ))}
             </ScrollView>
           )}
-          {data.items.map((m) => (
+          {data.items.slice(0, shown).map((m) => (
             <View key={m.question_id} style={styles.row}>
-              <Text style={[styles.text, rtl]} numberOfLines={3}>{m.text || 'سؤال تصویری'}</Text>
+              {m.text ? <RichText text={m.text} size={15} /> : <Text style={[styles.text, rtl]}>سؤال تصویری</Text>}
               <Pressable onPress={() => router.push(`/section/${m.node_id}`)} style={styles.where} accessibilityRole="link">
                 <Icon name="book-open" size={14} color={colors.greenDark} />
                 <Text style={[styles.whereText, rtl]} numberOfLines={1}>
@@ -124,6 +127,7 @@ export default function MistakesScreen() {
               </View>
             </View>
           ))}
+          {data.items.length > shown && <Button label="بیشتر" variant="outline" onPress={() => setShown((n) => n + 20)} />}
         </ScrollView>
       )}
     </Screen>

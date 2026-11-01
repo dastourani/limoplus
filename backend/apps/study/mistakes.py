@@ -57,11 +57,17 @@ def was_mistake(user, question_id) -> datetime | None:
     return last["at"] if last and not last["ok"] else None
 
 
-def _plain(text: str, limit=140) -> str:
+def _plain(text: str, limit=160) -> str:
+    """A short start of the question: images dropped, formulas kept whole (the app draws them)."""
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text or "")
-    text = re.sub(r"[*_`>#]|\$+", "", text)
     text = " ".join(text.split())
-    return text[:limit] + ("…" if len(text) > limit else "")
+    if len(text) <= limit:
+        return text
+    cut = limit
+    if text[:cut].count("$") % 2:  # don't stop inside a formula
+        end = text.find("$", cut)
+        cut = end + 1 if end >= 0 else text.rfind("$", 0, cut)
+    return text[:cut].rstrip() + "…"
 
 
 def _mistakes(request, book_slug=""):
