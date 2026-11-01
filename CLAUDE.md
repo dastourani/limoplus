@@ -95,6 +95,8 @@ by major, never inside reading or quiz screens. AI assistant is shown as "coming
 - Work on a branch and open a pull request; the owner reviews before merge.
 - Run before every PR: `cd backend && SECRET_KEY=test DEBUG=True python manage.py test apps` and
   `cd app && npm run typecheck`. Run backend management commands locally with `DEBUG=True`.
+  The same backend tests also run on PostgreSQL in CI (`.github/workflows/backend-tests.yml`): SQLite silently skips some
+  things PostgreSQL refuses (e.g. `select_for_update` across nullable joins), so payment and locking code must pass there.
 - In this cloud environment `npx expo install` cannot reach Expo's version API; pin versions manually and ask the
   owner to run `npx expo install --fix` locally if needed.
 - Payment, auth and data-migration changes get an independent review before merge.
