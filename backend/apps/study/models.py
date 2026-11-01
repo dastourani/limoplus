@@ -195,3 +195,23 @@ class Dashboard(StudyDay):
         proxy = True
         verbose_name = "داشبورد آمار"
         verbose_name_plural = "داشبورد آمار"
+
+
+class MistakeNote(models.Model):
+    """Why the learner got a question wrong (their own pick, optional), for the mistakes notebook."""
+
+    class Reason(models.TextChoices):
+        UNKNOWN = "unknown", "بلد نبودم"
+        FORGOT = "forgot", "فراموش کردم"
+        CARELESS = "careless", "بی‌دقتی"
+        TIME = "time", "کمبود وقت"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="mistake_notes")
+    question = models.ForeignKey(Question, on_delete=models.PROTECT, related_name="+")
+    reason = models.CharField(max_length=10, choices=Reason.choices, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "علت اشتباه"
+        verbose_name_plural = "علت‌های اشتباه"
+        unique_together = [("user", "question")]

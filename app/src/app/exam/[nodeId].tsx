@@ -37,6 +37,8 @@ export default function Exam() {
   const answersRef = useRef(answers);
   answersRef.current = answers;
   const [index, setIndex] = useState(0);
+  // «شک‌دار»: questions marked to look at again before finishing (kept on the phone with the answers).
+  const [flags, setFlags] = useState<number[]>([]);
   const [left, setLeft] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +100,8 @@ export default function Exam() {
         }
         const saved = await AsyncStorage.getItem(`limo.exam.${e.id}`).catch(() => null);
         setAnswers(saved ? (JSON.parse(saved) as Record<string, number | null>) : {});
+        const savedFlags = await AsyncStorage.getItem(`limo.exam.${e.id}.flags`).catch(() => null);
+        setFlags(savedFlags ? (JSON.parse(savedFlags) as number[]) : []);
         setExam(e);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'بارگذاری آزمون ممکن نشد.');
@@ -127,7 +131,7 @@ export default function Exam() {
     setBusy(true);
     try {
       await endpoints.submitExam(exam.id, answersRef.current);
-      if (storeKey) AsyncStorage.removeItem(storeKey).catch(() => undefined);
+      if (storeKey) AsyncStorage.multiRemove([storeKey, `${storeKey}.flags`]).catch(() => undefined);
       router.replace({ pathname: `/exam-result/${exam.id}`, params: { fresh: '1' } });
     } catch (e) {
       submitted.current = false;
@@ -194,7 +198,22 @@ export default function Exam() {
 
   const q = shownQ!;
   const answeredCount = Object.values(answers).filter((v) => v != null).length;
-  const parts: PartState[] = exam.questions.map((x) => (answers[x.id] != null ? 'done' : 'empty'));
+  const parts: PartState[] = exam.questions.map((x) => (flags.includes(x.id) ? 'wrong' : answers[x.id] != null ? 'done' : 'empty'));
+  const flagged = flags.includes(q.id);
+  const toggleFlag = () => {
+    const next = flagged ? flags.filter((f) => f !== q.id) : [...flags, q.id];
+    setFlags(next);
+    if (storeKey) AsyncStorage.setItem(`${storeKey}.flags`, JSON.stringify(next)).catch(() => undefined);
+  };
+  // Next marked question after this one (round the end), for «مرور شک‌دارها».
+  const nextFlag = () => {
+    const order = exam.questions.map((x) => x.id);
+    for (let k = 1; k <= order.length; k++) {
+      const i = (index + k) % order.length;
+      if (flags.includes(order[i])) return i;
+    }
+    return -1;
+  };
   const last = index + 1 >= exam.questions.length;
 
   const onEvent = (e: QuizEvent) => {
@@ -205,7 +224,9 @@ export default function Exam() {
   const finish = async () =>
     (await confirm({
       title: 'آزمون تمام شود؟',
-      message: answeredCount < exam.questions.length ? `${toPersianDigits(exam.questions.length - answeredCount)} سؤال بی‌پاسخ است.` : 'همه‌ی سؤال‌ها پاسخ داده شده‌اند.',
+      message:
+        (answeredCount < exam.questions.length ? `${toPersianDigits(exam.questions.length - answeredCount)} سؤال بی‌پاسخ است.` : 'همه‌ی سؤال‌ها پاسخ داده شده‌اند.') +
+        (flags.length ? ` ${toPersianDigits(flags.length)} سؤال را شک‌دار علامت زده‌ای.` : ''),
       confirmLabel: 'پایان آزمون',
       icon: 'circle-check',
     })) && submit();
@@ -220,6 +241,15 @@ export default function Exam() {
           </Text>
           <Text style={[styles.help, rtl]}>{toPersianDigits(answeredCount)} پاسخ داده‌شده</Text>
         </View>
+        <Pressable
+          onPress={toggleFlag}
+          style={[styles.flag, flagged && styles.flagOn]}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: flagged }}
+          accessibilityLabel="علامت شک‌دار برای مرور دوباره"
+        >
+          <Icon name="flag" size={18} color={flagged ? '#FFFFFF' : colors.ink} />
+        </Pressable>
         <View style={styles.clock}>
           <Icon name="timer" size={20} color={left < 60 ? colors.red : colors.ink} />
           <Text style={[styles.timer, left < 60 && { color: colors.red }]}>{clock(left)}</Text>
@@ -231,7 +261,7 @@ export default function Exam() {
         parts={parts}
         current={index}
         onPick={(i) => go(i)}
-        legend="زرد: پاسخ داده‌شده، سفید: بی‌پاسخ. برای پاک کردن یک پاسخ، دوباره روی همان گزینه بزنید."
+        legend="زرد: پاسخ داده‌شده، صورتی: شک‌دار، سفید: بی‌پاسخ. برای پاک کردن یک پاسخ، دوباره روی همان گزینه بزنید."
       />
       <Animated.View style={[{ flex: 1 }, pageStyle]}>
         <QuizView key={q.id} mode="exam" question={q} state={viewState} onEvent={onEvent} />
@@ -239,6 +269,9 @@ export default function Exam() {
       {!!error && <Text style={[styles.error, rtl, { paddingHorizontal: 16 }]}>{error}</Text>}
       <View style={styles.bar}>
         <Button label="قبلی" variant="outline" disabled={index === 0} onPress={() => go(index - 1)} style={{ flex: 1 }} />
+        {flags.length > 0 && (flags.length > 1 || !flagged) && (
+          <Button label={`شک‌دارها (${toPersianDigits(flags.length)})`} variant="outline" onPress={() => go(nextFlag())} style={{ flex: 1.2 }} />
+        )}
         {last ? (
           <Button label="پایان آزمون" loading={busy} onPress={finish} style={{ flex: 1.3 }} />
         ) : (
@@ -261,5 +294,7 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
   clock: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
   timer: { fontSize: 22, fontWeight: '800', color: colors.ink },
+  flag: { width: 40, height: 40, borderRadius: 12, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
+  flagOn: { backgroundColor: '#E2706A', borderColor: '#E2706A' },
   bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
 });

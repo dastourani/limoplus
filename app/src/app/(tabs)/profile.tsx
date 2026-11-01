@@ -108,6 +108,7 @@ export default function Profile() {
           <Row label="رشته" value={major?.name ?? 'انتخاب نشده'} onPress={() => router.navigate('/home')} />
           {user && <Row label="دستگاه‌های من" onPress={() => router.push('/devices')} />}
           {user && <Row label="سابقه‌ی آزمون‌ها" onPress={() => router.push('/exams')} />}
+          {user && <Row label="دفترچه‌ی اشتباهات" onPress={() => router.push('/mistakes')} />}
           <Row label="کتاب‌های آفلاین" onPress={() => router.push('/offline')} />
           <View style={styles.row}>
             <Text style={[styles.rowLabel, rtl]}>صدای جشن‌ها</Text>

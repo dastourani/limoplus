@@ -7,6 +7,7 @@ from apps.catalog import views as catalog
 from apps.commerce import views as commerce
 from apps.learning import views as learning
 from apps.releases import views as releases
+from apps.study import mistakes
 from apps.study import views as study
 
 admin.site.site_header = "پنل مدیریت لیمو پلاس"
@@ -45,6 +46,9 @@ api = [
     path("exams/<int:attempt_id>/", study.exam_detail),
     path("exams/<int:attempt_id>/submit/", study.submit_exam),
     path("me/exams/", study.my_exams),
+    path("me/mistakes/", mistakes.my_mistakes),
+    path("me/mistakes/questions/", mistakes.mistake_questions),
+    path("me/mistakes/<int:question_id>/reason/", mistakes.mistake_reason),
     path("me/flashcards/due/", study.due_flashcards),
     path("me/library/", study.library),
     path("me/stats/", study.stats),

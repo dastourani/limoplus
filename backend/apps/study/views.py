@@ -381,6 +381,8 @@ def _exam_detail(request, attempt):
     ]
     if attempt.submitted_at:
         answers = {a.question_id: a for a in attempt.answers.all()}
+        # Where each question is taught now, for «این نکته در جزوه» (the section may have moved since the exam).
+        nodes = dict(Question.objects.filter(pk__in=[qid for qid, _ in ordered]).values_list("pk", "node_id"))
         review = []
         for qid, q in ordered:
             answer = answers.get(qid)
@@ -390,6 +392,7 @@ def _exam_detail(request, attempt):
             review.append(
                 {
                     "question_id": qid,
+                    "node_id": nodes.get(qid),
                     "picked_choice_id": picked["id"] if picked else None,
                     "correct_choice_id": correct["id"] if correct else None,
                     "explanation": media_urls(request, q["explanation"]),

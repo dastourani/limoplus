@@ -41,6 +41,7 @@ def node_questions(request, node_id):
         items.append(
             {
                 "id": q.id,
+                "node_id": q.node_id,
                 "stem": media_urls(request, q.stem),
                 # Correct answers are never sent before the learner answers.
                 "choices": [{"id": c.id, "text": media_urls(request, c.text)} for c in q.choices.all()],
@@ -76,9 +77,13 @@ def answer(request, question_id):
         return Response({"code": "invalid_choice", "message": "گزینه‌ی انتخاب‌شده معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
 
     # Only signed-in learners count toward measured difficulty (guests could skew it).
+    fixed = None
     if request.user.is_authenticated:
+        from apps.study.mistakes import fixed_info
         from apps.study.views import first_answer
 
+        # A question from the mistakes notebook answered right: «اشتباهی که برطرف شد».
+        fixed = fixed_info(request.user, question.pk) if picked.is_correct else None
         first = first_answer(request.user, question.pk)
         QuizAnswer.objects.create(user=request.user, question=question, choice_order=picked.order, was_correct=picked.is_correct)
         if first:
@@ -96,6 +101,8 @@ def answer(request, question_id):
             "quick_solution": media_urls(request, question.quick_solution),
             "alternative_view": media_urls(request, question.alternative_view),
             "flashcards": [{"id": f.id, "title": f.title} for f in related],
+            "node_id": question.node_id,
+            "fixed": fixed,
         }
     )
 

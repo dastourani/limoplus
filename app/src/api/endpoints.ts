@@ -58,6 +58,8 @@ export type NodeDetail = {
 };
 export type Question = {
   id: number;
+  /** The section the question belongs to («این نکته در جزوه»). */
+  node_id?: number;
   stem: string;
   choices: { id: number; text: string }[];
   difficulty: 'easy' | 'medium' | 'hard';
@@ -75,7 +77,24 @@ export type AnswerResult = {
   quick_solution: string;
   alternative_view: string;
   flashcards: { id: number; title: string }[];
+  node_id?: number;
+  /** A question from the mistakes notebook answered right: how many days ago it went wrong. */
+  fixed?: { days: number } | null;
 };
+export type MistakeItem = {
+  question_id: number;
+  text: string;
+  node_id: number;
+  node_title: string;
+  book_slug: string;
+  book_title: string;
+  wrong_count: number;
+  blank: boolean;
+  source: 'practice' | 'exam';
+  last_at: string;
+  reason: string;
+};
+export type Mistakes = { count: number; items: MistakeItem[]; books: { slug: string; title: string }[]; reasons: { key: string; label: string }[] };
 export type Flashcard = { id: number; title: string; point: string; formula: string };
 export type Banner = { id: number; title: string; subtitle: string; image: string | null; link: string };
 
@@ -104,6 +123,7 @@ export type ExamReview = {
   explanation: string;
   quick_solution: string;
   alternative_view: string;
+  node_id?: number | null;
 };
 export type ExamSummary = {
   id: number;
@@ -169,6 +189,9 @@ export const endpoints = {
   notifyBook: (slug: string, on: boolean) => api<{ notify: boolean; can_cancel: boolean }>(`books/${encodeURIComponent(slug)}/notify/`, { body: { on } }),
   glossary: (slug: string) => api<{ book: string; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(`books/${encodeURIComponent(slug)}/glossary/`),
   questions: (nodeId: number) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/`),
+  mistakes: (book = '') => api<Mistakes>(`me/mistakes/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
+  mistakeQuestions: (book = '') => api<{ questions: Question[]; locked_count: number }>(`me/mistakes/questions/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
+  mistakeReason: (questionId: number, reason: string) => api<{ reason: string }>(`me/mistakes/${questionId}/reason/`, { body: { reason } }),
   answer: (questionId: number, choiceId: number) => api<AnswerResult>(`questions/${questionId}/answer/`, { body: { choice_id: choiceId } }),
   flashcards: (nodeId: number) => api<{ flashcards: Flashcard[]; locked_count: number }>(`nodes/${nodeId}/flashcards/`),
   banners: (major: string) => api<Banner[]>(`banners/?major=${encodeURIComponent(major)}`),

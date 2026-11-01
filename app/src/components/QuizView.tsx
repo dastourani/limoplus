@@ -8,7 +8,7 @@ import { CONTENT_CSS } from '../lib/renderMarkdown';
 
 const FONT_CSS = fontFaceCss((family) => `file:///android_asset/fonts/${family}.ttf`);
 
-export type QuizEvent = { type: 'choose'; id: number } | { type: 'report' } | { type: 'swipe'; dir: 'next' | 'prev'; flung?: boolean };
+export type QuizEvent = { type: 'choose'; id: number } | { type: 'report' } | { type: 'notes' } | { type: 'swipe'; dir: 'next' | 'prev'; flung?: boolean };
 
 const BOOT = `
   (function () {

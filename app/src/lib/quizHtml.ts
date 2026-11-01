@@ -68,7 +68,7 @@ export type QuizViewState = {
   canPrev?: boolean;
   /** False on the last exam question (practice goes on to the summary). */
   canNext?: boolean;
-  result: (Pick<AnswerResult, 'correct_choice_id' | 'is_correct'> & { tabs: { key: string; label: string; html: string }[]; flashcards: string }) | null;
+  result: (Pick<AnswerResult, 'correct_choice_id' | 'is_correct'> & { tabs: { key: string; label: string; html: string }[]; flashcards: string; notes?: boolean }) | null;
 };
 
 export function resultForView(r: AnswerResult): NonNullable<QuizViewState['result']> {
@@ -117,6 +117,7 @@ export const QUIZ_CSS = `
 .quiz .tab.on { background: #fff; color: #17201A; }
 .quiz .pane p { margin: 0 0 8px; }
 .quiz .related { font-size: 12px; color: #56655B; margin-top: 6px; }
+.quiz .to-notes { margin-top: 10px; border: 0; border-radius: 12px; padding: 8px 14px; background: #17201A; color: #F5C518; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
 .quiz .err { color: #9E2F2A; margin-top: 10px; }
 .quiz .report-row { display: flex; justify-content: flex-start; margin-top: 14px; }
 .quiz .report, .quiz .reported { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 7px 12px; font: inherit;
@@ -134,6 +135,7 @@ root.addEventListener('click', function (e) {
   var choice = t.closest && t.closest('.choice');
   if (choice && !choice.disabled) { post({ type: 'choose', id: Number(choice.getAttribute('data-id')) }); return; }
   if (t.closest && t.closest('.report')) { post({ type: 'report' }); return; }
+  if (t.closest && t.closest('.to-notes')) { post({ type: 'notes' }); return; }
   var tb = t.closest && t.closest('.tab');
   if (tb) { tab = Number(tb.getAttribute('data-i')); render(); }
 });
@@ -189,7 +191,8 @@ function render() {
     }).join('') + '</div>' : '';
     fb.className = 'feedback ' + (r.is_correct ? 'ok' : 'no');
     fb.innerHTML = '<div class="fb-title">' + (r.is_correct ? 'آفرین، درست بود!' : 'نزدیک بودی؛ ببین چرا:') + '</div>' + tabs +
-      '<div class="pane">' + (r.tabs[tab] ? r.tabs[tab].html : '') + '</div>' + (r.flashcards ? '<div class="related">' + r.flashcards + '</div>' : '');
+      '<div class="pane">' + (r.tabs[tab] ? r.tabs[tab].html : '') + '</div>' + (r.flashcards ? '<div class="related">' + r.flashcards + '</div>' : '') +
+      (r.notes ? '<button class="to-notes">این نکته در جزوه ‹</button>' : '');
     fb.hidden = false;
   } else { fb.hidden = true; }
   var err = root.querySelector('.err'); err.hidden = !state.error; err.textContent = state.error || '';

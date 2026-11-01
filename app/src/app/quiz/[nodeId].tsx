@@ -1,3 +1,4 @@
+import { play } from '../../lib/sound';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -29,8 +30,13 @@ const ORDERS: [Order, string][] = [
 ];
 
 export default function Quiz() {
-  const { nodeId } = useLocalSearchParams<{ nodeId: string }>();
-  const { data, error, loading, retry } = useApi(() => endpoints.questions(Number(nodeId)), [nodeId]);
+  const { nodeId, book: bookParam } = useLocalSearchParams<{ nodeId: string; book?: string }>();
+  // /quiz/mistakes: the questions of the mistakes notebook (optionally one book), practised like a section's.
+  const notebook = nodeId === 'mistakes';
+  const { data, error, loading, retry } = useApi(
+    () => (notebook ? endpoints.mistakeQuestions(bookParam ?? '') : endpoints.questions(Number(nodeId))),
+    [nodeId, bookParam],
+  );
   const { user } = useAuth();
   const { confirm, toast: flash } = useFeedback();
 
@@ -68,7 +74,7 @@ export default function Quiz() {
 
   // Signed-in learners continue at the first question they have not answered yet.
   useEffect(() => {
-    if (!user || !data || !order) return;
+    if (!user || !data || !order || notebook) return;
     endpoints
       .practiceState(Number(nodeId))
       .then((s) => {
@@ -99,7 +105,10 @@ export default function Quiz() {
     return (
       <Screen>
         <Header title="تست" />
-        <ErrorState icon={data!.locked_count ? 'lock' : 'clipboard-list'} message={data!.locked_count ? 'تست‌های این بخش در نسخه‌ی کامل کتاب است.' : 'برای این بخش هنوز تستی نیست.'} />
+        <ErrorState
+          icon={data!.locked_count ? 'lock' : 'clipboard-list'}
+          message={notebook ? 'دفترچه‌ی اشتباهات خالی است؛ آفرین!' : data!.locked_count ? 'تست‌های این بخش در نسخه‌ی کامل کتاب است.' : 'برای این بخش هنوز تستی نیست.'}
+        />
       </Screen>
     );
   }
@@ -136,7 +145,12 @@ export default function Quiz() {
     setAnswerError(null);
     try {
       const r = await endpoints.answer(q.id, choiceId);
-      setAnswers((a) => ({ ...a, [q.id]: { picked: choiceId, result: resultForView(r) } }));
+      setAnswers((a) => ({ ...a, [q.id]: { picked: choiceId, result: { ...resultForView(r), notes: !!(r.node_id ?? q.node_id) } } }));
+      if (r.fixed) {
+        // «اشتباهی که برطرف شد»
+        play('pop');
+        flash(r.fixed.days >= 1 ? `اشتباهی که برطرف شد! ${toPersianDigits(r.fixed.days)} روز پیش این را غلط زده بودی.` : 'اشتباهی که برطرف شد! این بار درست زدی.');
+      }
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(r.is_correct ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
       }
@@ -150,7 +164,10 @@ export default function Quiz() {
 
   const onEvent = (e: QuizEvent) => {
     if (e.type === 'choose') choose(e.id);
-    else if (e.type === 'report') {
+    else if (e.type === 'notes') {
+      const node = q.node_id;
+      if (node) router.push(`/section/${node}`);
+    } else if (e.type === 'report') {
       if (requireLogin(user, 'برای گزارش اشکال وارد شوید.')) setReportOpen(true);
     } else if (e.type === 'swipe') {
       if (e.dir === 'next') {
@@ -186,7 +203,7 @@ export default function Quiz() {
       icon: 'rotate-ccw',
     });
     if (!ok) return;
-    if (user) await endpoints.practiceReset(Number(nodeId)).catch(() => undefined);
+    if (user && !notebook) await endpoints.practiceReset(Number(nodeId)).catch(() => undefined);
     setAnswers({});
     setServerAnswered({});
     setShowSummary(false);
@@ -215,7 +232,11 @@ export default function Quiz() {
               style={{ alignSelf: 'stretch' }}
             />
           )}
-          <Button label="آزمون زمان‌دار با نمره‌ی منفی" variant="dark" onPress={() => router.replace(`/exam/${nodeId}`)} style={{ alignSelf: 'stretch' }} />
+          {notebook ? (
+            <Button label="دفترچه‌ی اشتباهات" variant="dark" onPress={() => router.replace('/mistakes')} style={{ alignSelf: 'stretch' }} />
+          ) : (
+            <Button label="آزمون زمان‌دار با نمره‌ی منفی" variant="dark" onPress={() => router.replace(`/exam/${nodeId}`)} style={{ alignSelf: 'stretch' }} />
+          )}
           <Button label="شروع دوباره‌ی تست‌ها" variant="outline" onPress={restart} style={{ alignSelf: 'stretch' }} />
           <Button label="بازگشت" variant="outline" onPress={() => router.back()} style={{ alignSelf: 'stretch' }} />
         </ScrollView>

@@ -117,6 +117,11 @@ export default function ExamResult() {
                       <RichText text={r.alternative_view} size={14} />
                     </>
                   )}
+                  {!!r?.node_id && (
+                    <Pressable onPress={() => router.push(`/section/${r.node_id}`)} accessibilityRole="link">
+                      <Text style={styles.link}>این نکته در جزوه ‹</Text>
+                    </Pressable>
+                  )}
                 </View>
               ) : (
                 <Pressable onPress={() => setOpen(q.id)}>

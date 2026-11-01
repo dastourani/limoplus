@@ -221,3 +221,31 @@ class StudyTests(TestCase):
         self.client.post(f"/api/v1/exams/{r.data['id']}/submit/", {"answers": {}}, format="json")
         res = self.client.post(f"/api/v1/questions/{qid}/answer/", {"choice_id": q.choices.first().id}, format="json")
         self.assertEqual(res.status_code, 200)
+
+    def test_notebook_collects_wrong_answers_and_drops_fixed_ones(self):
+        q = Question.objects.filter(node=self.section, is_archived=False).first()
+        wrong = q.choices.filter(is_correct=False).first()
+        right = q.choices.get(is_correct=True)
+        self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": wrong.id}, format="json")
+        data = self.client.get("/api/v1/me/mistakes/").data
+        self.assertEqual([i["question_id"] for i in data["items"]], [q.id])
+        self.assertEqual(data["items"][0]["wrong_count"], 1)
+        self.assertEqual(len(data["reasons"]), 4)
+        self.assertEqual(self.client.post(f"/api/v1/me/mistakes/{q.id}/reason/", {"reason": "careless"}, format="json").data["reason"], "careless")
+        self.assertEqual(self.client.get("/api/v1/me/mistakes/").data["items"][0]["reason"], "careless")
+        self.assertEqual(self.client.post(f"/api/v1/me/mistakes/{q.id}/reason/", {"reason": "x"}, format="json").status_code, 400)
+        practice = self.client.get("/api/v1/me/mistakes/questions/").data["questions"]
+        self.assertEqual([p["id"] for p in practice], [q.id])
+        self.assertNotIn("is_correct", str(practice))
+        self.client.post(f"/api/v1/nodes/{self.section.id}/practice/reset/")
+        r = self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": right.id}, format="json").data
+        self.assertEqual(r["fixed"], {"days": 0})
+        self.assertEqual(r["node_id"], q.node_id)
+        self.assertEqual(self.client.get("/api/v1/me/mistakes/").data["count"], 0)
+
+    def test_blank_exam_answers_are_mistakes_and_locked_questions_are_not_listed(self):
+        r = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 2}, format="json")
+        self.client.post(f"/api/v1/exams/{r.data['id']}/submit/", {"answers": {}}, format="json")
+        items = self.client.get("/api/v1/me/mistakes/").data["items"]
+        self.assertEqual(len(items), 2)
+        self.assertTrue(all(i["blank"] for i in items))
