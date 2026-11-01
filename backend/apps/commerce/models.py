@@ -48,6 +48,9 @@ class Order(models.Model):
     major = models.ForeignKey(Major, on_delete=models.PROTECT, null=True, blank=True, related_name="orders", verbose_name="رشته‌ی اشتراک")
     title = models.CharField("شرح", max_length=200)
     amount = models.PositiveIntegerField("مبلغ (تومان)")
+    # The plan's terms when the order was made: a later change to the plan doesn't change what was bought.
+    plan_months = models.PositiveSmallIntegerField("مدت خریده‌شده (ماه)", null=True, blank=True)
+    plan_scope = models.CharField("دامنه‌ی خریده‌شده", max_length=10, blank=True)
     status = models.CharField("وضعیت", max_length=10, choices=Status.choices, default=Status.PENDING)
     track_id = models.CharField("شناسه‌ی زیبال", max_length=40, unique=True, null=True, blank=True)
     ref_number = models.CharField("شماره‌ی پیگیری", max_length=40, blank=True)

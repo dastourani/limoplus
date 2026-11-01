@@ -91,6 +91,8 @@ class FlashcardReview(models.Model):
     due_at = models.DateTimeField(default=timezone.now)
     review_count = models.PositiveIntegerField(default=0)
     last_reviewed_at = models.DateTimeField(null=True, blank=True)
+    # Id of the last review sent by the app, so a review re-sent after a dropped connection counts once.
+    last_op = models.CharField(max_length=40, blank=True)
 
     class Meta:
         verbose_name = "مرور فلش‌کارت"
@@ -138,6 +140,9 @@ class ExamAttempt(models.Model):
     blank = models.PositiveSmallIntegerField(default=0)
     score_percent = models.FloatField(null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+    # The questions as they were when the exam started (stem, choices with ids and the right one, explanations), so
+    # editing the content later changes neither the grading nor the report card of this exam.
+    snapshot = models.JSONField(default=dict, blank=True)
 
     class Meta:
         verbose_name = "آزمون"

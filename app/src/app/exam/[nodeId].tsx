@@ -33,6 +33,9 @@ export default function Exam() {
   const [negative, setNegative] = useState(true);
   const [exam, setExam] = useState<ExamDetail | null>(null);
   const [answers, setAnswers] = useState<Record<string, number | null>>({});
+  // The timer's submit must send the answers as they are now, not as they were when the timer started.
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
   const [index, setIndex] = useState(0);
   const [left, setLeft] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -123,7 +126,7 @@ export default function Exam() {
     submitted.current = true;
     setBusy(true);
     try {
-      await endpoints.submitExam(exam.id, answers);
+      await endpoints.submitExam(exam.id, answersRef.current);
       if (storeKey) AsyncStorage.removeItem(storeKey).catch(() => undefined);
       router.replace({ pathname: `/exam-result/${exam.id}`, params: { fresh: '1' } });
     } catch (e) {

@@ -77,10 +77,14 @@ def answer(request, question_id):
 
     # Only signed-in learners count toward measured difficulty (guests could skew it).
     if request.user.is_authenticated:
+        from apps.study.views import first_answer
+
+        first = first_answer(request.user, question.pk)
         QuizAnswer.objects.create(user=request.user, question=question, choice_order=picked.order, was_correct=picked.is_correct)
-        Question.objects.filter(pk=question.pk).update(
-            answer_count=F("answer_count") + 1, correct_count=F("correct_count") + (1 if picked.is_correct else 0)
-        )
+        if first:
+            Question.objects.filter(pk=question.pk).update(
+                answer_count=F("answer_count") + 1, correct_count=F("correct_count") + (1 if picked.is_correct else 0)
+            )
         StudyDay.touch(request.user, "answers")
 
     related = [f for f in question.flashcards.filter(is_archived=False) if _usable(access, f)]

@@ -135,6 +135,41 @@ class StudyTests(TestCase):
         self.assertEqual((len(second["results"]), second["has_more"]), (3, False))
         self.assertEqual(self.client.get("/api/v1/me/exams/?page=1&book=nope").data["summary"]["count"], 12)
 
+    def test_exam_keeps_its_questions_when_content_is_edited(self):
+        r = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 2}, format="json")
+        q = Question.objects.get(pk=r.data["questions"][0]["id"])
+        right = q.choices.get(is_correct=True)
+        # The content is edited mid-exam: the choices are rebuilt and the answer key changes.
+        old = [(c.text, c.is_correct) for c in q.choices.all()]
+        q.choices.all().delete()
+        for i, (text, ok) in enumerate(old):
+            q.choices.create(text=text + " (ویرایش)", is_correct=not ok if i < 2 else ok, order=i)
+        res = self.client.post(f"/api/v1/exams/{r.data['id']}/submit/", {"answers": {str(q.id): right.id}}, format="json").data
+        self.assertEqual(res["correct"], 1)
+        review = next(x for x in res["review"] if x["question_id"] == q.id)
+        self.assertEqual(review["picked_choice_id"], right.id)
+        self.assertEqual(review["correct_choice_id"], right.id)
+        stem = next(x for x in res["questions"] if x["id"] == q.id)
+        self.assertNotIn("(ویرایش)", str(stem["choices"]))
+
+    def test_measured_difficulty_counts_first_answers_only(self):
+        q = Question.objects.filter(node=self.section, is_archived=False).first()
+        wrong = q.choices.filter(is_correct=False).first()
+        right = q.choices.get(is_correct=True)
+        before = Question.objects.get(pk=q.pk).answer_count
+        self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": wrong.id}, format="json")
+        self.client.post(f"/api/v1/nodes/{self.section.id}/practice/reset/")
+        for _ in range(3):
+            self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": right.id}, format="json")
+        q.refresh_from_db()
+        self.assertEqual((q.answer_count - before, q.correct_count), (1, 0))
+
+    def test_flashcard_review_sent_twice_counts_once(self):
+        card = Flashcard.objects.filter(node=self.section).first()
+        for _ in range(2):
+            self.client.post(f"/api/v1/flashcards/{card.id}/review/", {"grade": "good", "op": "abc-1"}, format="json")
+        self.assertEqual(FlashcardReview.objects.get(user=self.user, flashcard=card).review_count, 1)
+
     def test_exam_excludes_locked_questions(self):
         book = self.chapter.get_parent()
         r = self.client.post(f"/api/v1/nodes/{book.id}/exams/", {"count": 50}, format="json")

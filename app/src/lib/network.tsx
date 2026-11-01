@@ -14,7 +14,16 @@ import { Text } from '../components/Text';
 import { colors } from '../theme';
 
 const OUTBOX = 'limo.outbox';
-type Job = { path: string; body: unknown; at: number };
+/** A queued request, with the account it belongs to: it is only ever sent for that account. */
+type Job = { path: string; body: unknown; at: number; owner?: number };
+const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+
+let owner: number | null = null;
+/** Called by the auth provider whenever the signed-in account changes. */
+export function setOutboxOwner(id: number | null) {
+  owner = id;
+  if (id != null) flushOutbox();
+}
 
 const OnlineContext = createContext(true);
 export const useOnline = () => useContext(OnlineContext);
@@ -29,12 +38,14 @@ async function readOutbox(): Promise<Job[]> {
 
 /** POST that is retried later if there is no connection. Use only for requests that are safe to send late. */
 export async function sendOrQueue(path: string, body: unknown): Promise<void> {
+  if (owner == null) return;
+  const mine = owner;
   try {
     await api(path, { body });
   } catch (e) {
     if (e instanceof ApiError && e.status === 0) {
       const jobs = await readOutbox();
-      jobs.push({ path, body, at: Date.now() });
+      jobs.push({ path, body, at: Date.now(), owner: mine });
       await AsyncStorage.setItem(OUTBOX, JSON.stringify(jobs.slice(-500))).catch(() => undefined);
     }
   }
@@ -47,7 +58,14 @@ export async function flushOutbox() {
   try {
     const jobs = await readOutbox();
     const left: Job[] = [];
+    const now = Date.now();
     for (const job of jobs) {
+      // Old ones and ones from before accounts were recorded are dropped; another account's wait for it.
+      if (job.owner == null || now - job.at > MAX_AGE_MS) continue;
+      if (job.owner !== owner) {
+        left.push(job);
+        continue;
+      }
       try {
         await api(job.path, { body: job.body });
       } catch (e) {

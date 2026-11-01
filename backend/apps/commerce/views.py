@@ -95,7 +95,9 @@ def create_order(request):
             if major is None:
                 return _err("رشته‌ی اشتراک را انتخاب کنید.", "major_required")
         title = f"{plan.title}" + (f" — {major.name}" if major else "")
-        order = Order.objects.create(user=user, plan=plan, major=major, title=title, amount=plan.price)
+        order = Order.objects.create(
+            user=user, plan=plan, major=major, title=title, amount=plan.price, plan_months=plan.months, plan_scope=plan.scope
+        )
     else:
         return _err("کتاب یا طرح اشتراک را انتخاب کنید.", "invalid_request")
 
@@ -119,18 +121,21 @@ def _grant(order: Order):
     if order.book_id:
         return Entitlement.objects.create(user=order.user, book=order.book, order=order)
     now = timezone.now()
+    # What was bought, as it was when the order was made (older orders: the plan as it is now).
+    months = order.plan_months or order.plan.months
+    all_majors = (order.plan_scope or order.plan.scope) == Plan.Scope.ALL
     # Includes renewals bought earlier that start in the future, so stacked purchases chain end to end.
     same_scope = Entitlement.objects.filter(
-        user=order.user, is_archived=False, book__isnull=True, all_majors=order.plan.scope == Plan.Scope.ALL, major=order.major
+        user=order.user, is_archived=False, book__isnull=True, all_majors=all_majors, major=order.major
     ).filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
     # A renewal starts when the current subscription ends, so no paid days are lost.
     start = max(now, same_scope.aggregate(end=Max("ends_at"))["end"] or now)
     return Entitlement.objects.create(
         user=order.user,
         major=order.major,
-        all_majors=order.plan.scope == Plan.Scope.ALL,
+        all_majors=all_majors,
         starts_at=start,
-        ends_at=start + timedelta(days=DAYS_PER_MONTH * order.plan.months),
+        ends_at=start + timedelta(days=DAYS_PER_MONTH * months),
         order=order,
     )
 
@@ -144,7 +149,8 @@ RECHECK_WINDOW = timedelta(hours=2)
 def settle(track_id: str) -> Order | None:
     """Verifies a payment with Zibal and, if the paid amount matches, marks the order paid and grants access once."""
     with transaction.atomic():
-        order = Order.objects.select_for_update().select_related("plan", "book", "major", "user").filter(track_id=track_id).first()
+        # Lock only the order row: PostgreSQL refuses FOR UPDATE on the nullable side of the joins (book, plan, major).
+        order = Order.objects.select_for_update(of=("self",)).select_related("plan", "book", "major", "user").filter(track_id=track_id).first()
         if order is None or order.status == Order.Status.PAID:
             return order
         try:

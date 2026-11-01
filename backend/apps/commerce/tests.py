@@ -87,6 +87,15 @@ class PaymentTests(TestCase):
         ends = sorted(Entitlement.objects.values_list("ends_at", flat=True))
         self.assertGreater(ends[1] - ends[0], timedelta(days=29))
 
+    def test_order_keeps_the_plan_terms_it_was_made_with(self):
+        plan = Plan.objects.get(scope="major", months=1)
+        with mock.patch("apps.commerce.zibal.request_payment", return_value="K1"):
+            self.client.post("/api/v1/orders/", {"plan": plan.id, "major": "economics"}, format="json")
+        Plan.objects.filter(pk=plan.pk).update(months=12)  # the admin changes the plan before the payment comes back
+        self._callback("K1", {"result": 100, "amount": plan.price * 10})
+        e = Entitlement.objects.get()
+        self.assertLess(e.ends_at - e.starts_at, timedelta(days=40))
+
     def test_subscription_to_other_major_does_not_open_book(self):
         other = Major.objects.create(name="آزمایشی", slug="other")
         Entitlement.objects.create(user=self.user, major=other, ends_at=timezone.now() + timedelta(days=30))

@@ -3,6 +3,7 @@
  * when the card comes back. Swipe right = good, swipe left = again. «Again» cards return later in the same session.
  * Signed-in learners' grades go to the server (queued when offline); guests just practise.
  */
+import * as Crypto from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
 import { router } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
@@ -103,7 +104,8 @@ export function FlashcardDeck({
     const nb = nextBox(box, g);
     setBoxes((b) => ({ ...b, [card.id]: { box: nb, hints: b[card.id]?.hints ?? newHints } }));
     setGraded((m) => ({ ...m, [card.id]: g }));
-    if (user) sendOrQueue(`flashcards/${card.id}/review/`, { grade: g });
+    // `op` lets the server count a review re-sent after a dropped connection only once.
+    if (user) sendOrQueue(`flashcards/${card.id}/review/`, { grade: g, op: Crypto.randomUUID() });
     if (g === 'again') {
       setAgainIds((s) => new Set(s).add(card.id));
       // Comes back three cards later in this session.

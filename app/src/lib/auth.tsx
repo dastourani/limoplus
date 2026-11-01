@@ -1,3 +1,4 @@
+import { flushOutbox, setOutboxOwner } from './network';
 import * as Device from 'expo-device';
 import { router } from 'expo-router';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -39,11 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   const remember = useCallback((u: User) => {
+    setOutboxOwner(u.id);
     setUser(u);
     AsyncStorage.setItem(USER_KEY, JSON.stringify(u)).catch(() => undefined);
   }, []);
 
   const forget = useCallback(async () => {
+    setOutboxOwner(null);
     setAuthToken(null);
     setUser(null);
     await secure.set(TOKEN_KEY, null);
@@ -63,7 +66,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (token) {
         setAuthToken(token);
         const cached = await AsyncStorage.getItem(USER_KEY).catch(() => null);
-        if (cached) setUser(JSON.parse(cached) as User);
+        if (cached) {
+          const u = JSON.parse(cached) as User;
+          setOutboxOwner(u.id);
+          setUser(u);
+        }
       }
       setReady(true);
       if (token) {
@@ -85,6 +92,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         remember(signedIn);
       },
       signOut: async ({ remote = true } = {}) => {
+        // Send what is still waiting from this account while it is still signed in.
+        if (remote) await flushOutbox().catch(() => undefined);
         if (remote) await endpoints.logout().catch(() => undefined);
         await forget();
       },

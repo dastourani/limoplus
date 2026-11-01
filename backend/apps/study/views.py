@@ -180,6 +180,10 @@ def review_flashcard(request, flashcard_id):
     if not _usable(access, card):
         return Response(LOCKED, status=status.HTTP_403_FORBIDDEN)
     review, _ = FlashcardReview.objects.get_or_create(user=request.user, flashcard=card)
+    op = str(request.data.get("op") or "")[:40]
+    if op and op == review.last_op:  # the same review sent again after a dropped connection
+        return Response({"box": review.box, "due_at": review.due_at, "mastered": review.box >= FlashcardReview.MASTERED_BOX})
+    review.last_op = op
     grade = request.data.get("grade")
     if grade is None and "known" in request.data:
         grade = request.data.get("known") in (True, "true", 1, "1")
@@ -279,6 +283,40 @@ def _question_payload(request, q):
     }
 
 
+def _snapshot(questions) -> dict:
+    return {
+        str(q.id): {
+            "stem": q.stem,
+            "difficulty": q.difficulty,
+            "choices": [{"id": c.id, "text": c.text, "ok": c.is_correct} for c in q.choices.all()],
+            "explanation": q.explanation,
+            "quick_solution": q.quick_solution,
+            "alternative_view": q.alternative_view,
+        }
+        for q in questions
+    }
+
+
+def _exam_questions(attempt) -> list[tuple[int, dict]]:
+    """(question id, its content) in exam order: from the snapshot, or for exams started before snapshots, as now."""
+    if attempt.snapshot:
+        return [(qid, attempt.snapshot[str(qid)]) for qid in attempt.question_ids if str(qid) in attempt.snapshot]
+    current = _snapshot(Question.objects.filter(pk__in=attempt.question_ids).prefetch_related("choices"))
+    return [(qid, current[str(qid)]) for qid in attempt.question_ids if str(qid) in current]
+
+
+def first_answer(user, question_id, exclude_attempt=None) -> bool:
+    """Measured difficulty counts each learner's first answer to a question only (repeats know the answer)."""
+    from apps.learning.models import QuizAnswer
+
+    if QuizAnswer.objects.filter(user=user, question_id=question_id).exists():
+        return False
+    earlier = ExamAnswer.objects.filter(attempt__user=user, question_id=question_id, choice_order__isnull=False)
+    if exclude_attempt is not None:
+        earlier = earlier.exclude(attempt=exclude_attempt)
+    return not earlier.exists()
+
+
 def _exam_summary(a):
     return {
         "id": a.id,
@@ -317,10 +355,13 @@ def start_exam(request, node_id):
             seconds = max(60, min(4 * 3600, int(request.data["minutes"]) * 60))
     except (TypeError, ValueError):
         pass
+    picked = list(Question.objects.filter(pk__in=[q.id for q in picked]).prefetch_related("choices"))
+    random.shuffle(picked)
     attempt = ExamAttempt.objects.create(
         user=request.user,
         node=node,
         question_ids=[q.id for q in picked],
+        snapshot=_snapshot(picked),
         negative_marking=request.data.get("negative_marking", True) not in (False, "false", 0, "0"),
         time_limit_seconds=seconds,
     )
@@ -328,26 +369,33 @@ def start_exam(request, node_id):
 
 
 def _exam_detail(request, attempt):
-    questions = {q.id: q for q in Question.objects.filter(pk__in=attempt.question_ids).prefetch_related("choices")}
-    ordered = [questions[i] for i in attempt.question_ids if i in questions]
+    ordered = _exam_questions(attempt)
     data = _exam_summary(attempt)
-    data["questions"] = [_question_payload(request, q) for q in ordered]
+    data["questions"] = [
+        {
+            "id": qid,
+            "stem": media_urls(request, q["stem"]),
+            "choices": [{"id": c["id"], "text": media_urls(request, c["text"])} for c in q["choices"]],
+            "difficulty": q["difficulty"],
+        }
+        for qid, q in ordered
+    ]
     if attempt.submitted_at:
         answers = {a.question_id: a for a in attempt.answers.all()}
         review = []
-        for q in ordered:
-            choices = list(q.choices.all())
-            answer = answers.get(q.id)
-            picked = next((c for c in choices if answer and c.order == answer.choice_order), None)
-            correct = next((c for c in choices if c.is_correct), None)
+        for qid, q in ordered:
+            answer = answers.get(qid)
+            # choice_order is the place of the picked choice in the exam's own copy of the question.
+            picked = q["choices"][answer.choice_order] if answer and answer.choice_order is not None and answer.choice_order < len(q["choices"]) else None
+            correct = next((c for c in q["choices"] if c["ok"]), None)
             review.append(
                 {
-                    "question_id": q.id,
-                    "picked_choice_id": picked.id if picked else None,
-                    "correct_choice_id": correct.id if correct else None,
-                    "explanation": media_urls(request, q.explanation),
-                    "quick_solution": media_urls(request, q.quick_solution),
-                    "alternative_view": media_urls(request, q.alternative_view),
+                    "question_id": qid,
+                    "picked_choice_id": picked["id"] if picked else None,
+                    "correct_choice_id": correct["id"] if correct else None,
+                    "explanation": media_urls(request, q["explanation"]),
+                    "quick_solution": media_urls(request, q["quick_solution"]),
+                    "alternative_view": media_urls(request, q["alternative_view"]),
                 }
             )
         data["review"] = review
@@ -368,18 +416,22 @@ def submit_exam(request, attempt_id):
             return Response(_exam_detail(request, attempt))
         late = timezone.now() > attempt.ends_at + EXAM_GRACE
         raw = request.data.get("answers") or {}
-        questions = Question.objects.filter(pk__in=attempt.question_ids).prefetch_related("choices")
         points = 0.0
         correct = wrong = blank = 0
-        for q in questions:
-            choices = list(q.choices.all())
-            picked = None if late else next((c for c in choices if str(c.id) == str(raw.get(str(q.id)))), None)
-            if picked is None:
-                blank += 1
-                ExamAnswer.objects.create(attempt=attempt, question=q, choice_order=None, was_correct=None)
+        existing = set(Question.objects.filter(pk__in=attempt.question_ids).values_list("pk", flat=True))
+        for qid, q in _exam_questions(attempt):
+            if qid not in existing:
                 continue
-            ExamAnswer.objects.create(attempt=attempt, question=q, choice_order=picked.order, was_correct=picked.is_correct)
-            if picked.is_correct:
+            choices = q["choices"]
+            at = None if late else next((i for i, c in enumerate(choices) if str(c["id"]) == str(raw.get(str(qid)))), None)
+            if at is None:
+                blank += 1
+                ExamAnswer.objects.create(attempt=attempt, question_id=qid, choice_order=None, was_correct=None)
+                continue
+            ok = bool(choices[at]["ok"])
+            first = first_answer(request.user, qid, exclude_attempt=attempt)
+            ExamAnswer.objects.create(attempt=attempt, question_id=qid, choice_order=at, was_correct=ok)
+            if ok:
                 correct += 1
                 points += 1
             else:
@@ -387,9 +439,8 @@ def submit_exam(request, attempt_id):
                 # Konkur rule: a wrong answer costs 1/(choices − 1), i.e. three wrong answers cancel one right one.
                 if attempt.negative_marking and len(choices) > 1:
                     points -= 1 / (len(choices) - 1)
-            Question.objects.filter(pk=q.pk).update(
-                answer_count=F("answer_count") + 1, correct_count=F("correct_count") + (1 if picked.is_correct else 0)
-            )
+            if first:
+                Question.objects.filter(pk=qid).update(answer_count=F("answer_count") + 1, correct_count=F("correct_count") + (1 if ok else 0))
         total = len(attempt.question_ids) or 1
         attempt.correct, attempt.wrong, attempt.blank = correct, wrong, blank
         attempt.score_percent = round(points / total * 100, 1)
