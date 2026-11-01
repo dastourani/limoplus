@@ -539,6 +539,11 @@ class GiftAndCheckTests(_Base):
         card = api.get("/api/v1/books/test-book/").json()
         self.assertEqual((card["owned"], card["access"]), (True, "gift"))
         self.assertContains(self.client.get(reverse("admin:catalog_book_change", args=[self.book.pk])), "09120000055")
+        from .access import access_until
+
+        self.assertEqual(access_until(gift.user, self.book), gift.ends_at)  # a timed gift ends
+        self.client.post(url, {"phone": "09120000056", "days": "9999"})  # unknown duration is refused
+        self.assertFalse(Entitlement.objects.filter(user__phone="09120000056").exists())
         self.client.post(url, {"action": "revoke", "gift": gift.pk})
         gift.refresh_from_db()
         self.assertTrue(gift.is_archived)

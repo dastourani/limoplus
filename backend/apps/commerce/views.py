@@ -78,7 +78,8 @@ def create_order(request):
         book = _book(book_slug)
         if book is None or not book.price:
             return _err("این کتاب برای فروش نیست.", "not_for_sale")
-        if Entitlement.active_for(user).filter(book=book).exists():
+        # A timed gift doesn't stop buying the book for good.
+        if Entitlement.active_for(user).filter(book=book, ends_at__isnull=True).exists():
             return _err("این کتاب را قبلاً خریده‌اید.", "already_owned")
         order = Order.objects.create(user=user, book=book, title=f"خرید کتاب {book.title}", amount=book.price)
     elif plan_id and not book_slug:

@@ -13,7 +13,7 @@ from datetime import timedelta
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -85,6 +85,8 @@ def book_gift(request, book_id):
     back = reverse("admin:catalog_book_change", args=[book.pk]) + "#gifts"
 
     if request.POST.get("action") == "revoke":
+        if not request.user.has_perm("commerce.change_entitlement"):
+            raise PermissionDenied
         g = _gifts(book).filter(pk=request.POST.get("gift")).first()
         if g and not g.is_archived:
             g.is_archived = True
@@ -97,14 +99,26 @@ def book_gift(request, book_id):
     except InvalidPhone as e:
         messages.error(request, str(e))
         return redirect(back)
-    days = GIFT_DAYS.get(request.POST.get("days", "forever"), None)
+    choice = request.POST.get("days", "forever")
+    if choice not in GIFT_DAYS:
+        messages.error(request, "مدت هدیه درست انتخاب نشده است.")
+        return redirect(back)
+    days = GIFT_DAYS[choice]
     note = " ".join(request.POST.get("note", "").split())[:200]
+    user = User.objects.filter(phone=phone).first()
+    if user and Entitlement.active_for(user).filter(book=book, ends_at__isnull=True).exists():
+        messages.warning(request, f"{phone} همین حالا این کتاب را برای همیشه دارد.")
+        return redirect(back)
+    created = user is None
     with transaction.atomic():
-        user = User.objects.filter(phone=phone).first()
-        created = user is None
         if created:
             # Someone who hasn't signed up yet: the account waits for their first login by SMS code.
-            user = User.objects.create_user(phone)
+            try:
+                with transaction.atomic():
+                    user = User.objects.create_user(phone)
+            except IntegrityError:  # created at the same moment by another request
+                user = User.objects.get(phone=phone)
+                created = False
         now = timezone.now()
         Entitlement.objects.create(
             user=user, book=book, granted_by=request.user, note=note or "هدیه", starts_at=now, ends_at=now + timedelta(days=days) if days else None

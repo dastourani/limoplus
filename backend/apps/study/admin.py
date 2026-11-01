@@ -94,7 +94,8 @@ class DashboardAdmin(admin.ModelAdmin):
         books = []
         for book in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_archived=False):
             readers = SectionProgress.objects.filter(book=book).values("user").distinct().count()
-            buyers = Entitlement.objects.filter(book=book, is_archived=False).count()
+            # Gifts are not buyers.
+            buyers = Entitlement.objects.filter(book=book, is_archived=False).filter(Q(order__isnull=False) | Q(granted_by__isnull=True)).count()
             sales = paid.filter(book=book).aggregate(s=Sum("amount"))["s"] or 0
             books.append({"title": book.title, "readers": readers, "buyers": buyers, "sales": sales})
         books.sort(key=lambda b: -b["readers"])

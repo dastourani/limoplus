@@ -61,10 +61,12 @@ def access_until(user, book: ContentNode):
     covering = Entitlement.active_for(user).filter(Q(book=book) | Q(all_majors=True) | Q(major__in=book.majors.all(), book__isnull=True))
     if covering.filter(ends_at__isnull=True).exists():
         return None
-    # Renewals already bought extend the access.
+    if not covering.exists():
+        return None
+    # Renewals already bought extend the access; so does a timed gift of this book.
     return Entitlement.objects.filter(user=user, is_archived=False).filter(
-        Q(all_majors=True) | Q(major__in=book.majors.all(), book__isnull=True)
-    ).aggregate(end=Max("ends_at"))["end"] if covering.exists() else None
+        Q(book=book) | Q(all_majors=True) | Q(major__in=book.majors.all(), book__isnull=True)
+    ).aggregate(end=Max("ends_at"))["end"]
 
 
 def book_of(node: ContentNode) -> ContentNode:

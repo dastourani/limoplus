@@ -30,14 +30,20 @@ class OrderAdmin(admin.ModelAdmin):
 
 @admin.register(Entitlement)
 class EntitlementAdmin(admin.ModelAdmin):
-    """Admins can grant access by hand (e.g. a gift) and revoke it by archiving; nothing is deleted."""
+    """Admins can grant access by hand and revoke it by archiving; nothing is deleted. A book given by hand here is a
+    gift from the admin who saves it (the book page's «هدیه به کاربر» is the easier way)."""
 
     list_display = ("user", "book", "major", "all_majors", "starts_at", "ends_at", "is_archived", "order")
     list_filter = ("is_archived", "all_majors", "major")
     search_fields = ("user__phone",)
     autocomplete_fields = ("user",)
     raw_id_fields = ("book", "order")
-    readonly_fields = ("order", "created_at")
+    readonly_fields = ("order", "granted_by", "created_at")
+
+    def save_model(self, request, obj, form, change):
+        if not change and obj.book_id and not obj.order_id and not obj.granted_by_id:
+            obj.granted_by = request.user
+        super().save_model(request, obj, form, change)
 
     def has_delete_permission(self, request, obj=None):
         return False
