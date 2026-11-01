@@ -3,18 +3,34 @@
  * the next one comes by itself every few seconds unless the learner is touching the frame.
  * A banner with an image shows the image (2:1); without one, a text card with the lemon.
  */
-import { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type ScrollViewInstance } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type ScrollViewInstance } from 'react-native';
 
 import type { Banner } from '../api/endpoints';
-import { colors, rtl } from '../theme';
-import { LemonSlice } from './LemonSlice';
-import { Text } from './Text';
+import { countdownText } from '../lib/countdown';
+import { colors } from '../theme';
+import { BannerFace } from './BannerFace';
 
 const AUTO_MS = 5000;
 
-export function BannerCarousel({ banners, onOpen, gutter = 20 }: { banners: Banner[]; onOpen: (b: Banner) => void; gutter?: number }) {
+export function BannerCarousel({ banners: all, onOpen, gutter = 20 }: { banners: Banner[]; onOpen: (b: Banner) => void; gutter?: number }) {
   const { width } = useWindowDimensions();
+  // Countdowns run on the server's clock (the phone's may be wrong) and tick once a second.
+  const offset = useMemo(() => {
+    const now = all.find((b) => b.server_now)?.server_now;
+    return now ? Date.parse(now) - Date.now() : 0;
+  }, [all]);
+  const counting = all.some((b) => b.ends_at);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!counting) return;
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [counting]);
+  const msLeft = (b: Banner) => (b.ends_at ? Date.parse(b.ends_at) - (Date.now() + offset) : Infinity);
+  const leftFor = (b: Banner) => (b.ends_at ? countdownText(msLeft(b)) : null);
+  // A banner whose time is up leaves at once.
+  const banners = useMemo(() => all.filter((b) => msLeft(b) > 0), [all, tick > 0 && Math.floor(tick / 30)]); // eslint-disable-line react-hooks/exhaustive-deps
   const w = Math.min(width, 760) - gutter * 2;
   const h = Math.round(w / 2);
   const ordered = [...banners].reverse(); // first banner sits at the right end
@@ -45,6 +61,7 @@ export function BannerCarousel({ banners, onOpen, gutter = 20 }: { banners: Bann
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [n, w]);
 
+  if (!n) return null;
   return (
     <View style={{ gap: 8 }}>
       <ScrollView
@@ -64,21 +81,7 @@ export function BannerCarousel({ banners, onOpen, gutter = 20 }: { banners: Bann
       >
         {ordered.map((b) => (
           <Pressable key={b.id} onPress={() => onOpen(b)} style={{ width: w, height: h }} accessibilityRole="button" accessibilityLabel={b.title}>
-            {b.image ? (
-              <Image source={{ uri: b.image }} style={[styles.image, { width: w, height: h }]} resizeMode="cover" />
-            ) : (
-              <View style={[styles.card, { height: h }]}>
-                <View style={[styles.lemon, { width: h * 1.1, height: h * 1.1, left: -h * 0.3, bottom: -h * 0.35 }]}>
-                  <LemonSlice size={h * 1.1} />
-                </View>
-                <View style={{ paddingLeft: h * 0.7, gap: 4 }}>
-                  <Text style={[styles.small, rtl]}>{b.subtitle || 'ویژه'}</Text>
-                  <Text style={[styles.title, rtl]} numberOfLines={3}>
-                    {b.title}
-                  </Text>
-                </View>
-              </View>
-            )}
+            <BannerFace banner={b} w={w} h={h} left={leftFor(b)} />
           </Pressable>
         ))}
       </ScrollView>
@@ -94,11 +97,6 @@ export function BannerCarousel({ banners, onOpen, gutter = 20 }: { banners: Bann
 }
 
 const styles = StyleSheet.create({
-  image: { borderRadius: 22, backgroundColor: colors.line },
-  card: { flex: 1, borderRadius: 22, backgroundColor: colors.ink, padding: 18, justifyContent: 'center', overflow: 'hidden' },
-  lemon: { position: 'absolute', opacity: 0.95 },
-  small: { color: '#B9C4BC', fontSize: 12 },
-  title: { color: colors.lemon, fontSize: 20, fontWeight: '800', lineHeight: 30 },
   dots: { flexDirection: 'row-reverse', justifyContent: 'center', gap: 6 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.line },
   dotOn: { width: 18, backgroundColor: colors.ink },

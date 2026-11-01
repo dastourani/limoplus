@@ -1,9 +1,13 @@
+import * as Sharing from 'expo-sharing';
+import { captureRef } from 'react-native-view-shot';
+import { Icon } from '../../components/Icon';
+import { QuestionShareCard } from '../../components/QuestionShareCard';
 import { play } from '../../lib/sound';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Platform, Pressable, ScrollView, StyleSheet, View, type HostInstance } from 'react-native';
 
 import { ApiError } from '../../api/client';
 import { endpoints } from '../../api/endpoints';
@@ -58,6 +62,8 @@ export default function Quiz() {
   const [showSummary, setShowSummary] = useState(false);
   const resumed = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const shareRef = useRef<HostInstance>(null);
   const { style: pageStyle, turn } = usePageTurn();
 
   // Order of the questions: as in the book, shuffled (choices too), or only the ones not yet right.
@@ -177,6 +183,20 @@ export default function Quiz() {
     }
   };
 
+  const shareQuestion = async () => {
+    try {
+      if (!(await Sharing.isAvailableAsync())) return;
+      setSharing(true);
+      await new Promise((r) => setTimeout(r, 900)); // let the card (and its formulas) draw
+      const uri = await captureRef(shareRef, { format: 'png', quality: 1 });
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'تست لیمو پلاس' });
+    } catch {
+      // cancelled
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const onEvent = (e: QuizEvent) => {
     if (e.type === 'choose') choose(e.id);
     else if (e.type === 'notes') {
@@ -290,9 +310,20 @@ export default function Quiz() {
         onPick={(i) => go(i)}
         legend="زرد: درست، صورتی: غلط، سفید: بی‌جواب"
       />
+      {q.shareable && Platform.OS !== 'web' && (
+        <Pressable onPress={shareQuestion} style={styles.share} accessibilityRole="button">
+          <Icon name="share-2" size={15} color={colors.ink} />
+          <Text style={styles.shareText}>این تست را برای دوستت بفرست</Text>
+        </Pressable>
+      )}
       <Animated.View style={[styles.page, pageStyle]}>
         <QuizView key={q.id} question={q} state={viewState} onEvent={onEvent} />
       </Animated.View>
+      {sharing && (
+        <View style={styles.offscreen} pointerEvents="none">
+          <QuestionShareCard ref={shareRef} question={q} />
+        </View>
+      )}
       <ReportSheet
         visible={reportOpen}
         onClose={() => setReportOpen(false)}
@@ -322,6 +353,9 @@ const styles = StyleSheet.create({
   orderOn: { backgroundColor: colors.ink, borderColor: colors.ink },
   orderText: { fontSize: 12.5, fontWeight: '700', color: colors.ink },
   page: { flex: 1, backfaceVisibility: 'hidden' },
+  share: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, alignSelf: 'flex-end', marginHorizontal: 16, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.lemonSoft },
+  shareText: { fontSize: 12.5, fontWeight: '800', color: colors.ink },
+  offscreen: { position: 'absolute', left: -2000, top: 0 },
   bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
   hint: { fontSize: 12, color: colors.muted, paddingHorizontal: 16, paddingBottom: 8 },
   result: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },

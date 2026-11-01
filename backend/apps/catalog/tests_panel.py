@@ -594,3 +594,46 @@ class SearchTests(_Base):
         staff = APIClient()
         staff.force_authenticate(self.admin)
         self.assertEqual(staff.get("/api/v1/search/", {"q": "متن دوم", "book": "test-book"}).json()["results"][0]["kind"], "section")
+
+
+class SampleAndBannerTests(_Base):
+    def test_samples_are_capped_per_book_and_shown_to_the_app(self):
+        from rest_framework.test import APIClient
+
+        q = Question.objects.get(slug="q1")
+        url = reverse("admin:learning_question_changelist")
+        self.client.post(url, {"action": "make_sample", "_selected_action": [q.pk]})
+        q.refresh_from_db()
+        self.assertTrue(q.is_sample)
+        item = APIClient().get(f"/api/v1/nodes/{self.chapter.pk}/questions/").json()["questions"][0]
+        self.assertTrue(item["shareable"])
+        # The cap: with ten samples already, another is refused.
+        from apps.learning import admin as learning_admin
+
+        old = learning_admin.SAMPLES_PER_BOOK
+        learning_admin.SAMPLES_PER_BOOK = 1
+        try:
+            other = Question.objects.create(node=q.node, slug="q-extra", stem="س", difficulty="easy")
+            self.client.post(url, {"action": "make_sample", "_selected_action": [other.pk]})
+            other.refresh_from_db()
+            self.assertFalse(other.is_sample)
+        finally:
+            learning_admin.SAMPLES_PER_BOOK = old
+
+    def test_banner_template_and_countdown_in_api(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        from rest_framework.test import APIClient
+
+        from .models import Banner
+
+        Banner.objects.create(title="۳۰٪ تخفیف", template="sale", button="بخر", countdown=True, ends_at=timezone.now() + timedelta(hours=5))
+        Banner.objects.create(title="کتاب تازه", template="book", target="book", target_value="test-book")
+        data = APIClient().get("/api/v1/banners/").json()
+        sale = next(b for b in data if b["template"] == "sale")
+        self.assertIsNotNone(sale["ends_at"])
+        self.assertEqual(sale["button"], "بخر")
+        book = next(b for b in data if b["template"] == "book")
+        self.assertEqual(book["book"]["title"], "کتاب آزمایشی")
+        self.assertEqual(self.client.get(reverse("admin:catalog_banner_add")).status_code, 200)

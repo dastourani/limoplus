@@ -73,6 +73,8 @@ class Question(models.Model):
     is_original = models.BooleanField("تألیفی", default=False)
     sources = models.ManyToManyField(ExamSource, through="QuestionSource", blank=True, verbose_name="منابع کنکور")
     flashcards = models.ManyToManyField(Flashcard, blank=True, related_name="questions", verbose_name="فلش‌کارت‌های مرتبط")
+    # Set in the panel, not in the file: up to ten per book may be shared as an image from the app.
+    is_sample = models.BooleanField("نمونه‌ی قابل اشتراک", default=False)
     is_free = models.BooleanField("رایگان", default=False)
     is_archived = models.BooleanField("بایگانی", default=False)
     # Filled by the system from real answers (after enough attempts).

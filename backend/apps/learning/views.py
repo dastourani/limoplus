@@ -42,6 +42,7 @@ def node_questions(request, node_id):
             {
                 "id": q.id,
                 "node_id": q.node_id,
+                "shareable": q.is_sample,
                 "stem": media_urls(request, q.stem),
                 # Correct answers are never sent before the learner answers.
                 "choices": [{"id": c.id, "text": media_urls(request, c.text)} for c in q.choices.all()],

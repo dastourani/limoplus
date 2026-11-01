@@ -108,7 +108,42 @@ function coverHtml(
   );
 }
 
+type BannerInput = { template: string; title: string; subtitle?: string; button?: string; motif?: string; left?: string | null; book?: CoverInput | null };
+
+/** A banner as HTML, `w` px wide (2:1), the same layouts as the app's BannerFace. */
+function bannerHtml(b: BannerInput, w = 360): string {
+  const h = w / 2;
+  const k = h / 180;
+  const dark = b.template !== 'book';
+  const text =
+    `<div style="position:relative;max-width:${w * 0.62}px;display:flex;flex-direction:column;gap:${6 * k}px;align-items:flex-start">` +
+    (b.subtitle ? `<div style="font-size:${12 * k}px;font-weight:700;color:${dark ? '#F5C518' : '#2F7D4F'}">${esc(b.subtitle)}</div>` : '') +
+    `<div style="font-size:${21 * k}px;line-height:1.45;font-weight:900;color:${dark ? '#FFFFFF' : '#17201A'}">${esc(b.title || 'عنوان بنر')}</div>` +
+    `<div style="display:flex;gap:${8 * k}px;align-items:center;flex-wrap:wrap">` +
+    (b.button ? `<span style="border-radius:999px;padding:${6 * k}px ${14 * k}px;font-size:${13 * k}px;font-weight:800;background:${dark ? '#F5C518' : '#17201A'};color:${dark ? '#17201A' : '#F5C518'}">${esc(b.button)}</span>` : '') +
+    (b.left ? `<span style="border-radius:999px;padding:${5 * k}px ${10 * k}px;font-size:${13 * k}px;font-weight:800;background:${dark ? 'rgba(255,255,255,.12)' : '#fff'};color:${dark ? '#fff' : '#17201A'}">⏱ ${esc(b.left)}</span>` : '') +
+    `</div></div>`;
+  const frame = (bg: string, inner: string) =>
+    `<div dir="rtl" style="position:relative;width:${w}px;height:${h}px;border-radius:22px;overflow:hidden;background:${bg};display:flex;align-items:center;padding:${16 * k}px;box-sizing:border-box;font-family:Vazirmatn,Tahoma,sans-serif">${inner}</div>`;
+  if (b.template === 'book' && b.book) {
+    return frame('#F4F0E3', `<div style="position:absolute;left:${18 * k}px;top:${h * 0.1}px;transform:rotate(-5deg)">${coverHtml(b.book, 'dark', h * 0.54)}</div>` + text);
+  }
+  if (b.template === 'exam') {
+    const svg = coverMotifSvg(b.motif || 'book', 'dark').replace('<svg ', '<svg width="100%" height="100%" ');
+    return frame('#123B35', `<div style="position:absolute;left:${-h * 0.05}px;top:10%;width:${h * 1.15}px;height:${h * 0.8}px;opacity:.9">${svg}</div>` + text);
+  }
+  const lemon = `<div style="position:absolute;left:${-h * 0.3}px;bottom:${-h * 0.35}px;opacity:.95">${LEMON(h * 1.1)}</div>`;
+  if (b.template === 'sale') return frame('#17201A', lemon + text);
+  return frame(
+    '#17201A',
+    lemon +
+      `<div style="position:relative;padding-left:${h * 0.7}px"><div style="color:#B9C4BC;font-size:12px">${esc(b.subtitle || 'ویژه')}</div>` +
+      `<div style="color:#F5C518;font-size:20px;font-weight:800;line-height:1.5">${esc(b.title || 'عنوان بنر')}</div></div>`,
+  );
+}
+
 (globalThis as unknown as { LimoPreview: unknown }).LimoPreview = {
+  bannerHtml,
   CONTENT_CSS,
   renderMarkdown,
   renderSummary,

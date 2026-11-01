@@ -182,8 +182,20 @@ class ChapterRevision(models.Model):
 
 
 class Banner(models.Model):
+    class Template(models.TextChoices):
+        LEMON = "lemon", "ساده با برش لیمو"
+        SALE = "sale", "تخفیف و اشتراک (با شمارش معکوس)"
+        BOOK = "book", "کتاب تازه (با جلد همان کتاب)"
+        EXAM = "exam", "یادآوری و کنکور (با نقش درس)"
+
     title = models.CharField("عنوان", max_length=120)
     subtitle = models.CharField("زیرعنوان", max_length=160, blank=True)
+    template = models.CharField("قالب", max_length=10, choices=Template.choices, default=Template.LEMON,
+                                help_text="بنر از روی قالب کشیده می‌شود (مثل جلدها)؛ اگر «تصویر» بگذارید، عکس جای قالب را می‌گیرد.")
+    button = models.CharField("متن دکمه", max_length=30, blank=True, help_text="مثلاً «همین حالا بخر»؛ خالی یعنی بدون دکمه")
+    motif = models.CharField("نقش (قالب یادآوری)", max_length=20, blank=True, help_text="یکی از نقش‌های جلد؛ خالی یعنی «کتاب باز»")
+    countdown = models.BooleanField("شمارش معکوس تا «پایان»", default=False,
+                                    help_text="روی بنر می‌نویسد چقدر مانده؛ در ۲۴ ساعت آخر ساعت زنده. «پایان» را پر کنید.")
     image = models.ImageField("تصویر", upload_to="banners/", blank=True, help_text="اختیاری؛ ۱۲۰۰ در ۶۰۰ پیکسل (نسبت ۲ به ۱). بدون عکس، کارت متنی لیمویی نشان داده می‌شود.")
     class Target(models.TextChoices):
         NONE = "", "بدون لینک"

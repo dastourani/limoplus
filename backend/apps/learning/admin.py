@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.db.models import Count, F, Q
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -137,12 +137,41 @@ class _ManagedInChapter:
         return super().change_view(request, object_id, form_url, extra_context)
 
 
+SAMPLES_PER_BOOK = 10
+
+
 @admin.register(Question)
 class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
     anchor = "q"
-    list_display = ("short_stem", "place", "difficulty", "kind", "source_label", "answers", "open_reports", "is_archived", "manage")
+    list_display = ("short_stem", "place", "difficulty", "kind", "source_label", "answers", "open_reports", "is_sample", "is_archived", "manage")
     list_filter = (NodeBookFilter, NodeChapterFilter, SourceFilter, "difficulty", "kind", "domain", MeasuredFilter, HasQuickFilter,
-                   HasAlternativeFilter, HasFlashcardsFilter, OpenReportsFilter, "is_free", "is_archived")
+                   HasAlternativeFilter, HasFlashcardsFilter, OpenReportsFilter, "is_sample", "is_free", "is_archived")
+    actions = ("make_sample", "unmake_sample")
+
+    @admin.action(description="نمونه‌ی قابل اشتراک شود (حداکثر ۱۰ در هر کتاب)")
+    def make_sample(self, request, queryset):
+        from apps.catalog.models import ContentNode
+
+        steplen = ContentNode.steplen
+        added = skipped = 0
+        for q in queryset.select_related("node"):
+            if q.is_sample:
+                continue
+            book_path = q.node.path[:steplen]
+            if Question.objects.filter(is_sample=True, node__path__startswith=book_path).count() >= SAMPLES_PER_BOOK:
+                skipped += 1
+                continue
+            Question.objects.filter(pk=q.pk).update(is_sample=True)
+            added += 1
+        if added:
+            self.message_user(request, f"{added} تست نمونه‌ی قابل اشتراک شد.")
+        if skipped:
+            self.message_user(request, f"{skipped} تست نشد: هر کتاب حداکثر {SAMPLES_PER_BOOK} نمونه دارد.", level=messages.WARNING)
+
+    @admin.action(description="از نمونه‌های قابل اشتراک برداشته شود")
+    def unmake_sample(self, request, queryset):
+        n = queryset.update(is_sample=False)
+        self.message_user(request, f"{n} تست از نمونه‌ها برداشته شد.")
     search_fields = ("stem", "explanation", "quick_solution", "slug", "choices__text")
     list_per_page = 50
 

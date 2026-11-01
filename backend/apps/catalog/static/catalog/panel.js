@@ -967,3 +967,38 @@
     draw();
   });
 })();
+
+/* Banners: live preview of the template on the banner form. */
+(function () {
+  'use strict';
+  var P = window.LimoPreview;
+  if (!P || !P.bannerHtml) return;
+  document.addEventListener('DOMContentLoaded', function () {
+    var tpl = document.getElementById('id_template');
+    if (!tpl || !document.getElementById('lp-banner-books')) return;
+    var books = {};
+    try { books = JSON.parse(document.getElementById('lp-banner-books').textContent) || {}; } catch (e) { books = {}; }
+    var box = document.createElement('div');
+    box.style.cssText = 'margin:12px 0;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start';
+    var help = document.createElement('p');
+    help.className = 'help';
+    help.textContent = 'پیش‌نمایش بنر در اپ (پهن و گوشی). اگر «تصویر» بگذارید، عکس جای قالب را می‌گیرد.';
+    var row = tpl.closest('.form-row') || tpl.parentNode;
+    row.appendChild(box);
+    row.appendChild(help);
+    function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+    function left() {
+      var cd = document.getElementById('id_countdown');
+      if (!cd || !cd.checked) return null;
+      var d = val('id_ends_at_0');
+      return d ? 'مثلاً ۲ روز و ۵ ساعت مانده' : 'اول «پایان» را پر کنید';
+    }
+    function draw() {
+      var b = { template: tpl.value, title: val('id_title'), subtitle: val('id_subtitle'), button: val('id_button'), motif: val('id_motif'),
+        left: left(), book: books[(val('id_target_value') || '').trim()] || null };
+      box.innerHTML = P.bannerHtml(b, 420) + P.bannerHtml(b, 300);
+    }
+    document.querySelectorAll('input, select, textarea').forEach(function (el) { el.addEventListener('input', draw); el.addEventListener('change', draw); });
+    draw();
+  });
+})();

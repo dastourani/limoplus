@@ -8,6 +8,7 @@ from django.utils.html import format_html
 from . import bookpanel, panel
 from .drawing import DrawingError, clean_svg
 from .drawing import dumps as dumps_drawing
+from .drawing import loads as loads_drawing
 from .filters import BookFilter, ChapterFilter, YesNoFilter
 from .models import Banner, Book, BookWaitlist, ChapterRevision, ContentNode, Major, Section
 
@@ -339,7 +340,35 @@ class BookWaitlistAdmin(admin.ModelAdmin):
 @admin.register(Banner)
 class BannerAdmin(admin.ModelAdmin):
     list_display = ("title", "target", "is_active", "priority", "starts_at", "ends_at", "impressions", "clicks")
-    fields = ("title", "subtitle", "image", "target", "target_value", "link", "majors", "starts_at", "ends_at", "priority", "is_active")
+    fields = ("template", "title", "subtitle", "button", "motif", "image", "target", "target_value", "link", "majors", "starts_at", "ends_at",
+              "countdown", "priority", "is_active")
+    change_form_template = "admin/catalog/banner/change_form.html"
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        """The books a «کتاب تازه» banner can show, for the live preview."""
+        books = {}
+        for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_archived=False).prefetch_related("majors"):
+            major = b.majors.order_by("order", "name").first()
+            books[b.slug] = {"title": b.title, "title_en": b.title_en, "author": b.author, "edition": b.edition, "motif": b.cover_motif,
+                             "drawing": loads_drawing(b.cover_drawing), "major": major.name if major else "", "strip": major.color if major else ""}
+        extra = {**(extra_context or {}), "banner_books": books}
+        return super().changeform_view(request, object_id, form_url, extra)
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == "motif":
+            from django import forms
+
+            choices = [("", "—")] + [c for c in ContentNode.Motif.choices if c[0] != ContentNode.Motif.CUSTOM]
+            return forms.ChoiceField(choices=choices, required=False, label=db_field.verbose_name, help_text=db_field.help_text)
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if obj.countdown and not obj.ends_at:
+            from django.contrib import messages
+
+            obj.countdown = False
+            messages.warning(request, "برای شمارش معکوس، «پایان» را پر کنید؛ فعلاً بدون شمارش ذخیره شد.")
+        super().save_model(request, obj, form, change)
     list_editable = ("is_active", "priority")
     list_filter = ("is_active", "majors")
     filter_horizontal = ("majors",)

@@ -211,10 +211,32 @@ def banners(request):
                 "subtitle": b.subtitle,
                 "image": request.build_absolute_uri(b.image.url) if b.image else None,
                 "link": b.resolved_link(),
+                "template": b.template,
+                "button": b.button,
+                "motif": b.motif,
+                # The countdown runs on the server's clock, so a phone with the wrong time still counts right.
+                "ends_at": b.ends_at if b.countdown else None,
+                "server_now": now,
+                "book": _banner_book(b),
             }
             for b in items
         ]
     )
+
+
+def _banner_book(b):
+    """The book a «کتاب تازه» banner points at, enough to draw its cover."""
+    if b.template != Banner.Template.BOOK or b.target not in (Banner.Target.BOOK, Banner.Target.BUY):
+        return None
+    book = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, slug=b.target_value.strip(), is_archived=False).first()
+    if not book:
+        return None
+    major = book.majors.order_by("order", "name").first()
+    return {
+        "title": book.title, "title_en": book.title_en, "author": book.author, "edition": book.edition, "motif": book.cover_motif,
+        "drawing": loads_drawing(book.cover_drawing), "cover": None,
+        "major": {"name": major.name, "color": major.color} if major else None,
+    }
 
 
 @api_view(["POST"])

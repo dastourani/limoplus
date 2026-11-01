@@ -60,6 +60,8 @@ export type Question = {
   id: number;
   /** The section the question belongs to («این نکته در جزوه»). */
   node_id?: number;
+  /** One of the book's few sample questions that may be shared as an image. */
+  shareable?: boolean;
   stem: string;
   choices: { id: number; text: string }[];
   difficulty: 'easy' | 'medium' | 'hard';
@@ -118,7 +120,20 @@ export type SearchResult = {
 };
 export type Mistakes = { count: number; items: MistakeItem[]; books: { slug: string; title: string }[]; reasons: { key: string; label: string }[] };
 export type Flashcard = { id: number; title: string; point: string; formula: string };
-export type Banner = { id: number; title: string; subtitle: string; image: string | null; link: string };
+export type Banner = {
+  id: number;
+  title: string;
+  subtitle: string;
+  image: string | null;
+  link: string;
+  template?: 'lemon' | 'sale' | 'book' | 'exam';
+  button?: string;
+  motif?: string;
+  /** Set when the banner counts down to its end. */
+  ends_at?: string | null;
+  server_now?: string;
+  book?: (import('../components/BookCover').CoverBook & { major: { name: string; color: string } | null }) | null;
+};
 
 export type User = { id: number; phone: string; email: string; first_name: string; last_name: string; is_staff?: boolean };
 export type DeviceSessionInfo = { id: number; device_name: string; platform: string; created_at: string; last_seen_at: string; is_current: boolean };
