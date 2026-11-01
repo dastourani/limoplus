@@ -641,3 +641,72 @@ class SampleAndBannerTests(_Base):
         self.assertEqual(book["book"]["title"], "کتاب آزمایشی")
         self.assertIsNone(next(b for b in data if b["title"] == "پیش‌نویس")["book"])
         self.assertEqual(self.client.get(reverse("admin:catalog_banner_add")).status_code, 200)
+
+
+class ChoiceOrderAndCorrectionTests(_Base):
+    """«ترتیب گزینه‌ها: ثابت», choices that point at other choices, «گزینه‌ی ۲» in explanations, and «اصلاح‌شده»."""
+
+    def _questions(self, client=None):
+        from rest_framework.test import APIClient
+
+        return (client or APIClient()).get(f"/api/v1/nodes/{self.chapter.pk}/questions/").json()["questions"]
+
+    def test_fixed_order_round_trips_and_reaches_the_app(self):
+        self.assertFalse(self._questions()[0]["fixed_order"])
+        text = export_chapter(self.chapter).replace("صورت:\nدو به", "ترتیب گزینه‌ها: ثابت\nصورت:\nدو به")
+        parsed = parse_chapter(text)
+        self.assertEqual(parsed.errors, [])
+        self.assertTrue(parsed.sections[0].questions[0].fixed_order)
+        editing.save(self.chapter, parsed, user=self.admin, note="ثابت")
+        self.assertTrue(self._questions()[0]["fixed_order"])
+        self.assertIn("ترتیب گزینه‌ها: ثابت", export_chapter(self.chapter))
+        self.assertTrue(parse_chapter(text.replace("ترتیب گزینه‌ها: ثابت", "ترتیب گزینه‌ها: شاید")).errors)
+
+    def test_choices_that_name_other_choices_stay_in_place(self):
+        q = Question.objects.get(slug="q1")
+        q.choices.filter(text="پنج").update(text="گزینه‌های ۱ و ۲")
+        self.assertTrue(self._questions()[0]["fixed_order"])
+
+    def test_explanation_naming_a_choice_number_is_warned(self):
+        text = GOOD.replace("توضیح: جمع ساده.", "توضیح: گزینه‌ی ۲ درست است.")
+        warnings = [str(w) for w in parse_chapter(text).warnings]
+        self.assertTrue(any("گزینه‌ی ۲" in w for w in warnings), warnings)
+        fixed = text.replace("صورت:\nدو به", "ترتیب گزینه‌ها: ثابت\nصورت:\nدو به")
+        self.assertFalse(any("گزینه‌ی ۲" in str(w) for w in parse_chapter(fixed).warnings))
+        import_file("ch1.md", text.encode())
+        from .bookpanel import book_health
+
+        self.assertTrue(any("q1" in h["text"] for h in book_health(self.book)))
+
+    def test_moving_the_right_answer_marks_the_question_corrected(self):
+        from rest_framework.test import APIClient
+
+        user = User.objects.create_user("09120000055")
+        client = APIClient()
+        client.force_authenticate(user)
+        q = Question.objects.get(slug="q1")
+        five = q.choices.get(text="پنج")
+        client.post(f"/api/v1/questions/{q.pk}/answer/", {"choice_id": five.pk}, format="json")
+
+        # A wording fix of the right choice is not a correction.
+        import_file("ch1.md", GOOD.replace("- [x] چهار", "- [x] چهار (۴)").encode())
+        q.refresh_from_db()
+        self.assertIsNone(q.key_changed_at)
+
+        import_file("ch1.md", GOOD.replace("- [x] چهار", "- [ ] چهار (۴)").replace("- [ ] پنج", "- [x] پنج").encode())
+        q.refresh_from_db()
+        self.assertIsNotNone(q.key_changed_at)
+        self.assertIn("پنج", q.key_change_note)
+        self.assertIsNotNone(self._questions(client)[0]["corrected"])
+        notebook = client.get("/api/v1/me/mistakes/").json()["items"]
+        self.assertTrue(notebook[0]["corrected"], "the answer went wrong under the old key")
+        r = client.post(f"/api/v1/questions/{q.pk}/answer/", {"choice_id": five.pk}, format="json").json()
+        self.assertTrue(r["is_correct"])
+        self.assertTrue(r["corrected"]["answered_before"])
+
+    def test_panel_messages_name_the_chapter(self):
+        action = reverse("admin:catalog_book_chapter_action", args=[self.book.pk])
+        r = self.client.post(action, {"action": "free", "chapter": self.chapter.pk, "value": "0"}, follow=True)
+        text = " ".join(str(m) for m in r.context["messages"])
+        self.assertIn("«فصل یک» پولی شد", text)
+        self.assertIn("بقیه‌ی فصل‌ها", text)

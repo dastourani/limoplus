@@ -14,6 +14,7 @@ import { __iconData as SearchIcon } from 'lucide-react-native/icons/search-check
 
 import type { AnswerResult, Question } from '../api/endpoints';
 import { toPersianDigits } from '../theme';
+import { jalaliDate } from './jalali';
 import { renderMarkdown } from './renderMarkdown';
 
 type IconData = { node: [string, Record<string, string>][] };
@@ -36,7 +37,7 @@ const KIND: Record<string, [string, IconData]> = {
 };
 
 /** Practice questions carry tags; exam questions only stem and choices. */
-export type QuizQuestion = Pick<Question, 'id' | 'stem' | 'choices'> & Partial<Pick<Question, 'sources' | 'is_original' | 'kind'>> & { difficulty?: string };
+export type QuizQuestion = Pick<Question, 'id' | 'stem' | 'choices'> & Partial<Pick<Question, 'sources' | 'is_original' | 'kind' | 'corrected'>> & { difficulty?: string };
 
 export function questionHtml(q: QuizQuestion, mode: 'practice' | 'exam' = 'practice'): string {
   const tags: string[] = [];
@@ -48,6 +49,7 @@ export function questionHtml(q: QuizQuestion, mode: 'practice' | 'exam' = 'pract
   if (d) tags.push(`<span class="tag t-${d[1]}">${svg(GaugeIcon as IconData)}${d[0]}</span>`);
   const k = q.kind ? KIND[q.kind] : null;
   if (k) tags.push(`<span class="tag t-kind">${svg(k[1])}${k[0]}</span>`);
+  if (q.corrected && mode !== 'exam') tags.push(`<span class="tag t-fixed">${svg(CheckIcon as IconData)}اصلاح‌شده</span>`);
   const choices = q.choices
     .map((c, i) => `<button class="choice" data-id="${c.id}"><span class="key">${KEYS[i]}</span><span class="ctext">${renderMarkdown(c.text)}</span></button>`)
     .join('');
@@ -68,7 +70,15 @@ export type QuizViewState = {
   canPrev?: boolean;
   /** False on the last exam question (practice goes on to the summary). */
   canNext?: boolean;
-  result: (Pick<AnswerResult, 'correct_choice_id' | 'is_correct'> & { tabs: { key: string; label: string; html: string }[]; flashcards: string; notes?: boolean }) | null;
+  result:
+    | (Pick<AnswerResult, 'correct_choice_id' | 'is_correct'> & {
+        tabs: { key: string; label: string; html: string }[];
+        flashcards: string;
+        notes?: boolean;
+        /** «اصلاح‌شده»: what changed in the answer key, as HTML. */
+        corrected?: string;
+      })
+    | null;
 };
 
 export function resultForView(r: AnswerResult): NonNullable<QuizViewState['result']> {
@@ -86,7 +96,14 @@ export function resultForView(r: AnswerResult): NonNullable<QuizViewState['resul
     is_correct: r.is_correct,
     tabs,
     flashcards: r.flashcards.length ? `فلش‌کارت مرتبط: ${r.flashcards.map((f) => esc(f.title)).join('، ')}` : '',
+    corrected: r.corrected ? correctionHtml(r.corrected, r.corrected.answered_before) : '',
   };
+}
+
+/** «پاسخ‌نامه‌ی این تست ... اصلاح شد»: the date, what changed and what it means for the learner's own record. */
+export function correctionHtml(c: { at: string; note: string }, answeredBefore = false): string {
+  const own = answeredBefore ? ' جوابی که پیش از اصلاح داده بودی با پاسخ‌نامه‌ی قبلی سنجیده شده و در آمارت همان‌طور می‌ماند.' : '';
+  return `<b>پاسخ‌نامه‌ی این تست در ${jalaliDate(c.at)} اصلاح شد.</b> ${renderMarkdown(c.note)}${own}`;
 }
 
 export const QUIZ_CSS = `
@@ -97,6 +114,9 @@ export const QUIZ_CSS = `
 .quiz .t-konkur { background: #F5C518; color: #17201A; } .quiz .t-orig { background: #E3F3E9; color: #1F5E3A; }
 .quiz .t-easy { background: #E3F3E9; color: #1F5E3A; } .quiz .t-medium { background: #FFF1B8; color: #6B5200; }
 .quiz .t-hard { background: #FBE7E6; color: #9E2F2A; } .quiz .t-kind { background: #EEF0FC; color: #3B44B8; }
+.quiz .t-fixed { background: #E8E4FA; color: #4A3A9E; }
+.quiz .corrected { margin-top: 10px; border-radius: 12px; padding: 8px 12px; background: #F1EEFC; color: #3A2F7A; font-size: 13px; line-height: 1.9; }
+.quiz .corrected p { display: inline; margin: 0; }
 .quiz .stem { font-size: 17px; margin-bottom: 14px; } .quiz .stem p { margin: 0 0 8px; }
 .quiz .choices { display: flex; flex-direction: column; gap: 10px; }
 .quiz .choice { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; padding: 10px 12px; border-radius: 18px;
@@ -192,7 +212,8 @@ function render() {
     fb.className = 'feedback ' + (r.is_correct ? 'ok' : 'no');
     fb.innerHTML = '<div class="fb-title">' + (r.is_correct ? 'آفرین، درست بود!' : 'نزدیک بودی؛ ببین چرا:') + '</div>' + tabs +
       '<div class="pane">' + (r.tabs[tab] ? r.tabs[tab].html : '') + '</div>' + (r.flashcards ? '<div class="related">' + r.flashcards + '</div>' : '') +
-      (r.notes ? '<button class="to-notes">این نکته در جزوه ‹</button>' : '');
+      (r.corrected ? '<div class="corrected">' + r.corrected + '</div>' : '') +
+      (r.notes ? '<button class="to-notes">این نکته در جزوه ←</button>' : '');
     fb.hidden = false;
   } else { fb.hidden = true; }
   var err = root.querySelector('.err'); err.hidden = !state.error; err.textContent = state.error || '';

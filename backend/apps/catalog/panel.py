@@ -92,6 +92,7 @@ def _question_json(q, obj, reports):
         "kind": q.kind,
         "seconds": q.seconds,
         "is_free": q.is_free,
+        "fixed_order": q.fixed_order,
         "is_original": q.is_original,
         "sources": [{"name": n, "year": y, "number": num} for n, y, num in q.sources],
         "flashcards": q.flashcard_slugs,
@@ -638,6 +639,7 @@ def book_chapter_action(request, book_id):
 
 
 def _chapter_action(request, book, chapter, action):
+    name = f"فصل {chapter.position or ''} «{chapter.title}»".replace("  ", " ")
     if action in ("free", "publish", "archive"):
         field = {"free": "is_free", "publish": "is_published", "archive": "is_archived"}[action]
         value = request.POST.get("value") == "1"
@@ -646,13 +648,14 @@ def _chapter_action(request, book, chapter, action):
             parsed = editing.load(chapter)
             parsed.meta["chapter_free"] = value
             editing.save(chapter, parsed, user=request.user, note="رایگان" if value else "پولی")
+            messages.success(request, f"{name} {'رایگان' if value else 'پولی'} شد. بقیه‌ی فصل‌های کتاب تغییری نکردند.")
         elif field == "is_published":
             drafts = set_chapter_published(chapter, value)
-            messages.success(request, f"انجام شد؛ {drafts} بخش پیش‌نویس این فصل هم منتشر شد." if drafts else "انجام شد.")
-            return
+            done = f"{name} {'منتشر شد' if value else 'از انتشار خارج شد'}"
+            messages.success(request, f"{done}؛ {drafts} بخش پیش‌نویس آن هم منتشر شد." if drafts else f"{done}.")
         else:
             ContentNode.objects.filter(pk=chapter.pk).update(**{field: value})
-        messages.success(request, "انجام شد.")
+            messages.success(request, f"{name} {'بایگانی شد' if value else 'از بایگانی بیرون آمد'}.")
     elif action in ("up", "down"):
         chapters = list(book.get_children().filter(kind=ContentNode.Kind.CHAPTER))
         i = next(i for i, c in enumerate(chapters) if c.pk == chapter.pk)

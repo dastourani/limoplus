@@ -4,17 +4,42 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { endpoints, type Library } from '../../api/endpoints';
 import { Text } from '../../components/Text';
-import { IconBadge } from '../../components/Icon';
+import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Card, Empty, ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { relativeDay } from '../../lib/jalali';
-import { colors, rtl } from '../../theme';
+import { colors, rtl, toPersianDigits } from '../../theme';
 
 const TABS = [
   ['reading', 'در حال مطالعه'],
   ['bookmarks', 'نشان‌شده‌ها'],
   ['notes', 'یادداشت‌ها'],
 ] as const;
+
+/** Always shown, even empty: where wrong and blank answers gather. */
+function NotebookCard({ counts }: { counts?: Library['mistakes'] }) {
+  const n = counts?.count ?? 0;
+  return (
+    <Pressable onPress={() => router.push('/mistakes')} style={styles.notebook} accessibilityRole="button" accessibilityLabel="دفترچه‌ی اشتباهات">
+      <IconBadge name="notebook-pen" size={40} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={[styles.itemTitle, rtl]}>دفترچه‌ی اشتباهات</Text>
+        <Text style={[styles.muted, rtl]}>
+          {n === 0
+            ? 'تست‌های غلط و بی‌پاسخت این‌جا جمع می‌شوند.'
+            : [
+                counts!.open ? `${toPersianDigits(counts!.open)} منتظر جبران` : '',
+                counts!.settling ? `${toPersianDigits(counts!.settling)} نیازمند تثبیت` : '',
+              ]
+                .filter(Boolean)
+                .join('، ')}
+        </Text>
+      </View>
+      {!!counts?.due && <Text style={styles.due}>{toPersianDigits(counts.due)}</Text>}
+      <Icon name="chevron-left" size={20} color={colors.muted} />
+    </Pressable>
+  );
+}
 
 const NOTE_COLORS: Record<string, string> = { yellow: '#FFE98A', green: '#BFE8CF', blue: '#C9DBFF', pink: '#FFD0DF' };
 
@@ -68,6 +93,7 @@ export default function LibraryTab() {
         error ? <ErrorState message={error} onRetry={load} /> : <Loading />
       ) : (
         <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
+          <NotebookCard counts={data.mistakes} />
           {tab === 'reading' &&
             (data!.reading.length === 0 ? (
               <Empty title="هنوز کتابی را شروع نکرده‌ای" text="از صفحه‌ی خانه یک کتاب باز کن." />
@@ -115,6 +141,8 @@ export default function LibraryTab() {
 }
 
 const styles = StyleSheet.create({
+  notebook: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14 },
+  due: { minWidth: 26, textAlign: 'center', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.lemon, color: colors.ink, fontWeight: '800', fontSize: 13 },
   title: { fontSize: 24, fontWeight: '800', color: colors.ink, paddingHorizontal: 20, paddingTop: 12 },
   tabs: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 20, paddingVertical: 12 },
   tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },

@@ -244,6 +244,10 @@ export default function Section() {
   }, [node?.id, mode]);
 
   const terms = useMemo(() => parseTerms(node?.summary ?? ''), [node?.summary]);
+  const pageEnd = useMemo(
+    () => (node ? { nextTitle: node.next_title, status: node.status, chapterEnd: node.chapter_end } : undefined),
+    [node],
+  );
   const termWords = useMemo(() => terms.map((t) => t.fa), [terms]);
 
   const onEvent = (e: ReaderEvent) => {
@@ -254,6 +258,20 @@ export default function Section() {
         goTo(e.dir);
       }
     } else if (e.type === 'next') turnBy(1);
+    else if (e.type === 'go' && node) {
+      const end = node.chapter_end;
+      const book = node.breadcrumb.find((b) => b.kind === 'book');
+      if (e.to === 'quiz') router.push(`/quiz/${node.id}`);
+      else if (e.to === 'cards') router.push(`/flashcards/${node.id}`);
+      else if (e.to === 'exam' && end) router.push(`/exam/${end.chapter_id}`);
+      else if (e.to === 'book' && (end?.book_slug || book)) router.push(`/book/${end?.book_slug ?? book!.slug}`);
+      else if (e.to === 'next-chapter' && end?.next_chapter) {
+        const next = end.next_chapter;
+        if (user && !offline && !progress.current.done) sendOrQueue(`nodes/${node.id}/progress/`, { percent: 100, done: true });
+        if (next.locked) router.push(`/book/${end.book_slug}`);
+        else router.replace({ pathname: `/section/${next.id}`, params: { from: '1', title: next.title } });
+      }
+    }
     else if (e.type === 'ready') showPage();
     else if (e.type === 'jump') {
       // From an important point in the review card to the same place in the notes.
@@ -463,7 +481,7 @@ export default function Section() {
           highlights={highlights}
           onEvent={onEvent}
           turn={{ next: !!node.next_id, prev: !!node.previous_id }}
-          nextTitle={node.next_title}
+          end={pageEnd}
           startAt={startAt}
         />
         <Watermark text={user?.phone || 'لیمو پلاس'} dark={dark} />

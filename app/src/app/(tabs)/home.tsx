@@ -251,7 +251,7 @@ export default function Home() {
               />
             )}
             {today.practise > 0 && (
-              <TodayRow icon="notebook-pen" text={`تمرین ${toPersianDigits(today.practise)} تست از اشتباه‌هایت`} onPress={() => router.push('/quiz/mistakes')} />
+              <TodayRow icon="notebook-pen" text={`دفترچه‌ی اشتباهات: ${toPersianDigits(today.mistakes)} تست`} onPress={() => router.push('/mistakes')} />
             )}
             {today.continue && (
               <TodayRow

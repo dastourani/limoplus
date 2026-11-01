@@ -75,6 +75,11 @@ class Question(models.Model):
     flashcards = models.ManyToManyField(Flashcard, blank=True, related_name="questions", verbose_name="فلش‌کارت‌های مرتبط")
     # Set in the panel, not in the file: up to ten per book may be shared as an image from the app.
     is_sample = models.BooleanField("نمونه‌ی قابل اشتراک", default=False)
+    # «ترتیب گزینه‌ها: ثابت» in the file: the app never shuffles these choices (e.g. «گزینه‌های ۱ و ۳»).
+    fixed_order = models.BooleanField("ترتیب گزینه‌ها ثابت", default=False)
+    # Set by the importer when the right choice moves to another choice: the app shows «اصلاح‌شده».
+    key_changed_at = models.DateTimeField("تاریخ اصلاح پاسخ‌نامه", null=True, blank=True, editable=False)
+    key_change_note = models.CharField("شرح اصلاح پاسخ‌نامه", max_length=400, blank=True, editable=False)
     is_free = models.BooleanField("رایگان", default=False)
     is_archived = models.BooleanField("بایگانی", default=False)
     # Filled by the system from real answers (after enough attempts).
@@ -88,6 +93,18 @@ class Question(models.Model):
 
     def __str__(self):
         return self.stem[:60]
+
+    @property
+    def keeps_order(self) -> bool:
+        """True if the app must show the choices as written (set in the file, or a choice refers to other choices)."""
+        from .order import refers_to_choices
+
+        return self.fixed_order or refers_to_choices(c.text for c in self.choices.all())
+
+    def correction(self) -> dict | None:
+        if not self.key_changed_at:
+            return None
+        return {"at": self.key_changed_at, "note": self.key_change_note}
 
     @property
     def measured_difficulty(self):

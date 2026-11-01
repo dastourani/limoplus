@@ -50,7 +50,30 @@ def book_health(book: ContentNode) -> list[dict]:
             out.append({"level": "error", "text": f"{name}: {drafts} بخش پیش‌نویس است؛ در اپ فقط عنوان فصل دیده می‌شود.", "fix": fix})
         elif not sections.exists() and not (c.full_body or c.summary_body):
             out.append({"level": "warn", "text": f"{name} هیچ بخشی ندارد؛ در اپ خالی است."})
+    out.extend(_numbered_explanations(book))
     return out
+
+
+def _numbered_explanations(book: ContentNode) -> list[dict]:
+    """Explanations that say «گزینه‌ی ۲» while the app shuffles the choices."""
+    from apps.learning.models import Question
+    from apps.learning.order import names_choice_number
+
+    found = []
+    questions = Question.objects.filter(node__path__startswith=book.path, is_archived=False).prefetch_related("choices")
+    for q in questions.only("id", "slug", "fixed_order", "explanation", "quick_solution", "alternative_view"):
+        if q.keeps_order:
+            continue
+        if any(names_choice_number(t) for t in (q.explanation, q.quick_solution, q.alternative_view)):
+            found.append(q.slug)
+    if not found:
+        return []
+    shown = "، ".join(found[:8]) + ("، …" if len(found) > 8 else "")
+    return [{
+        "level": "warn",
+        "text": f"توضیح {len(found)} تست شماره‌ی گزینه را نوشته («گزینه‌ی ۲»)، ولی اپ جای گزینه‌ها را عوض می‌کند: {shown}. "
+                "متن جواب درست را بنویسید، یا در فرم تست «ترتیب گزینه‌ها ثابت بماند» را بزنید.",
+    }]
 
 
 def _gifts(book: ContentNode):

@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
+from django.utils import timezone
 
 from apps.learning.models import Choice, ExamSource, Flashcard, Question, QuestionSource
 
@@ -94,6 +95,7 @@ QUESTION_KEYS = {
         "زاویه‌ی دیگر": "alternative_view", "زاویه دیگر": "alternative_view",
         "منبع": "source", "سطح": "difficulty", "حوزه": "domain", "نوع": "kind",
         "زمان": "seconds", "فلش‌کارت": "flashcards", "رایگان": "free",
+        "ترتیب گزینه‌ها": "fixed_order", "ترتیب گزینه ها": "fixed_order", "ترتیب": "fixed_order",
     }.items()
 }
 
@@ -140,6 +142,7 @@ class ParsedQuestion:
     seconds: int | None = None
     is_free: bool = False
     is_original: bool = False
+    fixed_order: bool = False
     sources: list[tuple[str, int, int | None]] = field(default_factory=list)
     flashcard_slugs: list[str] = field(default_factory=list)
     choices: list[tuple[str, bool]] = field(default_factory=list)
@@ -418,7 +421,8 @@ def _parse_front_matter(lines, chapter, book: ContentNode | None = None) -> int:
     return i + 1
 
 
-SINGLE_LINE_FIELDS = {"source", "difficulty", "domain", "kind", "seconds", "free", "flashcards", "title", "formula"}
+SINGLE_LINE_FIELDS = {"source", "difficulty", "domain", "kind", "seconds", "free", "flashcards", "title", "formula", "fixed_order"}
+FIXED = YES | {"ثابت"}
 
 
 def _split_fields(body, keys):
@@ -496,6 +500,10 @@ def _parse_question(body, slug, line_no, chapter) -> ParsedQuestion:
         digits = re.sub(r"\D", "", seconds)
         q.seconds = int(digits) if digits else None
     q.is_free = _join(fields.get("free", [[""]])[-1]).lower() in YES
+    order = _join(fields.get("fixed_order", [[""]])[-1]).lower()
+    q.fixed_order = order in FIXED
+    if order and not q.fixed_order and order not in {"تصادفی", "خیر", "نه", "no", "false", "0"}:
+        chapter.error(f"تست {slug}: «ترتیب گزینه‌ها» فقط «ثابت» یا «تصادفی» است.", line_no)
 
     for parts in fields.get("source", []):
         value = _join(parts).translate(_DIGITS)
@@ -522,6 +530,18 @@ def _parse_question(body, slug, line_no, chapter) -> ParsedQuestion:
         chapter.error(f"تست {slug}: باید دقیقاً یک گزینه‌ی درست [x] داشته باشد ({correct} گزینه).", line_no)
     if not q.explanation:
         chapter.error(f"تست {slug}: «توضیح» (پاسخ تشریحی) لازم است.", line_no)
+    from apps.learning.order import names_choice_number, refers_to_choices
+
+    if not q.fixed_order and not refers_to_choices(t for t, _ in q.choices):
+        for text in (q.explanation, q.quick_solution, q.alternative_view):
+            named = names_choice_number(text)
+            if named:
+                chapter.warn(
+                    f"تست {slug}: توضیح از «{named}» نام برده، ولی جای گزینه‌ها در اپ جابه‌جا می‌شود. "
+                    "متن گزینه‌ی درست را بنویسید، یا «ترتیب گزینه‌ها: ثابت» بگذارید.",
+                    line_no,
+                )
+                break
     return q
 
 
@@ -731,6 +751,7 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
             obj.alternative_view = _rewrite_images(q.alternative_view, image_paths)
             obj.difficulty, obj.domain, obj.kind = q.difficulty, q.domain, q.kind
             obj.estimated_seconds, obj.is_original, obj.is_free, obj.is_archived = q.seconds, q.is_original, q.is_free, False
+            obj.fixed_order = q.fixed_order
             obj.order = order
             obj.save()
             (result.created if created else result.updated)["question"] += 1
@@ -739,6 +760,7 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
             # means the same choice; a choice whose text changed is a new choice. Running exams keep their own copy
             # anyway (ExamAttempt.snapshot).
             old = list(obj.choices.order_by("order", "id"))
+            old_key = [(c.text, c.is_correct) for c in old]  # before the loop below changes these rows
             unused = {c.id: c for c in old}
             for i, (text, ok) in enumerate(q.choices):
                 text = _rewrite_images(text, image_paths)
@@ -751,6 +773,8 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
                 else:
                     Choice.objects.create(question=obj, text=text, is_correct=ok, order=i)
             Choice.objects.filter(pk__in=list(unused)).delete()
+            if not created:
+                _note_key_change(obj, old_key, [(_rewrite_images(t, image_paths), ok) for t, ok in q.choices])
             QuestionSource.objects.filter(question=obj).delete()
             for name, year, number in q.sources:
                 source, _ = ExamSource.objects.get_or_create(name=name, year=year, group="", booklet="")
@@ -760,6 +784,28 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
         Question.objects.filter(node_id__in=scope_nodes, is_archived=False).exclude(pk__in=kept_questions).update(is_archived=True)
     )
     return result
+
+
+def _short(text: str, limit=60) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
+def _note_key_change(question, old_choices, new_choices):
+    """«اصلاح‌شده»: the right answer moved to another choice (a choice that stayed, now right or now wrong).
+    A reworded right choice is a wording fix, not a change of answer."""
+    old = dict(old_choices)
+    new = dict(new_choices)
+    moved = any(text in new and new[text] != ok for text, ok in old.items() if ok) or any(
+        text in old and not old[text] for text, ok in new.items() if ok
+    )
+    if not moved:
+        return
+    before = next((t for t, ok in old_choices if ok), "")
+    after = next((t for t, ok in new_choices if ok), "")
+    question.key_changed_at = timezone.now()
+    question.key_change_note = f"پاسخ درست از «{_short(before)}» به «{_short(after)}» تغییر کرد."[:400]
+    question.save(update_fields=["key_changed_at", "key_change_note"])
 
 
 def _place(parent: ContentNode, kind, slug, title, search_root: ContentNode | None = None) -> ContentNode:

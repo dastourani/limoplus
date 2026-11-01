@@ -2,7 +2,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
-import { endpoints, type ExamPage, type Purchases } from '../../api/endpoints';
+import { endpoints, type Purchases } from '../../api/endpoints';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
 import { APP_BUILD } from '../../config';
@@ -11,7 +11,6 @@ import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Card, Screen, usePullRefresh } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
-import { ScoreTrend } from '../../components/ScoreTrend';
 import { jalaliDate } from '../../lib/jalali';
 import { play, setSoundEnabled, soundEnabled } from '../../lib/sound';
 import { setCoverTheme, useCoverTheme } from '../../lib/coverTheme';
@@ -32,7 +31,6 @@ export default function Profile() {
   const { confirm } = useFeedback();
   const [major, setMajor] = useState<{ name: string } | null>(null);
   const [purchases, setPurchases] = useState<Purchases | null>(null);
-  const [exams, setExams] = useState<ExamPage | null>(null);
   const [sound, setSound] = useState(true);
   const coverTheme = useCoverTheme();
   const asLearner = useViewAsLearner();
@@ -47,7 +45,6 @@ export default function Profile() {
     setReloading(true);
     Promise.all([
       endpoints.purchases().then(setPurchases).catch(() => undefined),
-      endpoints.examPage(1).then(setExams).catch(() => undefined),
     ]).finally(() => setReloading(false));
   }, [user]);
   useFocusEffect(reload);
@@ -84,31 +81,10 @@ export default function Profile() {
           )
         )}
 
- {user && exams && exams.summary.count > 0 && (
-          <Pressable onPress={() => router.push('/exams')} style={styles.exams} accessibilityRole="button" accessibilityLabel="سابقه‌ی آزمون‌ها">
-            <View style={styles.examsHead}>
-              <Text style={[styles.cardTitle, rtl, { flex: 1, color: '#FFFFFF' }]}>آزمون‌های من</Text>
-              <Icon name="chevron-left" size={20} color={colors.lemon} />
-            </View>
-            <Text style={[styles.examsLine, rtl]}>
-              {toPersianDigits(exams.summary.count)} آزمون، میانگین {toPersianDigits(Math.round(exams.summary.average ?? 0))}٪، بهترین {toPersianDigits(Math.round(exams.summary.best ?? 0))}٪
-            </Text>
-            <ScoreTrend scores={exams.summary.trend} height={34} />
-            {exams.results.slice(0, 3).map((e) => (
-              <View key={e.id} style={styles.examRow}>
-                <Text style={[styles.examTitle, rtl]} numberOfLines={1}>{e.node_title}</Text>
-                <Text style={styles.examScore}>{e.submitted_at ? `${toPersianDigits(Math.round(e.score_percent ?? 0))}٪` : 'ناتمام'}</Text>
-              </View>
-            ))}
-          </Pressable>
-        )}
-
         <View style={styles.group}>
           {user && <Row label="ویرایش نام" onPress={() => router.push('/edit-profile')} />}
           <Row label="رشته" value={major?.name ?? 'انتخاب نشده'} onPress={() => router.navigate('/home')} />
           {user && <Row label="دستگاه‌های من" onPress={() => router.push('/devices')} />}
-          {user && <Row label="سابقه‌ی آزمون‌ها" onPress={() => router.push('/exams')} />}
-          {user && <Row label="دفترچه‌ی اشتباهات" onPress={() => router.push('/mistakes')} />}
           <Row label="کتاب‌های آفلاین" onPress={() => router.push('/offline')} />
           <View style={styles.row}>
             <Text style={[styles.rowLabel, rtl]}>صدای جشن‌ها</Text>
@@ -186,12 +162,6 @@ export default function Profile() {
 
 const styles = StyleSheet.create({
   rowHint: { fontSize: 12, color: colors.muted, marginTop: 2 },
-  exams: { backgroundColor: colors.ink, borderRadius: 20, padding: 16, gap: 10 },
-  examsHead: { flexDirection: 'row-reverse', alignItems: 'center' },
-  examsLine: { fontSize: 13, color: '#C9D2C6' },
-  examRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: '#2B3830', paddingTop: 8 },
-  examTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: '#EDEFE6' },
-  examScore: { fontSize: 15, fontWeight: '800', color: colors.lemon },
   page: { padding: 20, gap: 16 },
   hero: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: colors.ink, borderRadius: 26, padding: 18 },
   avatar: { width: 72, height: 72, borderRadius: 36, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#24302A' },

@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -13,7 +13,8 @@ import { colors, rtl, toPersianDigits } from '../theme';
 const pct = (n: number | null | undefined) => `${toPersianDigits(Math.round(n ?? 0))}٪`;
 
 export default function Exams() {
-  const [book, setBook] = useState('');
+  const start = useLocalSearchParams<{ book?: string }>().book;
+  const [book, setBook] = useState(start ?? '');
   const [data, setData] = useState<ExamPage | null>(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState<ApiError | null>(null);

@@ -53,6 +53,8 @@ def node_questions(request, node_id):
                 "estimated_seconds": q.estimated_seconds,
                 "is_original": q.is_original,
                 "sources": [{"name": qs.source.name, "year": qs.source.year, "number": qs.number} for qs in q.questionsource_set.all()],
+                "fixed_order": q.keeps_order,
+                "corrected": q.correction(),
             }
         )
     return Response({"questions": items, "locked_count": locked})
@@ -78,7 +80,7 @@ def answer(request, question_id):
         return Response({"code": "invalid_choice", "message": "گزینه‌ی انتخاب‌شده معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
 
     # Only signed-in learners count toward measured difficulty (guests could skew it).
-    fixed = None
+    fixed, answered_before = None, False
     if request.user.is_authenticated:
         from apps.study.mistakes import fixed_info
         from apps.study.views import first_answer
@@ -86,6 +88,8 @@ def answer(request, question_id):
         # A question from the mistakes notebook answered right: «اشتباهی که برطرف شد».
         fixed = fixed_info(request.user, question.pk) if picked.is_correct else None
         first = first_answer(request.user, question.pk)
+        if question.key_changed_at:
+            answered_before = QuizAnswer.objects.filter(user=request.user, question=question, answered_at__lt=question.key_changed_at).exists()
         QuizAnswer.objects.create(user=request.user, question=question, choice_order=picked.order, was_correct=picked.is_correct)
         if first:
             Question.objects.filter(pk=question.pk).update(
@@ -104,6 +108,7 @@ def answer(request, question_id):
             "flashcards": [{"id": f.id, "title": f.title} for f in related],
             "node_id": question.node_id,
             "fixed": fixed,
+            "corrected": ({**question.correction(), "answered_before": answered_before} if question.key_changed_at else None),
         }
     )
 

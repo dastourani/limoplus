@@ -82,7 +82,8 @@ export default function Quiz() {
       const keep = new Set(order.ids ?? []);
       return base.filter((q) => keep.has(q.id));
     }
-    return seeded(base, order.seed).map((q) => ({ ...q, choices: seeded(q.choices, order.seed + q.id) }));
+    // Choices like «گزینه‌های ۱ و ۳» keep their place (fixed_order).
+    return seeded(base, order.seed).map((q) => (q.fixed_order ? q : { ...q, choices: seeded(q.choices, order.seed + q.id) }));
   }, [data, order]);
 
   // Signed-in learners continue at the first question they have not answered yet.
@@ -167,10 +168,12 @@ export default function Quiz() {
     try {
       const r = await endpoints.answer(q.id, choiceId);
       setAnswers((a) => ({ ...a, [q.id]: { picked: choiceId, result: { ...resultForView(r), notes: !!(r.node_id ?? q.node_id) } } }));
-      if (r.fixed) {
-        // «اشتباهی که برطرف شد»
+      if (r.fixed?.step === 'settled') {
+        // «اشتباهی که برطرف شد»: right again on a later day.
         play('pop');
-        flash(r.fixed.days >= 1 ? `اشتباهی که برطرف شد! ${toPersianDigits(r.fixed.days)} روز پیش این را غلط زده بودی.` : 'اشتباهی که برطرف شد! این بار درست زدی.');
+        flash(r.fixed.days >= 1 ? `تثبیت شد! ${toPersianDigits(r.fixed.days)} روز پیش این را غلط زده بودی؛ از دفترچه بیرون رفت.` : 'تثبیت شد! از دفترچه بیرون رفت.');
+      } else if (r.fixed?.step === 'settling') {
+        flash(`درست زدی! ${toPersianDigits(r.fixed.due_in ?? 3)} روز دیگر یک بار دیگر می‌پرسیم تا مطمئن شویم یادت مانده.`);
       }
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(r.is_correct ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => undefined);

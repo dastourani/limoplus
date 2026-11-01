@@ -286,6 +286,7 @@ def question_from_form(data: dict, slug: str) -> ParsedQuestion:
             kind=data.get("kind") or "",
             seconds=int(seconds) if seconds.isdigit() else None,
             is_free=bool(data.get("is_free")),
+            fixed_order=bool(data.get("fixed_order")),
             is_original=bool(data.get("is_original")) or not sources,
             sources=sources,
             flashcard_slugs=[s for s in data.get("flashcards") or [] if s],
@@ -365,7 +366,7 @@ def _item_fields(item):
 QUESTION_LABELS = {
     "stem": "صورت", "choices": "گزینه‌ها", "explanation": "توضیح", "quick_solution": "راه‌حل سریع", "alternative_view": "زاویه‌ی دیگر",
     "difficulty": "سطح", "domain": "حوزه", "kind": "نوع", "seconds": "زمان", "is_free": "رایگان", "is_original": "منبع",
-    "sources": "منبع", "flashcard_slugs": "فلش‌کارت‌های مرتبط",
+    "fixed_order": "ترتیب گزینه‌ها", "sources": "منبع", "flashcard_slugs": "فلش‌کارت‌های مرتبط",
 }
 FLASHCARD_LABELS = {"title": "عنوان", "point": "نکته", "formula": "فرمول", "is_free": "رایگان"}
 

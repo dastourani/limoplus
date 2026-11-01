@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ChapterEnd, SectionStatus } from '../lib/renderMarkdown';
 
 export type Major = { slug: string; name: string; color: string; is_coming_soon: boolean };
 export type BookListItem = {
@@ -43,7 +44,14 @@ export type NodeSummary = {
   group?: string;
 };
 export type ChapterSummary = NodeSummary & { sections: NodeSummary[]; has_overview?: boolean };
-export type BookDetail = BookListItem & { about: string; majors: string[]; chapters: ChapterSummary[]; done_ids: number[] };
+export type BookDetail = BookListItem & {
+  about: string;
+  majors: string[];
+  chapters: ChapterSummary[];
+  done_ids: number[];
+  /** Signed-in learners: «اشتباه‌هایم در این کتاب» and «آزمون‌هایم از این کتاب». */
+  mine?: { mistakes: { count: number; open: number; settling: number; due: number }; exams: number } | null;
+};
 export type NodeDetail = {
   id: number;
   kind: NodeSummary['kind'];
@@ -55,6 +63,10 @@ export type NodeDetail = {
   next_id: number | null;
   previous_title?: string | null;
   next_title?: string | null;
+  /** The last section of a chapter: its summary exam and the next chapter (null at the end of the book). */
+  chapter_end?: ChapterEnd | null;
+  /** Signed-in learners: what is left in this section. */
+  status?: SectionStatus | null;
 };
 export type Question = {
   id: number;
@@ -71,7 +83,12 @@ export type Question = {
   is_original: boolean;
   estimated_seconds: number | null;
   sources: { name: string; year: number; number: number | null }[];
+  /** Shown as written: shuffling would change what a choice like «گزینه‌های ۱ و ۳» means. */
+  fixed_order?: boolean;
+  /** The answer key was corrected («اصلاح‌شده»). */
+  corrected?: Correction | null;
 };
+export type Correction = { at: string; note: string };
 export type AnswerResult = {
   is_correct: boolean;
   correct_choice_id: number;
@@ -80,8 +97,10 @@ export type AnswerResult = {
   alternative_view: string;
   flashcards: { id: number; title: string }[];
   node_id?: number;
-  /** A question from the mistakes notebook answered right: how many days ago it went wrong. */
-  fixed?: { days: number } | null;
+  /** A question from the mistakes notebook answered right: what it did («settling»: comes back in due_in days;
+   * «settled»: left the notebook; «early»: settling and not its day yet). days = since it went wrong. */
+  fixed?: { step: 'settling' | 'settled' | 'early'; days: number; due_in?: number } | null;
+  corrected?: (Correction & { answered_before: boolean }) | null;
 };
 export type MistakeItem = {
   question_id: number;
@@ -95,6 +114,12 @@ export type MistakeItem = {
   source: 'practice' | 'exam';
   last_at: string;
   reason: string;
+  /** The answer key changed after this learner's last answer. */
+  corrected?: boolean;
+  state: 'open' | 'settling';
+  /** Settling: the day it comes back. */
+  due_on: string | null;
+  is_due: boolean;
 };
 export type Today = {
   away_days: number;
@@ -118,7 +143,19 @@ export type SearchResult = {
   match: string;
   mode?: 'full' | 'summary';
 };
-export type Mistakes = { count: number; items: MistakeItem[]; books: { slug: string; title: string }[]; reasons: { key: string; label: string }[] };
+export type Mistakes = {
+  count: number;
+  /** «منتظر جبران»: the latest answer was wrong. */
+  open: number;
+  /** «نیازمند تثبیت»: right once since, waiting for a right answer on a later day. */
+  settling: number;
+  /** Open, plus settling ones whose day has come: what «تمرین» asks. */
+  due: number;
+  settle_days: number;
+  items: MistakeItem[];
+  books: { slug: string; title: string }[];
+  reasons: { key: string; label: string }[];
+};
 export type Flashcard = { id: number; title: string; point: string; formula: string };
 export type Banner = {
   id: number;
@@ -161,7 +198,7 @@ export type FlashcardState = {
 export type DueFlashcard = Flashcard & { box: number; hints: GradeHints };
 export type AppReleaseInfo = { build: number; version_name: string; notes: string[]; download_url: string; required: boolean };
 export type AppVersion = { status: 'ok' | 'optional' | 'required'; min_build: number; latest: AppReleaseInfo | null };
-export type ExamQuestion = { id: number; stem: string; choices: { id: number; text: string }[]; difficulty: string };
+export type ExamQuestion = { id: number; stem: string; choices: { id: number; text: string }[]; difficulty: string; fixed_order?: boolean };
 export type ExamReview = {
   question_id: number;
   picked_choice_id: number | null;
@@ -170,6 +207,8 @@ export type ExamReview = {
   quick_solution: string;
   alternative_view: string;
   node_id?: number | null;
+  /** The answer key was corrected after this exam began (the score keeps the key it was taken with). */
+  corrected?: Correction | null;
 };
 export type ExamSummary = {
   id: number;
@@ -197,6 +236,7 @@ export type Library = {
   reading: { book_slug: string; book_title: string; last_section: { id: number; title: string }; percent?: number; updated_at: string; book?: BookListItem }[];
   bookmarks: { id: number; title: string; created_at: string }[];
   notes: (Note & { node_title: string })[];
+  mistakes?: { count: number; open: number; settling: number; due: number };
 };
 export type Stats = {
   sections_done: number;
@@ -210,6 +250,8 @@ export type Stats = {
   last_14_days: { date: string; sections: number; answers: number; cards: number }[];
   books: { slug: string; title: string; done: number; total: number }[];
   weak_sections: { id: number; title: string; answers: number; accuracy: number }[];
+  /** Of the questions got wrong in the last `days` days: answered right later, and settled. */
+  improvement?: { days: number; wrong: number; fixed: number; settled: number };
 };
 export type Plan = { id: number; title: string; scope: 'major' | 'all'; months: number; price: number };
 export type Offers = { book: { slug: string; title: string; price: number | null }; majors: { slug: string; name: string }[]; plans: Plan[] };

@@ -667,7 +667,7 @@
   Manager.prototype.itemEditor = function (s, kind, item) {
     var self = this, isNew = !item;
     var data = item ? JSON.parse(JSON.stringify(item)) : (kind === 'question'
-      ? { stem: '', choices: [{ text: '', correct: true }, { text: '', correct: false }, { text: '', correct: false }, { text: '', correct: false }], explanation: '', quick_solution: '', alternative_view: '', difficulty: 'medium', kind: '', domain: '', seconds: '', is_free: false, is_original: true, sources: [], flashcards: [] }
+      ? { stem: '', choices: [{ text: '', correct: true }, { text: '', correct: false }, { text: '', correct: false }, { text: '', correct: false }], explanation: '', quick_solution: '', alternative_view: '', difficulty: 'medium', kind: '', domain: '', seconds: '', is_free: false, fixed_order: false, is_original: true, sources: [], flashcards: [] }
       : { title: '', point: '', formula: '', is_free: false });
     var box = h('div', { class: 'item open', id: 'item-' + (item ? item.slug : 'new') });
     var mode = 'form';
@@ -733,6 +733,9 @@
         };
         var secs = h('input', { type: 'number', min: 0, value: data.seconds || '', oninput: function () { data.seconds = secs.value; } });
         var free = h('input', { type: 'checkbox', checked: data.is_free, onchange: function () { data.is_free = free.checked; } });
+        var fixed = h('input', { type: 'checkbox', checked: data.fixed_order, onchange: function () { data.fixed_order = fixed.checked; } });
+        left.appendChild(h('label', { class: 'btn small', style: 'margin:4px 0', title: 'برای گزینه‌هایی مثل «۱ و ۳» یا «همه‌ی موارد» خودکار ثابت می‌ماند' },
+          fixed, ' ترتیب گزینه‌ها ثابت بماند (اپ جابه‌جایشان نکند)'));
         left.appendChild(h('div', { class: 'row' },
           h('div', { class: 'grow' }, field('سطح', sel(DIFF, 'difficulty'))),
           h('div', { class: 'grow' }, field('نوع', sel(KINDS, 'kind'))),

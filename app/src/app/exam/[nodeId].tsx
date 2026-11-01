@@ -56,7 +56,7 @@ export default function Exam() {
   // Choices in a different order in each exam (graded by id on the server, so nothing else changes).
   const shownQ = useMemo(() => {
     const raw = exam?.questions[index];
-    return raw ? { ...raw, choices: seeded(raw.choices, exam!.id * 7919 + raw.id) } : null;
+    return raw ? (raw.fixed_order ? raw : { ...raw, choices: seeded(raw.choices, exam!.id * 7919 + raw.id) }) : null;
   }, [exam, index]);
   const currentId = exam?.questions[index]?.id;
   const picked = currentId != null ? (answers[currentId] ?? null) : null;

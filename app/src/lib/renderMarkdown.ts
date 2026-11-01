@@ -49,7 +49,7 @@ export function renderSummary(source: string, opts: { hasCards?: boolean } = {})
     for (const item of items) {
       if (key === 'important') {
         const { text, phrase } = jumpTarget(item);
-        html += `<li><a class="jump" data-q="${esc(phrase)}">${renderInline(text)}<span class="go" aria-hidden="true">‹</span></a></li>`;
+        html += `<li><a class="jump" data-q="${esc(phrase)}">${renderInline(text)}<span class="go" aria-hidden="true">←</span></a></li>`;
       } else html += `<li>${renderInline(item)}</li>`;
     }
     html += '</ul>';
@@ -169,7 +169,22 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
 .next-card { display: block; margin: 28px 0 8px; padding: 14px 16px; border-radius: 16px; background: #17201A; color: #F3F1E7; text-decoration: none; cursor: pointer; }
 .next-card small { display: block; color: #F5C518; font-weight: 800; font-size: .8em; }
 .next-card b { display: block; font-size: 1em; margin-top: 2px; }
-.next-card b::after { content: " ‹"; color: #F5C518; }
+.next-card b::after { content: " ←"; color: #F5C518; } /* «←»; «‹» is mirrored in Persian text and points back */
+.st-box { margin: 28px 0 0; padding: 10px 12px; border-radius: 16px; border: 1px solid #E3E8DE; background: #F6F7F2; }
+.st-box small { display: block; color: #56655B; font-weight: 800; font-size: .75em; margin-bottom: 6px; }
+.st-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-done, .st-go { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: .82em; font-weight: 700; line-height: 1.8; text-decoration: none; }
+.st-done, .st-ok { background: #E3F3E9; color: #1F5E3A; }
+.st-go { background: #fff; color: #17201A; border: 1px solid #E3E8DE; cursor: pointer; }
+.st-go.st-ok { background: #E3F3E9; color: #1F5E3A; border-color: #BFE8CF; }
+.st-box + .next-card, .st-box + .ch-end { margin-top: 10px; }
+.ch-end { margin: 28px 0 8px; padding: 16px; border-radius: 18px; background: #17201A; color: #F3F1E7; }
+.ch-title { color: #F5C518; font-weight: 900; font-size: 1.05em; }
+.ch-text { font-size: .88em; color: #C9D2C6; margin: 4px 0 12px; }
+.ch-btn { display: block; text-align: center; padding: 10px 12px; border-radius: 14px; margin-top: 8px; border: 1.5px solid #3A4A40; color: #F3F1E7;
+  font-weight: 800; text-decoration: none; cursor: pointer; }
+.ch-main { background: #F5C518; border-color: #F5C518; color: #17201A; }
+.lesson.dark .st-box { background: #1E2621; border-color: #33403A; } .lesson.dark .st-go { background: #26302A; color: #E4E9E2; border-color: #33403A; }
 .rc-cards { margin-top: 8px; border: 0; border-radius: 12px; padding: 8px 12px; background: #17201A; color: #F5C518; font: inherit; font-size: .85em; font-weight: 800; cursor: pointer; }
 .term { padding: 6px 0; border-bottom: 1px dashed #E3E8DE; } .term:last-child { border-bottom: 0; }
 .term-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
@@ -233,6 +248,7 @@ root.addEventListener('click', function (e) {
   var j = t.closest('a.jump'); if (j) { e.preventDefault(); post({ type: 'jump', q: j.getAttribute('data-q') || '' }); return; }
   if (t.closest('.rc-cards')) { post({ type: 'cards' }); return; }
   if (t.closest('.next-card')) { post({ type: 'next' }); return; }
+  var go = t.closest('[data-go]'); if (go) { post({ type: 'go', to: go.getAttribute('data-go') }); return; }
   var g = t.closest('.gl'); if (g) { post({ type: 'term', fa: g.getAttribute('data-t') }); return; }
   var m = t.closest('mark.hl');
   if (m) post({ type: 'note', id: Number(m.getAttribute('data-note')) });
@@ -348,9 +364,50 @@ root.addEventListener('contextmenu', function (e) { if (e.target && e.target.tag
 })();
 `;
 
-/** The card at the end of a section that leads on to the next one. */
-export function nextCardHtml(title?: string | null): string {
-  if (!title) return '';
-  const esc = title.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-  return `<a class="next-card" role="button"><small>بخش بعد</small><b>${esc}</b></a>`;
+/** What is left in this section for the learner (shown at the end of the page). */
+export type SectionStatus = { read: boolean; questions: number; questions_left: number; cards: number; cards_due: number; cards_new: number };
+/** The last section of a chapter: the chapter's summary exam and the next chapter, or the end of the book. */
+export type ChapterEnd = {
+  chapter_id: number;
+  chapter_title: string;
+  book_slug: string;
+  book_title: string;
+  next_chapter: { id: number; chapter_title: string; title: string; locked: boolean } | null;
+};
+export type PageEnd = { nextTitle?: string | null; status?: SectionStatus | null; chapterEnd?: ChapterEnd | null };
+
+const escHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const fa = (n: number) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
+
+/** The end of a section: what is left here (each part opens directly), then the next section, or the chapter's end. */
+export function pageEndHtml(end?: PageEnd): string {
+  if (!end) return '';
+  let html = '';
+  const s = end.status;
+  if (s && (s.questions || s.cards || s.read)) {
+    const parts: string[] = [];
+    if (s.read) parts.push('<span class="st-done">✓ جزوه خوانده شد</span>');
+    if (s.questions)
+      parts.push(
+        s.questions_left
+          ? `<a class="st-go" data-go="quiz" role="button">${fa(s.questions_left)} تست باقی است</a>`
+          : `<a class="st-go st-ok" data-go="quiz" role="button">✓ همه‌ی ${fa(s.questions)} تست را زده‌ای</a>`,
+      );
+    if (s.cards_due) parts.push(`<a class="st-go" data-go="cards" role="button">${fa(s.cards_due)} کارت موعد مرور دارد</a>`);
+    else if (s.cards_new) parts.push(`<a class="st-go" data-go="cards" role="button">${fa(s.cards_new)} فلش‌کارت تازه</a>`);
+    html += `<div class="st-box"><small>این بخش</small><div class="st-row">${parts.join('')}</div></div>`;
+  }
+  if (end.nextTitle) {
+    html += `<a class="next-card" role="button"><small>بخش بعد</small><b>${escHtml(end.nextTitle)}</b></a>`;
+  } else if (end.chapterEnd) {
+    const c = end.chapterEnd;
+    const next = c.next_chapter;
+    html += `<div class="ch-end"><div class="ch-title">${next ? `فصل «${escHtml(c.chapter_title)}» تمام شد` : `کتاب «${escHtml(c.book_title)}» تمام شد!`}</div>
+<div class="ch-text">${next ? 'یک آزمون جمع‌بندی بده تا ببینی چقدر مانده، یا برو سراغ فصل بعد.' : 'با یک آزمون جمع‌بندی از این فصل ببین چقدر یادت مانده.'}</div>
+<a class="ch-btn ch-main" data-go="exam" role="button">آزمون جمع‌بندی این فصل</a>
+${next
+  ? `<a class="ch-btn" data-go="next-chapter" role="button">${next.locked ? '🔒 ' : ''}فصل بعد: ${escHtml(next.chapter_title)} ←</a>`
+  : '<a class="ch-btn" data-go="book" role="button">برگشت به صفحه‌ی کتاب</a>'}</div>`;
+  }
+  return html;
 }

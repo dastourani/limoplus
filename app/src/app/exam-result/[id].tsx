@@ -7,7 +7,8 @@ import { useCelebrate } from '../../components/Celebrate';
 import { RichText } from '../../components/RichText';
 import { Text } from '../../components/Text';
 import { Button, Card, ErrorState, Header, Loading, Screen } from '../../components/ui';
-import { jalaliDateTime } from '../../lib/jalali';
+import { jalaliDate, jalaliDateTime } from '../../lib/jalali';
+import { seeded } from '../../lib/shuffle';
 import { useApi } from '../../lib/useApi';
 import { colors, radius, rtl, toPersianDigits } from '../../theme';
 
@@ -89,7 +90,15 @@ export default function ExamResult() {
                 <Text style={[styles.qNum, rtl]}>سؤال {toPersianDigits(i + 1)}</Text>
               </Pressable>
               <RichText text={q.stem} size={15} />
-              {q.choices.map((c, ci) => {
+              {!!r?.corrected && (
+                <View style={styles.corrected}>
+                  <Text style={[styles.correctedTitle, rtl]}>اصلاح‌شده: پاسخ‌نامه‌ی این تست در {jalaliDate(r.corrected.at)}، بعد از آزمونت، اصلاح شد.</Text>
+                  <RichText text={r.corrected.note} size={13} />
+                  <Text style={[styles.correctedText, rtl]}>نمره‌ی این آزمون با پاسخ‌نامه‌ی زمان آزمون حساب شده و تغییر نمی‌کند.</Text>
+                </View>
+              )}
+              {/* The choices in the order the exam showed them. */}
+              {(q.fixed_order ? q.choices : seeded(q.choices, data.id * 7919 + q.id)).map((c, ci) => {
                 const correct = c.id === r?.correct_choice_id;
                 const picked = c.id === r?.picked_choice_id;
                 return (
@@ -119,7 +128,7 @@ export default function ExamResult() {
                   )}
                   {!!r?.node_id && (
                     <Pressable onPress={() => router.push(`/section/${r.node_id}`)} accessibilityRole="link">
-                      <Text style={styles.link}>این نکته در جزوه ‹</Text>
+                      <Text style={styles.link}>این نکته در جزوه ←</Text>
                     </Pressable>
                   )}
                 </View>
@@ -158,4 +167,7 @@ const styles = StyleSheet.create({
   key: { fontWeight: '800', color: colors.muted, width: 24, textAlign: 'center' },
   label: { fontSize: 13, fontWeight: '700', color: colors.greenDark },
   link: { color: colors.greenDark, fontWeight: '800', textAlign: 'right' },
+  corrected: { backgroundColor: '#F1EEFC', borderRadius: 12, padding: 10, gap: 4 },
+  correctedTitle: { fontSize: 13, fontWeight: '800', color: '#3A2F7A' },
+  correctedText: { fontSize: 12, color: '#3A2F7A' },
 });

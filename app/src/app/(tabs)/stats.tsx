@@ -3,8 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { endpoints, type Stats } from '../../api/endpoints';
+import { endpoints, type ExamPage, type Stats } from '../../api/endpoints';
 import { useCelebrate } from '../../components/Celebrate';
+import { ExamsCard } from '../../components/ExamsCard';
 import { IconBadge, type IconName } from '../../components/Icon';
 import { Text } from '../../components/Text';
 import { Button, Card, Empty, ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
@@ -25,6 +26,7 @@ function Tile({ label, value, accent, icon }: { label: string; value: string; ac
 export default function StatsTab() {
   const { user } = useAuth();
   const [data, setData] = useState<Stats | null>(null);
+  const [exams, setExams] = useState<ExamPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -32,6 +34,7 @@ export default function StatsTab() {
   const load = useCallback(() => {
     if (!user) return;
     setLoading(true);
+    endpoints.examPage(1).then(setExams).catch(() => undefined);
     endpoints
       .stats()
       .then((d) => {
@@ -86,6 +89,23 @@ export default function StatsTab() {
           <Tile icon="trophy" label="آزمون" value={toPersianDigits(data.exams)} />
         </View>
 
+        {!!data.improvement && data.improvement.wrong > 0 && (
+          <Card>
+            <Text style={[styles.cardTitle, rtl]}>چقدر واقعاً بهتر شده‌ام؟</Text>
+            <Text style={[styles.better, rtl]}>
+              از {toPersianDigits(data.improvement.wrong)} تستی که در {toPersianDigits(data.improvement.days)} روز گذشته غلط زدی،{' '}
+              {toPersianDigits(data.improvement.fixed)} تا را بعداً درست جواب دادی و {toPersianDigits(data.improvement.settled)} تا تثبیت شد.
+            </Text>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${Math.round((data.improvement.settled / data.improvement.wrong) * 100)}%` }]} />
+              <View style={[styles.progressPart, { width: `${Math.round(((data.improvement.fixed - data.improvement.settled) / data.improvement.wrong) * 100)}%` }]} />
+            </View>
+            <Text style={[styles.muted, rtl]}>سبز پررنگ: تثبیت‌شده؛ سبز کم‌رنگ: یک بار درست زده‌ای.</Text>
+          </Card>
+        )}
+
+        {exams && exams.summary.count > 0 && <ExamsCard exams={exams} />}
+
         <Card>
           <Text style={[styles.cardTitle, rtl]}>فعالیت ۱۴ روز اخیر</Text>
           <View style={styles.chart}>
@@ -134,7 +154,6 @@ export default function StatsTab() {
             ))}
           </Card>
         )}
-        <Button label="سابقه‌ی آزمون‌ها" variant="outline" onPress={() => router.push('/exams')} />
       </ScrollView>
     </Screen>
   );
@@ -157,5 +176,7 @@ const styles = StyleSheet.create({
   muted: { fontSize: 12, color: colors.muted },
   progressTrack: { height: 8, backgroundColor: colors.line, borderRadius: 4, overflow: 'hidden', flexDirection: 'row-reverse' },
   progressFill: { backgroundColor: colors.green, borderRadius: 4 },
+  progressPart: { backgroundColor: '#A8D8B9' },
+  better: { fontSize: 14, color: colors.ink, lineHeight: 24 },
   weak: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 6 },
 });

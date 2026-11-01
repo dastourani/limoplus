@@ -1,4 +1,4 @@
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -12,10 +12,12 @@ import { requireLogin, useAuth } from '../lib/auth';
 import { jalaliDate } from '../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../theme';
 
-/** «دفترچه‌ی اشتباهات»: every question whose latest answer was wrong (or blank in an exam), with the learner's reason. */
+/** «دفترچه‌ی اشتباهات»: questions got wrong (or blank in an exam), with the learner's reason. One right answer moves a
+ * question to «نیازمند تثبیت»; a right answer on a later day takes it out. */
 export default function MistakesScreen() {
   const { user } = useAuth();
-  const [book, setBook] = useState('');
+  const start = useLocalSearchParams<{ book?: string }>().book;
+  const [book, setBook] = useState(start ?? '');
   const [data, setData] = useState<Mistakes | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,17 +71,30 @@ export default function MistakesScreen() {
       ) : error && !data ? (
         <ErrorState message={error.message} onRetry={load} />
       ) : !data || (data.count === 0 && !book) ? (
-        <Empty icon="circle-check" title="دفترچه خالی است" text="تست‌هایی که غلط بزنی یا در آزمون نزنی این‌جا می‌آیند؛ هر کدام را درست جواب بدهی، از دفترچه بیرون می‌رود." />
+        <Empty
+          icon="circle-check"
+          title="دفترچه خالی است"
+          text="تست‌های غلط و بی‌پاسخت این‌جا جمع می‌شوند. هر کدام را دو بار، با چند روز فاصله، درست جواب بدهی، از دفترچه بیرون می‌رود."
+        />
       ) : (
         <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
           <View style={styles.top}>
-            <Text style={[styles.topTitle, rtl]}>{toPersianDigits(data.count)} تست منتظر جبران</Text>
-            <Text style={[styles.topText, rtl]}>هر کدام را درست جواب بدهی، از دفترچه بیرون می‌رود.</Text>
-            {data.count > 0 && (
+            <Text style={[styles.topTitle, rtl]}>
+              {data.open > 0 ? `${toPersianDigits(data.open)} تست منتظر جبران` : 'همه را یک بار جبران کرده‌ای'}
+            </Text>
+            {data.settling > 0 && (
+              <Text style={[styles.topText, rtl]}>{toPersianDigits(data.settling)} تست نیازمند تثبیت؛ یک بار درست زده‌ای و چند روز بعد دوباره پرسیده می‌شود.</Text>
+            )}
+            <Text style={[styles.topText, rtl]}>
+              هر تست را یک بار درست بزنی به «تثبیت» می‌رود؛ {toPersianDigits(data.settle_days)} روز بعد اگر باز درست زدی، از دفترچه بیرون می‌رود.
+            </Text>
+            {data.due > 0 ? (
               <Button
-                label="تمرین همین اشتباه‌ها"
+                label={`تمرین ${toPersianDigits(data.due)} تست`}
                 onPress={() => router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: 'mistakes', ...(book ? { book } : {}) } })}
               />
+            ) : (
+              data.count > 0 && <Text style={[styles.topText, rtl, { color: colors.lemon }]}>فعلاً تستی نوبتش نرسیده؛ چند روز دیگر سر بزن.</Text>
             )}
           </View>
           {data.books.length > 1 && (
@@ -109,6 +124,14 @@ export default function MistakesScreen() {
               <Text style={[styles.meta, rtl]}>
                 {m.blank ? 'در آزمون نزده' : m.wrong_count > 1 ? `${toPersianDigits(m.wrong_count)} بار غلط` : 'غلط'}، {jalaliDate(m.last_at)}
               </Text>
+              {m.state === 'settling' && (
+                <Text style={[styles.settling, rtl]}>
+                  {m.is_due ? 'نیازمند تثبیت: نوبتش رسیده، دوباره بزنش.' : `نیازمند تثبیت: ${m.due_on ? jalaliDate(m.due_on) : ''} دوباره پرسیده می‌شود.`}
+                </Text>
+              )}
+              {m.corrected && (
+                <Text style={[styles.corrected, rtl]}>اصلاح‌شده: پاسخ‌نامه‌ی این تست بعد از جواب تو اصلاح شد؛ دوباره بزنش.</Text>
+              )}
               <View style={styles.reasons}>
                 {data.reasons.map((r) => {
                   const on = m.reason === r.key;
@@ -148,6 +171,8 @@ const styles = StyleSheet.create({
   where: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5 },
   whereText: { flex: 1, fontSize: 12, fontWeight: '700', color: colors.greenDark },
   meta: { fontSize: 12, color: colors.muted },
+  settling: { alignSelf: 'flex-end', fontSize: 12, fontWeight: '700', color: colors.greenDark, backgroundColor: '#E3F3E9', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  corrected: { alignSelf: 'flex-end', fontSize: 12, fontWeight: '700', color: '#3A2F7A', backgroundColor: '#F1EEFC', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
   reasons: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginTop: 2 },
   reason: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: colors.line },
   reasonOn: { backgroundColor: colors.lemon, borderColor: colors.lemon },

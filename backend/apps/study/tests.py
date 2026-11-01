@@ -241,9 +241,32 @@ class StudyTests(TestCase):
         self.assertNotIn("is_correct", str(practice))
         self.client.post(f"/api/v1/nodes/{self.section.id}/practice/reset/")
         r = self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": right.id}, format="json").data
-        self.assertEqual(r["fixed"], {"days": 0})
+        # One right answer: «نیازمند تثبیت», back in a few days; not yet out of the notebook.
+        self.assertEqual(r["fixed"], {"step": "settling", "days": 0, "due_in": 3})
         self.assertEqual(r["node_id"], q.node_id)
+        data = self.client.get("/api/v1/me/mistakes/").data
+        self.assertEqual((data["count"], data["open"], data["settling"], data["due"]), (1, 0, 1, 0))
+        self.assertEqual(data["items"][0]["state"], "settling")
+        self.assertEqual(self.client.get("/api/v1/me/mistakes/questions/").data["questions"], [], "not its day yet")
+        self.assertEqual(self.client.post(f"/api/v1/me/mistakes/{q.id}/reason/", {"reason": "time"}, format="json").status_code, 200)
+        r = self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": right.id}, format="json").data
+        self.assertEqual(r["fixed"]["step"], "early")
+        # Three days later: right again settles it.
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        QuizAnswer.objects.filter(user=self.user, question=q).update(answered_at=timezone.now() - timedelta(days=3))
+        self.assertEqual(self.client.get("/api/v1/me/mistakes/").data["due"], 1)
+        self.assertEqual([p["id"] for p in self.client.get("/api/v1/me/mistakes/questions/").data["questions"]], [q.id])
+        r = self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": right.id}, format="json").data
+        self.assertEqual(r["fixed"]["step"], "settled")
         self.assertEqual(self.client.get("/api/v1/me/mistakes/").data["count"], 0)
+        imp = self.client.get("/api/v1/me/stats/").data["improvement"]
+        self.assertEqual((imp["wrong"], imp["fixed"], imp["settled"]), (1, 1, 1))
+        # Wrong again: back to the start.
+        self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": wrong.id}, format="json")
+        self.assertEqual(self.client.get("/api/v1/me/mistakes/").data["open"], 1)
 
     def test_blank_exam_answers_are_mistakes_and_locked_questions_are_not_listed(self):
         r = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 2}, format="json")
@@ -289,3 +312,52 @@ class StudyTests(TestCase):
         for op in ("a", "b", "a"):
             self.client.post(f"/api/v1/flashcards/{card.id}/review/", {"grade": "good", "op": op}, format="json")
         self.assertEqual(FlashcardReview.objects.get(user=self.user, flashcard=card).review_count, 2)
+
+
+class PageEndAndPlacesTests(TestCase):
+    """No dead end at the end of a chapter, the section's own status, and the notebook and exams per book."""
+
+    setUp = StudyTests.setUp
+    tearDown = StudyTests.tearDown
+
+    def test_last_section_of_a_chapter_leads_on(self):
+        last = self.chapter.get_children().last()
+        data = self.client.get(f"/api/v1/nodes/{last.id}/").data
+        self.assertIsNone(data["next_id"])
+        end = data["chapter_end"]
+        self.assertEqual(end["chapter_id"], self.chapter.id)
+        self.assertEqual(end["book_slug"], "math-1")
+        self.assertTrue(end["next_chapter"]["locked"], "the next chapter of the sample is paid")
+        first = self.chapter.get_children().first()
+        if first.id != last.id:
+            self.assertIsNone(self.client.get(f"/api/v1/nodes/{first.id}/").data["chapter_end"])
+
+    def test_section_status_counts_what_is_left(self):
+        status = self.client.get(f"/api/v1/nodes/{self.section.id}/").data["status"]
+        self.assertGreater(status["questions"], 0)
+        self.assertEqual(status["questions_left"], status["questions"])
+        q = Question.objects.filter(node=self.section, is_archived=False).first()
+        self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.first().id}, format="json")
+        self.assertEqual(self.client.get(f"/api/v1/nodes/{self.section.id}/").data["status"]["questions_left"], status["questions"] - 1)
+        self.assertIsNone(APIClient().get(f"/api/v1/nodes/{self.section.id}/").data["status"], "guests get no status")
+
+    def test_notebook_and_exams_on_library_and_book_page(self):
+        lib = self.client.get("/api/v1/me/library/").data
+        self.assertEqual(lib["mistakes"]["count"], 0, "shown even when empty")
+        q = Question.objects.filter(node=self.section, is_archived=False).first()
+        self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.filter(is_correct=False).first().id}, format="json")
+        self.assertEqual(self.client.get("/api/v1/me/library/").data["mistakes"]["due"], 1)
+        mine = self.client.get("/api/v1/books/math-1/").data["mine"]
+        self.assertEqual((mine["mistakes"]["count"], mine["exams"]), (1, 0))
+        self.assertIsNone(APIClient().get("/api/v1/books/math-1/").data["mine"])
+
+    def test_exam_keeps_fixed_order_and_tells_of_a_later_correction(self):
+        from django.utils import timezone
+
+        r = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 2}, format="json").data
+        qid = r["questions"][0]["id"]
+        self.assertIn("fixed_order", r["questions"][0])
+        Question.objects.filter(pk=qid).update(key_changed_at=timezone.now(), key_change_note="پاسخ درست عوض شد.")
+        done = self.client.post(f"/api/v1/exams/{r['id']}/submit/", {"answers": {}}, format="json").data
+        review = {x["question_id"]: x for x in done["review"]}
+        self.assertEqual(review[qid]["corrected"]["note"], "پاسخ درست عوض شد.")

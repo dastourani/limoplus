@@ -233,6 +233,18 @@ export default function Book() {
                 <Icon name="languages" size={18} color={colors.ink} />
                 <Text style={styles.shortcutText}>واژه‌نامه‌ی کتاب</Text>
               </Pressable>
+              {!!book.mine?.mistakes.count && (
+                <Pressable onPress={() => router.push({ pathname: '/mistakes', params: { book: book.slug } })} style={styles.shortcut} accessibilityRole="button">
+                  <Icon name="notebook-pen" size={18} color={colors.ink} />
+                  <Text style={styles.shortcutText}>اشتباه‌هایم ({toPersianDigits(book.mine.mistakes.count)})</Text>
+                </Pressable>
+              )}
+              {!!book.mine?.exams && (
+                <Pressable onPress={() => router.push({ pathname: '/exams', params: { book: book.slug } })} style={styles.shortcut} accessibilityRole="button">
+                  <Icon name="trophy" size={18} color={colors.ink} />
+                  <Text style={styles.shortcutText}>آزمون‌هایم ({toPersianDigits(book.mine.exams)})</Text>
+                </Pressable>
+              )}
               {offlineSupported && (
                 <Pressable onPress={download} disabled={downloading} style={styles.shortcut} accessibilityRole="button">
                   <Icon name={offline ? 'circle-check' : 'download'} size={18} color={offline ? colors.greenDark : colors.ink} />
@@ -405,8 +417,8 @@ const styles = StyleSheet.create({
   unlockText: { fontSize: 15, fontWeight: '900', color: colors.ink },
   resumeLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.greenSoft, borderRadius: 12, paddingHorizontal: 12, minHeight: 44 },
   resumeLineText: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.greenDark },
-  shortcuts: { flexDirection: 'row-reverse', gap: 8 },
-  shortcut: { flex: 1, minHeight: 46, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
+  shortcuts: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  shortcut: { flexGrow: 1, flexBasis: '45%', minHeight: 46, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
   shortcutText: { fontSize: 13, fontWeight: '700', color: colors.ink },
   smallLink: { fontSize: 12, color: colors.muted, textDecorationLine: 'underline' },
   note: { fontSize: 13, color: colors.muted },

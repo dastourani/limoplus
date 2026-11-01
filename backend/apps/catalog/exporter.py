@@ -45,6 +45,7 @@ def question_to_parsed(q: Question) -> ParsedQuestion:
         kind=q.kind,
         seconds=q.estimated_seconds,
         is_free=q.is_free,
+        fixed_order=q.fixed_order,
         is_original=q.is_original or not sources,
         sources=sources,
         flashcard_slugs=list(q.flashcards.order_by("order", "id").values_list("slug", flat=True)),
@@ -74,6 +75,8 @@ def question_block(q: ParsedQuestion) -> list[str]:
         lines.append(f"زمان: {q.seconds}")
     if q.is_free:
         lines.append("رایگان: بله")
+    if q.fixed_order:
+        lines.append("ترتیب گزینه‌ها: ثابت")
     lines.append("صورت:")
     lines.extend(q.stem.split("\n"))
     for text, ok in q.choices:

@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 import { fontFaceCss } from '../lib/fonts';
-import { CONTENT_CSS, READER_SCRIPT, nextCardHtml, renderMarkdown, renderSummary } from '../lib/renderMarkdown';
+import { CONTENT_CSS, READER_SCRIPT, pageEndHtml, renderMarkdown, type PageEnd, renderSummary } from '../lib/renderMarkdown';
 
 // Font files embedded in the APK by the expo-font plugin (app.json); Android WebViews can always read android_asset.
 const FONT_CSS = fontFaceCss((family) => `file:///android_asset/fonts/${family}.ttf`);
@@ -24,7 +24,9 @@ export type ReaderEvent =
   /** The finger turned the page: 1 to the next section, -1 to the previous one. */
   | { type: 'turn'; dir: 1 | -1 }
   /** The «بخش بعد» card at the end was tapped. */
-  | { type: 'next' };
+  | { type: 'next' }
+  /** A part of the page end was tapped: «N تست باقی است», a due card, the chapter exam, the next chapter, the book. */
+  | { type: 'go'; to: 'quiz' | 'cards' | 'exam' | 'next-chapter' | 'book' };
 
 type Props = {
   markdown: string;
@@ -47,8 +49,8 @@ type Props = {
   onEvent?: (event: ReaderEvent) => void;
   /** Sideways finger turning: which ways there is a section to go to. */
   turn?: { next: boolean; prev: boolean };
-  /** Title of the next section, for the card at the end. */
-  nextTitle?: string | null;
+  /** The end of the page: what is left in the section, then the next section or the chapter's end. Keep it memoized. */
+  end?: PageEnd;
   /** Open scrolled to this point (0–1), to continue where the reader left off. */
   startAt?: number;
 };
@@ -86,7 +88,7 @@ const READER_BOOT = `
 
 /** Lesson text with formulas, tables and boxes. Native version: rendered in a WebView. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, nextTitle, startAt },
+  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, end, startAt },
   ref,
 ) {
   const web = useRef<{ injectJavaScript: (script: string) => void } | null>(null);
@@ -96,8 +98,8 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
     () => `<!doctype html><html dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <style>${FONT_CSS}${CONTENT_CSS} body{--fs:${fontSize}px;--lh:${lineHeight}}</style></head>
-<body><div class="lesson${compact ? ' compact no-select' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}">${variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)}${compact ? '' : nextCardHtml(nextTitle)}</div></body></html>`,
-    [markdown, compact, fontSize, dark, sepia, lineHeight, variant, hasCards, nextTitle],
+<body><div class="lesson${compact ? ' compact no-select' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}">${variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)}${compact ? '' : pageEndHtml(end)}</div></body></html>`,
+    [markdown, compact, fontSize, dark, sepia, lineHeight, variant, hasCards, end],
   );
 
   useEffect(() => setLoaded(false), [html]);

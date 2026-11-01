@@ -1,13 +1,18 @@
 """
-«دفترچه‌ی اشتباهات»: every question whose latest answer by the learner (practice or exam) was wrong or left blank in
-an exam. Answering it right later takes it out (and the app shows «اشتباهی که برطرف شد»). The learner may note why
-they got it wrong. Built from the answer history, so nothing new has to be recorded when answering.
+«دفترچه‌ی اشتباهات»: every question the learner got wrong (or left blank in an exam).
+
+A question goes through two steps before it leaves the notebook, because one right answer may only mean the learner
+remembers the answer:
+- «منتظر جبران» (open): the latest answer was wrong.
+- «نیازمند تثبیت» (settling): answered right since, but not yet right again on a later day. It is due again
+  SETTLE_DAYS days after that first right answer; a right answer on or after that day takes it out («تثبیت شد»).
+A wrong answer at any point puts it back to the start. Built from the answer history, so nothing new is recorded.
 """
 
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, timedelta
 
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -23,38 +28,96 @@ from apps.learning.models import Question, QuizAnswer
 from .models import ExamAnswer, MistakeNote
 
 MAX_ITEMS = 300
+SETTLE_DAYS = 3
+
+OPEN, SETTLING, SETTLED = "open", "settling", "settled"
 
 
-def last_answers(user, question_ids=None) -> dict[int, dict]:
-    """question id → {"ok": bool|None (None = blank in an exam), "at": datetime, "wrong": times wrong, "source"}."""
-    out: dict[int, dict] = {}
+def _day(at) -> date:
+    return timezone.localdate(at)
 
-    def add(qid, ok, at, source):
-        if at is None:
-            return
-        cur = out.get(qid)
-        wrong = (cur["wrong"] if cur else 0) + (0 if ok else 1)
-        if cur is None or at >= cur["at"]:
-            out[qid] = {"ok": ok, "at": at, "wrong": wrong, "source": source}
-        else:
-            cur["wrong"] = wrong
 
+def answer_rows(user, question_ids=None, since=None):
+    """(question id, ok, at, source) for every practice and submitted exam answer; ok is None for a blank in an exam."""
     practice = QuizAnswer.objects.filter(user=user)
     exams = ExamAnswer.objects.filter(attempt__user=user, attempt__submitted_at__isnull=False)
     if question_ids is not None:
         practice = practice.filter(question_id__in=question_ids)
         exams = exams.filter(question_id__in=question_ids)
-    for qid, ok, at in practice.values_list("question_id", "was_correct", "answered_at"):
-        add(qid, ok, at, "practice")
-    for qid, ok, at in exams.values_list("question_id", "was_correct", "attempt__submitted_at"):
-        add(qid, ok, at, "exam")
+    if since is not None:
+        practice = practice.filter(answered_at__gte=since)
+        exams = exams.filter(attempt__submitted_at__gte=since)
+    rows = [(qid, ok, at, "practice") for qid, ok, at in practice.values_list("question_id", "was_correct", "answered_at")]
+    rows += [(qid, ok, at, "exam") for qid, ok, at in exams.values_list("question_id", "was_correct", "attempt__submitted_at") if at]
+    rows.sort(key=lambda r: r[2])
+    return rows
+
+
+def _entry(answers) -> dict | None:
+    """The notebook state of one question from its answers (oldest first), or None if never wrong."""
+    wrong_at = [i for i, (ok, _, _) in enumerate(answers) if not ok]
+    if not wrong_at:
+        return None
+    last_wrong = wrong_at[-1]
+    ok, at, source = answers[-1]
+    entry = {"ok": ok, "at": at, "source": source, "wrong": len(wrong_at), "wrong_at": answers[last_wrong][1],
+             "state": OPEN, "due": None}
+    after = answers[last_wrong + 1:]
+    if after:
+        due = _day(after[0][1]) + timedelta(days=SETTLE_DAYS)
+        entry["due"] = due
+        entry["state"] = SETTLED if any(_day(a) >= due for _, a, _ in after) else SETTLING
+    return entry
+
+
+def notebook(user, question_ids=None) -> dict[int, dict]:
+    """question id → its notebook entry (see _entry), for every question the learner ever got wrong."""
+    by_q: dict[int, list] = {}
+    for qid, ok, at, source in answer_rows(user, question_ids):
+        by_q.setdefault(qid, []).append((ok, at, source))
+    out = {}
+    for qid, answers in by_q.items():
+        e = _entry(answers)
+        if e:
+            out[qid] = e
     return out
 
 
-def was_mistake(user, question_id) -> datetime | None:
-    """When the learner last got this question wrong, if that is their latest answer; else None."""
-    last = last_answers(user, [question_id]).get(question_id)
-    return last["at"] if last and not last["ok"] else None
+def in_notebook(e: dict | None) -> bool:
+    return bool(e) and e["state"] != SETTLED
+
+
+def is_due(e: dict, today: date | None = None) -> bool:
+    """Open, or settling and its day has come: what practice from the notebook asks."""
+    return e["state"] == OPEN or (e["state"] == SETTLING and (today or timezone.localdate()) >= e["due"])
+
+
+def entry_for(user, question_id) -> dict | None:
+    return notebook(user, [question_id]).get(question_id)
+
+
+IMPROVEMENT_DAYS = 30
+
+
+def improvement(user, days=IMPROVEMENT_DAYS) -> dict:
+    """«چقدر واقعاً بهتر شده‌ام؟»: of the questions got wrong in the last `days` days, how many were answered right later
+    and how many are settled (right again on a later day)."""
+    since = timezone.now() - timedelta(days=days)
+    by_q: dict[int, list] = {}
+    for qid, ok, at, source in answer_rows(user):
+        by_q.setdefault(qid, []).append((ok, at, source))
+    wrong = fixed = settled = 0
+    for answers in by_q.values():
+        recent = [i for i, (ok, at, _) in enumerate(answers) if not ok and at >= since]
+        if not recent:
+            continue
+        wrong += 1
+        if any(ok for ok, _, _ in answers[recent[0] + 1:]):
+            fixed += 1
+        e = _entry(answers)
+        if e and e["state"] == SETTLED:
+            settled += 1
+    return {"days": days, "wrong": wrong, "fixed": fixed, "settled": settled}
 
 
 def _plain(text: str, limit=160) -> str:
@@ -89,32 +152,45 @@ def _mistakes(request, book_slug=""):
     cached = getattr(request, "_limo_mistakes", None)
     if cached is not None and not book_slug:
         return cached
-    last = last_answers(request.user)
-    ids = [qid for qid, a in last.items() if not a["ok"]]
+    book = notebook(request.user)
+    ids = [qid for qid, e in book.items() if in_notebook(e)]
     questions = Question.objects.filter(pk__in=ids, is_archived=False).select_related("node")
     items = []
     for q in questions:
         access = _map_for(request, q.node)
         if not (access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))):
             continue
-        items.append((q, access.book, last[q.id]))
+        items.append((q, access.book, book[q.id]))
     all_books = sorted({b.slug: b for _, b, _ in items}.values(), key=lambda b: b.title)
     if book_slug:
         items = [i for i in items if i[1].slug == book_slug]
+    # Open ones first, then settling ones whose day has come, then the rest; newest first within each.
+    today = timezone.localdate()
     items.sort(key=lambda i: i[2]["at"], reverse=True)
+    items.sort(key=lambda i: 0 if i[2]["state"] == OPEN else 1 if is_due(i[2], today) else 2)
     result = (items[:MAX_ITEMS], all_books)
     if not book_slug:
         request._limo_mistakes = result
     return result
 
 
+def due_items(items):
+    today = timezone.localdate()
+    return [i for i in items if is_due(i[2], today)]
+
+
 @api_view(["GET"])
 def my_mistakes(request):
     items, books = _mistakes(request, request.query_params.get("book") or "")
     reasons = dict(MistakeNote.objects.filter(user=request.user, question_id__in=[q.id for q, _, _ in items]).values_list("question_id", "reason"))
+    today = timezone.localdate()
     return Response(
         {
             "count": len(items),
+            "open": sum(1 for _, _, a in items if a["state"] == OPEN),
+            "settling": sum(1 for _, _, a in items if a["state"] == SETTLING),
+            "due": sum(1 for _, _, a in items if is_due(a, today)),
+            "settle_days": SETTLE_DAYS,
             "items": [
                 {
                     "question_id": q.id,
@@ -127,7 +203,12 @@ def my_mistakes(request):
                     "blank": a["ok"] is None,
                     "source": a["source"],
                     "last_at": a["at"],
+                    "state": a["state"],
+                    "due_on": a["due"],
+                    "is_due": is_due(a, today),
                     "reason": reasons.get(q.id, ""),
+                    # The answer key changed after this learner's last answer.
+                    "corrected": bool(q.key_changed_at and a["at"] < q.key_changed_at),
                 }
                 for q, book, a in items
             ],
@@ -139,35 +220,18 @@ def my_mistakes(request):
 
 @api_view(["GET"])
 def mistake_questions(request):
-    """The notebook's questions in the same shape as a section's practice questions (answers are not sent)."""
+    """The notebook's questions whose turn it is (open, or settling and due), shaped like a section's practice questions."""
     items, _ = _mistakes(request, request.query_params.get("book") or "")
+    items = due_items(items)
     qs = Question.objects.filter(pk__in=[q.id for q, _, _ in items]).prefetch_related("choices", "questionsource_set__source")
     by_id = {q.id: q for q in qs}
-    out = []
-    for q0, _, _ in items:
-        q = by_id[q0.id]
-        out.append(
-            {
-                "id": q.id,
-                "node_id": q.node_id,
-                "stem": media_urls(request, q.stem),
-                "choices": [{"id": c.id, "text": media_urls(request, c.text)} for c in q.choices.all()],
-                "difficulty": q.difficulty,
-                "measured_difficulty": q.measured_difficulty,
-                "domain": q.domain,
-                "kind": q.kind,
-                "estimated_seconds": q.estimated_seconds,
-                "is_original": q.is_original,
-                "sources": [{"name": s.source.name, "year": s.source.year, "number": s.number} for s in q.questionsource_set.all()],
-            }
-        )
-    return Response({"questions": out, "locked_count": 0})
+    return Response({"questions": [_practice_payload(request, by_id[q.id]) for q, _, _ in items], "locked_count": 0})
 
 
 @api_view(["POST"])
 def mistake_reason(request, question_id):
     question = get_object_or_404(Question, pk=question_id, is_archived=False)
-    if was_mistake(request.user, question.pk) is None:
+    if not in_notebook(entry_for(request.user, question.pk)):
         return Response({"code": "not_a_mistake", "message": "این تست در دفترچه‌ی اشتباهات شما نیست."}, status=status.HTTP_404_NOT_FOUND)
     reason = str(request.data.get("reason") or "")
     if reason and reason not in MistakeNote.Reason.values:
@@ -179,12 +243,19 @@ def mistake_reason(request, question_id):
 
 
 def fixed_info(user, question_id, now=None) -> dict | None:
-    """Called before a right answer is saved: if the question was in the notebook, how long ago it went wrong."""
-    when = was_mistake(user, question_id)
-    if when is None:
+    """Called before a right answer is saved, for a question in the notebook: what this answer does to it.
+    step «settling»: first right answer, it comes back in SETTLE_DAYS days; «settled»: it leaves the notebook;
+    «early»: settling and its day has not come yet, so nothing changes."""
+    e = entry_for(user, question_id)
+    if not in_notebook(e):
         return None
-    days = ((now or timezone.now()) - when).days
-    return {"days": days}
+    now = now or timezone.now()
+    days = (now - e["wrong_at"]).days
+    if e["state"] == OPEN:
+        return {"step": "settling", "days": days, "due_in": SETTLE_DAYS}
+    if timezone.localdate(now) >= e["due"]:
+        return {"step": "settled", "days": days}
+    return {"step": "early", "days": days, "due_in": (e["due"] - timezone.localdate(now)).days}
 
 
 # --- «مطالعه‌ی امروز» and «فقط ۵ دقیقه» -------------------------------------------------------------------------------
@@ -240,7 +311,7 @@ def today(request):
     comeback = away >= COMEBACK_DAYS
     due = len(_due_cards(request))
     cards = min(due, COMEBACK_CARDS) if comeback else due
-    mistakes = len(_mistakes(request)[0])
+    mistakes = len(due_items(_mistakes(request)[0]))
     practise = min(mistakes, 5)
     cont = _continue(request)
     minutes = round(cards * 0.4 + practise * 1.5 + (8 if cont else 0))
@@ -275,7 +346,7 @@ def quick(request):
         if cont:
             fresh = Flashcard.objects.filter(node=cont.node, is_archived=False).exclude(reviews__user=request.user).order_by("order", "id")[:3]
             cards = [{"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula, "box": 0, "hints": _grade_hints(1)} for f in fresh]
-    picked = [q for q, _, _ in _mistakes(request)[0][:3]]
+    picked = [q for q, _, _ in due_items(_mistakes(request)[0])[:3]]
     if len(picked) < 3:
         cont = _continue(request)
         if cont:
@@ -303,4 +374,6 @@ def _practice_payload(request, q):
         "estimated_seconds": q.estimated_seconds,
         "is_original": q.is_original,
         "sources": [{"name": s.source.name, "year": s.source.year, "number": s.number} for s in q.questionsource_set.all()],
+        "fixed_order": q.keeps_order,
+        "corrected": q.correction(),
     }

@@ -156,8 +156,20 @@ def book_detail(request, slug):
             "majors": list(book.majors.values_list("slug", flat=True)),
             "chapters": chapters,
             "done_ids": _done_ids(request.user, book),
+            "mine": _mine_in_book(request, book),
         }
     )
+
+
+def _mine_in_book(request, book):
+    """«اشتباه‌هایم در این کتاب» and «آزمون‌هایم از این کتاب»: counts for the book page."""
+    if not request.user.is_authenticated:
+        return None
+    from apps.study.models import ExamAttempt
+    from apps.study.views import _notebook_counts
+
+    exams = ExamAttempt.objects.filter(user=request.user, node__path__startswith=book.path, submitted_at__isnull=False).count()
+    return {"mistakes": _notebook_counts(request, book.slug), "exams": exams}
 
 
 @api_view(["GET"])
@@ -187,8 +199,51 @@ def node_detail(request, node_id):
             "previous_title": access.nodes[siblings[index - 1]].title if index > 0 else None,
             "next_title": access.nodes[siblings[index + 1]].title if index + 1 < len(siblings) else None,
             "updated_at": node.updated_at,
+            "chapter_end": _chapter_end(access, node, parent) if index + 1 == len(siblings) else None,
+            "status": _section_status(request.user, access, node),
         }
     )
+
+
+def _chapter_end(access, node, chapter):
+    """The last section of a chapter: no dead end. The chapter's summary exam, and the next chapter (or the book's end)."""
+    if node.kind != ContentNode.Kind.SECTION or chapter is None or chapter.kind != ContentNode.Kind.CHAPTER:
+        return None
+    chapters = [c.id for c in access.children(access.book)]
+    i = chapters.index(chapter.id) if chapter.id in chapters else -1
+    nxt = None
+    if 0 <= i < len(chapters) - 1:
+        c = access.nodes[chapters[i + 1]]
+        sections = access.children(c)
+        first = sections[0] if sections else c
+        nxt = {"id": first.id, "chapter_title": c.title, "title": first.title, "locked": not access.readable(first.id)}
+    return {"chapter_id": chapter.id, "chapter_title": chapter.title, "book_slug": access.book.slug, "book_title": access.book.title,
+            "next_chapter": nxt}
+
+
+def _section_status(user, access, node):
+    """«جزوه خوانده شد؛ ۳ تست باقی است؛ ۲ کارت موعد مرور دارد»: what is left in this section for this learner."""
+    if not user.is_authenticated or node.kind != ContentNode.Kind.SECTION:
+        return None
+    from django.utils import timezone
+
+    from apps.learning.models import Flashcard, Question, QuizAnswer
+    from apps.study.models import FlashcardReview, SectionProgress
+
+    questions = [q for q in Question.objects.filter(node=node, is_archived=False).only("id", "node_id", "is_free")
+                 if access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))]
+    answered = set(QuizAnswer.objects.filter(user=user, question_id__in=[q.id for q in questions], is_archived=False).values_list("question_id", flat=True))
+    cards = list(Flashcard.objects.filter(node=node, is_archived=False).values_list("id", flat=True))
+    reviews = dict(FlashcardReview.objects.filter(user=user, flashcard_id__in=cards).values_list("flashcard_id", "due_at"))
+    now = timezone.now()
+    return {
+        "read": SectionProgress.objects.filter(user=user, node=node, is_done=True).exists(),
+        "questions": len(questions),
+        "questions_left": sum(1 for q in questions if q.id not in answered),
+        "cards": len(cards),
+        "cards_due": sum(1 for c in cards if c in reviews and reviews[c] <= now),
+        "cards_new": sum(1 for c in cards if c not in reviews),
+    }
 
 
 @api_view(["GET"])

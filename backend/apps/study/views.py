@@ -304,6 +304,7 @@ def _snapshot(questions) -> dict:
             "explanation": q.explanation,
             "quick_solution": q.quick_solution,
             "alternative_view": q.alternative_view,
+            "fixed": q.keeps_order,
         }
         for q in questions
     }
@@ -389,13 +390,20 @@ def _exam_detail(request, attempt):
             "stem": media_urls(request, q["stem"]),
             "choices": [{"id": c["id"], "text": media_urls(request, c["text"])} for c in q["choices"]],
             "difficulty": q["difficulty"],
+            "fixed_order": bool(q.get("fixed")),
         }
         for qid, q in ordered
     ]
     if attempt.submitted_at:
         answers = {a.question_id: a for a in attempt.answers.all()}
         # Where each question is taught now, for «این نکته در جزوه» (the section may have moved since the exam).
-        nodes = dict(Question.objects.filter(pk__in=[qid for qid, _ in ordered]).values_list("pk", "node_id"))
+        current = {
+            pk: (node_id, changed, note)
+            for pk, node_id, changed, note in Question.objects.filter(pk__in=[qid for qid, _ in ordered]).values_list(
+                "pk", "node_id", "key_changed_at", "key_change_note"
+            )
+        }
+        nodes = {pk: v[0] for pk, v in current.items()}
         review = []
         for qid, q in ordered:
             answer = answers.get(qid)
@@ -411,6 +419,12 @@ def _exam_detail(request, attempt):
                     "explanation": media_urls(request, q["explanation"]),
                     "quick_solution": media_urls(request, q["quick_solution"]),
                     "alternative_view": media_urls(request, q["alternative_view"]),
+                    # The answer key was corrected after this exam began; the exam keeps the key it was taken with.
+                    "corrected": (
+                        {"at": current[qid][1], "note": current[qid][2]}
+                        if qid in current and current[qid][1] and current[qid][1] > attempt.started_at
+                        else None
+                    ),
                 }
             )
         data["review"] = review
@@ -548,8 +562,21 @@ def library(request):
             "reading": reading,
             "bookmarks": [{**_section_ref(b.node), "created_at": b.created_at} for b in bookmarks if not b.node.is_archived],
             "notes": [{**_note_payload(n), "node_title": n.node.title} for n in notes],
+            "mistakes": _notebook_counts(request),
         }
     )
+
+
+def _notebook_counts(request, book_slug=""):
+    from .mistakes import OPEN, SETTLING, _mistakes, due_items
+
+    items, _ = _mistakes(request, book_slug)
+    return {
+        "count": len(items),
+        "open": sum(1 for _, _, e in items if e["state"] == OPEN),
+        "settling": sum(1 for _, _, e in items if e["state"] == SETTLING),
+        "due": len(due_items(items)),
+    }
 
 
 def _streak(days: set) -> int:
@@ -560,6 +587,12 @@ def _streak(days: set) -> int:
         streak += 1
         day -= timedelta(days=1)
     return streak
+
+
+def _improvement(user):
+    from .mistakes import improvement
+
+    return improvement(user)
 
 
 @api_view(["GET"])
@@ -616,6 +649,7 @@ def stats(request):
             "last_14_days": last_14,
             "books": books,
             "weak_sections": [w for w in weak if w["accuracy"] < 70],
+            "improvement": _improvement(user),
         }
     )
 
