@@ -166,6 +166,10 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
 .rc-important a.jump .go { margin-right: auto; color: #B9A23A; font-weight: 800; }
 .rc-traps { border-color: #F2C7C4; background: #FFF8F7; } .rc-traps h4 { color: #9E2F2A; }
 .rc-memorize h4 { color: #6B5200; }
+.next-card { display: block; margin: 28px 0 8px; padding: 14px 16px; border-radius: 16px; background: #17201A; color: #F3F1E7; text-decoration: none; cursor: pointer; }
+.next-card small { display: block; color: #F5C518; font-weight: 800; font-size: .8em; }
+.next-card b { display: block; font-size: 1em; margin-top: 2px; }
+.next-card b::after { content: " ‹"; color: #F5C518; }
 .rc-cards { margin-top: 8px; border: 0; border-radius: 12px; padding: 8px 12px; background: #17201A; color: #F5C518; font: inherit; font-size: .85em; font-weight: 800; cursor: pointer; }
 .term { padding: 6px 0; border-bottom: 1px dashed #E3E8DE; } .term:last-child { border-bottom: 0; }
 .term-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
@@ -228,6 +232,7 @@ root.addEventListener('click', function (e) {
   if (!t) return;
   var j = t.closest('a.jump'); if (j) { e.preventDefault(); post({ type: 'jump', q: j.getAttribute('data-q') || '' }); return; }
   if (t.closest('.rc-cards')) { post({ type: 'cards' }); return; }
+  if (t.closest('.next-card')) { post({ type: 'next' }); return; }
   var g = t.closest('.gl'); if (g) { post({ type: 'term', fa: g.getAttribute('data-t') }); return; }
   var m = t.closest('mark.hl');
   if (m) post({ type: 'note', id: Number(m.getAttribute('data-note')) });
@@ -282,36 +287,31 @@ root.addEventListener('copy', function (e) {
 });
 root.addEventListener('contextmenu', function (e) { if (e.target && e.target.tagName === 'IMG') e.preventDefault(); });
 // Turning the page with a finger: a clear sideways drag (not a scroll, not a long press, not inside a wide table)
-// is handed to the app, which folds the page from the corner under the finger.
+// moves the page with the finger, right here in the page (no round trip to the app, so it stays smooth on slow
+// phones). Let go far enough, or flick, and the page slides out and the app opens the next or previous section.
+// The app says which way there is a page to go to with root.__setTurn({ next: bool, prev: bool }).
 (function () {
   if (root.__turnBound) return;
   root.__turnBound = true;
+  var can = { next: false, prev: false };
+  root.__setTurn = function (c) { can = c || can; };
   var target = window.ReactNativeWebView ? document : root;
   var t = null;
-  function box() {
-    if (!window.ReactNativeWebView) {
-      for (var e = root; e && e !== document.body; e = e.parentElement) {
-        var o = getComputedStyle(e).overflowY;
-        if (o === 'auto' || o === 'scroll') return e.getBoundingClientRect();
-      }
-    }
-    return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
-  }
   function scrollsSideways(el) {
     for (; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
       if (el.scrollWidth > el.clientWidth + 2) { var o = getComputedStyle(el).overflowX; if (o === 'auto' || o === 'scroll') return true; }
     }
     return false;
   }
-  function send(phase, x, y, extra) {
-    var m = { type: 'turn', phase: phase, x: x - t.r.left, y: y - t.r.top, w: t.r.width, h: t.r.height };
-    for (var k in extra) m[k] = extra[k];
-    post(m);
+  function place(x, ms) {
+    root.style.transition = ms ? 'transform ' + ms + 'ms cubic-bezier(.2,.7,.2,1), opacity ' + ms + 'ms' : 'none';
+    root.style.transform = x ? 'translate3d(' + x + 'px,0,0)' : '';
+    root.style.opacity = x ? String(Math.max(0.35, 1 - Math.abs(x) / (window.innerWidth * 1.4))) : '';
   }
   target.addEventListener('touchstart', function (e) {
     if (e.touches.length !== 1) { t = null; return; }
     var p = e.touches[0], sel = window.getSelection ? String(window.getSelection()) : '';
-    t = { x0: p.clientX, y0: p.clientY, at: Date.now(), on: false, off: !!sel || scrollsSideways(e.target), r: null, px: p.clientX, pt: Date.now(), vx: 0 };
+    t = { x0: p.clientX, y0: p.clientY, at: Date.now(), on: false, off: !!sel || scrollsSideways(e.target), px: p.clientX, pt: Date.now(), vx: 0, dx: 0 };
   }, { passive: true });
   target.addEventListener('touchmove', function (e) {
     if (!t || t.off) return;
@@ -319,17 +319,38 @@ root.addEventListener('contextmenu', function (e) { if (e.target && e.target.tag
     if (!t.on) {
       if (Date.now() - t.at > 450 || (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx))) { t.off = true; return; }
       if (Math.abs(dx) < 14 || Math.abs(dx) < 1.6 * Math.abs(dy)) return;
-      t.on = true; t.r = box();
+      t.on = true;
       if (window.getSelection) window.getSelection().removeAllRanges();
-      send('start', t.x0, t.y0, { dir: dx > 0 ? 1 : -1 });
     }
     e.preventDefault();
     var now = Date.now();
     if (now > t.pt) { t.vx = (p.clientX - t.px) / (now - t.pt); t.px = p.clientX; t.pt = now; }
-    send('move', p.clientX, p.clientY);
+    // Right is the next section (a Persian book turns to the right), left the previous one.
+    var open = dx > 0 ? can.next : can.prev;
+    t.dx = open ? dx : dx * 0.22;
+    place(t.dx, 0);
   }, { passive: false });
-  function end() { if (t && t.on) send('end', t.px, t.y0, { vx: t.vx }); t = null; }
+  function end() {
+    if (!t || !t.on) { t = null; return; }
+    var dx = t.dx, w = window.innerWidth, dir = dx > 0 ? 1 : -1;
+    var open = dir > 0 ? can.next : can.prev;
+    var flick = Math.abs(t.vx) > 0.3 && (t.vx > 0) === (dx > 0);
+    t = null;
+    if (open && (Math.abs(dx) > w * 0.28 || flick)) {
+      place(dir * w, 180);
+      setTimeout(function () { post({ type: 'turn', dir: dir }); }, 170);
+    } else place(0, 220);
+  }
   target.addEventListener('touchend', end);
   target.addEventListener('touchcancel', end);
+  // Coming back to this page (the app keeps it): put it in place again.
+  root.__resetTurn = function () { place(0, 0); };
 })();
 `;
+
+/** The card at the end of a section that leads on to the next one. */
+export function nextCardHtml(title?: string | null): string {
+  if (!title) return '';
+  const esc = title.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+  return `<a class="next-card" role="button"><small>بخش بعد</small><b>${esc}</b></a>`;
+}

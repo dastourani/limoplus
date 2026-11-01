@@ -512,3 +512,50 @@ class PublishTests(_Base):
         node = staff.get(f"/api/v1/nodes/{section['id']}/").json()
         self.assertIn("next_title", node)
         self.assertEqual(staff.get("/api/v1/books/test-book/").json()["access"], "staff")
+
+
+class GiftAndCheckTests(_Base):
+    def test_book_check_points_at_draft_sections_and_fixes_them(self):
+        ContentNode.objects.filter(path__startswith=self.chapter.path, depth__gt=self.chapter.depth).update(is_published=False)
+        page = self.client.get(reverse("admin:catalog_book_change", args=[self.book.pk]))
+        self.assertContains(page, "بخش پیش‌نویس است")
+        self.assertContains(page, "درست کن")
+        self.client.post(reverse("admin:catalog_book_chapter_action", args=[self.book.pk]), {"action": "publish", "chapter": self.chapter.pk, "value": "1"})
+        page = self.client.get(reverse("admin:catalog_book_change", args=[self.book.pk]))
+        self.assertNotContains(page, "بخش پیش‌نویس است")
+
+    def test_gift_gives_the_book_and_can_be_taken_back(self):
+        from rest_framework.test import APIClient
+
+        from apps.commerce.models import Entitlement
+
+        url = reverse("admin:catalog_book_gift", args=[self.book.pk])
+        self.client.post(url, {"phone": "۰۹۱۲۰۰۰۰۰۵۵", "days": "30", "note": "جایزه"})
+        gift = Entitlement.objects.get(user__phone="09120000055")
+        self.assertTrue(gift.is_gift)
+        self.assertIsNotNone(gift.ends_at)
+        api = APIClient()
+        api.force_authenticate(gift.user)
+        card = api.get("/api/v1/books/test-book/").json()
+        self.assertEqual((card["owned"], card["access"]), (True, "gift"))
+        self.assertContains(self.client.get(reverse("admin:catalog_book_change", args=[self.book.pk])), "09120000055")
+        self.client.post(url, {"action": "revoke", "gift": gift.pk})
+        gift.refresh_from_db()
+        self.assertTrue(gift.is_archived)
+        self.assertFalse(api.get("/api/v1/books/test-book/").json()["owned"])
+        self.client.post(url, {"phone": "12345"})
+        self.assertEqual(Entitlement.objects.count(), 1)
+
+    def test_staff_can_view_as_learner(self):
+        from apps.accounts.models import DeviceSession
+        from rest_framework.test import APIClient
+
+        _, token = DeviceSession.start(self.admin, "t")
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(api.get("/api/v1/books/test-book/").json()["access"], "staff")
+        self.assertTrue(api.get("/api/v1/me/").json()["is_staff"])
+        api.credentials(HTTP_AUTHORIZATION=f"Bearer {token}", HTTP_X_VIEW_AS="learner")
+        card = api.get("/api/v1/books/test-book/").json()
+        self.assertEqual((card["owned"], card["access"]), (False, None))
+        self.assertEqual((card["free_chapters"], card["all_free"]), (1, True))

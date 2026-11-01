@@ -5,7 +5,7 @@ from django.shortcuts import redirect
 from django.urls import path, reverse
 from django.utils.html import format_html
 
-from . import panel
+from . import bookpanel, panel
 from .drawing import DrawingError, clean_svg
 from .drawing import dumps as dumps_drawing
 from .filters import BookFilter, ChapterFilter, YesNoFilter
@@ -167,6 +167,10 @@ class BookAdmin(admin.ModelAdmin):
                     "flashcards": Flashcard.objects.filter(node_id__in=ids, is_archived=False).count(),
                 })
             extra["chapters"] = chapters
+            from .bookpanel import book_health, gift_context
+
+            extra["health"] = book_health(book)
+            extra.update(gift_context(book))
         return super().change_view(request, object_id, form_url, extra_context=extra)
 
     def get_urls(self):
@@ -177,6 +181,7 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/export/", site(panel.book_export), name="catalog_book_export"),
             path("orphan/<int:node_id>/archive/", site(panel.archive_orphan), name="catalog_archive_orphan"),
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
+            path("<int:book_id>/gift/", site(bookpanel.book_gift), name="catalog_book_gift"),
             path("chapter/<int:chapter_id>/", site(lambda r, chapter_id: panel.chapter_manager(self.admin_site, r, chapter_id)), name="catalog_chapter_manager"),
             path("chapter/<int:chapter_id>/api/", site(panel.chapter_api), name="catalog_chapter_api"),
             path("chapter/<int:chapter_id>/file/", site(lambda r, chapter_id: panel.chapter_file(self.admin_site, r, chapter_id)), name="catalog_chapter_file"),

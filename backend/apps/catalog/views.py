@@ -54,12 +54,27 @@ def major_books(request, slug):
     return Response(payload)
 
 
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def all_books(request):
+    """Every book, for a learner who hasn't picked a major yet. Each carries its first major (for the cover)."""
+    books = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_published=True, is_archived=False, majors__isnull=False).distinct()
+    payload = []
+    for book in books.order_by("is_coming_soon", F("position").asc(nulls_last=True), "title"):
+        major = book.majors.order_by("order", "name").first()
+        card = book_card(request, book, AccessMap(request.user, book))
+        card["major"] = {"slug": major.slug, "name": major.name, "color": major.color} if major else None
+        payload.append(card)
+    return Response(payload)
+
+
 def book_card(request, book, access) -> dict:
     """What a shelf needs to draw a book: its cover, its free part, the reader's progress and «خبرم کن»."""
     chapters = access.children(book)
     sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
     done = set(_done_ids(request.user, book)) & {s.id for s in sections}
     free_chapter = next((i for i, c in enumerate(chapters, start=1) if c.is_free), None)
+    free_chapters = len(chapters) if book.is_free else sum(1 for c in chapters if c.is_free)
     return {
         "slug": book.slug,
         "title": book.title,
@@ -75,6 +90,9 @@ def book_card(request, book, access) -> dict:
         "section_count": len(sections),
         "has_free_part": any(n.is_free for n in access.nodes.values() if access.visible(n.id)),
         "free_chapter": free_chapter,
+        # For the one label on the shelf: the whole book, n chapters, or only some sections are free.
+        "free_chapters": free_chapters,
+        "all_free": bool(chapters) and free_chapters == len(chapters),
         "owned": access.owned,
         "access": access.access,
         "progress": round(len(done) / len(sections), 3) if done and sections else None,

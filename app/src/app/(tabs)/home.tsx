@@ -1,4 +1,5 @@
-import { accessLabel } from '../../lib/access';
+import { shelfLabel } from '../../lib/access';
+import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewInstance } from 'react-native';
@@ -29,17 +30,19 @@ export default function Home() {
   const { user } = useAuth();
   const { width } = useWindowDimensions();
   const [major, setMajor] = useState<MajorRef | null>(null);
+  const asLearner = useViewAsLearner();
   const [last, setLast] = useState<LastSection | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      storage.getMajor().then((m) => (m ? setMajor(m) : router.replace('/welcome')));
+      storage.getMajor().then((m) => setMajor(m ?? null));
       storage.getLastSection().then(setLast);
     }, []),
   );
 
   const majors = useApi(() => endpoints.majors(), []);
-  const books = useApi(() => (major ? endpoints.books(major.slug) : Promise.resolve([] as BookListItem[])), [major?.slug, user?.id]);
+  // Before a major is picked, the shelf shows every book so a newcomer sees what there is.
+  const books = useApi(() => (major ? endpoints.books(major.slug) : endpoints.allBooks()), [major?.slug, user?.id, asLearner]);
   const banners = useApi(() => (major ? endpoints.banners(major.slug) : Promise.resolve([])), [major?.slug]);
   const [due, setDue] = useState(0);
   useFocusEffect(
@@ -84,7 +87,6 @@ export default function Home() {
     majors.retry();
   });
 
-  if (!major) return <Loading />;
 
   const openLink = (link: string, id: number) => {
     endpoints.bannerClick(id).catch(() => undefined);
@@ -101,7 +103,8 @@ export default function Home() {
   const pageWidth = Math.min(width, 1200);
   const columns = Math.max(2, Math.min(6, Math.floor((pageWidth - 40 + 18) / 200)));
   const coverWidth = Math.floor((pageWidth - 40 - 18 * (columns - 1)) / columns);
-  const majorRef = { name: major.name, color: major.color };
+  const majorRef = major ? { name: major.name, color: major.color } : null;
+  const coverMajor = (b: BookListItem) => majorRef ?? (b.major ? { name: b.major.name, color: b.major.color } : null);
 
   return (
     <Screen tab>
@@ -119,10 +122,16 @@ export default function Home() {
           )}
         </View>
 
+        {asLearner && (
+          <Pressable onPress={() => setViewAsLearner(false)} style={styles.asLearner} accessibilityRole="button">
+            <Text style={styles.asLearnerText}>نمایش مثل کاربر عادی روشن است؛ برای خاموش کردن بزنید</Text>
+          </Pressable>
+        )}
+
         {last && (
           <Pressable onPress={() => router.push(`/section/${last.id}`)} style={styles.continue} accessibilityRole="button" accessibilityLabel={`ادامه‌ی خواندن ${last.title}`}>
             {lastBook ? (
-              <BookCover book={lastBook} major={majorRef} width={64} />
+              <BookCover book={lastBook} major={coverMajor(lastBook)} width={64} />
             ) : (
               <View style={styles.continueLemon}>
                 <LemonSlice size={52} />
@@ -152,17 +161,18 @@ export default function Home() {
         )}
 
         <Text style={[styles.sectionTitle, rtl]}>رشته‌ات را انتخاب کن</Text>
+        {!major && <Text style={[styles.pickHint, rtl]}>رشته‌ات را بزن تا قفسه فقط کتاب‌های همان رشته را نشان دهد.</Text>}
         <ScrollView
           ref={majorsRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.majors}
-          style={styles.majorsWrap}
+          style={[styles.majorsWrap, !major && styles.majorsAsk]}
           // Right-to-left: the row starts at its right end, where the first major is.
           onContentSizeChange={() => majorsRef.current?.scrollToEnd({ animated: false })}
         >
-          {(majors.data ?? [{ slug: major.slug, name: major.name, color: major.color, is_coming_soon: false }]).map((m) => {
-            const on = m.slug === major.slug;
+          {(majors.data ?? (major ? [{ slug: major.slug, name: major.name, color: major.color, is_coming_soon: false }] : [])).map((m) => {
+            const on = m.slug === major?.slug;
             return (
               <Pressable
                 key={m.slug}
@@ -189,7 +199,7 @@ export default function Home() {
         {!!banners.data?.length && <BannerCarousel banners={banners.data} onOpen={(b) => openLink(b.link, b.id)} />}
 
         <View style={styles.shelfHead}>
-          <Text style={[styles.shelfTitle, rtl]}>کتاب‌های لیمو {major.name}</Text>
+          <Text style={[styles.shelfTitle, rtl]}>{major ? `کتاب‌های لیمو ${major.name}` : 'همه‌ی کتاب‌ها'}</Text>
           {!!list.length && <Text style={styles.muted}>{toPersianDigits(list.length)} کتاب</Text>}
         </View>
 
@@ -202,7 +212,7 @@ export default function Home() {
         ) : (
           <Animated.View style={[styles.shelf, { opacity: shelf }]}>
             {list.map((book) => {
-              const free = !book.owned && !book.is_coming_soon ? (book.free_chapter ? `فصل ${toPersianDigits(book.free_chapter)} رایگان` : book.has_free_part ? 'بخش رایگان' : '') : '';
+              const label = shelfLabel(book);
               const waiting = notify[book.slug] ?? book.notify;
               return (
                 <View key={book.slug} style={{ width: coverWidth, gap: 8 }}>
@@ -212,15 +222,11 @@ export default function Home() {
                     accessibilityLabel={`${book.title}${book.is_coming_soon ? '، به‌زودی' : ''}`}
                     style={({ pressed }) => [{ opacity: book.is_coming_soon ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
                   >
-                    <BookCover book={book} major={majorRef} width={coverWidth} />
-                    {!!free && <Text style={[styles.ribbon, styles.ribbonFree]}>{free}</Text>}
-                    {book.is_coming_soon && <Text style={[styles.ribbon, styles.ribbonSoon]}>به‌زودی</Text>}
-                    {book.owned && !book.is_coming_soon && (
-                      <View style={[styles.ribbon, styles.ribbonOwned]}>
-                        <Icon name="circle-check" size={12} color="#FFFFFF" />
-                        <Text style={styles.ribbonOwnedText}>{accessLabel(book)}</Text>
-                      </View>
-                    )}
+                    <BookCover book={book} major={coverMajor(book)} width={coverWidth} />
+                    <View style={[styles.ribbon, RIBBON[label.kind].box]}>
+                      {RIBBON[label.kind].icon && <Icon name={RIBBON[label.kind].icon!} size={12} color={RIBBON[label.kind].color} />}
+                      <Text style={[styles.ribbonText, { color: RIBBON[label.kind].color }]}>{label.text}</Text>
+                    </View>
                     {book.progress != null && (
                       <View style={styles.progressBadge}>
                         <LemonProgress parts={wedges(book.progress, book.section_count)} size={18} />
@@ -239,7 +245,7 @@ export default function Home() {
                       <Text style={styles.notifyText}>{waiting ? 'خبرت می‌کنیم' : 'خبرم کن'}</Text>
                     </Pressable>
                   ) : (
-                    <Text style={[styles.price, rtl]} numberOfLines={1}>
+                    <Text style={styles.price} numberOfLines={1}>
                       {book.owned ? 'در دسترس تو' : book.price ? `${formatToman(book.price)}، یا با اشتراک` : 'رایگان'}
                     </Text>
                   )}
@@ -261,7 +267,17 @@ export default function Home() {
   );
 }
 
+/** One look per kind of shelf label. */
+const RIBBON: Record<'soon' | 'access' | 'free' | 'locked', { box: object; color: string; icon?: 'circle-check' | 'lock' | 'gift' }> = {
+  soon: { box: { backgroundColor: '#8A938C' }, color: '#FFFFFF' },
+  access: { box: { backgroundColor: '#3FB8A9' }, color: '#FFFFFF', icon: 'circle-check' },
+  free: { box: { backgroundColor: colors.lemon }, color: colors.ink, icon: 'gift' },
+  locked: { box: { backgroundColor: colors.ink }, color: colors.ground, icon: 'lock' },
+};
+
 const styles = StyleSheet.create({
+  asLearner: { backgroundColor: '#FFF6CC', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 },
+  asLearnerText: { fontSize: 12, fontWeight: '700', color: colors.ink, textAlign: 'center' },
   page: { padding: 20, gap: 16, maxWidth: 1200, width: '100%', alignSelf: 'center' },
   top: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   hello: { fontSize: 20, fontWeight: '900', color: colors.ink },
@@ -287,7 +303,10 @@ const styles = StyleSheet.create({
   shelfHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
   shelfTitle: { fontSize: 18, fontWeight: '900', color: colors.ink },
   shelf: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 18, rowGap: 22 },
-  ribbon: { position: 'absolute', top: 12, left: -4, fontSize: 10, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6, overflow: 'hidden' },
+  ribbon: { position: 'absolute', top: 12, left: -4, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
+  ribbonText: { fontSize: 10, fontWeight: '800' },
+  pickHint: { fontSize: 13, color: colors.greenDark, marginTop: -4 },
+  majorsAsk: { borderRadius: 18, backgroundColor: '#FFF6CC' },
   ribbonFree: { backgroundColor: colors.lemon, color: colors.ink },
   ribbonSoon: { backgroundColor: colors.ink, color: colors.ground },
   ribbonOwned: { backgroundColor: '#3FB8A9', flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
@@ -297,7 +316,7 @@ const styles = StyleSheet.create({
   notify: { minHeight: 38, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6 },
   notifyOn: { backgroundColor: colors.lemonSoft, borderColor: colors.lemon },
   notifyText: { fontSize: 12, fontWeight: '700', color: colors.ink },
-  price: { fontSize: 12, color: colors.muted, minHeight: 38, textAlignVertical: 'center' },
+  price: { fontSize: 12, color: colors.muted, minHeight: 38, textAlignVertical: 'center', textAlign: 'center', writingDirection: 'rtl' },
   soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, padding: 12 },
   soonText: { color: colors.muted, fontSize: 13 },
   soonBadge: { backgroundColor: colors.lemonSoft, color: '#6B5200', fontSize: 12, fontWeight: '700', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2, overflow: 'hidden' },

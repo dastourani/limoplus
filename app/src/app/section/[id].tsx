@@ -1,11 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { ApiError } from '../../api/client';
 import { endpoints, type NodeDetail, type Note } from '../../api/endpoints';
 import { MarkdownView, type MarkdownViewHandle, type ReaderEvent } from '../../components/MarkdownView';
-import { CornerHint, FoldLayer, PaperFace, corner, useFold, type Pt } from '../../components/Fold';
 import { ReportSheet } from '../../components/ReportSheet';
 import { ReportButton } from '../../components/Tags';
 import { Text, TextInput } from '../../components/Text';
@@ -43,15 +42,13 @@ const NOTE_COLORS: [string, string][] = [
 type Locked = { title?: string; price?: number | null; slug?: string };
 
 export default function Section() {
-  const { id, cover: coverParam, turn } = useLocalSearchParams<{ id: string; cover?: string; turn?: string }>();
-  // Arriving by a page turn: the page drawn under the turning one stays until the real page is drawn.
-  const [cover, setCover] = useState<string | null>(coverParam ?? turn ?? null);
-  const coverFade = useRef(new Animated.Value(1)).current;
-  const main = useFold();
-  const over = useFold();
-  const [stage, setStage] = useState({ W: 0, H: 0 });
-  const [turnMode, setTurnMode] = useState<null | 'forward' | 'back'>(null);
-  const drag = useRef<{ dir: 1 | -1; C: Pt; x0: number; y0: number; base: Pt } | null>(null);
+  const { id, from, title: titleParam } = useLocalSearchParams<{ id: string; from?: string; title?: string }>();
+  // Arriving from the next or previous section: the page slides in from that side once it is drawn.
+  const { width: screenW } = useWindowDimensions();
+  const arriving = from === '1' || from === '-1' ? Number(from) : 0;
+  const slide = useRef(new Animated.Value(arriving ? -arriving * screenW * 0.35 : 0)).current;
+  const shown = useRef(new Animated.Value(arriving ? 0 : 1)).current;
+  const arrived = useRef(!arriving);
   const leaving = useRef(false);
   const nodeId = Number(id);
   const { user } = useAuth();
@@ -158,91 +155,56 @@ export default function Section() {
     storage.setReader(prefs);
   };
 
-  const dropCover = useCallback(() => {
-    Animated.timing(coverFade, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => setCover(null));
-  }, [coverFade]);
+  const showPage = useCallback(() => {
+    if (arrived.current) return;
+    arrived.current = true;
+    Animated.parallel([
+      Animated.timing(slide, { toValue: 0, duration: 240, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(shown, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start();
+  }, [slide, shown]);
   useEffect(() => {
-    if (!node || cover === null) return;
-    const t = setTimeout(dropCover, 1800); // in case the page never says it is ready
+    if (!node || arrived.current) return;
+    const t = setTimeout(showPage, 1500); // in case the page never says it is ready
     return () => clearTimeout(t);
-  }, [node, cover, dropCover]);
+  }, [node, showPage]);
 
-  // ---- turning to the next or previous section ----
+  // ---- going to the next or previous section: a short slide, light enough for slow phones ----
   const goTo = (dir: 1 | -1) => {
     if (!node) return;
     const target = dir > 0 ? node.next_id : node.previous_id;
     if (!target) return;
     if (dir > 0 && user && !offline && !progress.current.done) sendOrQueue(`nodes/${node.id}/progress/`, { percent: 100, done: true });
-    router.replace({ pathname: `/section/${target}`, params: { cover: (dir > 0 ? node.next_title : node.previous_title) ?? '' } });
+    router.replace({ pathname: `/section/${target}`, params: { from: String(dir), title: (dir > 0 ? node.next_title : node.previous_title) ?? '' } });
   };
-  const canTurn = (dir: 1 | -1) => !!node && (dir > 0 ? !!node.next_id : !!node.previous_id);
   const turnBy = async (dir: 1 | -1) => {
-    if (!canTurn(dir) || leaving.current || drag.current) return;
+    if (!node || leaving.current || !(dir > 0 ? node.next_id : node.previous_id)) return;
     leaving.current = true;
-    const C = corner(true, main.size.H);
     const reduce = await AccessibilityInfo.isReduceMotionEnabled().catch(() => false);
-    if (!reduce) {
-      if (dir > 0) {
-        setTurnMode('forward');
-        await main.play(true, C, 760);
-      } else {
-        over.gone(C.y);
-        setTurnMode('back');
-        await over.play(false, C, 760);
-      }
-    }
+    if (!reduce)
+      await new Promise<void>((done) =>
+        Animated.parallel([
+          // Right is the next section: a Persian book turns to the right.
+          Animated.timing(slide, { toValue: dir * screenW, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+          Animated.timing(shown, { toValue: 0.4, duration: 200, useNativeDriver: true }),
+        ]).start(() => done()),
+      );
     goTo(dir);
-  };
-  const onTurn = (e: Extract<ReaderEvent, { type: 'turn' }>) => {
-    if (leaving.current) return;
-    const { W, H } = main.size;
-    const x = (e.x * W) / (e.w || W);
-    const y = (e.y * H) / (e.h || H);
-    if (e.phase === 'start') {
-      const dir = e.dir ?? 1;
-      if (!canTurn(dir)) {
-        drag.current = null;
-        return;
-      }
-      const C = corner(y < H / 2, H);
-      drag.current = { dir, C, x0: x, y0: y, base: dir > 0 ? C : { x: 2 * W, y: C.y } };
-      setSelection('');
-      if (dir < 0) over.gone(C.y);
-      setTurnMode(dir > 0 ? 'forward' : 'back');
-      return;
-    }
-    const d = drag.current;
-    if (!d) return;
-    const fold = d.dir > 0 ? main : over;
-    if (e.phase === 'move') {
-      fold.set({ x: d.base.x + (x - d.x0) * 1.25, y: d.base.y + (y - d.y0) }, d.C);
-      return;
-    }
-    drag.current = null;
-    const P = fold.at()?.P ?? d.base;
-    const t = (P.x - d.C.x) / (2 * W);
-    const vx = e.vx ?? 0;
-    const flick = Math.abs(vx) > 0.3 ? Math.sign(vx) : 0;
-    const done = d.dir > 0 ? flick > 0 || (flick === 0 && t > 0.28) : flick < 0 || (flick === 0 && t < 0.72);
-    const over_ = { x: 2 * W, y: d.C.y };
-    if (done) {
-      leaving.current = true;
-      fold.slide(d.dir > 0 ? over_ : d.C, d.C, 320).then(() => goTo(d.dir));
-    } else
-      fold.slide(d.dir > 0 ? d.C : over_, d.C, 260).then(() => {
-        main.rest();
-        setTurnMode(null);
-      });
   };
 
   const terms = useMemo(() => parseTerms(node?.summary ?? ''), [node?.summary]);
   const termWords = useMemo(() => terms.map((t) => t.fa), [terms]);
 
   const onEvent = (e: ReaderEvent) => {
-    if (e.type === 'turn') onTurn(e);
-    else if (e.type === 'ready') {
-      if (cover !== null) dropCover();
-    } else if (e.type === 'jump') {
+    if (e.type === 'turn') {
+      // The page already slid out under the finger.
+      if (!leaving.current) {
+        leaving.current = true;
+        goTo(e.dir);
+      }
+    } else if (e.type === 'next') turnBy(1);
+    else if (e.type === 'ready') showPage();
+    else if (e.type === 'jump') {
       // From an important point in the review card to the same place in the notes.
       setMode('full');
       if (e.q) setFlashTarget((f) => ({ q: e.q, n: (f?.n ?? 0) + 1 }));
@@ -361,20 +323,15 @@ export default function Section() {
 
   const { paper, ink } = THEMES[theme];
   const dark = theme === 'dark';
-  const lines = dark ? '#2A332D' : '#E2E5DA';
-  const back = dark ? '#1E2622' : theme === 'sepia' ? '#E8DEC4' : '#EEE6D2';
 
   if (loading)
-    return cover !== null ? (
+    return arriving ? (
       <Screen background={paper}>
         <View style={styles.header}>
           <View style={styles.icon}>
             <Icon name="arrow-right" size={24} color={ink} />
           </View>
-          <Text style={[styles.title, rtl, { color: ink, flex: 1 }]} numberOfLines={1}>{cover}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <PaperFace title={cover} paper={paper} ink={ink} line={lines} />
+          <Text style={[styles.title, rtl, { color: ink, flex: 1 }]} numberOfLines={1}>{titleParam}</Text>
         </View>
       </Screen>
     ) : (
@@ -436,17 +393,8 @@ export default function Section() {
         </View>
       )}
 
-      <View
-        style={{ flex: 1, overflow: 'hidden' }}
-        onLayout={(e) => {
-          const { width, height } = e.nativeEvent.layout;
-          main.setSize(width, height);
-          over.setSize(width, height);
-          setStage({ W: width, H: height });
-        }}
-      >
-        {turnMode === 'forward' && <PaperFace title={node.next_title ?? ''} paper={paper} ink={ink} line={lines} />}
-        <FoldLayer fold={main} W={stage.W} H={stage.H} back={back} paper={paper} id="sec">
+      <View style={{ flex: 1, overflow: 'hidden' }}>
+        <Animated.View style={{ flex: 1, opacity: shown, transform: [{ translateX: slide }] }}>
         <MarkdownView
           ref={reader}
           markdown={body}
@@ -460,20 +408,11 @@ export default function Section() {
           lineHeight={lineHeight}
           highlights={highlights}
           onEvent={onEvent}
+          turn={{ next: !!node.next_id, prev: !!node.previous_id }}
+          nextTitle={node.next_title}
         />
         <Watermark text={user?.phone || 'لیمو پلاس'} dark={dark} />
-        </FoldLayer>
-        {turnMode === 'back' && (
-          <FoldLayer fold={over} W={stage.W} H={stage.H} back={back} id="prev">
-            <PaperFace title={node.previous_title ?? ''} paper={paper} ink={ink} line={lines} />
-          </FoldLayer>
-        )}
-        {!!node.next_id && turnMode === null && <CornerHint back={back} under={dark ? '#0B0E0C' : '#D6D0BF'} />}
-        {cover !== null && (
-          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: coverFade }]}>
-            <PaperFace title={cover} paper={paper} ink={ink} line={lines} />
-          </Animated.View>
-        )}
+        </Animated.View>
         <Sheet visible={!!term} onClose={() => setTerm(null)} title={term?.fa ?? ''}>
           {!!term?.en && <Text style={styles.termEn}>{term.en}</Text>}
           {!!term?.meaning && <Text style={[styles.termMean, rtl]}>{term.meaning}</Text>}
@@ -510,24 +449,22 @@ export default function Section() {
         <Pressable
           onPress={() => turnBy(-1)}
           disabled={!node.previous_id}
-          style={[styles.step2, { borderColor: dark ? '#3A463E' : colors.line }, !node.previous_id && { opacity: 0.35 }]}
+          style={[styles.arrow, { borderColor: dark ? '#3A463E' : colors.line }, !node.previous_id && { opacity: 0.3 }]}
           accessibilityRole="button"
           accessibilityLabel="بخش قبل"
         >
-          <Icon name="chevron-right" size={20} color={ink} />
-          <Text style={[styles.step2Text, { color: ink }]}>قبلی</Text>
+          <Icon name="chevron-right" size={24} color={ink} />
         </Pressable>
-        <Button label="تست‌ها" variant={dark ? 'primary' : 'outline'} onPress={() => router.push(`/quiz/${node.id}`)} style={{ flex: 1 }} />
-        <Button label="فلش‌کارت" variant={dark ? 'primary' : 'outline'} onPress={() => router.push(`/flashcards/${node.id}`)} style={{ flex: 1 }} />
+        <Button label="تست‌ها" variant={dark ? 'primary' : 'outline'} onPress={() => router.push(`/quiz/${node.id}`)} style={styles.barButton} />
+        <Button label="فلش‌کارت" variant={dark ? 'primary' : 'outline'} onPress={() => router.push(`/flashcards/${node.id}`)} style={styles.barButton} />
         <Pressable
           onPress={() => turnBy(1)}
           disabled={!node.next_id}
-          style={[styles.step2, styles.step2Next, !node.next_id && { opacity: 0.35 }]}
+          style={[styles.arrow, { borderColor: dark ? '#3A463E' : colors.line }, !node.next_id && { opacity: 0.3 }]}
           accessibilityRole="button"
           accessibilityLabel="بخش بعد"
         >
-          <Text style={[styles.step2Text, { color: colors.lemon }]}>بعدی</Text>
-          <Icon name="chevron-left" size={20} color={colors.lemon} />
+          <Icon name="chevron-left" size={24} color={ink} />
         </Pressable>
       </View>
 
@@ -639,9 +576,8 @@ const styles = StyleSheet.create({
   toggleText: { fontWeight: '700', color: colors.muted },
   toggleTextOn: { color: colors.lemon },
   bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, alignItems: 'stretch' },
-  step2: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1.5, minHeight: 48 },
-  step2Next: { backgroundColor: colors.ink, borderColor: colors.ink },
-  step2Text: { fontSize: 14, fontWeight: '800' },
+  barButton: { flex: 1, paddingHorizontal: 6 },
+  arrow: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm, borderWidth: 1.5 },
   locked: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
   lockIcon: { fontSize: 44 },
   lockTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, textAlign: 'center', writingDirection: 'rtl' },

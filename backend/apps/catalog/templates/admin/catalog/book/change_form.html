@@ -11,6 +11,23 @@
 {{ majors_json|json_script:"lp-majors" }}
 {{ drawing_json|json_script:"lp-drawing" }}
 {% if original %}
+<div class="lp chapters-box" id="check">
+  <h2>بررسی کتاب</h2>
+  {% if health %}
+    <p class="hint">این‌ها باعث می‌شوند چیزی از کتاب در اپ دیده نشود:</p>
+    <ul class="lp-health">
+    {% for h in health %}
+      <li class="{{ h.level }}"><span>{{ h.text }}</span>
+        {% if h.fix %}<form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+          <input type="hidden" name="chapter" value="{{ h.fix.chapter }}"><input type="hidden" name="action" value="publish"><input type="hidden" name="value" value="1">
+          <button class="btn small primary" type="submit">درست کن (منتشر شود)</button></form>{% endif %}
+      </li>
+    {% endfor %}
+    </ul>
+  {% else %}
+    <p class="lp-ok">✓ همه‌چیز این کتاب در اپ دیده می‌شود.</p>
+  {% endif %}
+</div>
 <div class="lp chapters-box" id="chapters">
   <h2>فصل‌های کتاب</h2>
   <p class="hint">ترتیب این فهرست، ترتیب فصل‌ها در اپ است. «رایگان» یعنی کاربر بدون خرید هم این فصل را می‌خواند.
@@ -74,6 +91,35 @@
       <a class="btn primary" href="{% url 'admin:catalog_book_import' original.pk %}">انتخاب فایل</a>
     </div>
   </div>
+</div>
+<div class="lp chapters-box" id="gifts">
+  <h2>هدیه به کاربر</h2>
+  <p class="hint">این کتاب را بدون خرید به یک نفر بدهید (مثلاً جایزه یا همکار). در اپ برچسب «هدیه» می‌بیند و در فروش حساب نمی‌شود.
+    پس گرفتن هدیه آن را بایگانی می‌کند، نه پاک.</p>
+  <form class="cm-card row" method="post" action="{% url 'admin:catalog_book_gift' original.pk %}" style="align-items:flex-end;gap:12px;flex-wrap:wrap">{% csrf_token %}
+    <div style="width:170px"><label class="f">شماره موبایل</label><input type="text" name="phone" dir="ltr" required placeholder="09121234567"></div>
+    <div style="width:130px"><label class="f">مدت</label><select name="days">{% for v, label in gift_days %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select></div>
+    <div class="grow" style="min-width:180px"><label class="f">یادداشت برای خودتان</label><input type="text" name="note" maxlength="200" placeholder="مثلاً جایزه‌ی مسابقه"></div>
+    <button class="btn primary" type="submit">هدیه بده</button>
+  </form>
+  {% if gifts %}
+  <table class="lp-table" style="margin-top:12px">
+    <thead><tr><th>کاربر</th><th>تا</th><th>یادداشت</th><th>دهنده</th><th>وضعیت</th><th></th></tr></thead>
+    <tbody>
+    {% for r in gifts %}
+      <tr{% if not r.active %} style="opacity:.55"{% endif %}>
+        <td dir="ltr" style="text-align:right">{{ r.g.user.phone }}</td>
+        <td>{% if r.g.ends_at %}{{ r.g.ends_at|date:"Y-m-d" }}{% else %}همیشگی{% endif %}</td>
+        <td>{{ r.g.note }}</td><td dir="ltr" style="text-align:right">{{ r.g.granted_by.phone }}</td>
+        <td>{% if r.g.is_archived %}پس گرفته شد{% elif r.expired %}تمام شده{% else %}فعال{% endif %}</td>
+        <td>{% if r.active %}<form class="inline" method="post" action="{% url 'admin:catalog_book_gift' original.pk %}">{% csrf_token %}
+          <input type="hidden" name="action" value="revoke"><input type="hidden" name="gift" value="{{ r.g.pk }}">
+          <button class="btn small danger" type="submit">پس گرفتن</button></form>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

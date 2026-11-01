@@ -11,6 +11,11 @@ AccessMap loads a whole book in one query, so lists of questions or sections cos
 from .models import ContentNode
 
 
+def acts_as_staff(user) -> bool:
+    """Staff, unless they asked to see the app as a learner does."""
+    return bool(user and user.is_authenticated and user.is_staff and not getattr(user, "view_as_learner", False))
+
+
 def owns_book(user, book: ContentNode) -> bool:
     """Bought the book, or has an active subscription covering it."""
     if not (user and user.is_authenticated):
@@ -24,18 +29,21 @@ def owns_book(user, book: ContentNode) -> bool:
 
 
 def access_kind(user, book: ContentNode) -> str | None:
-    """Why the user can read the whole book: "staff", "purchase", "subscription", or None."""
+    """Why the user can read the whole book: "staff", "purchase", "gift", "subscription", or None."""
     if not (user and user.is_authenticated):
         return None
-    if user.is_staff:
+    if acts_as_staff(user):
         return "staff"
     from django.db.models import Q
 
     from apps.commerce.models import Entitlement
 
     active = Entitlement.active_for(user)
-    if active.filter(book=book).exists():
+    own = active.filter(book=book)
+    if own.filter(Q(order__isnull=False) | Q(granted_by__isnull=True)).exists():
         return "purchase"
+    if own.exists():
+        return "gift"
     majors = list(book.majors.values_list("id", flat=True))
     if active.filter(Q(all_majors=True) | Q(major_id__in=majors, book__isnull=True)).exists():
         return "subscription"
@@ -44,7 +52,7 @@ def access_kind(user, book: ContentNode) -> str | None:
 
 def access_until(user, book: ContentNode):
     """When the user's paid access to the book ends: None if it never does (bought, staff) or there is none."""
-    if not (user and user.is_authenticated) or user.is_staff:
+    if not (user and user.is_authenticated) or acts_as_staff(user):
         return None
     from django.db.models import Max, Q
 

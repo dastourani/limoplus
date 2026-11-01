@@ -82,6 +82,10 @@ class Entitlement(models.Model):
     ends_at = models.DateTimeField("پایان", null=True, blank=True, help_text="خالی = همیشگی")
     order = models.OneToOneField(Order, on_delete=models.PROTECT, null=True, blank=True, related_name="entitlement", verbose_name="سفارش")
     note = models.CharField("یادداشت مدیر", max_length=200, blank=True)
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+", verbose_name="هدیه‌دهنده",
+        help_text="برای هدیه‌ی مدیر؛ خالی یعنی خرید یا دسترسی دستی قدیمی",
+    )
     is_archived = models.BooleanField("لغو شده", default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -94,6 +98,10 @@ class Entitlement(models.Model):
     def __str__(self):
         what = self.book or (self.major and f"اشتراک {self.major}") or "اشتراک همه‌ی رشته‌ها"
         return f"{self.user} — {what}"
+
+    @property
+    def is_gift(self) -> bool:
+        return self.order_id is None and self.granted_by_id is not None
 
     @classmethod
     def active_for_any(cls, now=None):

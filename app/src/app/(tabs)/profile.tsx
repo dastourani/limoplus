@@ -10,6 +10,7 @@ import { useFeedback } from '../../components/Feedback';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Card, Screen } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
+import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { ScoreTrend } from '../../components/ScoreTrend';
 import { jalaliDate } from '../../lib/jalali';
 import { play, setSoundEnabled, soundEnabled } from '../../lib/sound';
@@ -34,6 +35,7 @@ export default function Profile() {
   const [exams, setExams] = useState<ExamPage | null>(null);
   const [sound, setSound] = useState(true);
   const coverTheme = useCoverTheme();
+  const asLearner = useViewAsLearner();
   useEffect(() => {
     soundEnabled().then(setSound);
   }, []);
@@ -100,7 +102,7 @@ export default function Profile() {
 
         <View style={styles.group}>
           {user && <Row label="ویرایش نام" onPress={() => router.push('/edit-profile')} />}
-          <Row label="رشته" value={major?.name ?? '—'} onPress={() => router.push('/welcome')} />
+          <Row label="رشته" value={major?.name ?? 'انتخاب نشده'} onPress={() => router.navigate('/home')} />
           {user && <Row label="دستگاه‌های من" onPress={() => router.push('/devices')} />}
           {user && <Row label="سابقه‌ی آزمون‌ها" onPress={() => router.push('/exams')} />}
           <Row label="کتاب‌های آفلاین" onPress={() => router.push('/offline')} />
@@ -135,6 +137,15 @@ export default function Profile() {
             </View>
           </View>
           <Row label="تنظیمات سرور" onPress={() => router.push('/settings')} />
+          {user?.is_staff && (
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowLabel, rtl]}>نمایش مثل کاربر عادی</Text>
+                <Text style={[styles.rowHint, rtl]}>فقط برای مدیر: قفل‌ها، قیمت‌ها و برچسب‌ها را مثل کاربر بدون خرید ببینید. با بستن اپ خاموش می‌شود.</Text>
+              </View>
+              <Switch value={asLearner} onValueChange={setViewAsLearner} trackColor={{ true: colors.green }} accessibilityLabel="نمایش مثل کاربر عادی" />
+            </View>
+          )}
         </View>
 
         <View style={styles.soon}>
@@ -170,6 +181,7 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
+  rowHint: { fontSize: 12, color: colors.muted, marginTop: 2 },
   exams: { backgroundColor: colors.ink, borderRadius: 20, padding: 16, gap: 10 },
   examsHead: { flexDirection: 'row-reverse', alignItems: 'center' },
   examsLine: { fontSize: 13, color: '#C9D2C6' },

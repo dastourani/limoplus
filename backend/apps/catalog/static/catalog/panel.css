@@ -106,3 +106,9 @@ table.lp-table { width: 100%; border-collapse: collapse; } table.lp-table td, ta
 .chapters-box form.inline { display: inline; }
 #cm-root.busy { pointer-events: none; cursor: progress; }
 #cm-root.busy .cm-main, #cm-root.busy .cm-tree { opacity: .6; transition: opacity .2s .15s; }
+
+/* «بررسی کتاب» */
+.lp-health { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.lp-health li { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border-radius: 10px; border-right: 4px solid #E0A100; background: rgba(224,161,0,.10); }
+.lp-health li.error { border-right-color: #D9534F; background: rgba(217,83,79,.10); }
+.lp-ok { margin: 6px 0 0; padding: 10px 14px; border-radius: 10px; background: rgba(63,184,169,.12); color: #2E8F83; font-weight: 700; }

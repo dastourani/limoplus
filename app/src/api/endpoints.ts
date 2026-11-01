@@ -19,7 +19,11 @@ export type BookListItem = {
   free_chapter: number | null;
   owned: boolean;
   /** Why the whole book is open: bought, by subscription, or as a staff member. */
-  access?: 'purchase' | 'subscription' | 'staff' | null;
+  access?: 'purchase' | 'gift' | 'subscription' | 'staff' | null;
+  free_chapters?: number;
+  all_free?: boolean;
+  /** Only in the all-books list: the book's first major, for its cover. */
+  major?: { slug: string; name: string; color: string } | null;
   /** Share of sections read (0–1), once the learner has started. */
   progress: number | null;
   /** «خبرم کن» is on. */
@@ -73,7 +77,7 @@ export type AnswerResult = {
 export type Flashcard = { id: number; title: string; point: string; formula: string };
 export type Banner = { id: number; title: string; subtitle: string; image: string | null; link: string };
 
-export type User = { id: number; phone: string; email: string; first_name: string; last_name: string };
+export type User = { id: number; phone: string; email: string; first_name: string; last_name: string; is_staff?: boolean };
 export type DeviceSessionInfo = { id: number; device_name: string; platform: string; created_at: string; last_seen_at: string; is_current: boolean };
 export type VerifyResult = { token: string; session_id: number; user: User };
 export type Note = { id: number; node_id: number; mode: 'full' | 'summary'; quote: string; body: string; color: string; created_at: string; updated_at: string };
@@ -157,6 +161,7 @@ export type ReportReason = 'wrong_answer' | 'formula' | 'unclear' | 'typo' | 'ot
 export const endpoints = {
   majors: () => api<Major[]>('majors/'),
   books: (major: string) => api<BookListItem[]>(`majors/${encodeURIComponent(major)}/books/`),
+  allBooks: () => api<BookListItem[]>('books/'),
   book: (slug: string) => api<BookDetail>(`books/${encodeURIComponent(slug)}/`),
   node: (id: number) => api<NodeDetail>(`nodes/${id}/`),
   notifyBook: (slug: string, on: boolean) => api<{ notify: boolean }>(`books/${encodeURIComponent(slug)}/notify/`, { body: { on } }),

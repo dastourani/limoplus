@@ -61,7 +61,9 @@ export function Button({
     >
       <View style={styles.buttonInner}>
         {loading && <LemonSpinner size={20} />}
-        <Text style={[styles.buttonText, text, disabled && !loading && { color: colors.muted }]}>{label}</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.buttonText, text, disabled && !loading && { color: colors.muted }]}>
+          {label}
+        </Text>
       </View>
     </Pressable>
   );

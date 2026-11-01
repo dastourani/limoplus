@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 import { fontFaceCss } from '../lib/fonts';
-import { CONTENT_CSS, READER_SCRIPT, renderMarkdown, renderSummary } from '../lib/renderMarkdown';
+import { CONTENT_CSS, READER_SCRIPT, nextCardHtml, renderMarkdown, renderSummary } from '../lib/renderMarkdown';
 
 // Font files embedded in the APK by the expo-font plugin (app.json); Android WebViews can always read android_asset.
 const FONT_CSS = fontFaceCss((family) => `file:///android_asset/fonts/${family}.ttf`);
@@ -21,8 +21,10 @@ export type ReaderEvent =
   | { type: 'flash_missing' }
   /** The page is drawn (time to take away a stand-in). */
   | { type: 'ready' }
-  /** A finger turning the page: start (with the direction), moves, end (with the speed in px/ms). */
-  | { type: 'turn'; phase: 'start' | 'move' | 'end'; x: number; y: number; w: number; h: number; dir?: 1 | -1; vx?: number };
+  /** The finger turned the page: 1 to the next section, -1 to the previous one. */
+  | { type: 'turn'; dir: 1 | -1 }
+  /** The «بخش بعد» card at the end was tapped. */
+  | { type: 'next' };
 
 type Props = {
   markdown: string;
@@ -43,6 +45,10 @@ type Props = {
   /** Glossary words to underline in the notes. */
   terms?: string[];
   onEvent?: (event: ReaderEvent) => void;
+  /** Sideways finger turning: which ways there is a section to go to. */
+  turn?: { next: boolean; prev: boolean };
+  /** Title of the next section, for the card at the end. */
+  nextTitle?: string | null;
 };
 
 export type MarkdownViewHandle = { clearSelection: () => void };
@@ -78,7 +84,7 @@ const READER_BOOT = `
 
 /** Lesson text with formulas, tables and boxes. Native version: rendered in a WebView. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent },
+  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, nextTitle },
   ref,
 ) {
   const web = useRef<{ injectJavaScript: (script: string) => void } | null>(null);
@@ -88,14 +94,18 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
     () => `<!doctype html><html dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <style>${FONT_CSS}${CONTENT_CSS} body{--fs:${fontSize}px;--lh:${lineHeight}}</style></head>
-<body><div class="lesson${compact ? ' compact no-select' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}">${variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)}</div></body></html>`,
-    [markdown, compact, fontSize, dark, sepia, lineHeight, variant, hasCards],
+<body><div class="lesson${compact ? ' compact no-select' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}">${variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)}${compact ? '' : nextCardHtml(nextTitle)}</div></body></html>`,
+    [markdown, compact, fontSize, dark, sepia, lineHeight, variant, hasCards, nextTitle],
   );
 
   useEffect(() => setLoaded(false), [html]);
   useEffect(() => {
     if (!compact && loaded && highlights) web.current?.injectJavaScript(`document.querySelector('.lesson').__setHighlights(${JSON.stringify(highlights)}); true;`);
   }, [highlights, loaded, compact]);
+
+  useEffect(() => {
+    if (!compact && loaded && turn) web.current?.injectJavaScript(`document.querySelector('.lesson').__setTurn(${JSON.stringify(turn)}); true;`);
+  }, [turn?.next, turn?.prev, loaded, compact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!compact && loaded && terms?.length) web.current?.injectJavaScript(`document.querySelector('.lesson').__setTerms(${JSON.stringify(terms)}); true;`);

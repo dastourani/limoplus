@@ -17,6 +17,7 @@ api = [
     path("", include("apps.accounts.urls")),
     path("majors/", catalog.majors),
     path("majors/<slug:slug>/books/", catalog.major_books),
+    path("books/", catalog.all_books),
     path("books/<str:slug>/", catalog.book_detail),
     path("books/<str:slug>/glossary/", catalog.book_glossary),
     path("books/<str:slug>/notify/", catalog.book_notify),

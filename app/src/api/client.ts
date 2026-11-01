@@ -1,3 +1,4 @@
+import { viewAsLearner } from '../lib/viewAs';
 import { APP_BUILD, APP_PLATFORM, getApiUrl } from '../config';
 
 /** Error returned by the server, with its machine code and a Persian message for the user. */
@@ -43,6 +44,7 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  if (authToken && viewAsLearner()) headers['X-View-As'] = 'learner';
   if (APP_PLATFORM) {
     headers['X-App-Platform'] = APP_PLATFORM;
     headers['X-App-Build'] = String(APP_BUILD);

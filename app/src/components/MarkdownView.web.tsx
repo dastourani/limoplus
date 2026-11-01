@@ -3,7 +3,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'rea
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { FONT_FILES, fontFaceCss } from '../lib/fonts';
-import { CONTENT_CSS, READER_SCRIPT, renderMarkdown, renderSummary } from '../lib/renderMarkdown';
+import { CONTENT_CSS, READER_SCRIPT, nextCardHtml, renderMarkdown, renderSummary } from '../lib/renderMarkdown';
 import type { Highlight, MarkdownViewHandle, ReaderEvent } from './MarkdownView';
 
 export type { Highlight, MarkdownViewHandle, ReaderEvent } from './MarkdownView';
@@ -21,6 +21,8 @@ type Props = {
   flash?: { q: string; n: number } | null;
   terms?: string[];
   onEvent?: (e: ReaderEvent) => void;
+  turn?: { next: boolean; prev: boolean };
+  nextTitle?: string | null;
 };
 
 let cssInjected = false;
@@ -34,11 +36,14 @@ function injectCss() {
 
 /** Lesson text with formulas, tables and boxes. Web version: rendered straight into the page. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent },
+  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, nextTitle },
   ref,
 ) {
   injectCss();
-  const html = useMemo(() => (variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)), [markdown, variant, hasCards]);
+  const html = useMemo(
+    () => (variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)) + (compact ? '' : nextCardHtml(nextTitle)),
+    [markdown, variant, hasCards, compact, nextTitle],
+  );
   const root = useRef<HTMLDivElement | null>(null);
   const handler = useRef(onEvent);
   handler.current = onEvent;
@@ -54,6 +59,11 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
     const el = root.current as (HTMLDivElement & { __setHighlights?: (h: Highlight[]) => void }) | null;
     if (!compact && highlights && el?.__setHighlights) el.__setHighlights(highlights);
   }, [highlights, html, compact]);
+
+  useEffect(() => {
+    const el = root.current as (HTMLDivElement & { __setTurn?: (t: { next: boolean; prev: boolean }) => void }) | null;
+    if (!compact && turn && el?.__setTurn) el.__setTurn(turn);
+  }, [turn?.next, turn?.prev, html, compact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = root.current as (HTMLDivElement & { __setTerms?: (t: string[]) => void }) | null;
