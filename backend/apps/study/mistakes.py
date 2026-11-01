@@ -169,3 +169,121 @@ def fixed_info(user, question_id, now=None) -> dict | None:
         return None
     days = ((now or timezone.now()) - when).days
     return {"days": days}
+
+
+# --- «مطالعه‌ی امروز» and «فقط ۵ دقیقه» -------------------------------------------------------------------------------
+
+COMEBACK_DAYS = 3
+COMEBACK_CARDS = 10
+
+
+def _due_cards(request, limit=300):
+    from .models import FlashcardReview
+
+    now = timezone.now()
+    reviews = (
+        FlashcardReview.objects.filter(user=request.user, due_at__lte=now, flashcard__is_archived=False)
+        .select_related("flashcard__node")
+        .order_by("box", "due_at")
+    )
+    maps, out = {}, []
+    for r in reviews[:limit]:
+        card = r.flashcard
+        bpath = card.node.path[: ContentNode.steplen]
+        if bpath not in maps:
+            maps[bpath] = AccessMap(request.user, card.node)
+        access = maps[bpath]
+        if access.visible(card.node_id) and (card.is_free or access.readable(card.node_id)):
+            out.append(r)
+    return out
+
+
+def _away_days(user) -> int:
+    from .models import StudyDay
+
+    today = timezone.localdate()
+    last = StudyDay.objects.filter(user=user, date__lt=today).order_by("-date").values_list("date", flat=True).first()
+    return (today - last).days if last else 0
+
+
+def _continue(request):
+    from .models import SectionProgress
+
+    for p in SectionProgress.objects.filter(user=request.user, is_done=False).select_related("node", "book").order_by("-updated_at")[:20]:
+        access = AccessMap(request.user, p.node)
+        if access.readable(p.node_id):
+            return p
+    return None
+
+
+@api_view(["GET"])
+def today(request):
+    """What to do today: due cards (fewer after a break), a few mistakes, and the section in progress."""
+    away = _away_days(request.user)
+    comeback = away >= COMEBACK_DAYS
+    due = len(_due_cards(request))
+    cards = min(due, COMEBACK_CARDS) if comeback else due
+    mistakes = len(_mistakes(request)[0])
+    practise = min(mistakes, 5)
+    cont = _continue(request)
+    minutes = round(cards * 0.4 + practise * 1.5 + (8 if cont else 0))
+    return Response(
+        {
+            "away_days": away,
+            "comeback": comeback,
+            "cards": cards,
+            "cards_total": due,
+            "mistakes": mistakes,
+            "practise": practise,
+            "continue": {"id": cont.node_id, "title": cont.node.title, "book_title": cont.book.title, "book_slug": cont.book.slug} if cont else None,
+            "minutes": max(minutes, 5) if (cards or practise or cont) else 0,
+        }
+    )
+
+
+@api_view(["GET"])
+def quick(request):
+    """«فقط ۵ دقیقه»: up to five due cards and three questions (mistakes first, then unanswered ones of the section in progress)."""
+    from apps.learning.models import Flashcard
+
+    from .views import _grade_hints
+
+    cards = [
+        {"id": r.flashcard.id, "title": r.flashcard.title, "point": media_urls(request, r.flashcard.point), "formula": r.flashcard.formula,
+         "box": r.box, "hints": _grade_hints(r.box)}
+        for r in _due_cards(request, limit=60)[:5]
+    ]
+    if not cards:
+        cont = _continue(request)
+        if cont:
+            fresh = Flashcard.objects.filter(node=cont.node, is_archived=False).exclude(reviews__user=request.user).order_by("order", "id")[:3]
+            cards = [{"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula, "box": 0, "hints": _grade_hints(1)} for f in fresh]
+    picked = [q for q, _, _ in _mistakes(request)[0][:3]]
+    if len(picked) < 3:
+        cont = _continue(request)
+        if cont:
+            answered = set(QuizAnswer.objects.filter(user=request.user, is_archived=False).values_list("question_id", flat=True))
+            access = AccessMap(request.user, cont.node)
+            for q in Question.objects.filter(node=cont.node, is_archived=False).order_by("order", "id"):
+                if len(picked) >= 3:
+                    break
+                if q.id not in answered and q not in picked and access.visible(q.node_id) and (q.is_free or access.readable(q.node_id)):
+                    picked.append(q)
+    qs = {q.id: q for q in Question.objects.filter(pk__in=[q.id for q in picked]).prefetch_related("choices", "questionsource_set__source")}
+    return Response({"cards": cards, "questions": [_practice_payload(request, qs[q.id]) for q in picked]})
+
+
+def _practice_payload(request, q):
+    return {
+        "id": q.id,
+        "node_id": q.node_id,
+        "stem": media_urls(request, q.stem),
+        "choices": [{"id": c.id, "text": media_urls(request, c.text)} for c in q.choices.all()],
+        "difficulty": q.difficulty,
+        "measured_difficulty": q.measured_difficulty,
+        "domain": q.domain,
+        "kind": q.kind,
+        "estimated_seconds": q.estimated_seconds,
+        "is_original": q.is_original,
+        "sources": [{"name": s.source.name, "year": s.source.year, "number": s.number} for s in q.questionsource_set.all()],
+    }

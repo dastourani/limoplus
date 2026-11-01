@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { endpoints } from '../api/endpoints';
 import { FlashcardDeck } from '../components/FlashcardDeck';
 import { Empty, ErrorState, Header, Loading, Screen } from '../components/ui';
@@ -5,7 +6,10 @@ import { useApi } from '../lib/useApi';
 
 /** «مرور امروز»: every card due for review today, from all books, in one session. */
 export default function Review() {
-  const { data, error, loading, retry } = useApi(() => endpoints.dueFlashcards());
+  // After a few days away the home card asks for only the most important ones (lowest boxes first).
+  const { limit } = useLocalSearchParams<{ limit?: string }>();
+  const { data: all, error, loading, retry } = useApi(() => endpoints.dueFlashcards());
+  const data = all && limit ? { ...all, flashcards: all.flashcards.slice(0, Number(limit)) } : all;
   if (loading) return <Screen><Header title="مرور امروز" /><Loading /></Screen>;
   if (error) return <Screen><Header title="مرور امروز" /><ErrorState message={error.message} onRetry={retry} /></Screen>;
   if (!data!.flashcards.length) {

@@ -249,3 +249,27 @@ class StudyTests(TestCase):
         items = self.client.get("/api/v1/me/mistakes/").data["items"]
         self.assertEqual(len(items), 2)
         self.assertTrue(all(i["blank"] for i in items))
+
+    def test_today_and_quick_session(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        empty = self.client.get("/api/v1/me/today/").data
+        self.assertEqual((empty["cards"], empty["mistakes"], empty["minutes"]), (0, 0, 0))
+        self.client.post(f"/api/v1/nodes/{self.section.id}/progress/", {"percent": 30}, format="json")
+        q = Question.objects.filter(node=self.section, is_archived=False).first()
+        self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.filter(is_correct=False).first().id}, format="json")
+        card = Flashcard.objects.filter(node=self.section).first()
+        self.client.post(f"/api/v1/flashcards/{card.id}/review/", {"grade": "again"}, format="json")
+        StudyDay.objects.filter(user=self.user).update(date=timezone.localdate() - timedelta(days=5))
+        data = self.client.get("/api/v1/me/today/").data
+        self.assertEqual((data["cards"], data["mistakes"], data["practise"]), (1, 1, 1))
+        self.assertEqual(data["continue"]["id"], self.section.id)
+        self.assertTrue(data["comeback"])
+        self.assertGreaterEqual(data["minutes"], 5)
+        quick = self.client.get("/api/v1/me/quick/").data
+        self.assertEqual([c["id"] for c in quick["cards"]], [card.id])
+        self.assertEqual(quick["questions"][0]["id"], q.id)
+        self.assertLessEqual(len(quick["questions"]), 3)
+        self.assertNotIn("is_correct", str(quick["questions"]))

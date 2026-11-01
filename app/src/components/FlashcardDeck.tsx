@@ -55,6 +55,7 @@ export function FlashcardDeck({
   masteredBox = 4,
   reported: initialReported = [],
   puzzle = true,
+  next,
 }: {
   title: string;
   cards: Flashcard[];
@@ -63,6 +64,8 @@ export function FlashcardDeck({
   masteredBox?: number;
   reported?: number[];
   puzzle?: boolean;
+  /** What comes after the last card (e.g. the questions of «فقط ۵ دقیقه»). */
+  next?: { label: string; onPress: () => void };
 }) {
   const { user } = useAuth();
   const celebrate = useCelebrate();
@@ -183,6 +186,7 @@ export function FlashcardDeck({
           {!user && (
             <Button label="ورود برای ذخیره‌ی مرورها" onPress={() => requireLogin(user, 'تا مرورها ذخیره شود و کارت‌ها سر وقتش برگردند، وارد شوید.')} style={{ alignSelf: 'stretch' }} />
           )}
+          {next && <Button label={next.label} onPress={next.onPress} style={{ alignSelf: 'stretch' }} />}
           <Button label="بازگشت" variant="outline" onPress={() => router.back()} style={{ alignSelf: 'stretch' }} />
         </View>
       </Screen>

@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewInstance } from 'react-native';
 
-import { endpoints, type Library, type BookListItem, type Major } from '../../api/endpoints';
+import { endpoints, type Library, type Today, type BookListItem, type Major } from '../../api/endpoints';
 import { BannerCarousel } from '../../components/BannerCarousel';
 import { BookCover } from '../../components/BookCover';
 import { Icon, IconBadge } from '../../components/Icon';
@@ -54,10 +54,16 @@ export default function Home() {
   const books = useApi(() => (major ? endpoints.books(major.slug) : endpoints.allBooks()), [major?.slug, user?.id, asLearner]);
   const banners = useApi(() => (major ? endpoints.banners(major.slug) : Promise.resolve([])), [major?.slug]);
   const [due, setDue] = useState(0);
+  const [today, setToday] = useState<Today | null>(null);
   useFocusEffect(
     useCallback(() => {
-      if (user) endpoints.dueFlashcards().then((d) => setDue(d.count)).catch(() => undefined);
-      else setDue(0);
+      if (user) {
+        endpoints.dueFlashcards().then((d) => setDue(d.count)).catch(() => undefined);
+        endpoints.today().then(setToday).catch(() => setToday(null));
+      } else {
+        setDue(0);
+        setToday(null);
+      }
     }, [user]),
   );
   // Back from a book or a payment: progress and ownership may have changed.
@@ -223,7 +229,40 @@ export default function Home() {
           </View>
         )}
 
-        {due > 0 && (
+        {today && today.minutes > 0 ? (
+          <View style={styles.today}>
+            <View style={styles.todayHead}>
+              <Text style={[styles.todayTitle, rtl]}>مطالعه‌ی امروز</Text>
+              <Text style={styles.todayMinutes}>حدود {toPersianDigits(today.minutes)} دقیقه</Text>
+            </View>
+            {today.comeback && (
+              <Text style={[styles.todayNote, rtl]}>
+                خوش برگشتی! {toPersianDigits(today.away_days)} روز نبودی؛ یک شروع کوتاه برایت چیدیم، نه همه‌ی کارهای عقب‌افتاده.
+              </Text>
+            )}
+            {today.cards > 0 && (
+              <TodayRow
+                icon="layers"
+                text={today.comeback && today.cards_total > today.cards ? `${toPersianDigits(today.cards)} کارت مهم‌تر برای مرور` : `مرور ${toPersianDigits(today.cards)} فلش‌کارت`}
+                onPress={() => router.push(today.comeback ? { pathname: '/review', params: { limit: String(today.cards) } } : '/review')}
+              />
+            )}
+            {today.practise > 0 && (
+              <TodayRow icon="notebook-pen" text={`تمرین ${toPersianDigits(today.practise)} تست از اشتباه‌هایت`} onPress={() => router.push('/quiz/mistakes')} />
+            )}
+            {today.continue && (
+              <TodayRow
+                icon="book-open"
+                text={`ادامه‌ی «${today.continue.title}»`}
+                onPress={() => router.push({ pathname: '/section/[id]', params: { id: String(today.continue!.id), resume: '1' } })}
+              />
+            )}
+            <Pressable onPress={() => router.push('/quick')} style={styles.quick} accessibilityRole="button">
+              <Icon name="timer" size={18} color={colors.ink} />
+              <Text style={styles.quickText}>فقط ۵ دقیقه وقت دارم</Text>
+            </Pressable>
+          </View>
+        ) : due > 0 && (
           <Pressable onPress={() => router.push('/review')} style={styles.review} accessibilityRole="button">
             <IconBadge name="layers" size={44} />
             <View style={{ flex: 1 }}>
@@ -350,7 +389,26 @@ const RIBBON: Record<'soon' | 'access' | 'free' | 'locked', { box: object; color
   locked: { box: { backgroundColor: colors.ink }, color: colors.ground, icon: 'lock' },
 };
 
+function TodayRow({ icon, text, onPress }: { icon: 'layers' | 'notebook-pen' | 'book-open'; text: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={styles.todayRow} accessibilityRole="button">
+      <Icon name={icon} size={18} color={colors.lemon} />
+      <Text style={[styles.todayRowText, rtl]} numberOfLines={1}>{text}</Text>
+      <Icon name="chevron-left" size={18} color="#8FA095" />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  today: { backgroundColor: colors.ink, borderRadius: 22, padding: 16, gap: 10 },
+  todayHead: { flexDirection: 'row-reverse', alignItems: 'baseline', justifyContent: 'space-between' },
+  todayTitle: { fontSize: 17, fontWeight: '900', color: '#FFFFFF' },
+  todayMinutes: { fontSize: 13, fontWeight: '700', color: colors.lemon },
+  todayNote: { fontSize: 13, color: '#C9D2C6', lineHeight: 22 },
+  todayRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#2B3830' },
+  todayRowText: { flex: 1, fontSize: 14, fontWeight: '700', color: '#EDEFE6' },
+  quick: { marginTop: 4, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.lemon, borderRadius: 14, paddingVertical: 11 },
+  quickText: { fontSize: 14, fontWeight: '800', color: colors.ink },
   readingHead: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   readingTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
   readingAll: { fontSize: 13, fontWeight: '700', color: colors.greenDark },

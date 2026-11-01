@@ -47,6 +47,8 @@ api = [
     path("exams/<int:attempt_id>/submit/", study.submit_exam),
     path("me/exams/", study.my_exams),
     path("me/mistakes/", mistakes.my_mistakes),
+    path("me/today/", mistakes.today),
+    path("me/quick/", mistakes.quick),
     path("me/mistakes/questions/", mistakes.mistake_questions),
     path("me/mistakes/<int:question_id>/reason/", mistakes.mistake_reason),
     path("me/flashcards/due/", study.due_flashcards),

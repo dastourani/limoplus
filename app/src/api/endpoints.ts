@@ -94,6 +94,17 @@ export type MistakeItem = {
   last_at: string;
   reason: string;
 };
+export type Today = {
+  away_days: number;
+  /** Back after a few days away: a short start instead of everything that piled up. */
+  comeback: boolean;
+  cards: number;
+  cards_total: number;
+  mistakes: number;
+  practise: number;
+  continue: { id: number; title: string; book_title: string; book_slug: string } | null;
+  minutes: number;
+};
 export type Mistakes = { count: number; items: MistakeItem[]; books: { slug: string; title: string }[]; reasons: { key: string; label: string }[] };
 export type Flashcard = { id: number; title: string; point: string; formula: string };
 export type Banner = { id: number; title: string; subtitle: string; image: string | null; link: string };
@@ -189,6 +200,8 @@ export const endpoints = {
   notifyBook: (slug: string, on: boolean) => api<{ notify: boolean; can_cancel: boolean }>(`books/${encodeURIComponent(slug)}/notify/`, { body: { on } }),
   glossary: (slug: string) => api<{ book: string; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(`books/${encodeURIComponent(slug)}/glossary/`),
   questions: (nodeId: number) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/`),
+  today: () => api<Today>('me/today/'),
+  quick: () => api<{ cards: (Flashcard & { box: number; hints: GradeHints })[]; questions: Question[] }>('me/quick/'),
   mistakes: (book = '') => api<Mistakes>(`me/mistakes/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
   mistakeQuestions: (book = '') => api<{ questions: Question[]; locked_count: number }>(`me/mistakes/questions/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
   mistakeReason: (questionId: number, reason: string) => api<{ reason: string }>(`me/mistakes/${questionId}/reason/`, { body: { reason } }),

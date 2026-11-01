@@ -33,8 +33,15 @@ export default function Quiz() {
   const { nodeId, book: bookParam } = useLocalSearchParams<{ nodeId: string; book?: string }>();
   // /quiz/mistakes: the questions of the mistakes notebook (optionally one book), practised like a section's.
   const notebook = nodeId === 'mistakes';
+  // /quiz/quick: the three questions of «فقط ۵ دقیقه».
+  const quick = nodeId === 'quick';
   const { data, error, loading, retry } = useApi(
-    () => (notebook ? endpoints.mistakeQuestions(bookParam ?? '') : endpoints.questions(Number(nodeId))),
+    () =>
+      quick
+        ? endpoints.quick().then((r) => ({ questions: r.questions, locked_count: 0 }))
+        : notebook
+          ? endpoints.mistakeQuestions(bookParam ?? '')
+          : endpoints.questions(Number(nodeId)),
     [nodeId, bookParam],
   );
   const { user } = useAuth();
@@ -74,7 +81,7 @@ export default function Quiz() {
 
   // Signed-in learners continue at the first question they have not answered yet.
   useEffect(() => {
-    if (!user || !data || !order || notebook) return;
+    if (!user || !data || !order || notebook || quick) return;
     endpoints
       .practiceState(Number(nodeId))
       .then((s) => {
@@ -107,7 +114,7 @@ export default function Quiz() {
         <Header title="تست" />
         <ErrorState
           icon={data!.locked_count ? 'lock' : 'clipboard-list'}
-          message={notebook ? 'دفترچه‌ی اشتباهات خالی است؛ آفرین!' : data!.locked_count ? 'تست‌های این بخش در نسخه‌ی کامل کتاب است.' : 'برای این بخش هنوز تستی نیست.'}
+          message={quick ? 'فعلاً تستی برای این چند دقیقه نیست؛ یک بخش را شروع کن.' : notebook ? 'دفترچه‌ی اشتباهات خالی است؛ آفرین!' : data!.locked_count ? 'تست‌های این بخش در نسخه‌ی کامل کتاب است.' : 'برای این بخش هنوز تستی نیست.'}
         />
       </Screen>
     );
@@ -203,7 +210,7 @@ export default function Quiz() {
       icon: 'rotate-ccw',
     });
     if (!ok) return;
-    if (user && !notebook) await endpoints.practiceReset(Number(nodeId)).catch(() => undefined);
+    if (user && !notebook && !quick) await endpoints.practiceReset(Number(nodeId)).catch(() => undefined);
     setAnswers({});
     setServerAnswered({});
     setShowSummary(false);
@@ -232,7 +239,9 @@ export default function Quiz() {
               style={{ alignSelf: 'stretch' }}
             />
           )}
-          {notebook ? (
+          {quick ? (
+            <Button label="کافی است برای امروز" variant="dark" onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
+          ) : notebook ? (
             <Button label="دفترچه‌ی اشتباهات" variant="dark" onPress={() => router.replace('/mistakes')} style={{ alignSelf: 'stretch' }} />
           ) : (
             <Button label="آزمون زمان‌دار با نمره‌ی منفی" variant="dark" onPress={() => router.replace(`/exam/${nodeId}`)} style={{ alignSelf: 'stretch' }} />
