@@ -96,16 +96,17 @@ def book_card(request, book, access) -> dict:
         "owned": access.owned,
         "access": access.access,
         "progress": round(len(done) / len(sections), 3) if done and sections else None,
-        "notify": _notify(request.user, book),
+        **_notify(request.user, book),
     }
 
 
-def _notify(user, book) -> bool:
+def _notify(user, book) -> dict:
     if not user.is_authenticated:
-        return False
+        return {"notify": False, "notify_can_cancel": False}
     from .models import BookWaitlist
 
-    return BookWaitlist.objects.filter(user=user, book=book, is_active=True).exists()
+    wait = BookWaitlist.objects.filter(user=user, book=book).first()
+    return {"notify": bool(wait and wait.is_active), "notify_can_cancel": bool(wait and wait.can_cancel)}
 
 
 def _done_ids(user, book):
@@ -259,6 +260,10 @@ def book_notify(request, slug):
     on = bool(request.data.get("on", True))
     wait, created = BookWaitlist.objects.get_or_create(user=request.user, book=book, defaults={"is_active": on})
     if not created and wait.is_active != on:
+        if not on and not wait.can_cancel:
+            return Response({"notify": True, "can_cancel": False})  # cancelled once already: it stays on
         wait.is_active = on
-        wait.save(update_fields=["is_active", "updated_at"])
-    return Response({"notify": on})
+        if not on:
+            wait.cancel_count += 1
+        wait.save(update_fields=["is_active", "cancel_count", "updated_at"])
+    return Response({"notify": wait.is_active, "can_cancel": wait.can_cancel})

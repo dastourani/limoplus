@@ -28,6 +28,8 @@ export type BookListItem = {
   progress: number | null;
   /** «خبرم کن» is on. */
   notify: boolean;
+  /** «خبرم کن» can be cancelled once; after asking again it stays on. */
+  notify_can_cancel?: boolean;
 };
 export type NodeSummary = {
   id: number;
@@ -164,7 +166,7 @@ export const endpoints = {
   allBooks: () => api<BookListItem[]>('books/'),
   book: (slug: string) => api<BookDetail>(`books/${encodeURIComponent(slug)}/`),
   node: (id: number) => api<NodeDetail>(`nodes/${id}/`),
-  notifyBook: (slug: string, on: boolean) => api<{ notify: boolean }>(`books/${encodeURIComponent(slug)}/notify/`, { body: { on } }),
+  notifyBook: (slug: string, on: boolean) => api<{ notify: boolean; can_cancel: boolean }>(`books/${encodeURIComponent(slug)}/notify/`, { body: { on } }),
   glossary: (slug: string) => api<{ book: string; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(`books/${encodeURIComponent(slug)}/glossary/`),
   questions: (nodeId: number) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/`),
   answer: (questionId: number, choiceId: number) => api<AnswerResult>(`questions/${questionId}/answer/`, { body: { choice_id: choiceId } }),

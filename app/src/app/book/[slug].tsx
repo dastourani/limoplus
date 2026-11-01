@@ -36,7 +36,7 @@ export default function Book() {
   const { confirm } = useFeedback();
   const { width } = useWindowDimensions();
   const [major, setMajor] = useState<{ name: string; color: string } | null>(null);
-  const [notify, setNotify] = useState<boolean | null>(null);
+  const [notify, setNotify] = useState<{ on: boolean; canCancel: boolean } | null>(null);
   const [aboutOpen, setAboutOpen] = useState(true);
   useEffect(() => {
     storage.getMajor().then((m) => m && setMajor({ name: m.name, color: m.color }));
@@ -113,12 +113,17 @@ export default function Book() {
     if (target) router.push(`/section/${target}`);
   };
   const fullAccess = book.owned || !book.price;
-  const waiting = notify ?? book.notify;
+  const now = notify ?? { on: book.notify, canCancel: !!book.notify_can_cancel };
+  const waiting = now.on;
   const toggleNotify = async () => {
     if (!requireLogin(user, 'برای «خبرم کن» وارد شوید تا وقتی کتاب آماده شد خبرتان کنیم.')) return;
-    const on = !waiting;
-    setNotify(on);
-    endpoints.notifyBook(book.slug, on).catch(() => setNotify(!on));
+    if (now.on && !now.canCancel) return; // asked again after a cancel: stays on
+    const on = !now.on;
+    setNotify({ on, canCancel: on });
+    endpoints
+      .notifyBook(book.slug, on)
+      .then((r) => setNotify({ on: r.notify, canCancel: r.can_cancel }))
+      .catch(() => setNotify(now));
   };
 
   return (
@@ -167,7 +172,12 @@ export default function Book() {
                 <IconBadge name="bell" size={30} />
                 <Text style={[styles.ctaTitle, rtl, { flex: 1 }]}>این کتاب به‌زودی منتشر می‌شود</Text>
               </View>
-              <Button label={waiting ? 'خبرت می‌کنیم (لغو)' : 'خبرم کن'} variant={waiting ? 'outline' : 'dark'} onPress={toggleNotify} />
+              <Button
+                label={waiting ? (now.canCancel ? 'خبرت می‌کنیم (لغو)' : 'خبرت می‌کنیم ✓') : 'خبرم کن'}
+                variant={waiting ? 'outline' : 'dark'}
+                disabled={waiting && !now.canCancel}
+                onPress={toggleNotify}
+              />
             </View>
           ) : fullAccess ? (
             <View style={[styles.cta, styles.ctaRow]}>

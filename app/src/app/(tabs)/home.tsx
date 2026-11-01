@@ -73,12 +73,18 @@ export default function Home() {
     if (!books.loading) Animated.timing(shelf, { toValue: 1, duration: 260, useNativeDriver: true }).start();
   }, [books.loading, shelf]);
 
-  const [notify, setNotify] = useState<Record<string, boolean>>({});
+  const [notify, setNotify] = useState<Record<string, { on: boolean; canCancel: boolean }>>({});
+  const notifyState = (book: BookListItem) => notify[book.slug] ?? { on: book.notify, canCancel: !!book.notify_can_cancel };
   const toggleNotify = async (book: BookListItem) => {
     if (!requireLogin(user, 'برای «خبرم کن» وارد شوید تا وقتی کتاب آماده شد خبرتان کنیم.')) return;
-    const on = !(notify[book.slug] ?? book.notify);
-    setNotify((n) => ({ ...n, [book.slug]: on }));
-    endpoints.notifyBook(book.slug, on).catch(() => setNotify((n) => ({ ...n, [book.slug]: !on })));
+    const now = notifyState(book);
+    if (now.on && !now.canCancel) return; // asked again after a cancel: stays on
+    const on = !now.on;
+    setNotify((n) => ({ ...n, [book.slug]: { on, canCancel: on } })); // the server's answer settles it
+    endpoints
+      .notifyBook(book.slug, on)
+      .then((r) => setNotify((n) => ({ ...n, [book.slug]: { on: r.notify, canCancel: r.can_cancel } })))
+      .catch(() => setNotify((n) => ({ ...n, [book.slug]: now })));
   };
 
   const refresh = usePullRefresh(books.loading, () => {
@@ -213,7 +219,7 @@ export default function Home() {
           <Animated.View style={[styles.shelf, { opacity: shelf }]}>
             {list.map((book) => {
               const label = shelfLabel(book);
-              const waiting = notify[book.slug] ?? book.notify;
+              const { on: waiting, canCancel } = notifyState(book);
               return (
                 <View key={book.slug} style={{ width: coverWidth, gap: 8 }}>
                   <Pressable
@@ -237,12 +243,13 @@ export default function Home() {
                   {book.is_coming_soon ? (
                     <Pressable
                       onPress={() => toggleNotify(book)}
+                      disabled={waiting && !canCancel}
                       style={[styles.notify, waiting && styles.notifyOn]}
                       accessibilityRole="button"
                       accessibilityState={{ selected: waiting }}
                     >
                       <Icon name={waiting ? 'bell-ring' : 'bell'} size={15} color={waiting ? colors.ink : colors.ink} />
-                      <Text style={styles.notifyText}>{waiting ? 'خبرت می‌کنیم' : 'خبرم کن'}</Text>
+                      <Text style={styles.notifyText}>{waiting ? (canCancel ? 'خبرت می‌کنیم' : 'خبرت می‌کنیم ✓') : 'خبرم کن'}</Text>
                     </Pressable>
                   ) : (
                     <Text style={styles.price} numberOfLines={1}>

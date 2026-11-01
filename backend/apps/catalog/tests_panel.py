@@ -404,10 +404,15 @@ class ShelfTests(_Base):
         self.assertEqual(api.post("/api/v1/books/test-book/notify/", {"on": True}, format="json").status_code, 401)
         learner = User.objects.create_user("09120000009")
         api.force_authenticate(learner)
-        self.assertEqual(api.post("/api/v1/books/test-book/notify/", {"on": True}, format="json").json(), {"notify": True})
+        self.assertEqual(api.post("/api/v1/books/test-book/notify/", {"on": True}, format="json").json(), {"notify": True, "can_cancel": True})
         self.assertTrue(api.get("/api/v1/majors/economics/books/").json()[0]["notify"])
         api.post("/api/v1/books/test-book/notify/", {"on": False}, format="json")
         self.assertFalse(api.get("/api/v1/majors/economics/books/").json()[0]["notify"])
+        # Asking again after one cancel: it stays on for good.
+        self.assertEqual(api.post("/api/v1/books/test-book/notify/", {"on": True}, format="json").json(), {"notify": True, "can_cancel": False})
+        self.assertEqual(api.post("/api/v1/books/test-book/notify/", {"on": False}, format="json").json()["notify"], True)
+        card = api.get("/api/v1/majors/economics/books/").json()[0]
+        self.assertEqual((card["notify"], card["notify_can_cancel"]), (True, False))
         page = self.client.get(reverse("admin:catalog_book_changelist"))
         self.assertContains(page, 'class="lp-cover"')
 

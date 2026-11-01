@@ -141,8 +141,14 @@ class BookWaitlist(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="book_waits", verbose_name="کاربر")
     book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="waitlist", verbose_name="کتاب")
     is_active = models.BooleanField("فعال", default=True)
+    # One change of mind is allowed: after cancelling once and asking again, the request stays on.
+    cancel_count = models.PositiveSmallIntegerField("دفعات لغو", default=0)
     created_at = models.DateTimeField("زمان", auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def can_cancel(self) -> bool:
+        return self.is_active and self.cancel_count == 0
 
     class Meta:
         verbose_name = "درخواست «خبرم کن»"
