@@ -3,6 +3,13 @@
 from django.db import migrations, models
 
 
+def refuse_if_used(apps, schema_editor):
+    """Going back would drop the questions exams were taken with: refuse while any exam has them."""
+    ExamAttempt = apps.get_model("study", "ExamAttempt")
+    if ExamAttempt.objects.exclude(snapshot={}).exists():
+        raise RuntimeError("Exams already keep their questions; rolling back would lose them.")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -20,4 +27,6 @@ class Migration(migrations.Migration):
             name="last_op",
             field=models.CharField(blank=True, max_length=40),
         ),
+        # Last, so that going back checks before anything is dropped.
+        migrations.RunPython(migrations.RunPython.noop, refuse_if_used),
     ]

@@ -152,6 +152,13 @@ class StudyTests(TestCase):
         stem = next(x for x in res["questions"] if x["id"] == q.id)
         self.assertNotIn("(ویرایش)", str(stem["choices"]))
 
+    def test_open_exam_never_sends_answers(self):
+        r = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 2}, format="json")
+        for payload in (r.data, self.client.get(f"/api/v1/exams/{r.data['id']}/").data):
+            text = str(payload)
+            for key in ("'ok'", "is_correct", "explanation", "review", "snapshot"):
+                self.assertNotIn(key, text)
+
     def test_measured_difficulty_counts_first_answers_only(self):
         q = Question.objects.filter(node=self.section, is_archived=False).first()
         wrong = q.choices.filter(is_correct=False).first()

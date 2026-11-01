@@ -146,6 +146,20 @@ class ImportTests(TestCase):
         import_file("c.md", GOOD.encode(), publish=True)
         self.assertFalse(ContentNode.objects.get(id=section_two).is_archived)
 
+    def test_choices_keep_their_ids_when_reordered_and_new_text_is_a_new_choice(self):
+        import_file("c.md", GOOD.encode(), publish=True)
+        ids = {c.text: c.id for c in Question.objects.get(slug="q1").choices.all()}
+        moved = GOOD.replace("- [ ] سه\n- [x] چهار\n- [ ] پنج", "- [x] چهار\n- [ ] پنج\n- [ ] شش")
+        self.assertNotEqual(moved, GOOD)
+        chapter, _ = import_file("c.md", moved.encode(), publish=True)
+        self.assertEqual(chapter.errors, [])
+        now = list(Question.objects.get(slug="q1").choices.order_by("order"))
+        self.assertEqual([c.text for c in now], ["چهار", "پنج", "شش"])
+        self.assertEqual(now[0].id, ids["چهار"])
+        self.assertTrue(now[0].is_correct)
+        self.assertEqual(now[1].id, ids["پنج"])
+        self.assertNotIn(now[2].id, ids.values())
+
     def test_zip_images_are_stored_and_rewritten(self):
         text = GOOD.replace("متن دوم.", "![نمودار](images/g.svg)")
         chapter, result = import_file("c.zip", self._zip(text, {"images/g.svg": b"<svg/>"}), publish=True)

@@ -15,7 +15,7 @@ import { colors } from '../theme';
 
 const OUTBOX = 'limo.outbox';
 /** A queued request, with the account it belongs to: it is only ever sent for that account. */
-type Job = { path: string; body: unknown; at: number; owner?: number };
+type Job = { id: string; path: string; body: unknown; at: number; owner?: number };
 const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 
 let owner: number | null = null;
@@ -36,6 +36,17 @@ async function readOutbox(): Promise<Job[]> {
   }
 }
 
+// Every change to the stored outbox goes through this one chain, so a flush and a new job never overwrite each other.
+let chain: Promise<unknown> = Promise.resolve();
+function update(change: (jobs: Job[]) => Job[]): Promise<void> {
+  const next = chain.then(async () => {
+    const jobs = await readOutbox();
+    await AsyncStorage.setItem(OUTBOX, JSON.stringify(change(jobs).slice(-500))).catch(() => undefined);
+  });
+  chain = next.catch(() => undefined);
+  return next;
+}
+
 /** POST that is retried later if there is no connection. Use only for requests that are safe to send late. */
 export async function sendOrQueue(path: string, body: unknown): Promise<void> {
   if (owner == null) return;
@@ -44,39 +55,44 @@ export async function sendOrQueue(path: string, body: unknown): Promise<void> {
     await api(path, { body });
   } catch (e) {
     if (e instanceof ApiError && e.status === 0) {
-      const jobs = await readOutbox();
-      jobs.push({ path, body, at: Date.now(), owner: mine });
-      await AsyncStorage.setItem(OUTBOX, JSON.stringify(jobs.slice(-500))).catch(() => undefined);
+      const job: Job = { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, path, body, at: Date.now(), owner: mine };
+      await update((jobs) => [...jobs, job]);
     }
   }
 }
 
-let flushing = false;
-export async function flushOutbox() {
-  if (flushing) return;
-  flushing = true;
-  try {
-    const jobs = await readOutbox();
-    const left: Job[] = [];
-    const now = Date.now();
-    for (const job of jobs) {
-      // Old ones and ones from before accounts were recorded are dropped; another account's wait for it.
-      if (job.owner == null || now - job.at > MAX_AGE_MS) continue;
-      if (job.owner !== owner) {
-        left.push(job);
-        continue;
-      }
-      try {
-        await api(job.path, { body: job.body });
-      } catch (e) {
-        // Keep it only if we are still offline; a server refusal (e.g. signed out) drops it.
-        if (e instanceof ApiError && e.status === 0) left.push(job);
-      }
+let running: Promise<void> | null = null;
+/** Sends this account's waiting jobs. Callers share one run, so awaiting it (e.g. before signing out) really waits. */
+export function flushOutbox(): Promise<void> {
+  if (!running) running = flush().finally(() => (running = null));
+  return running;
+}
+
+async function flush() {
+  const me = owner;
+  if (me == null) return;
+  const now = Date.now();
+  // Jobs saved by an older app version have no account: they belong to whoever is signed in first after the update.
+  await update((jobs) => jobs.map((j) => (j.owner == null ? { ...j, owner: me, id: j.id ?? `${j.at}-${Math.random()}` } : j)));
+  const jobs = (await readOutbox()).filter((j) => j.owner === me);
+  const done = new Set<string>();
+  for (const job of jobs) {
+    if (now - job.at > MAX_AGE_MS) {
+      done.add(job.id);
+      continue;
     }
-    await AsyncStorage.setItem(OUTBOX, JSON.stringify(left)).catch(() => undefined);
-  } finally {
-    flushing = false;
+    try {
+      await api(job.path, { body: job.body });
+      done.add(job.id);
+    } catch (e) {
+      if (!(e instanceof ApiError)) continue;
+      // Offline: try later. Session ended (401): keep it for when this account signs in again. Other refusals drop it.
+      if (e.status !== 0 && e.status !== 401) done.add(job.id);
+      if (e.status === 0) break;
+    }
   }
+  // Remove only what was handled; anything queued meanwhile stays.
+  await update((all) => all.filter((j) => !done.has(j.id)));
 }
 
 const BANNER_SECONDS = 4;

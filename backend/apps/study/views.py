@@ -179,7 +179,14 @@ def review_flashcard(request, flashcard_id):
     access = AccessMap(request.user, card.node)
     if not _usable(access, card):
         return Response(LOCKED, status=status.HTTP_403_FORBIDDEN)
-    review, _ = FlashcardReview.objects.get_or_create(user=request.user, flashcard=card)
+    with transaction.atomic():
+        FlashcardReview.objects.get_or_create(user=request.user, flashcard=card)
+        # Locked, so two copies of the same review arriving together can't both pass the check below.
+        review = FlashcardReview.objects.select_for_update().get(user=request.user, flashcard=card)
+        return _review(request, review)
+
+
+def _review(request, review):
     op = str(request.data.get("op") or "")[:40]
     if op and op == review.last_op:  # the same review sent again after a dropped connection
         return Response({"box": review.box, "due_at": review.due_at, "mastered": review.box >= FlashcardReview.MASTERED_BOX})
@@ -265,22 +272,14 @@ def in_open_exam(user, question_id) -> bool:
     if not user.is_authenticated:
         return False
     now = timezone.now()
-    for attempt in ExamAttempt.objects.filter(user=user, submitted_at__isnull=True, started_at__gte=now - timedelta(hours=5)):
+    running = ExamAttempt.objects.filter(user=user, submitted_at__isnull=True, started_at__gte=now - timedelta(hours=5))
+    for attempt in running.only("question_ids", "started_at", "time_limit_seconds"):
         if question_id in attempt.question_ids and now <= attempt.ends_at + EXAM_GRACE:
             return True
     return False
 
 
 # --- Exams ---------------------------------------------------------------------------------------------------------------
-
-
-def _question_payload(request, q):
-    return {
-        "id": q.id,
-        "stem": media_urls(request, q.stem),
-        "choices": [{"id": c.id, "text": media_urls(request, c.text)} for c in q.choices.all()],
-        "difficulty": q.difficulty,
-    }
 
 
 def _snapshot(questions) -> dict:
@@ -457,7 +456,7 @@ EXAM_PAGE = 10
 def my_exams(request):
     """The learner's exams, newest first. Without ?page: the old plain list (last 50). With ?page=N (and optional
     ?book=slug): ten per page, plus a summary of all of them and the books they were taken in."""
-    attempts = ExamAttempt.objects.filter(user=request.user, is_archived=False).select_related("node")
+    attempts = ExamAttempt.objects.filter(user=request.user, is_archived=False).select_related("node").defer("snapshot")
     if "page" not in request.query_params:
         return Response([_exam_summary(a) for a in attempts[:50]])
     steplen = ContentNode.steplen

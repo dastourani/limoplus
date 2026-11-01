@@ -735,20 +735,22 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
             obj.save()
             (result.created if created else result.updated)["question"] += 1
             kept_questions.add(obj.pk)
-            # Choices keep their ids (an open exam or a practice page may hold them); extra old ones go.
-            # Running exams keep their own copy anyway (ExamAttempt.snapshot).
+            # A choice keeps its id while its text stays the same (moved or not), so a practice page already open still
+            # means the same choice; a choice whose text changed is a new choice. Running exams keep their own copy
+            # anyway (ExamAttempt.snapshot).
             old = list(obj.choices.order_by("order", "id"))
+            unused = {c.id: c for c in old}
             for i, (text, ok) in enumerate(q.choices):
                 text = _rewrite_images(text, image_paths)
-                if i < len(old):
-                    c = old[i]
-                    if (c.text, c.is_correct, c.order) != (text, ok, i):
-                        c.text, c.is_correct, c.order = text, ok, i
-                        c.save(update_fields=["text", "is_correct", "order"])
+                same = next((c for c in old if c.id in unused and c.text == text), None)
+                if same:
+                    del unused[same.id]
+                    if (same.is_correct, same.order) != (ok, i):
+                        same.is_correct, same.order = ok, i
+                        same.save(update_fields=["is_correct", "order"])
                 else:
                     Choice.objects.create(question=obj, text=text, is_correct=ok, order=i)
-            for c in old[len(q.choices):]:
-                c.delete()
+            Choice.objects.filter(pk__in=list(unused)).delete()
             QuestionSource.objects.filter(question=obj).delete()
             for name, year, number in q.sources:
                 source, _ = ExamSource.objects.get_or_create(name=name, year=year, group="", booklet="")

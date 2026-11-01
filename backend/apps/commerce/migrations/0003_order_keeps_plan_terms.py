@@ -3,6 +3,13 @@
 from django.db import migrations, models
 
 
+def refuse_if_used(apps, schema_editor):
+    """Going back would drop the terms of real purchases: refuse while any order has them."""
+    Order = apps.get_model("commerce", "Order")
+    if Order.objects.filter(plan_months__isnull=False).exists():
+        raise RuntimeError("Orders already keep their plan terms; rolling back would lose them.")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -24,4 +31,6 @@ class Migration(migrations.Migration):
                 blank=True, max_length=10, verbose_name="دامنه\u200cی خریده\u200cشده"
             ),
         ),
+        # Last, so that going back checks before anything is dropped.
+        migrations.RunPython(migrations.RunPython.noop, refuse_if_used),
     ]
