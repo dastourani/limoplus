@@ -24,7 +24,7 @@ type Answer = { picked: number; result: QuizViewState['result'] };
 type Order = 'book' | 'shuffle' | 'wrong';
 const ORDERS: [Order, string][] = [
   ['book', 'ترتیب کتاب'],
-  ['shuffle', 'درهم'],
+  ['shuffle', 'تصادفی'],
   ['wrong', 'غلط‌ها و نزده‌ها'],
 ];
 

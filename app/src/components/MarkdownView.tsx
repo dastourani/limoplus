@@ -49,6 +49,8 @@ type Props = {
   turn?: { next: boolean; prev: boolean };
   /** Title of the next section, for the card at the end. */
   nextTitle?: string | null;
+  /** Open scrolled to this point (0–1), to continue where the reader left off. */
+  startAt?: number;
 };
 
 export type MarkdownViewHandle = { clearSelection: () => void };
@@ -84,7 +86,7 @@ const READER_BOOT = `
 
 /** Lesson text with formulas, tables and boxes. Native version: rendered in a WebView. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, nextTitle },
+  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, nextTitle, startAt },
   ref,
 ) {
   const web = useRef<{ injectJavaScript: (script: string) => void } | null>(null);
@@ -117,6 +119,13 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
       setTimeout(() => web.current?.injectJavaScript(`document.querySelector('.lesson').__flash(${q}); true;`), 250);
     }
   }, [flash, loaded, compact]);
+
+  useEffect(() => {
+    if (!compact && loaded && startAt && startAt > 0.02)
+      web.current?.injectJavaScript(
+        `setTimeout(function(){var h=document.documentElement.scrollHeight-window.innerHeight;if(h>0)window.scrollTo(0,h*${Math.min(1, startAt)});},120); true;`,
+      );
+  }, [loaded, compact, startAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useImperativeHandle(ref, () => ({
     clearSelection: () => web.current?.injectJavaScript('window.getSelection && window.getSelection().removeAllRanges(); true;'),

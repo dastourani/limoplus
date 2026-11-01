@@ -6,7 +6,7 @@ import { ApiError } from '../api/client';
 import { endpoints, type ExamPage } from '../api/endpoints';
 import { ScoreTrend } from '../components/ScoreTrend';
 import { Text } from '../components/Text';
-import { Button, Empty, ErrorState, Header, Loading, Screen } from '../components/ui';
+import { Button, Empty, ErrorState, Header, Loading, Screen, usePullRefresh } from '../components/ui';
 import { jalaliDateTime } from '../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../theme';
 
@@ -35,6 +35,7 @@ export default function Exams() {
   useEffect(() => {
     load(1, book);
   }, [book, load]);
+  const refresh = usePullRefresh(busy, () => load(1, book));
 
   return (
     <Screen>
@@ -46,7 +47,7 @@ export default function Exams() {
       ) : !data || (data.summary.count === 0 && data.results.length === 0 && !book) ? (
         <Empty icon="clipboard-list" title="هنوز آزمونی نداده‌ای" text="در صفحه‌ی کتاب، کنار هر فصل دکمه‌ی «آزمون» هست." />
       ) : (
-        <ScrollView contentContainerStyle={styles.page}>
+        <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
           <View style={styles.summary}>
             <View style={styles.nums}>
               <Stat label="آزمون" value={toPersianDigits(data.summary.count)} />

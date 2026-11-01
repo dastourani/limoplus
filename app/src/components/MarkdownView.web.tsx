@@ -1,6 +1,6 @@
 import { Asset } from 'expo-asset';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native';
 
 import { FONT_FILES, fontFaceCss } from '../lib/fonts';
 import { CONTENT_CSS, READER_SCRIPT, nextCardHtml, renderMarkdown, renderSummary } from '../lib/renderMarkdown';
@@ -23,6 +23,7 @@ type Props = {
   onEvent?: (e: ReaderEvent) => void;
   turn?: { next: boolean; prev: boolean };
   nextTitle?: string | null;
+  startAt?: number;
 };
 
 let cssInjected = false;
@@ -36,7 +37,7 @@ function injectCss() {
 
 /** Lesson text with formulas, tables and boxes. Web version: rendered straight into the page. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, nextTitle },
+  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, nextTitle, startAt },
   ref,
 ) {
   injectCss();
@@ -46,6 +47,20 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
   );
   const root = useRef<HTMLDivElement | null>(null);
   const handler = useRef(onEvent);
+  const scroller = useRef<ScrollViewInstance>(null);
+  const placed = useRef(false);
+  useEffect(() => {
+    // The place may arrive after the text is drawn.
+    if (compact || placed.current || !startAt || startAt <= 0.02 || typeof window === 'undefined') return;
+    const t = setTimeout(() => {
+      const el = (scroller.current as unknown as { getScrollableNode?: () => HTMLElement })?.getScrollableNode?.();
+      if (el && el.scrollHeight > el.clientHeight) {
+        placed.current = true;
+        el.scrollTop = (el.scrollHeight - el.clientHeight) * Math.min(1, startAt);
+      }
+    }, 150);
+    return () => clearTimeout(t);
+  }, [startAt, compact, html]);
   handler.current = onEvent;
 
   useEffect(() => {
@@ -87,6 +102,7 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
   if (compact) return <View>{content}</View>;
   return (
     <ScrollView
+      ref={scroller}
       style={styles.fill}
       contentContainerStyle={styles.page}
       scrollEventThrottle={300}

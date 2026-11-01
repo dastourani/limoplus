@@ -12,7 +12,7 @@ import { useFeedback } from '../../components/Feedback';
 import { LemonProgress } from '../../components/LemonProgress';
 import { PageTurn } from '../../components/PageTurn';
 import { Icon, IconBadge } from '../../components/Icon';
-import { Button, Chip, ErrorState, Header, Loading, Screen } from '../../components/ui';
+import { Button, Chip, ErrorState, Header, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { coverByline } from '../../lib/cover';
 import { jalaliDate } from '../../lib/jalali';
@@ -27,6 +27,7 @@ export default function Book() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
   const { data, error, loading, retry } = useApi(() => endpoints.book(String(slug)), [slug, user?.id]);
+  const refresh = usePullRefresh(loading, retry);
   // Entering a book: its cover opens like a real book (once per visit).
   const { title: titleParam } = useLocalSearchParams<{ title?: string }>();
   const [coverTitle, setCoverTitle] = useState<string | null>(titleParam ?? '');
@@ -128,7 +129,7 @@ export default function Book() {
 
   return (
     <Screen background={colors.ground}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} refreshControl={refresh}>
         <View style={styles.hero}>
           <View style={styles.heroTop}>
             <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={styles.heroButton} accessibilityRole="button" accessibilityLabel="بازگشت">

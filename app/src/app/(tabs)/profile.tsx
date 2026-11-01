@@ -8,7 +8,7 @@ import { Text } from '../../components/Text';
 import { APP_BUILD } from '../../config';
 import { useFeedback } from '../../components/Feedback';
 import { Icon, IconBadge } from '../../components/Icon';
-import { Button, Card, Screen } from '../../components/ui';
+import { Button, Card, Screen, usePullRefresh } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { ScoreTrend } from '../../components/ScoreTrend';
@@ -40,21 +40,24 @@ export default function Profile() {
     soundEnabled().then(setSound);
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      storage.getMajor().then(setMajor);
-      if (user) {
-        endpoints.purchases().then(setPurchases).catch(() => undefined);
-        endpoints.examPage(1).then(setExams).catch(() => undefined);
-      }
-    }, [user]),
-  );
+  const [reloading, setReloading] = useState(false);
+  const reload = useCallback(() => {
+    storage.getMajor().then(setMajor);
+    if (!user) return;
+    setReloading(true);
+    Promise.all([
+      endpoints.purchases().then(setPurchases).catch(() => undefined),
+      endpoints.examPage(1).then(setExams).catch(() => undefined),
+    ]).finally(() => setReloading(false));
+  }, [user]);
+  useFocusEffect(reload);
+  const refresh = usePullRefresh(reloading, reload);
 
   const name = user ? [user.first_name, user.last_name].filter(Boolean).join(' ') || 'کاربر لیمو پلاس' : 'مهمان';
 
   return (
     <Screen tab>
-      <ScrollView contentContainerStyle={styles.page}>
+      <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
         <View style={styles.hero}>
           <View style={styles.avatar}>
             <LemonSlice size={64} />

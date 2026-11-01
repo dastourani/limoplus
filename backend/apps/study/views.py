@@ -504,7 +504,22 @@ def library(request):
         if p.book_id in seen_books or p.book.is_archived or not p.book.is_published:
             continue
         seen_books.add(p.book_id)
-        reading.append({"book_slug": p.book.slug, "book_title": p.book.title, "last_section": _section_ref(p.node), "updated_at": p.updated_at})
+        from apps.catalog.views import book_card
+
+        access = AccessMap(user, p.book)
+        if not access.visible(p.node_id):
+            continue
+        reading.append(
+            {
+                "book_slug": p.book.slug,
+                "book_title": p.book.title,
+                "last_section": _section_ref(p.node),
+                # How far into that section (0–100), to open it where the reader left off on another device.
+                "percent": p.percent,
+                "updated_at": p.updated_at,
+                "book": book_card(request, p.book, access),
+            }
+        )
     bookmarks = Bookmark.objects.filter(user=user, is_archived=False).select_related("node").order_by("-created_at")[:100]
     notes = Note.objects.filter(user=user, is_archived=False).select_related("node").order_by("-updated_at")[:100]
     return Response(

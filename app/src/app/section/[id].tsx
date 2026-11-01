@@ -42,7 +42,12 @@ const NOTE_COLORS: [string, string][] = [
 type Locked = { title?: string; price?: number | null; slug?: string };
 
 export default function Section() {
-  const { id, from, title: titleParam } = useLocalSearchParams<{ id: string; from?: string; title?: string }>();
+  const { id, from, title: titleParam, resume } = useLocalSearchParams<{ id: string; from?: string; title?: string; resume?: string }>();
+  // «ادامه بده»: open in the same mode and at the same place as last time.
+  const [startAt, setStartAt] = useState<number | undefined>(undefined);
+  const spotPercent = useRef(0);
+  // While the old place is being restored, the page's first scroll reports (0%) must not overwrite it.
+  const restoring = useRef(resume === '1');
   // Arriving from the next or previous section: the page slides in from that side once it is drawn.
   const { width: screenW } = useWindowDimensions();
   const arriving = from === '1' || from === '-1' ? Number(from) : 0;
@@ -132,6 +137,17 @@ export default function Section() {
     const book = node.breadcrumb[0];
     storage.setLastSection({ id: node.id, title: node.title, bookTitle: book?.title ?? '', bookSlug: book?.slug ?? '' });
     setMode('full');
+    spotPercent.current = 0;
+    if (restoring.current && book?.slug)
+      storage.getReading().then((all) => {
+        const spot = all[book.slug];
+        if (spot?.id === node.id) {
+          if (spot.mode === 'summary' && node.summary) setMode('summary');
+          spotPercent.current = spot.percent;
+          setStartAt(spot.percent / 100);
+        }
+        setTimeout(() => (restoring.current = false), 1500);
+      });
     if (user && !offline) {
       endpoints
         .nodeState(node.id)
@@ -192,6 +208,17 @@ export default function Section() {
     goTo(dir);
   };
 
+  const rememberSpot = (percent: number) => {
+    const book = node?.breadcrumb.find((b) => b.kind === 'book');
+    if (!node || !book || restoring.current) return;
+    spotPercent.current = percent;
+    storage.setReading({ id: node.id, title: node.title, bookTitle: book.title, bookSlug: book.slug, mode, percent, at: Date.now() });
+  };
+  useEffect(() => {
+    if (node) rememberSpot(mode === 'full' ? spotPercent.current : 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node?.id, mode]);
+
   const terms = useMemo(() => parseTerms(node?.summary ?? ''), [node?.summary]);
   const termWords = useMemo(() => terms.map((t) => t.fa), [terms]);
 
@@ -221,7 +248,9 @@ export default function Section() {
         setNoteText(n.body);
         setNoteSheet({ note: n });
       }
-    } else if (e.type === 'scroll' && user && node && !offline && mode === 'full') {
+    } else if (e.type === 'scroll' && node) {
+      rememberSpot(e.percent);
+      if (!(user && !offline && mode === 'full')) return;
       const p = progress.current;
       if (e.percent >= p.sent + 10 || (e.percent >= 90 && !p.done)) {
         p.sent = Math.max(p.sent, e.percent);
@@ -410,6 +439,7 @@ export default function Section() {
           onEvent={onEvent}
           turn={{ next: !!node.next_id, prev: !!node.previous_id }}
           nextTitle={node.next_title}
+          startAt={startAt}
         />
         <Watermark text={user?.phone || 'لیمو پلاس'} dark={dark} />
         </Animated.View>
@@ -428,7 +458,7 @@ export default function Section() {
           )}
         </Sheet>
         {!!selection && (
-          <View style={styles.selBar}>
+          <View style={[styles.selBar, { bottom: 12 }]}>
             {NOTE_COLORS.map(([name, hex]) => (
               <Pressable key={name} onPress={() => addHighlight(name)} style={[styles.swatch, { backgroundColor: hex }]} accessibilityLabel="هایلایت" />
             ))}

@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet } from 'react-native';
 import { endpoints } from '../api/endpoints';
 import { Text } from '../components/Text';
 import { useFeedback } from '../components/Feedback';
-import { Button, Card, ErrorState, Header, Loading, Screen } from '../components/ui';
+import { Button, Card, ErrorState, Header, Loading, Screen, usePullRefresh } from '../components/ui';
 import { jalaliDate, relativeDay } from '../lib/jalali';
 import { useApi } from '../lib/useApi';
 import { colors, rtl } from '../theme';
@@ -11,6 +11,7 @@ import { colors, rtl } from '../theme';
 /** Signed-in devices (at most two). The user can sign out any other device from here. */
 export default function Devices() {
   const { data, error, loading, retry } = useApi(() => endpoints.sessions());
+  const refresh = usePullRefresh(loading, retry);
   const { confirm } = useFeedback();
   return (
     <Screen>
@@ -20,7 +21,7 @@ export default function Devices() {
       ) : error ? (
         <ErrorState message={error.message} onRetry={retry} />
       ) : (
-        <ScrollView contentContainerStyle={styles.page}>
+        <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
           <Text style={[styles.help, rtl]}>هر حساب حداکثر روی دو دستگاه هم‌زمان باز است؛ مثلاً گوشی و لپ‌تاپ.</Text>
           {data!.map((s) => (
             <Card key={s.id}>

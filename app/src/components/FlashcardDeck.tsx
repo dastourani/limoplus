@@ -87,7 +87,8 @@ export function FlashcardDeck({
   const done = pos >= queue.length;
   const parts: PartState[] = cards.map((c) => {
     const g = graded[c.id];
-    return !g ? 'empty' : g === 'again' ? 'wrong' : g === 'hard' ? 'soft' : 'done';
+    // A card that was hard at any point in this session stays pale red on the lemon.
+    return !g ? 'empty' : g === 'again' || againIds.has(c.id) ? 'wrong' : g === 'hard' ? 'soft' : 'done';
   });
   const gradedCount = Object.keys(graded).length;
   const card = done ? null : byId.get(queue[pos])!;
@@ -171,7 +172,14 @@ export function FlashcardDeck({
             </Text>
           )}
           <Text style={styles.doneTitle}>مرور تمام شد</Text>
-          <Text style={[styles.doneText, rtl]}>{againIds.size ? `${toPersianDigits(againIds.size)} کارت سخت بود؛ به‌زودی دوباره می‌بینی‌شان.` : 'همه را بلد بودی!'}</Text>
+          <Text style={[styles.doneText, rtl]}>
+            {(() => {
+              const hard = againIds.size; // cards marked «again» at least once in this session
+              const known = Math.max(0, cards.filter((c) => graded[c.id]).length - hard);
+              if (!hard) return 'همه را بلد بودی!';
+              return `${toPersianDigits(known)} کارت را بلد بودی، ${toPersianDigits(hard)} کارت سخت بود؛ به‌زودی دوباره می‌بینی‌شان.`;
+            })()}
+          </Text>
           {!user && (
             <Button label="ورود برای ذخیره‌ی مرورها" onPress={() => requireLogin(user, 'تا مرورها ذخیره شود و کارت‌ها سر وقتش برگردند، وارد شوید.')} style={{ alignSelf: 'stretch' }} />
           )}

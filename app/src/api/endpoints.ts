@@ -128,7 +128,7 @@ export type ExamPage = {
 };
 export type ExamDetail = ExamSummary & { questions: ExamQuestion[]; review?: ExamReview[] };
 export type Library = {
-  reading: { book_slug: string; book_title: string; last_section: { id: number; title: string }; updated_at: string }[];
+  reading: { book_slug: string; book_title: string; last_section: { id: number; title: string }; percent?: number; updated_at: string; book?: BookListItem }[];
   bookmarks: { id: number; title: string; created_at: string }[];
   notes: (Note & { node_title: string })[];
 };

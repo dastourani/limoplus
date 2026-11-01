@@ -93,7 +93,10 @@ export function LemonProgress({
         <Circle r={87} fill="#FFFFFF" />
         <G>
           {n === 1 ? (
-            <Circle r={70} fill={FILL[wedges[0] ?? 'empty']} />
+            // One item still looks like a lemon: eight wedges in its colour.
+            Array.from({ length: 8 }, (_, i) => (
+              <Path key={i} d={wedgePath(i, 8)} fill={FILL[wedges[0] ?? 'empty']} stroke="#FFFFFF" strokeWidth={6} strokeLinejoin="round" />
+            ))
           ) : (
             wedges.map((w, i) => (
               <Path key={i} d={wedgePath(i, n)} fill={FILL[w]} stroke="#FFFFFF" strokeWidth={n > 16 ? 3.5 : n > 8 ? 4.5 : 6} strokeLinejoin="round" />

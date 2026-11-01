@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewInstance } from 'react-native';
 
-import { endpoints, type BookListItem, type Major } from '../../api/endpoints';
+import { endpoints, type Library, type BookListItem, type Major } from '../../api/endpoints';
 import { BannerCarousel } from '../../components/BannerCarousel';
 import { BookCover } from '../../components/BookCover';
 import { Icon, IconBadge } from '../../components/Icon';
@@ -13,7 +13,7 @@ import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
 import { ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
-import { storage, type LastSection } from '../../lib/storage';
+import { storage, type LastSection, type ReadingSpot } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
 import { colors, formatToman, rtl, toPersianDigits } from '../../theme';
 
@@ -32,11 +32,20 @@ export default function Home() {
   const [major, setMajor] = useState<MajorRef | null>(null);
   const asLearner = useViewAsLearner();
   const [last, setLast] = useState<LastSection | null>(null);
+  const [spots, setSpots] = useState<Record<string, ReadingSpot>>({});
+  const [serverReading, setServerReading] = useState<Library['reading']>([]);
+  useFocusEffect(
+    useCallback(() => {
+      if (user) endpoints.library().then((l) => setServerReading(l.reading)).catch(() => undefined);
+      else setServerReading([]);
+    }, [user]),
+  );
 
   useFocusEffect(
     useCallback(() => {
       storage.getMajor().then((m) => setMajor(m ?? null));
       storage.getLastSection().then(setLast);
+      storage.getReading().then(setSpots);
     }, []),
   );
 
@@ -104,7 +113,23 @@ export default function Home() {
   };
 
   const list = books.data ?? [];
-  const lastBook = last ? list.find((b) => b.slug === last.bookSlug) : undefined;
+  // Books being read, newest first: this phone's own spots, and (signed in) the account's from other devices.
+  const reading = (() => {
+    const bySlug = new Map<string, { slug: string; bookTitle: string; id: number; title: string; at: number; book?: BookListItem }>();
+    for (const r of serverReading)
+      bySlug.set(r.book_slug, { slug: r.book_slug, bookTitle: r.book_title, id: r.last_section.id, title: r.last_section.title, at: Date.parse(r.updated_at), book: r.book });
+    for (const s of Object.values(spots)) {
+      const had = bySlug.get(s.bookSlug);
+      if (!had || s.at >= had.at) bySlug.set(s.bookSlug, { slug: s.bookSlug, bookTitle: s.bookTitle, id: s.id, title: s.title, at: s.at, book: had?.book });
+    }
+    return [...bySlug.values()]
+      .map((r) => ({ ...r, book: list.find((b) => b.slug === r.slug) ?? r.book }))
+      .filter((r) => !(r.book?.progress != null && r.book.progress >= 1)) // finished books leave the row
+      .sort((a, b) => b.at - a.at);
+  })();
+  const current = reading[0] ?? (last ? { slug: last.bookSlug, bookTitle: last.bookTitle, id: last.id, title: last.title, at: 0, book: undefined } : null);
+  const lastBook = current ? current.book ?? list.find((b) => b.slug === current.slug) : undefined;
+  const others = reading.slice(1);
   // Phones show two covers a row; tablets, desktop browsers and Windows show more, up to six.
   const pageWidth = Math.min(width, 1200);
   const columns = Math.max(2, Math.min(6, Math.floor((pageWidth - 40 + 18) / 200)));
@@ -134,8 +159,13 @@ export default function Home() {
           </Pressable>
         )}
 
-        {last && (
-          <Pressable onPress={() => router.push(`/section/${last.id}`)} style={styles.continue} accessibilityRole="button" accessibilityLabel={`ادامه‌ی خواندن ${last.title}`}>
+        {current && (
+          <Pressable
+            onPress={() => router.push({ pathname: '/section/[id]', params: { id: String(current.id), resume: '1' } })}
+            style={styles.continue}
+            accessibilityRole="button"
+            accessibilityLabel={`ادامه‌ی خواندن ${current.title}`}
+          >
             {lastBook ? (
               <BookCover book={lastBook} major={coverMajor(lastBook)} width={64} />
             ) : (
@@ -145,14 +175,52 @@ export default function Home() {
             )}
             <View style={{ flex: 1, gap: 3 }}>
               <Text style={[styles.continueLabel, rtl]}>ادامه‌ی خواندن</Text>
-              <Text style={[styles.continueTitle, rtl]} numberOfLines={1}>{last.bookTitle}</Text>
-              <Text style={[styles.continueSub, rtl]} numberOfLines={1}>{last.title}</Text>
+              <Text style={[styles.continueTitle, rtl]} numberOfLines={1}>{current.bookTitle}</Text>
+              <Text style={[styles.continueSub, rtl]} numberOfLines={1}>{current.title}</Text>
               <View style={styles.continuePill}>
                 <Text style={styles.continuePillText}>ادامه بده</Text>
               </View>
             </View>
             {lastBook?.progress != null && <LemonProgress parts={wedges(lastBook.progress, lastBook.section_count)} size={46} />}
           </Pressable>
+        )}
+
+        {others.length > 0 && (
+          <View style={{ gap: 8 }}>
+            <View style={styles.readingHead}>
+              <Text style={[styles.readingTitle, rtl]}>در حال خواندن</Text>
+              <Pressable onPress={() => router.navigate('/library')} hitSlop={8} accessibilityRole="link">
+                <Text style={styles.readingAll}>همه</Text>
+              </Pressable>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.readingRow} style={{ transform: [{ scaleX: -1 }] }}>
+              {others.map((r) => (
+                <Pressable
+                  key={r.slug}
+                  onPress={() => router.push({ pathname: '/section/[id]', params: { id: String(r.id), resume: '1' } })}
+                  style={[styles.readingItem, { transform: [{ scaleX: -1 }] }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`ادامه‌ی ${r.bookTitle}، ${r.title}`}
+                >
+                  {r.book ? (
+                    <View>
+                      <BookCover book={r.book} major={coverMajor(r.book)} width={84} />
+                      {r.book.progress != null && (
+                        <View style={styles.readingLemon}>
+                          <LemonProgress parts={wedges(r.book.progress, r.book.section_count)} size={26} />
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    <View style={styles.readingBlank}>
+                      <LemonSlice size={40} />
+                    </View>
+                  )}
+                  <Text style={[styles.readingSub, rtl]} numberOfLines={2}>{r.title}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
         )}
 
         {due > 0 && (
@@ -283,6 +351,14 @@ const RIBBON: Record<'soon' | 'access' | 'free' | 'locked', { box: object; color
 };
 
 const styles = StyleSheet.create({
+  readingHead: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  readingTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
+  readingAll: { fontSize: 13, fontWeight: '700', color: colors.greenDark },
+  readingRow: { gap: 12, paddingVertical: 4 },
+  readingItem: { width: 84, gap: 6 },
+  readingLemon: { position: 'absolute', bottom: -6, left: -6, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 1 },
+  readingBlank: { width: 84, height: 126, borderRadius: 10, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  readingSub: { fontSize: 11, color: colors.muted, lineHeight: 17 },
   asLearner: { backgroundColor: '#FFF6CC', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 },
   asLearnerText: { fontSize: 12, fontWeight: '700', color: colors.ink, textAlign: 'center' },
   page: { padding: 20, gap: 16, maxWidth: 1200, width: '100%', alignSelf: 'center' },

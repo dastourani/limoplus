@@ -5,12 +5,15 @@ const KEYS = {
   major: 'limo.major',
   lastSection: 'limo.lastSection',
   reader: 'limo.reader',
+  reading: 'limo.reading',
 } as const;
 
 export type ReaderTheme = 'white' | 'paper' | 'sepia' | 'dark';
 export type ReaderPrefs = { fontSize: number; dark?: boolean; theme?: ReaderTheme; lineHeight?: number };
 
 export type LastSection = { id: number; title: string; bookTitle: string; bookSlug: string };
+/** Where the reader is in one book: the section, notes or summary, and how far down (0–100). */
+export type ReadingSpot = LastSection & { mode: 'full' | 'summary'; percent: number; at: number };
 
 async function getJson<T>(key: string): Promise<T | null> {
   try {
@@ -37,6 +40,14 @@ export const storage = {
   setMajor: (major: { slug: string; name: string; color: string } | null) => setJson(KEYS.major, major),
   getLastSection: () => getJson<LastSection>(KEYS.lastSection),
   setLastSection: (value: LastSection) => setJson(KEYS.lastSection, value),
+  getReading: async () => (await getJson<Record<string, ReadingSpot>>(KEYS.reading)) ?? {},
+  /** Remembers the spot in this book (one per book, the 20 most recent books). */
+  setReading: async (spot: ReadingSpot) => {
+    const all = (await getJson<Record<string, ReadingSpot>>(KEYS.reading)) ?? {};
+    all[spot.bookSlug] = spot;
+    const keep = Object.values(all).sort((a, b) => b.at - a.at).slice(0, 20);
+    await setJson(KEYS.reading, Object.fromEntries(keep.map((s) => [s.bookSlug, s])));
+  },
   getReader: () => getJson<ReaderPrefs>(KEYS.reader),
   setReader: (value: ReaderPrefs) => setJson(KEYS.reader, value),
 };
