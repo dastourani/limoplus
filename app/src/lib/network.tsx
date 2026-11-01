@@ -88,7 +88,7 @@ async function flush() {
       if (!(e instanceof ApiError)) continue;
       // Offline: try later. Session ended (401): keep it for when this account signs in again. Other refusals drop it.
       if (e.status !== 0 && e.status !== 401) done.add(job.id);
-      if (e.status === 0) break;
+      if (e.status === 0 || e.status === 401) break;
     }
   }
   // Remove only what was handled; anything queued meanwhile stays.
