@@ -12,7 +12,18 @@ import { BannerFace } from './BannerFace';
 
 const AUTO_MS = 5000;
 
-export function BannerCarousel({ banners: all, onOpen, gutter = 20 }: { banners: Banner[]; onOpen: (b: Banner) => void; gutter?: number }) {
+export function BannerCarousel({
+  banners: all,
+  onOpen,
+  gutter = 20,
+  paused,
+}: {
+  banners: Banner[];
+  onOpen: (b: Banner) => void;
+  gutter?: number;
+  /** True while the page around is being scrolled: no turning by itself then. */
+  paused?: { current: boolean };
+}) {
   const { width } = useWindowDimensions();
   // Countdowns run on the server's clock (the phone's may be wrong) and tick once a second.
   const offset = useMemo(() => {
@@ -48,7 +59,7 @@ export function BannerCarousel({ banners: all, onOpen, gutter = 20 }: { banners:
   useEffect(() => {
     if (n < 2) return;
     const t = setInterval(() => {
-      if (touching.current) return;
+      if (touching.current || paused?.current) return;
       setPage((p) => {
         const next = (p + 1) % n;
         scroll.current?.scrollTo({ x: toX(next), animated: true });

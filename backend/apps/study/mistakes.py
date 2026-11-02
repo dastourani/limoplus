@@ -307,7 +307,23 @@ def _continue(request):
 @api_view(["GET"])
 def today(request):
     """«کارهای امروز»: one tile per job, in this order: the chapter reviews due (at most two), the flashcards due (fewer
-    after a break), and five questions from the mistakes notebook. A job done today leaves the list."""
+    after a break), and five questions from the mistakes notebook. A job done today leaves the list.
+    Kept for five minutes per learner, and worked out again at once after anything they do (reviews.recheck)."""
+    from django.core.cache import cache
+
+    key = f"limo.today.{request.user.pk}.{timezone.localdate()}"
+    alias = f"limo.today.{request.user.pk}"
+    if cache.get(alias) == key:
+        cached = cache.get(key)
+        if cached is not None:
+            return Response(cached)
+    data = _today_data(request)
+    cache.set(key, data, 300)
+    cache.set(alias, key, 300)
+    return Response(data)
+
+
+def _today_data(request) -> dict:
     from .reviews import DAILY_CAP, due_reviews
 
     away = _away_days(request.user)
@@ -327,7 +343,7 @@ def today(request):
     if practise:
         tasks.append({"kind": "notebook", "count": practise, "total": mistakes, "minutes": max(1, round(practise * 1.5))})
     minutes = sum(t["minutes"] for t in tasks)
-    return Response(
+    return (
         {
             "away_days": away,
             "comeback": comeback,

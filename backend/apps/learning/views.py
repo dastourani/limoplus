@@ -139,3 +139,22 @@ def node_flashcards(request, node_id):
             continue
         items.append({"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula})
     return Response({"flashcards": items, "locked_count": locked})
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def book_samples(request, slug):
+    """The book's shareable questions (marked in the panel) this learner may see, to send up to five as one picture."""
+    book = get_object_or_404(ContentNode, kind=ContentNode.Kind.BOOK, slug=slug, depth=1)
+    access = AccessMap(request.user, book)
+    if not access.visible(book.id):
+        return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    questions = (
+        Question.objects.filter(node_id__in=access.visible_ids_under(book), is_sample=True, is_archived=False)
+        .prefetch_related("choices", "questionsource_set__source")
+        .order_by("node__path", "order", "id")
+    )
+    from apps.study.mistakes import _practice_payload
+
+    out = [{**_practice_payload(request, q), "shareable": True, "share_place": _share_place(access, q)} for q in questions if _usable(access, q)]
+    return Response({"book": book.title, "questions": out})

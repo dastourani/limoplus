@@ -235,6 +235,12 @@ export default function Book() {
                   <Text style={styles.shortcutText}>اشتباه‌هایم ({toPersianDigits(book.mine.mistakes.count)})</Text>
                 </Pressable>
               )}
+              {!!book.sample_count && (
+                <Pressable onPress={() => router.push({ pathname: '/share/[slug]', params: { slug: book.slug } })} style={styles.shortcut} accessibilityRole="button">
+                  <Icon name="share-2" size={18} color={colors.ink} />
+                  <Text style={styles.shortcutText}>تست‌های نمونه ({toPersianDigits(book.sample_count)})</Text>
+                </Pressable>
+              )}
               {!!book.mine?.exams && (
                 <Pressable onPress={() => router.push({ pathname: '/exams', params: { book: book.slug } })} style={styles.shortcut} accessibilityRole="button">
                   <Icon name="trophy" size={18} color={colors.ink} />

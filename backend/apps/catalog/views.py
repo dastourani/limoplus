@@ -74,15 +74,21 @@ def shelves(request):
     """The home page: one row per active shelf (set in the panel), then the published books on no shelf, so none is hidden."""
     from .models import Shelf, ShelfBook
 
+    from .access import access_kind_from, active_rows
+
     published = {
         b.id: b
-        for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_published=True, is_archived=False)
+        for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_published=True, is_archived=False).prefetch_related("majors")
     }
+    # Read once for all the books: the learner's entitlements, finished sections and «خبرم کن» rows.
+    entitlements = active_rows(request.user)
+    _prefetch_user_rows(request)
     cards: dict[int, dict] = {}
 
     def card(book):
         if book.id not in cards:
-            cards[book.id] = book_card(request, book, AccessMap(request.user, book))
+            kind = access_kind_from(entitlements, request.user, book.id, {m.id for m in book.majors.all()})
+            cards[book.id] = book_card(request, book, AccessMap(request.user, book, light=True, kind=kind))
         return cards[book.id]
 
     rows, placed = [], set()
@@ -101,10 +107,10 @@ def book_card(request, book, access) -> dict:
     """What a shelf needs to draw a book: its cover, its free part, the reader's progress and «خبرم کن»."""
     chapters = access.children(book)
     sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
-    done = set(_done_ids(request.user, book)) & {s.id for s in sections}
+    done = set(_done_ids(request.user, book, request)) & {s.id for s in sections}
     free_chapter = next((i for i, c in enumerate(chapters, start=1) if c.is_free), None)
     free_chapters = len(chapters) if book.is_free else sum(1 for c in chapters if c.is_free)
-    major = book.majors.order_by("order", "name").first()
+    major = min(book.majors.all(), key=lambda m: (m.order, m.name), default=None)
     return {
         "slug": book.slug,
         "title": book.title,
@@ -128,22 +134,42 @@ def book_card(request, book, access) -> dict:
         "owned": access.owned,
         "access": access.access,
         "progress": round(len(done) / len(sections), 3) if done and sections else None,
-        **_notify(request.user, book),
+        **_notify(request.user, book, request),
     }
 
 
-def _notify(user, book) -> dict:
+def _prefetch_user_rows(request) -> None:
+    """For a page of many books: the learner's finished sections and waitlist rows in two queries, not two per book."""
+    user = request.user
+    if not user.is_authenticated:
+        return
+    from apps.study.models import SectionProgress
+
+    from .models import BookWaitlist
+
+    done: dict[int, list[int]] = {}
+    for book_id, node_id in SectionProgress.objects.filter(user=user, is_done=True).values_list("book_id", "node_id"):
+        done.setdefault(book_id, []).append(node_id)
+    request._limo_done = done
+    request._limo_wait = {w.book_id: w for w in BookWaitlist.objects.filter(user=user)}
+
+
+def _notify(user, book, request=None) -> dict:
     if not user.is_authenticated:
         return {"notify": False, "notify_can_cancel": False}
     from .models import BookWaitlist
 
-    wait = BookWaitlist.objects.filter(user=user, book=book).first()
+    cached = getattr(request, "_limo_wait", None) if request is not None else None
+    wait = cached.get(book.id) if cached is not None else BookWaitlist.objects.filter(user=user, book=book).first()
     return {"notify": bool(wait and wait.is_active), "notify_can_cancel": bool(wait and wait.can_cancel)}
 
 
-def _done_ids(user, book):
+def _done_ids(user, book, request=None):
     if not user.is_authenticated:
         return []
+    cached = getattr(request, "_limo_done", None) if request is not None else None
+    if cached is not None:
+        return cached.get(book.id, [])
     from apps.study.models import SectionProgress
 
     return list(SectionProgress.objects.filter(user=user, book=book, is_done=True).values_list("node_id", flat=True))
@@ -191,7 +217,19 @@ def book_detail(request, slug):
             "done_ids": _done_ids(request.user, book),
             "mine": _mine_in_book(request, book),
             "reviews": _reviews_in_book(request, book),
+            "sample_count": _sample_count(access, book),
         }
+    )
+
+
+def _sample_count(access, book) -> int:
+    """How many shareable questions of this book the learner can see («تست‌های نمونه»)."""
+    from apps.learning.models import Question
+
+    return sum(
+        1
+        for q in Question.objects.filter(node_id__in=access.visible_ids_under(book), is_sample=True, is_archived=False).only("id", "node_id", "is_free")
+        if access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))
     )
 
 

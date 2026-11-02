@@ -218,6 +218,9 @@ def _review(request, review):
     review.record(grade)
     review.save()
     StudyDay.touch(request.user, "cards")
+    from .reviews import recheck
+
+    recheck(request.user)
     return Response({"box": review.box, "due_at": review.due_at, "mastered": review.box >= FlashcardReview.MASTERED_BOX})
 
 
@@ -485,9 +488,10 @@ def submit_exam(request, attempt_id):
         attempt.score_percent = round(points / total * 100, 1)
         attempt.submitted_at = timezone.now()
         attempt.save()
-        from .reviews import exam_submitted
+        from .reviews import exam_submitted, recheck
 
         exam_submitted(attempt)
+        recheck(request.user)
     StudyDay.touch(request.user, "answers", correct + wrong)
     return Response(_exam_detail(request, attempt))
 

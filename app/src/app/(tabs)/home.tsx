@@ -1,8 +1,8 @@
 import { shelfLabel } from '../../lib/access';
 import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { FlatList, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { endpoints, type Library, type Today, type BookListItem } from '../../api/endpoints';
 import { BannerCarousel } from '../../components/BannerCarousel';
@@ -19,7 +19,7 @@ import { ReadingCards, type ReadingItem } from '../../components/home/ReadingCar
 import { SectionHeader } from '../../components/home/SectionHeader';
 import { TodayTiles } from '../../components/home/TodayTiles';
 import { storage, type ReadingSpot } from '../../lib/storage';
-import { useApi } from '../../lib/useApi';
+import { keepIfSame, useApi } from '../../lib/useApi';
 import { colors, formatToman, rtl, toPersianDigits } from '../../theme';
 
 
@@ -35,18 +35,20 @@ export default function Home() {
   const { width } = useWindowDimensions();
   const asLearner = useViewAsLearner();
   const { toast } = useFeedback();
+  // While the page is being scrolled the banners don't turn by themselves (a turn mid-scroll made it jump).
+  const pageScrolling = useRef(false);
   const [spots, setSpots] = useState<Record<string, ReadingSpot>>({});
   const [serverReading, setServerReading] = useState<Library['reading']>([]);
   useFocusEffect(
     useCallback(() => {
-      if (user) endpoints.library().then((l) => setServerReading(l.reading)).catch(() => undefined);
-      else setServerReading([]);
+      if (user) endpoints.library().then((l) => setServerReading(keepIfSame(l.reading))).catch(() => undefined);
+      else setServerReading(keepIfSame<Library['reading']>([]));
     }, [user]),
   );
 
   useFocusEffect(
     useCallback(() => {
-      storage.getReading().then(setSpots);
+      storage.getReading().then((r) => setSpots(keepIfSame(r)));
     }, []),
   );
 
@@ -57,7 +59,7 @@ export default function Home() {
   useFocusEffect(
     useCallback(() => {
       if (user) {
-        endpoints.today().then(setToday).catch(() => setToday(null));
+        endpoints.today().then((t) => setToday(keepIfSame<Today | null>(t))).catch(() => undefined);
       } else {
         setToday(null);
       }
@@ -101,10 +103,10 @@ export default function Home() {
     else if (/^https?:\/\//.test(link)) Linking.openURL(link);
   };
 
-  const shelves = books.data ?? [];
-  const list = shelves.flatMap((s) => s.books);
+  const shelves = useMemo(() => books.data ?? [], [books.data]);
+  const list = useMemo(() => shelves.flatMap((s) => s.books), [shelves]);
   // Books being read, newest first: this phone's own spots, and (signed in) the account's from other devices.
-  const reading = (() => {
+  const reading = useMemo(() => {
     const bySlug = new Map<string, ReadingItem & { at: number }>();
     for (const r of serverReading)
       bySlug.set(r.book_slug, { slug: r.book_slug, bookTitle: r.book_title, id: r.last_section.id, title: r.last_section.title, at: Date.parse(r.updated_at), book: r.book, next: r.next });
@@ -118,7 +120,7 @@ export default function Home() {
       .map((r) => ({ ...r, book: list.find((b) => b.slug === r.slug) ?? r.book }))
       .filter((r) => !(r.book?.progress != null && r.book.progress >= 1)) // finished books leave the row
       .sort((a, b) => b.at - a.at);
-  })();
+  }, [serverReading, spots, list]);
   // A shelf row shows about two and a half covers on a phone (the cut one says «there is more»), more on wide screens.
   const pageWidth = Math.min(width, 1200);
   const coverWidth = Math.max(120, Math.min(170, Math.floor((pageWidth - 40) / 2.4)));
@@ -166,9 +168,13 @@ export default function Home() {
     );
   };
 
-  return (
-    <Screen tab>
-      <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
+  // The page is a lazy list: each section is made only when it comes near the screen, so the shelves far below don't
+  // slow down the top, and a section off screen doesn't redraw.
+  const blocks: { key: string; el: ReactNode }[] = [
+    {
+      key: 'top',
+      el: (
+        <View style={{ gap: 12 }}>
         <View style={styles.top}>
           <LemonSlice size={36} />
           <View style={{ flex: 1 }}>
@@ -190,16 +196,25 @@ export default function Home() {
             <Text style={styles.asLearnerText}>نمایش مثل کاربر عادی روشن است؛ برای خاموش کردن بزنید</Text>
           </Pressable>
         )}
-
-        {reading.length > 0 && (
-          <View style={styles.section}>
+        </View>
+      ),
+    },
+  ];
+  if (reading.length > 0)
+    blocks.push({
+      key: 'reading',
+      el: (
+        <View style={styles.section}>
             <SectionHeader title="ادامه‌ی خواندن" side={reading.length > 1 ? `${toPersianDigits(reading.length)} کتاب` : undefined} />
             <ReadingCards items={reading} />
           </View>
-        )}
-
-        {user && today && (
-          <View style={styles.section}>
+      ),
+    });
+  if (user && today)
+    blocks.push({
+      key: 'today',
+      el: (
+        <View style={styles.section}>
             <SectionHeader
               title="کارهای امروز"
               sub={
@@ -224,30 +239,35 @@ export default function Home() {
               <Text style={[styles.note, rtl]}>{toPersianDigits(today.reviews_waiting)} مرور دیگر هم منتظر است؛ فردا نوبت آن‌هاست.</Text>
             )}
           </View>
-        )}
-
-        {!!banners.data?.length && (
-          <View style={styles.section}>
+      ),
+    });
+  if (banners.data?.length)
+    blocks.push({
+      key: 'banners',
+      el: (
+        <View style={styles.section}>
             <SectionHeader title="تازه‌های لیمو" />
-            <BannerCarousel banners={banners.data} onOpen={(b) => openLink(b.link, b.id)} />
+            <BannerCarousel banners={banners.data!} onOpen={(b) => openLink(b.link, b.id)} paused={pageScrolling} />
           </View>
-        )}
-
-        {books.loading && !list.length ? (
-          <Loading />
-        ) : books.error ? (
-          <ErrorState message={books.error.message} onRetry={books.retry} />
-        ) : list.length === 0 ? (
-          <Text style={[styles.muted, rtl]}>هنوز کتابی منتشر نشده است.</Text>
-        ) : (
-          shelves.map((shelf) => (
-            <View key={shelf.id ?? 'rest'} style={styles.section}>
-              <SectionHeader title={shelf.title} side={`${toPersianDigits(shelf.books.length)} کتاب`} />
-              <HRow data={shelf.books} keyOf={(b) => b.slug} render={bookTile} gap={14} />
-            </View>
-          ))
-        )}
-
+      ),
+    });
+  if (books.loading && !list.length) blocks.push({ key: 'loading', el: <Loading /> });
+  else if (books.error) blocks.push({ key: 'error', el: <ErrorState message={books.error.message} onRetry={books.retry} /> });
+  else if (list.length === 0) blocks.push({ key: 'empty', el: <Text style={[styles.muted, rtl]}>هنوز کتابی منتشر نشده است.</Text> });
+  else
+    for (const shelf of shelves)
+      blocks.push({
+        key: `shelf-${shelf.id ?? 'rest'}`,
+        el: (
+          <View style={styles.section}>
+            <SectionHeader title={shelf.title} side={`${toPersianDigits(shelf.books.length)} کتاب`} />
+            <HRow data={shelf.books} keyOf={(b) => b.slug} render={bookTile} gap={14} />
+          </View>
+        ),
+      });
+  blocks.push({
+    key: 'soon',
+    el: (
         <View style={styles.soon}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flex: 1 }}>
             <IconBadge name="sparkles" size={32} />
@@ -255,7 +275,26 @@ export default function Home() {
           </View>
           <Text style={styles.soonBadge}>به‌زودی</Text>
         </View>
-      </ScrollView>
+    ),
+  });
+
+  return (
+    <Screen tab>
+      <FlatList
+        data={blocks}
+        keyExtractor={(b) => b.key}
+        renderItem={({ item }) => <>{item.el}</>}
+        contentContainerStyle={styles.page}
+        refreshControl={refresh}
+        initialNumToRender={4}
+        windowSize={5}
+        maxToRenderPerBatch={2}
+        onScrollBeginDrag={() => (pageScrolling.current = true)}
+        onMomentumScrollEnd={() => (pageScrolling.current = false)}
+        onScrollEndDrag={(e) => {
+          if (!e.nativeEvent.velocity || Math.abs(e.nativeEvent.velocity.y) < 0.05) pageScrolling.current = false;
+        }}
+      />
     </Screen>
   );
 }

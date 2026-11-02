@@ -390,7 +390,7 @@ export default function Quiz() {
       </Animated.View>
       {sharing && (
         <View style={styles.offscreen} pointerEvents="none">
-          <QuestionShareCard ref={shareRef} question={q} />
+          <QuestionShareCard ref={shareRef} questions={[q]} />
         </View>
       )}
       <ReportSheet

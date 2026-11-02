@@ -15,6 +15,9 @@ from .models import ExamAttempt, FlashcardReview, Note, StudyDay
 
 class StudyTests(TestCase):
     def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()  # «کارهای امروز» and the finished-chapter check are kept in the cache per learner
         self.media = tempfile.mkdtemp()
         self.override = override_settings(MEDIA_ROOT=self.media)
         self.override.enable()

@@ -812,3 +812,42 @@ class MaintenanceTests(_Base):
         reader.force_authenticate(self.admin)
         SectionProgress.objects.create(user=self.admin, node=ContentNode.objects.get(slug="one"), book=self.book)
         self.assertEqual(sorted(b["title"] for b in reader.get("/api/v1/banners/").json()), ["خوانندگان", "همه"])
+
+
+class ShelfSpeedTests(_Base):
+    def test_shelves_need_few_queries_however_many_books(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        self.admin.is_staff = False
+        self.admin.save()
+
+        def count():
+            with CaptureQueriesContext(connection) as ctx:
+                self.assertEqual(client.get("/api/v1/shelves/").status_code, 200)
+            return len(ctx.captured_queries)
+
+        one = count()
+        # A learner with a subscription: every book's access is worked out from the same rows.
+        from apps.commerce.models import Entitlement
+
+        Entitlement.objects.create(user=self.admin, all_majors=True)
+        self.assertEqual(client.get("/api/v1/shelves/").json()[0]["books"][0]["access"], "subscription")
+        for i in range(10):
+            b = ContentNode.add_root(kind="book", title=f"کتاب {i}", slug=f"b{i}", is_published=True)
+            b.add_child(kind="chapter", title="ف", slug=f"b{i}c", is_published=True)
+        many = count()
+        self.assertLessEqual(many - one, 10 * 2, f"{one} queries for 1 book, {many} for 11")
+
+    def test_book_samples_for_group_sharing(self):
+        from rest_framework.test import APIClient
+
+        Question.objects.filter(slug="q1").update(is_sample=True)
+        data = APIClient().get("/api/v1/books/test-book/samples/").json()
+        self.assertEqual(len(data["questions"]), 1)
+        self.assertEqual(data["questions"][0]["share_place"]["chapter"], "فصل یک")
+        self.assertNotIn("is_correct", str(data))
+        self.assertEqual(APIClient().get("/api/v1/books/test-book/").json()["sample_count"], 1)

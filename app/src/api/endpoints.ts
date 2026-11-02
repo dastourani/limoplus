@@ -53,6 +53,8 @@ export type BookDetail = BookListItem & {
   done_ids: number[];
   /** Signed-in learners: «اشتباه‌هایم در این کتاب» and «آزمون‌هایم از این کتاب». */
   mine?: { mistakes: { count: number; open: number; settling: number; due: number }; exams: number } | null;
+  /** Shareable questions of this book the learner can see («تست‌های نمونه»). */
+  sample_count?: number;
   /** Each finished chapter's next review, and the book's weekly mixed review. */
   reviews?: { chapters: Record<string, { step: number; due_on: string; days: number; done: number }>; book: { due_on: string; days: number } | null } | null;
 };
@@ -340,6 +342,7 @@ export const endpoints = {
   questions: (nodeId: number) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/`),
   today: () => api<Today>('me/today/'),
   reviews: () => api<{ due: ReviewItem[]; today: ReviewItem[]; daily_cap: number }>('me/reviews/'),
+  bookSamples: (slug: string) => api<{ book: string; questions: Question[] }>(`books/${encodeURIComponent(slug)}/samples/`),
   startReview: (kind: 'chapter' | 'book', id: number) => api<ReviewSessionData>('me/reviews/start/', { body: { kind, id } }),
   reviewSession: (id: number) => api<ReviewSessionData>(`me/reviews/${id}/`),
   reviewMore: (id: number) => api<ReviewSessionData>(`me/reviews/${id}/more/`, { body: {} }),

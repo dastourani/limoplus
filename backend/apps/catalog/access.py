@@ -28,26 +28,41 @@ def owns_book(user, book: ContentNode) -> bool:
     return Entitlement.active_for(user).filter(Q(book=book) | Q(all_majors=True) | Q(major_id__in=majors, book__isnull=True)).exists()
 
 
+def active_rows(user) -> list[tuple]:
+    """The learner's active entitlements as (book_id, major_id, all_majors, bought): read once, used for many books."""
+    if not (user and user.is_authenticated):
+        return []
+    from apps.commerce.models import Entitlement
+
+    return [
+        (b, m, a, o is not None or g is None)
+        for b, m, a, o, g in Entitlement.active_for(user).values_list("book_id", "major_id", "all_majors", "order_id", "granted_by_id")
+    ]
+
+
+def access_kind_from(rows, user, book_id, major_ids) -> str | None:
+    """access_kind from rows already read (see active_rows)."""
+    if not (user and user.is_authenticated):
+        return None
+    if acts_as_staff(user):
+        return "staff"
+    own = [r for r in rows if r[0] == book_id]
+    if any(r[3] for r in own):
+        return "purchase"
+    if own:
+        return "gift"
+    if any(r[2] or (r[0] is None and r[1] in major_ids) for r in rows):
+        return "subscription"
+    return None
+
+
 def access_kind(user, book: ContentNode) -> str | None:
     """Why the user can read the whole book: "staff", "purchase", "gift", "subscription", or None."""
     if not (user and user.is_authenticated):
         return None
     if acts_as_staff(user):
         return "staff"
-    from django.db.models import Q
-
-    from apps.commerce.models import Entitlement
-
-    active = Entitlement.active_for(user)
-    own = active.filter(book=book)
-    if own.filter(Q(order__isnull=False) | Q(granted_by__isnull=True)).exists():
-        return "purchase"
-    if own.exists():
-        return "gift"
-    majors = list(book.majors.values_list("id", flat=True))
-    if active.filter(Q(all_majors=True) | Q(major_id__in=majors, book__isnull=True)).exists():
-        return "subscription"
-    return None
+    return access_kind_from(active_rows(user), user, book.id, set(book.majors.values_list("id", flat=True)))
 
 
 def access_until(user, book: ContentNode):
@@ -75,13 +90,20 @@ def book_of(node: ContentNode) -> ContentNode:
     return ContentNode.objects.get(path=node.path[: ContentNode.steplen])
 
 
+_UNSET = object()
+
+
 class AccessMap:
-    def __init__(self, user, node: ContentNode):
+    def __init__(self, user, node: ContentNode, light=False, kind=_UNSET):
+        """light: without the lesson texts (a shelf needs only the tree). kind: the access already worked out."""
         self.book = book_of(node)
-        self.nodes = {n.id: n for n in ContentNode.objects.filter(path__startswith=self.book.path)}
+        nodes = ContentNode.objects.filter(path__startswith=self.book.path)
+        if light:
+            nodes = nodes.defer("full_body", "summary_body", "about", "cover_drawing")
+        self.nodes = {n.id: n for n in nodes}
         hidden = [n.path for n in self.nodes.values() if not n.is_published or n.is_archived]
         free = [n.path for n in self.nodes.values() if n.is_free]
-        self.access = access_kind(user, self.book)
+        self.access = access_kind(user, self.book) if kind is _UNSET else kind
         self.owned = self.access is not None
         self._visible, self._readable = {}, {}
         for n in self.nodes.values():

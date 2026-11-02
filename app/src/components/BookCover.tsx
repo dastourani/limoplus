@@ -62,7 +62,13 @@ export const BookCover = memo(function BookCover({
   }
 
   return (
-    <View style={[styles.shadow, frame, { overflow: 'hidden' }]} accessibilityLabel={`جلد کتاب ${book.title}`}>
+    // Kept as a ready picture by the phone: the line drawing is not redrawn on every frame while a shelf scrolls.
+    <View
+      style={[styles.shadow, frame, { overflow: 'hidden' }]}
+      accessibilityLabel={`جلد کتاب ${book.title}`}
+      renderToHardwareTextureAndroid
+      shouldRasterizeIOS
+    >
       <View style={{ height: 6 * k, backgroundColor: strip }} />
       {!!major?.name && (
         <Text allowFontScaling={false} style={[styles.major, { fontSize: 10 * k, color: strip, paddingHorizontal: 18 * k, paddingTop: 12 * k }]}>

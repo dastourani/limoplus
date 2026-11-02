@@ -117,10 +117,12 @@ def start_cycle(user, access, chapter, by="auto") -> ChapterReview:
 
 
 def recheck(user) -> None:
-    """Something that can finish a chapter happened (a section read, a question answered): look again next time."""
+    """Something that changes the learner's day happened (a section read, a question answered, a card or review done):
+    look again for finished chapters, and work out «کارهای امروز» afresh."""
     from django.core.cache import cache
 
     cache.delete(f"limo.review_sync.{user.pk}")
+    cache.delete(f"limo.today.{user.pk}")
 
 
 def sync(user, force=False) -> None:
@@ -495,6 +497,7 @@ def finish_review(request, session_id):
 
 
 def close(session: ReviewSession, score: float) -> None:
+    recheck(session.user)
     now = timezone.now()
     session.finished_at, session.score = now, score
     session.save(update_fields=["finished_at", "score"])
@@ -533,4 +536,5 @@ def finish_chapter(request, node_id):
     if not access.readable(chapter.id):
         return Response({"code": "locked", "message": "این فصل در نسخه‌ی کامل کتاب است."}, status=status.HTTP_403_FORBIDDEN)
     review = start_cycle(request.user, access, chapter, by="button")
+    recheck(request.user)
     return Response({"due_on": review.due_on, "days": (review.due_on - timezone.localdate()).days})

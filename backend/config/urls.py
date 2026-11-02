@@ -25,6 +25,7 @@ api = [
     path("search/", catalog_search.search),
     path("books/<str:slug>/", catalog.book_detail),
     path("books/<str:slug>/glossary/", catalog.book_glossary),
+    path("books/<str:slug>/samples/", learning.book_samples),
     path("books/<str:slug>/notify/", catalog.book_notify),
     path("nodes/<int:node_id>/", catalog.node_detail),
     path("nodes/<int:node_id>/questions/", learning.node_questions),
