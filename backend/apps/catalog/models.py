@@ -213,7 +213,11 @@ class Banner(models.Model):
         help_text="کتاب و خرید: شناسه‌ی کتاب (مثلاً bushberg). آزمون: شماره‌ی فصل در پنل. لینک بیرونی: آدرس کامل با https. مرور امروز: خالی.",
     )
     link = models.CharField("لینک (قدیمی)", max_length=300, blank=True, help_text="فقط اگر «مقصد» خالی است؛ آدرس سایت یا book/شناسه")
-    majors = models.ManyToManyField(Major, blank=True, verbose_name="رشته‌های هدف", help_text="خالی یعنی همه")
+    majors = models.ManyToManyField(Major, blank=True, verbose_name="رشته‌های هدف (قدیمی)", help_text="دیگر استفاده نمی‌شود")
+    audience_book = models.ForeignKey(
+        "ContentNode", on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name="فقط برای خوانندگان این کتاب",
+        limit_choices_to={"kind": "book", "depth": 1}, help_text="خالی یعنی همه. پر باشد: فقط کسانی که این کتاب را می‌خوانند بنر را می‌بینند.",
+    )
     starts_at = models.DateTimeField("شروع", null=True, blank=True)
     ends_at = models.DateTimeField("پایان", null=True, blank=True)
     priority = models.PositiveSmallIntegerField("اولویت", default=0)
@@ -239,3 +243,50 @@ class Banner(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Shelf(models.Model):
+    """«قفسه»: one horizontal row of books on the home page, named by subject (e.g. ریاضی). Made and ordered in the panel.
+    A book may sit on several shelves. Published books on no shelf appear in a last row, so none is ever hidden."""
+
+    title = models.CharField("نام قفسه", max_length=80)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField("نمایش در اپ", default=True)
+
+    class Meta:
+        verbose_name = "قفسه"
+        verbose_name_plural = "قفسه‌ها"
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return self.title
+
+
+class ShelfBook(models.Model):
+    shelf = models.ForeignKey(Shelf, on_delete=models.CASCADE, related_name="items")
+    book = models.ForeignKey(ContentNode, on_delete=models.CASCADE, related_name="shelf_items", verbose_name="کتاب",
+                             limit_choices_to={"kind": "book", "depth": 1})
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+
+    class Meta:
+        verbose_name = "کتاب قفسه"
+        verbose_name_plural = "کتاب‌های قفسه"
+        ordering = ["order", "id"]
+        unique_together = [("shelf", "book")]
+
+    def __str__(self):
+        return self.book.title
+
+
+
+class CleanupRun(models.Model):
+    """One run of the nightly clean-up (temporary data, old chapter versions, unused pictures). The panel's «فضای سرور»
+    page lists them. Learners' data is never touched."""
+
+    at = models.DateTimeField("زمان", auto_now_add=True)
+    summary = models.JSONField("نتیجه", default=dict)
+
+    class Meta:
+        verbose_name = "فضای سرور"
+        verbose_name_plural = "فضای سرور"
+        ordering = ["-at"]

@@ -1,0 +1,35 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div class="lp" dir="rtl" style="max-width:900px">
+  <p class="hint">داده‌ی کاربران (خرید، پیشرفت، یادداشت، جواب‌ها، نمره‌ها) هرگز پاک نمی‌شود. پاک‌سازی فقط این‌ها را برمی‌دارد:
+    کدهای ورود منقضی، شمارنده‌های محدودیت ورود، نشست‌هایی که بیش از ۹۰ روز از پایانشان گذشته، فایل‌های نیمه‌کاره‌ی ورود فصل،
+    نسخه‌های فصل قدیمی‌تر از ۳۰ روز (از هر هفته یکی می‌ماند) و عکس‌هایی که بیش از یک ماه است جایی استفاده نمی‌شوند.
+    هر روز یک بار خودکار، با باز شدن پنل، اجرا می‌شود.</p>
+
+  {% if can_run %}
+  <form method="post" style="margin:12px 0">{% csrf_token %}<button class="button default" type="submit">پاک‌سازی همین حالا</button></form>
+  {% endif %}
+
+  <h2>حجم کلی</h2>
+  <table>
+    <tr><th>پایگاه داده</th><td>{% if report.db_bytes %}{{ report.db_bytes|filesizeformat }}{% else %}—{% endif %}</td></tr>
+    {% for f in report.folders %}<tr><th>پوشه‌ی {{ f.name }}</th><td>{{ f.bytes|filesizeformat }} ({{ f.files }} فایل)</td></tr>{% endfor %}
+    <tr><th>نسخه‌های فصل‌ها</th><td>{{ report.revisions }} نسخه، حدود {{ report.revision_bytes|filesizeformat }}</td></tr>
+    <tr><th>عکس‌های بی‌استفاده‌ی قدیمی</th><td>{{ report.orphans.files }} فایل، {{ report.orphans.bytes|filesizeformat }} (در پاک‌سازی بعدی برداشته می‌شوند)</td></tr>
+  </table>
+
+  <h2>بزرگ‌ترین جدول‌ها</h2>
+  <table>
+    <tr><th>جدول</th><th>تعداد ردیف</th><th>حجم</th></tr>
+    {% for t in report.tables %}<tr><td>{{ t.name }}</td><td>{{ t.rows }}</td><td>{% if t.bytes %}{{ t.bytes|filesizeformat }}{% else %}—{% endif %}</td></tr>{% endfor %}
+  </table>
+
+  <h2>آخرین پاک‌سازی‌ها</h2>
+  <table>
+    <tr><th>زمان</th><th>کد</th><th>شمارنده</th><th>نشست</th><th>نسخه</th><th>عکس</th></tr>
+    {% for r in runs %}<tr><td>{{ r.at }}</td><td>{{ r.summary.codes }}</td><td>{{ r.summary.rate_counters }}</td><td>{{ r.summary.sessions }}</td>
+      <td>{{ r.summary.revisions }}</td><td>{{ r.summary.images }}</td></tr>
+    {% empty %}<tr><td colspan="6">هنوز اجرا نشده است.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

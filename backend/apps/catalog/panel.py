@@ -98,6 +98,7 @@ def _question_json(q, obj, reports):
         "flashcards": q.flashcard_slugs,
         "raw": "\n".join(question_block(q)),
         "answers": obj.answer_count if obj else 0,
+        "is_sample": bool(obj and obj.is_sample),
         "correct_rate": round(100 * obj.correct_count / obj.answer_count) if obj and obj.answer_count else None,
         "reports": reports.get(obj.pk, 0) if obj else 0,
     }
@@ -213,6 +214,15 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
         n = chapter.get_children().filter(slug=data.get("slug"), kind=ContentNode.Kind.SECTION).update(is_published=bool(data.get("value")))
         if not n:
             raise EditError("بخش پیدا نشد.")
+        return {"ok": True}
+
+    if op == "question.sample":
+        # «قابل اشتراک»: set in the panel only (not part of the file).
+        from apps.learning.models import Question
+
+        n = Question.objects.filter(node__path__startswith=book.path, slug=data.get("slug"), is_archived=False).update(is_sample=bool(data.get("value")))
+        if not n:
+            raise EditError("تست پیدا نشد.")
         return {"ok": True}
 
     if op in ("question.convert", "flashcard.convert"):

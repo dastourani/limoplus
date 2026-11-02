@@ -43,7 +43,8 @@ export type NodeSummary = {
   flashcard_count?: number;
   group?: string;
 };
-export type ChapterSummary = NodeSummary & { sections: NodeSummary[]; has_overview?: boolean };
+export type ChapterSummary = NodeSummary & { sections: NodeSummary[]; has_overview?: boolean; term_count?: number };
+export type Shelf = { id: number | null; title: string; books: BookListItem[] };
 export type BookDetail = BookListItem & {
   about: string;
   majors: string[];
@@ -51,12 +52,14 @@ export type BookDetail = BookListItem & {
   done_ids: number[];
   /** Signed-in learners: «اشتباه‌هایم در این کتاب» and «آزمون‌هایم از این کتاب». */
   mine?: { mistakes: { count: number; open: number; settling: number; due: number }; exams: number } | null;
+  /** Each finished chapter's next review, and the book's weekly mixed review. */
+  reviews?: { chapters: Record<string, { step: number; due_on: string; days: number; done: number }>; book: { due_on: string; days: number } | null } | null;
 };
 export type NodeDetail = {
   id: number;
   kind: NodeSummary['kind'];
   title: string;
-  breadcrumb: { id: number; kind: NodeSummary['kind']; slug: string; title: string }[];
+  breadcrumb: { id: number; kind: NodeSummary['kind']; slug: string; title: string; number?: number | null }[];
   summary: string;
   full: string;
   previous_id: number | null;
@@ -74,6 +77,8 @@ export type Question = {
   node_id?: number;
   /** One of the book's few sample questions that may be shared as an image. */
   shareable?: boolean;
+  /** For the shared picture: the book and chapter it comes from. */
+  share_place?: { book: string; chapter: string; chapter_number: number | null } | null;
   stem: string;
   choices: { id: number; text: string }[];
   difficulty: 'easy' | 'medium' | 'hard';
@@ -131,6 +136,41 @@ export type Today = {
   practise: number;
   continue: { id: number; title: string; book_title: string; book_slug: string } | null;
   minutes: number;
+  /** Chapter and book reviews due today (at most two), and how many more wait. */
+  reviews?: ReviewItem[];
+  reviews_waiting?: number;
+};
+/** A review whose day has come: «مرور فصل ۲ «…» از …: ۵ تست، حدود ۷ دقیقه». */
+export type ReviewItem = {
+  kind: 'chapter' | 'book';
+  id: number;
+  book_slug: string;
+  book_title: string;
+  chapter_id: number | null;
+  chapter_title: string;
+  chapter_number: number | null;
+  chapters?: number;
+  step: number | null;
+  is_exam: boolean;
+  questions: number;
+  minutes: number;
+  due_on: string;
+  late_days: number;
+};
+export type ReviewSessionData = {
+  id: number;
+  kind: 'chapter' | 'book';
+  title: string;
+  book_title: string;
+  minimum: number;
+  answered: number;
+  right: number;
+  more: boolean;
+  finished: boolean;
+  exam_id: number | null;
+  questions: Question[];
+  next_due_on?: string | null;
+  next_in_days?: number;
 };
 export type SearchResult = {
   kind: 'section' | 'question' | 'flashcard' | 'note';
@@ -272,12 +312,24 @@ export const endpoints = {
   majors: () => api<Major[]>('majors/'),
   books: (major: string) => api<BookListItem[]>(`majors/${encodeURIComponent(major)}/books/`),
   allBooks: () => api<BookListItem[]>('books/'),
+  /** The home page rows: each shelf set in the panel, then «کتاب‌های دیگر». */
+  shelves: () => api<Shelf[]>('shelves/'),
   book: (slug: string) => api<BookDetail>(`books/${encodeURIComponent(slug)}/`),
   node: (id: number) => api<NodeDetail>(`nodes/${id}/`),
   notifyBook: (slug: string, on: boolean) => api<{ notify: boolean; can_cancel: boolean }>(`books/${encodeURIComponent(slug)}/notify/`, { body: { on } }),
-  glossary: (slug: string) => api<{ book: string; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(`books/${encodeURIComponent(slug)}/glossary/`),
+  glossary: (slug: string, chapter?: string) =>
+    api<{ book: string; chapter?: string | null; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(
+      `books/${encodeURIComponent(slug)}/glossary/${chapter ? `?chapter=${encodeURIComponent(chapter)}` : ''}`,
+    ),
   questions: (nodeId: number) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/`),
   today: () => api<Today>('me/today/'),
+  reviews: () => api<{ due: ReviewItem[]; today: ReviewItem[]; daily_cap: number }>('me/reviews/'),
+  startReview: (kind: 'chapter' | 'book', id: number) => api<ReviewSessionData>('me/reviews/start/', { body: { kind, id } }),
+  reviewSession: (id: number) => api<ReviewSessionData>(`me/reviews/${id}/`),
+  reviewMore: (id: number) => api<ReviewSessionData>(`me/reviews/${id}/more/`, { body: {} }),
+  finishReview: (id: number) => api<ReviewSessionData>(`me/reviews/${id}/finish/`, { body: {} }),
+  /** «این فصل را تمام کردم». */
+  finishChapter: (chapterId: number) => api<{ due_on: string; days: number }>(`nodes/${chapterId}/finish/`, { body: {} }),
   search: (q: string, book = '') =>
     api<{ query: string; results: SearchResult[]; more?: boolean; too_short?: boolean }>(`search/?q=${encodeURIComponent(q)}${book ? `&book=${encodeURIComponent(book)}` : ''}`),
   quick: () => api<{ cards: (Flashcard & { box: number; hints: GradeHints })[]; questions: Question[] }>('me/quick/'),
@@ -286,7 +338,7 @@ export const endpoints = {
   mistakeReason: (questionId: number, reason: string) => api<{ reason: string }>(`me/mistakes/${questionId}/reason/`, { body: { reason } }),
   answer: (questionId: number, choiceId: number) => api<AnswerResult>(`questions/${questionId}/answer/`, { body: { choice_id: choiceId } }),
   flashcards: (nodeId: number) => api<{ flashcards: Flashcard[]; locked_count: number }>(`nodes/${nodeId}/flashcards/`),
-  banners: (major: string) => api<Banner[]>(`banners/?major=${encodeURIComponent(major)}`),
+  banners: () => api<Banner[]>('banners/'),
   bannerClick: (id: number) => api<{ ok: boolean }>(`banners/${id}/click/`, { method: 'POST' }),
   health: (baseUrl?: string) => api<{ status: string }>('health/', { baseUrl }),
 
@@ -317,7 +369,8 @@ export const endpoints = {
   reportNode: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`nodes/${id}/report/`, { body: { reason, note } }),
   startExam: (nodeId: number, body: { count: number; negative_marking: boolean; minutes?: number }) => api<ExamDetail>(`nodes/${nodeId}/exams/`, { body }),
   exam: (id: number) => api<ExamDetail>(`exams/${id}/`),
-  submitExam: (id: number, answers: Record<string, number | null>) => api<ExamDetail>(`exams/${id}/submit/`, { body: { answers } }),
+  submitExam: (id: number, answers: Record<string, number | null>, doubts: number[] = []) =>
+    api<ExamDetail>(`exams/${id}/submit/`, { body: { answers, doubts } }),
   myExams: () => api<ExamSummary[]>('me/exams/'),
   examPage: (page: number, book = '') => api<ExamPage>(`me/exams/?page=${page}${book ? `&book=${encodeURIComponent(book)}` : ''}`),
   library: () => api<Library>('me/library/'),

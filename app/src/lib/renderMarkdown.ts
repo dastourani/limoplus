@@ -370,6 +370,10 @@ export type SectionStatus = { read: boolean; questions: number; questions_left: 
 export type ChapterEnd = {
   chapter_id: number;
   chapter_title: string;
+  chapter_number?: number | null;
+  /** The suggested summary exam: how many questions (0 = the chapter has none) and about how many minutes. */
+  exam_questions?: number;
+  exam_minutes?: number;
   book_slug: string;
   book_title: string;
   next_chapter: { id: number; chapter_title: string; title: string; locked: boolean } | null;
@@ -402,11 +406,15 @@ export function pageEndHtml(end?: PageEnd): string {
   } else if (end.chapterEnd) {
     const c = end.chapterEnd;
     const next = c.next_chapter;
-    html += `<div class="ch-end"><div class="ch-title">${next ? `فصل «${escHtml(c.chapter_title)}» تمام شد` : `کتاب «${escHtml(c.book_title)}» تمام شد!`}</div>
-<div class="ch-text">${next ? 'یک آزمون جمع‌بندی بده تا ببینی چقدر مانده، یا برو سراغ فصل بعد.' : 'با یک آزمون جمع‌بندی از این فصل ببین چقدر یادت مانده.'}</div>
-<a class="ch-btn ch-main" data-go="exam" role="button">آزمون جمع‌بندی این فصل</a>
+    const name = `فصل ${c.chapter_number ? fa(c.chapter_number) + ' ' : ''}«${escHtml(c.chapter_title)}»`;
+    const n = c.exam_questions ?? 0;
+    const exam = n
+      ? `با یک آزمون ${fa(n)} سؤالی از کل این فصل (حدود ${fa(c.exam_minutes || 1)} دقیقه) ببین چقدرش در ذهنت مانده.`
+      : '';
+    html += `<div class="ch-end"><div class="ch-title">${name} تمام شد${next ? '' : `؛ کتاب «${escHtml(c.book_title)}» هم به آخر رسید!`}</div>
+${exam ? `<div class="ch-text">${exam}</div><a class="ch-btn ch-main" data-go="exam" role="button">آزمون ${fa(n)} سؤالی این فصل</a>` : ''}
 ${next
-  ? `<a class="ch-btn" data-go="next-chapter" role="button">${next.locked ? '🔒 ' : ''}فصل بعد: ${escHtml(next.chapter_title)} ←</a>`
+  ? `<a class="ch-btn${exam ? '' : ' ch-main'}" data-go="next-chapter" role="button">${next.locked ? '🔒 ' : ''}فصل بعد: ${escHtml(next.chapter_title)} ←</a>`
   : '<a class="ch-btn" data-go="book" role="button">برگشت به صفحه‌ی کتاب</a>'}</div>`;
   }
   return html;

@@ -620,6 +620,13 @@
         h('button', { class: 'btn small icon', type: 'button', title: 'بالا', onclick: function () { self.reorder(s, kind, i, -1); } }, '▲'),
         h('button', { class: 'btn small icon', type: 'button', title: 'پایین', onclick: function () { self.reorder(s, kind, i, 1); } }, '▼'),
         move,
+        kind === 'question' ? h('button', {
+          class: 'btn small' + (item.is_sample ? ' primary' : ''), type: 'button',
+          title: 'کاربر می‌تواند تصویر این تست را (بدون جواب) برای دیگران بفرستد',
+          onclick: function () {
+            self.call({ op: 'question.sample', slug: item.slug, value: !item.is_sample })
+              .then(function () { self.render(); toast(item.is_sample ? 'دیگر قابل اشتراک نیست.' : 'قابل اشتراک شد.'); }).catch(function () {});
+          } }, item.is_sample ? '✓ قابل اشتراک' : 'قابل اشتراک کن') : null,
         h('button', { class: 'btn small danger', type: 'button', onclick: function () {
           if (!confirm('بایگانی شود؟ (از اپ پنهان می‌شود؛ آمار کاربران می‌ماند)')) return;
           self.call({ op: kind + '.archive', slug: item.slug }).then(function () { self.render(); toast('بایگانی شد.'); }).catch(function () {});

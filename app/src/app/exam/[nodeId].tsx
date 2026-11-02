@@ -27,9 +27,10 @@ function clock(seconds: number) {
 
 /** Exam mode: timed, no feedback until the end, negative marking on by default (as in the konkur). */
 export default function Exam() {
-  const { nodeId, attempt } = useLocalSearchParams<{ nodeId: string; attempt?: string }>();
+  const { nodeId, attempt, count: suggested } = useLocalSearchParams<{ nodeId: string; attempt?: string; count?: string }>();
   const { user } = useAuth();
-  const [count, setCount] = useState(20);
+  // The end of a chapter suggests a size («آزمون ۱۰ سؤالی»); it is still the learner's choice here.
+  const [count, setCount] = useState(() => (COUNTS.includes(Number(suggested)) ? Number(suggested) : 20));
   const [negative, setNegative] = useState(true);
   const [exam, setExam] = useState<ExamDetail | null>(null);
   const [answers, setAnswers] = useState<Record<string, number | null>>({});
@@ -39,6 +40,9 @@ export default function Exam() {
   const [index, setIndex] = useState(0);
   // «شک‌دار»: questions marked to look at again before finishing (kept on the phone with the answers).
   const [flags, setFlags] = useState<number[]>([]);
+  // Sent with the answers: «شک‌دار» questions come back in the chapter reviews.
+  const flagsRef = useRef<number[]>([]);
+  flagsRef.current = flags;
   const [left, setLeft] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +134,7 @@ export default function Exam() {
     submitted.current = true;
     setBusy(true);
     try {
-      await endpoints.submitExam(exam.id, answersRef.current);
+      await endpoints.submitExam(exam.id, answersRef.current, flagsRef.current);
       if (storeKey) AsyncStorage.multiRemove([storeKey, `${storeKey}.flags`]).catch(() => undefined);
       router.replace({ pathname: `/exam-result/${exam.id}`, params: { fresh: '1' } });
     } catch (e) {

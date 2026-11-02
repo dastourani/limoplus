@@ -17,11 +17,12 @@ class Plan(models.Model):
     """A subscription offer. Prices are edited in the admin."""
 
     class Scope(models.TextChoices):
-        MAJOR = "major", "یک رشته"
-        ALL = "all", "همه‌ی رشته‌ها"
+        MAJOR = "major", "یک رشته (دیگر فروخته نمی‌شود)"
+        ALL = "all", "همه‌ی کتاب‌ها"
 
     title = models.CharField("عنوان", max_length=80)
-    scope = models.CharField("دامنه", max_length=10, choices=Scope.choices)
+    scope = models.CharField("دامنه", max_length=10, choices=Scope.choices, default=Scope.ALL,
+                             help_text="فقط «همه‌ی کتاب‌ها» در اپ فروخته می‌شود.")
     months = models.PositiveSmallIntegerField("مدت (ماه)", default=1)
     price = models.PositiveIntegerField("قیمت (تومان)")
     is_active = models.BooleanField("فعال", default=True)

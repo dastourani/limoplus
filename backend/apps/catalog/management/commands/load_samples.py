@@ -38,10 +38,15 @@ class Command(BaseCommand):
 
         # Starting prices (toman); change them any time in the admin.
         for order, (title, scope, months, price) in enumerate(
-            [("اشتراک ماهانه‌ی رشته", "major", 1, 149_000), ("اشتراک سه‌ماهه‌ی رشته", "major", 3, 369_000), ("اشتراک ماهانه‌ی همه‌ی رشته‌ها", "all", 1, 249_000)]
+            [("اشتراک ماهانه", "all", 1, 249_000), ("اشتراک سه‌ماهه", "all", 3, 669_000)]
         ):
             Plan.objects.get_or_create(title=title, defaults={"scope": scope, "months": months, "price": price, "order": order})
         book = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, slug="math-1").first()
+        if book:
+            from apps.catalog.models import Shelf, ShelfBook
+
+            shelf, _ = Shelf.objects.get_or_create(title="ریاضی")
+            ShelfBook.objects.get_or_create(shelf=shelf, book=book)
         if book and not book.price:
             book.price = 249_000
             book.save(update_fields=["price"])

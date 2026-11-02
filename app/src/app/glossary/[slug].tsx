@@ -11,8 +11,8 @@ import { colors, radius, rtl, toPersianDigits } from '../../theme';
 
 /** Every term from the book's review cards, searchable in Persian or English; tap one to open its section. */
 export default function Glossary() {
-  const { slug } = useLocalSearchParams<{ slug: string }>();
-  const { data, error, loading, retry } = useApi(() => endpoints.glossary(String(slug)), [slug]);
+  const { slug, chapter } = useLocalSearchParams<{ slug: string; chapter?: string }>();
+  const { data, error, loading, retry } = useApi(() => endpoints.glossary(String(slug), chapter), [slug, chapter]);
   const [q, setQ] = useState('');
   const list = useMemo(() => {
     const terms = data?.terms ?? [];
@@ -25,7 +25,7 @@ export default function Glossary() {
 
   return (
     <Screen>
-      <Header title="واژه‌نامه" subtitle={data.book} />
+      <Header title={data.chapter ? 'واژه‌های این فصل' : 'واژه‌نامه'} subtitle={data.chapter ? `${data.chapter}، ${data.book}` : data.book} />
       <View style={styles.search}>
         <Icon name="search-check" size={18} color={colors.muted} />
         <TextInput value={q} onChangeText={setQ} placeholder="جست‌وجوی فارسی یا انگلیسی" style={[styles.input, rtl]} autoCorrect={false} />

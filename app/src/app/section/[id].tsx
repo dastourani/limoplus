@@ -263,7 +263,7 @@ export default function Section() {
       const book = node.breadcrumb.find((b) => b.kind === 'book');
       if (e.to === 'quiz') router.push(`/quiz/${node.id}`);
       else if (e.to === 'cards') router.push(`/flashcards/${node.id}`);
-      else if (e.to === 'exam' && end) router.push(`/exam/${end.chapter_id}`);
+      else if (e.to === 'exam' && end) router.push({ pathname: '/exam/[nodeId]', params: { nodeId: String(end.chapter_id), count: String(end.exam_questions ?? 10) } });
       else if (e.to === 'book' && (end?.book_slug || book)) router.push(`/book/${end?.book_slug ?? book!.slug}`);
       else if (e.to === 'next-chapter' && end?.next_chapter) {
         const next = end.next_chapter;
@@ -430,6 +430,8 @@ export default function Section() {
   if (error || !node) return <Screen><Header /><ErrorState message={error?.message ?? 'پیدا نشد.'} onRetry={load} /></Screen>;
 
   const chapter = node.breadcrumb[node.breadcrumb.length - 1];
+  // «فصل ۲: تابش و اتم»: the number comes from the chapter's place in the book.
+  const chapterLabel = chapter ? (chapter.kind === 'chapter' && chapter.number ? `فصل ${toPersianDigits(chapter.number)}: ${chapter.title}` : chapter.title) : '';
   const body = mode === 'summary' && node.summary ? node.summary : node.full;
   const bookSlug = node.breadcrumb.find((b) => b.kind === 'book')?.slug;
   const missingNotes = notes.filter((n) => missing.includes(n.id) && n.mode === mode);
@@ -441,7 +443,7 @@ export default function Section() {
           <Icon name="arrow-right" size={24} color={ink} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین، ${chapter?.title ?? ''}` : chapter?.title}</Text>
+          <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین، ${chapterLabel}` : chapterLabel}</Text>
           <Text style={[styles.title, rtl, { color: ink }]} numberOfLines={1}>{node.title}</Text>
         </View>
         <Pressable onPress={toggleBookmark} disabled={bookmarkBusy} style={[styles.icon, bookmarkBusy && { opacity: 0.35 }]} accessibilityLabel="نشان کردن">

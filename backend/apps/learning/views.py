@@ -21,6 +21,12 @@ def _usable(access, item):
     return access.visible(item.node_id) and (item.is_free or access.readable(item.node_id))
 
 
+def _share_place(access, q) -> dict:
+    node = access.nodes.get(q.node_id)
+    chapter = next((n for n in access.nodes.values() if n.kind == ContentNode.Kind.CHAPTER and node and node.path.startswith(n.path)), None)
+    return {"book": access.book.title, "chapter": chapter.title if chapter else "", "chapter_number": chapter.position if chapter else None}
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def node_questions(request, node_id):
@@ -43,6 +49,8 @@ def node_questions(request, node_id):
                 "id": q.id,
                 "node_id": q.node_id,
                 "shareable": q.is_sample,
+                # Printed on the shared picture: the book and chapter it comes from.
+                "share_place": _share_place(access, q) if q.is_sample else None,
                 "stem": media_urls(request, q.stem),
                 # Correct answers are never sent before the learner answers.
                 "choices": [{"id": c.id, "text": media_urls(request, c.text)} for c in q.choices.all()],

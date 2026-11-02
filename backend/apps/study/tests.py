@@ -361,3 +361,124 @@ class PageEndAndPlacesTests(TestCase):
         done = self.client.post(f"/api/v1/exams/{r['id']}/submit/", {"answers": {}}, format="json").data
         review = {x["question_id"]: x for x in done["review"]}
         self.assertEqual(review[qid]["corrected"]["note"], "پاسخ درست عوض شد.")
+
+
+class ReviewCycleTests(TestCase):
+    """«چرخه‌ی مرور فصل»: finishing a chapter, what is due, batches of five, the schedule, the monthly exam, doubts."""
+
+    setUp = StudyTests.setUp
+    tearDown = StudyTests.tearDown
+
+    def _finish_reading(self):
+        for s in self.chapter.get_children():
+            self.client.post(f"/api/v1/nodes/{s.id}/progress/", {"percent": 100, "done": True}, format="json")
+
+    def _answer_all(self, right=True):
+        for q in Question.objects.filter(node__path__startswith=self.chapter.path, is_archived=False):
+            c = q.choices.filter(is_correct=right).first()
+            self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": c.id}, format="json")
+
+    def _age(self, days):
+        """Move everything back in time, as if `days` days passed."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from .models import ChapterReview
+
+        for r in ChapterReview.objects.all():
+            r.due_on -= timedelta(days=days)
+            r.save()
+        QuizAnswer.objects.update(answered_at=timezone.now() - timedelta(days=days))
+
+    def test_reading_and_most_tests_finish_a_chapter(self):
+        from .models import ChapterReview, FlashcardReview
+
+        self._finish_reading()
+        self.assertEqual(self.client.get("/api/v1/me/reviews/").data["due"], [], "tests not answered yet")
+        self._answer_all()
+        self.client.get("/api/v1/me/reviews/")
+        review = ChapterReview.objects.get(user=self.user, chapter=self.chapter)
+        self.assertEqual(review.finished_by, "auto")
+        self.assertEqual((review.due_on - review.finished_at.date()).days, 1)
+        self.assertTrue(FlashcardReview.objects.filter(user=self.user).exists(), "the chapter's cards join the Leitner box")
+
+    def test_button_finishes_and_the_day_one_review_runs_in_fives(self):
+        r = self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        self.assertEqual(r.data["days"], 1)
+        self._age(1)
+        today = self.client.get("/api/v1/me/today/").data
+        item = today["reviews"][0]
+        self.assertEqual((item["kind"], item["book_title"], item["chapter_id"], item["is_exam"]), ("chapter", "ریاضی عمومی ۱", self.chapter.id, False))
+        s = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": item["id"]}, format="json").data
+        self.assertLessEqual(len(s["questions"]), 5)
+        self.assertNotIn("is_correct", str(s["questions"]))
+        nodes = {q["node_id"] for q in s["questions"]}
+        self.assertGreater(len(nodes), 1, "spread over the sections")
+        # Not enough answered: not counted yet.
+        self.assertIsNone(self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data["next_due_on"])
+        for q in s["questions"]:
+            right = Question.objects.get(pk=q["id"]).choices.get(is_correct=True)
+            self.client.post(f"/api/v1/questions/{q['id']}/answer/", {"choice_id": right.id}, format="json")
+        done = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
+        self.assertTrue(done["finished"])
+        self.assertGreaterEqual(done["next_in_days"], 7, "a good result moves on to the week step")
+        if done["more"]:
+            more = self.client.post(f"/api/v1/me/reviews/{s['id']}/more/").data
+            self.assertGreater(len(more["questions"]), len(s["questions"]))
+            self.assertEqual(len({q["id"] for q in more["questions"]}), len(more["questions"]), "no question twice")
+
+    def test_weak_result_comes_back_sooner(self):
+        from .models import ChapterReview
+
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        self._age(1)
+        rid = ChapterReview.objects.get().id
+        s = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": rid}, format="json").data
+        for q in s["questions"]:
+            wrong = Question.objects.get(pk=q["id"]).choices.filter(is_correct=False).first()
+            self.client.post(f"/api/v1/questions/{q['id']}/answer/", {"choice_id": wrong.id}, format="json")
+        done = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
+        self.assertEqual(done["next_in_days"], 1)
+        self.assertEqual(ChapterReview.objects.get().stage, 0)
+        self.assertGreater(self.client.get("/api/v1/me/mistakes/").data["open"], 0, "wrong review answers go to the notebook")
+
+    def test_month_step_is_an_exam_without_negative_marking_and_doubts_come_back(self):
+        from .models import ChapterReview, ExamAnswer
+
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        ChapterReview.objects.update(stage=2)
+        self._age(1)
+        rid = ChapterReview.objects.get().id
+        s = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": rid}, format="json").data
+        self.assertIsNotNone(s["exam_id"])
+        exam = self.client.get(f"/api/v1/exams/{s['exam_id']}/").data
+        self.assertFalse(exam["negative_marking"])
+        first = exam["questions"][0]["id"]
+        self.client.post(f"/api/v1/exams/{s['exam_id']}/submit/", {"answers": {}, "doubts": [first]}, format="json")
+        self.assertTrue(ExamAnswer.objects.get(question_id=first, attempt_id=s["exam_id"]).is_doubtful)
+        r = ChapterReview.objects.get()
+        self.assertEqual((r.done_count, r.stage), (1, 2), "all blank: stays at the month step, sooner")
+
+    def test_book_page_shows_the_next_review(self):
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        info = self.client.get("/api/v1/books/math-1/").data["reviews"]
+        self.assertEqual(info["chapters"][str(self.chapter.id)]["days"], 1)
+        self.assertIsNone(info["book"], "the mixed review needs two finished chapters")
+
+    def test_two_finished_chapters_get_a_weekly_mixed_review(self):
+        from apps.commerce.models import Entitlement
+
+        from .models import BookReview
+
+        book = self.chapter.get_parent()
+        Entitlement.objects.create(user=self.user, book=book)
+        for ch in book.get_children():
+            self.client.post(f"/api/v1/nodes/{ch.id}/finish/")
+        r = BookReview.objects.get(user=self.user)
+        BookReview.objects.filter(pk=r.pk).update(due_on=r.due_on.replace(year=r.due_on.year - 1))
+        due = [i for i in self.client.get("/api/v1/me/reviews/").data["due"] if i["kind"] == "book"]
+        self.assertEqual(due[0]["chapters"], 2)
+        s = self.client.post("/api/v1/me/reviews/start/", {"kind": "book", "id": r.id}, format="json").data
+        chapters = {Question.objects.get(pk=q["id"]).node.get_parent().id for q in s["questions"]}
+        self.assertEqual(len(chapters), 2, "mixed from both chapters")

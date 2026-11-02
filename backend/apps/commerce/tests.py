@@ -77,8 +77,8 @@ class PaymentTests(TestCase):
             r = self.client.post("/api/v1/orders/", {"book": "math-1"}, format="json")
         self.assertEqual(r.data["code"], "already_owned")
 
-    def test_major_subscription_opens_books_of_that_major_and_renewal_extends(self):
-        plan = Plan.objects.get(scope="major", months=1)
+    def test_subscription_opens_all_books_and_renewal_extends(self):
+        plan = Plan.objects.get(scope="all", months=1)
         for track in ("S1", "S2"):
             with mock.patch("apps.commerce.zibal.request_payment", return_value=track):
                 r = self.client.post("/api/v1/orders/", {"plan": plan.id, "major": "economics"}, format="json")
@@ -88,7 +88,7 @@ class PaymentTests(TestCase):
         self.assertGreater(ends[1] - ends[0], timedelta(days=29))
 
     def test_order_keeps_the_plan_terms_it_was_made_with(self):
-        plan = Plan.objects.get(scope="major", months=1)
+        plan = Plan.objects.get(scope="all", months=1)
         with mock.patch("apps.commerce.zibal.request_payment", return_value="K1"):
             self.client.post("/api/v1/orders/", {"plan": plan.id, "major": "economics"}, format="json")
         Plan.objects.filter(pk=plan.pk).update(months=12)  # the admin changes the plan before the payment comes back
@@ -106,10 +106,14 @@ class PaymentTests(TestCase):
         Entitlement.objects.create(user=self.user, book=self.book, is_archived=True)
         self.assertEqual(self.client.get(f"/api/v1/nodes/{self.paid_section.id}/").status_code, 403)
 
-    def test_major_plan_needs_major(self):
-        plan = Plan.objects.get(scope="major", months=1)
-        r = self.client.post("/api/v1/orders/", {"plan": plan.id}, format="json")
-        self.assertEqual(r.data["code"], "major_required")
+    def test_old_one_major_plan_is_no_longer_sold_but_its_subscription_still_opens(self):
+        old = Plan.objects.create(title="قدیمی", scope="major", months=1, price=100_000)
+        r = self.client.post("/api/v1/orders/", {"plan": old.id, "major": "economics"}, format="json")
+        self.assertEqual(r.data["code"], "invalid_plan")
+        offered = self.client.get("/api/v1/offers/?book=math-1").data["plans"]
+        self.assertTrue(offered and all(p["scope"] == "all" for p in offered))
+        Entitlement.objects.create(user=self.user, major=self.book.majors.first(), ends_at=timezone.now() + timedelta(days=30))
+        self.assertEqual(self.client.get(f"/api/v1/nodes/{self.paid_section.id}/").status_code, 200)
 
     def test_orders_are_private(self):
         order = self._order_book()
@@ -123,7 +127,7 @@ class PaymentTests(TestCase):
         self.assertEqual(APIClient().post("/api/v1/orders/", {"book": "math-1"}, format="json").status_code, 401)
 
     def test_three_stacked_renewals_chain(self):
-        plan = Plan.objects.get(scope="major", months=1)
+        plan = Plan.objects.get(scope="all", months=1)
         for track in ("A", "B", "C"):
             with mock.patch("apps.commerce.zibal.request_payment", return_value=track):
                 self.client.post("/api/v1/orders/", {"plan": plan.id, "major": "economics"}, format="json")

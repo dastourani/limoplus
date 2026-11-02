@@ -314,7 +314,11 @@ def today(request):
     mistakes = len(due_items(_mistakes(request)[0]))
     practise = min(mistakes, 5)
     cont = _continue(request)
-    minutes = round(cards * 0.4 + practise * 1.5 + (8 if cont else 0))
+    from .reviews import DAILY_CAP, due_reviews
+
+    due = due_reviews(request.user)
+    todays = due[:DAILY_CAP]
+    minutes = round(cards * 0.4 + practise * 1.5 + (8 if cont else 0) + sum(r["minutes"] for r in todays))
     return Response(
         {
             "away_days": away,
@@ -324,7 +328,10 @@ def today(request):
             "mistakes": mistakes,
             "practise": practise,
             "continue": {"id": cont.node_id, "title": cont.node.title, "book_title": cont.book.title, "book_slug": cont.book.slug} if cont else None,
-            "minutes": max(minutes, 5) if (cards or practise or cont) else 0,
+            # «مرور فصل ۲ «…» از …: ۵ تست، حدود ۷ دقیقه» (at most two a day, the oldest first).
+            "reviews": todays,
+            "reviews_waiting": max(0, len(due) - len(todays)),
+            "minutes": max(minutes, 5) if (cards or practise or cont or todays) else 0,
         }
     )
 

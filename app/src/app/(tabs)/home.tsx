@@ -1,10 +1,10 @@
 import { shelfLabel } from '../../lib/access';
 import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewInstance } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import { endpoints, type Library, type Today, type BookListItem, type Major } from '../../api/endpoints';
+import { endpoints, type Library, type Today, type BookListItem } from '../../api/endpoints';
 import { BannerCarousel } from '../../components/BannerCarousel';
 import { BookCover } from '../../components/BookCover';
 import { Icon, IconBadge } from '../../components/Icon';
@@ -13,11 +13,12 @@ import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
 import { ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { useFeedback } from '../../components/Feedback';
+import { openReview, reviewLabel } from '../../lib/reviews';
 import { storage, type LastSection, type ReadingSpot } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
 import { colors, formatToman, rtl, toPersianDigits } from '../../theme';
 
-type MajorRef = { slug: string; name: string; color: string };
 
 /** Read sections as lemon wedges, from a book's share read (0–1) and its number of sections. */
 function wedges(progress: number | null, count: number) {
@@ -29,8 +30,8 @@ function wedges(progress: number | null, count: number) {
 export default function Home() {
   const { user } = useAuth();
   const { width } = useWindowDimensions();
-  const [major, setMajor] = useState<MajorRef | null>(null);
   const asLearner = useViewAsLearner();
+  const { toast } = useFeedback();
   const [last, setLast] = useState<LastSection | null>(null);
   const [spots, setSpots] = useState<Record<string, ReadingSpot>>({});
   const [serverReading, setServerReading] = useState<Library['reading']>([]);
@@ -43,16 +44,14 @@ export default function Home() {
 
   useFocusEffect(
     useCallback(() => {
-      storage.getMajor().then((m) => setMajor(m ?? null));
       storage.getLastSection().then(setLast);
       storage.getReading().then(setSpots);
     }, []),
   );
 
-  const majors = useApi(() => endpoints.majors(), []);
-  // Before a major is picked, the shelf shows every book so a newcomer sees what there is.
-  const books = useApi(() => (major ? endpoints.books(major.slug) : endpoints.allBooks()), [major?.slug, user?.id, asLearner]);
-  const banners = useApi(() => (major ? endpoints.banners(major.slug) : Promise.resolve([])), [major?.slug]);
+  // «قفسه‌ها»: one row per subject, set in the panel; books on no shelf come last.
+  const books = useApi(() => endpoints.shelves(), [user?.id, asLearner]);
+  const banners = useApi(() => endpoints.banners(), [user?.id]);
   const [due, setDue] = useState(0);
   const [today, setToday] = useState<Today | null>(null);
   useFocusEffect(
@@ -74,19 +73,6 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused]);
 
-  // The shelf fades in when the major changes.
-  const shelf = useRef(new Animated.Value(1)).current;
-  const majorsRef = useRef<ScrollViewInstance>(null);
-  const pickMajor = (m: Major) => {
-    if (m.is_coming_soon || m.slug === major?.slug) return;
-    const next = { slug: m.slug, name: m.name, color: m.color };
-    shelf.setValue(0);
-    setMajor(next);
-    storage.setMajor(next);
-  };
-  useEffect(() => {
-    if (!books.loading) Animated.timing(shelf, { toValue: 1, duration: 260, useNativeDriver: true }).start();
-  }, [books.loading, shelf]);
 
   const [notify, setNotify] = useState<Record<string, { on: boolean; canCancel: boolean }>>({});
   const notifyState = (book: BookListItem) => notify[book.slug] ?? { on: book.notify, canCancel: !!book.notify_can_cancel };
@@ -105,7 +91,6 @@ export default function Home() {
   const refresh = usePullRefresh(books.loading, () => {
     books.retry();
     banners.retry();
-    majors.retry();
   });
 
 
@@ -118,7 +103,8 @@ export default function Home() {
     else if (/^https?:\/\//.test(link)) Linking.openURL(link);
   };
 
-  const list = books.data ?? [];
+  const shelves = books.data ?? [];
+  const list = shelves.flatMap((s) => s.books);
   // Books being read, newest first: this phone's own spots, and (signed in) the account's from other devices.
   const reading = (() => {
     const bySlug = new Map<string, { slug: string; bookTitle: string; id: number; title: string; at: number; book?: BookListItem }>();
@@ -136,12 +122,53 @@ export default function Home() {
   const current = reading[0] ?? (last ? { slug: last.bookSlug, bookTitle: last.bookTitle, id: last.id, title: last.title, at: 0, book: undefined } : null);
   const lastBook = current ? current.book ?? list.find((b) => b.slug === current.slug) : undefined;
   const others = reading.slice(1);
-  // Phones show two covers a row; tablets, desktop browsers and Windows show more, up to six.
+  // A shelf row shows about two and a half covers on a phone (the cut one says «there is more»), more on wide screens.
   const pageWidth = Math.min(width, 1200);
-  const columns = Math.max(2, Math.min(6, Math.floor((pageWidth - 40 + 18) / 200)));
-  const coverWidth = Math.floor((pageWidth - 40 - 18 * (columns - 1)) / columns);
-  const majorRef = major ? { name: major.name, color: major.color } : null;
-  const coverMajor = (b: BookListItem) => majorRef ?? (b.major ? { name: b.major.name, color: b.major.color } : null);
+  const coverWidth = Math.max(120, Math.min(170, Math.floor((pageWidth - 40) / 2.4)));
+  const coverMajor = (b: BookListItem) => (b.major ? { name: b.major.name, color: b.major.color } : null);
+
+  const bookTile = (book: BookListItem) => {
+    const label = shelfLabel(book);
+    const { on: waiting, canCancel } = notifyState(book);
+    return (
+      <View style={{ width: coverWidth, gap: 8 }}>
+        <Pressable
+          onPress={() => router.push({ pathname: '/book/[slug]', params: { slug: book.slug } })}
+          accessibilityRole="button"
+          accessibilityLabel={`${book.title}${book.is_coming_soon ? '، به‌زودی' : ''}`}
+          style={({ pressed }) => [{ opacity: book.is_coming_soon ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
+        >
+          <BookCover book={book} major={coverMajor(book)} width={coverWidth} />
+          <View style={[styles.ribbon, RIBBON[label.kind].box]}>
+            {RIBBON[label.kind].icon && <Icon name={RIBBON[label.kind].icon!} size={12} color={RIBBON[label.kind].color} />}
+            <Text style={[styles.ribbonText, { color: RIBBON[label.kind].color }]}>{label.text}</Text>
+          </View>
+          {book.progress != null && (
+            <View style={styles.progressBadge}>
+              <LemonProgress parts={wedges(book.progress, book.section_count)} size={18} />
+              <Text style={styles.progressText}>{toPersianDigits(Math.round(book.progress * 100))}٪</Text>
+            </View>
+          )}
+        </Pressable>
+        {book.is_coming_soon ? (
+          <Pressable
+            onPress={() => toggleNotify(book)}
+            disabled={waiting && !canCancel}
+            style={[styles.notify, waiting && styles.notifyOn]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: waiting }}
+          >
+            <Icon name={waiting ? 'bell-ring' : 'bell'} size={15} color={colors.ink} />
+            <Text style={styles.notifyText}>{waiting ? (canCancel ? 'خبرت می‌کنیم' : 'خبرت می‌کنیم ✓') : 'خبرم کن'}</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.price} numberOfLines={1}>
+            {book.owned ? 'در دسترس تو' : book.price ? `${formatToman(book.price)}، یا با اشتراک` : 'رایگان'}
+          </Text>
+        )}
+      </View>
+    );
+  };
 
   return (
     <Screen tab>
@@ -250,6 +277,18 @@ export default function Home() {
                 onPress={() => router.push(today.comeback ? { pathname: '/review', params: { limit: String(today.cards) } } : '/review')}
               />
             )}
+            {(today.reviews ?? []).map((r) => (
+              <TodayRow
+                key={`${r.kind}-${r.id}`}
+                icon="rotate-ccw"
+                lines={2}
+                text={reviewLabel(r)}
+                onPress={() => openReview(r).catch(() => toast('شروع مرور ممکن نشد؛ دوباره امتحان کن.'))}
+              />
+            ))}
+            {!!today.reviews_waiting && (
+              <Text style={[styles.todayMore, rtl]}>{toPersianDigits(today.reviews_waiting)} مرور دیگر هم منتظر است؛ فردا نوبت آن‌هاست.</Text>
+            )}
             {today.practise > 0 && (
               <TodayRow icon="notebook-pen" text={`دفترچه‌ی اشتباهات: ${toPersianDigits(today.mistakes)} تست`} onPress={() => router.push('/mistakes')} />
             )}
@@ -276,100 +315,31 @@ export default function Home() {
           </Pressable>
         )}
 
-        <Text style={[styles.sectionTitle, rtl]}>رشته‌ات را انتخاب کن</Text>
-        {!major && <Text style={[styles.pickHint, rtl]}>رشته‌ات را بزن تا قفسه فقط کتاب‌های همان رشته را نشان دهد.</Text>}
-        <ScrollView
-          ref={majorsRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.majors}
-          style={[styles.majorsWrap, !major && styles.majorsAsk]}
-          // Right-to-left: the row starts at its right end, where the first major is.
-          onContentSizeChange={() => majorsRef.current?.scrollToEnd({ animated: false })}
-        >
-          {(majors.data ?? (major ? [{ slug: major.slug, name: major.name, color: major.color, is_coming_soon: false }] : [])).map((m) => {
-            const on = m.slug === major?.slug;
-            return (
-              <Pressable
-                key={m.slug}
-                onPress={() => pickMajor(m)}
-                disabled={m.is_coming_soon}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: on, disabled: m.is_coming_soon }}
-                style={[
-                  styles.major,
-                  on ? { backgroundColor: m.color, borderColor: m.color, shadowColor: m.color, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4 } : null,
-                  m.is_coming_soon && { opacity: 0.55 },
-                ]}
-              >
-                <View style={[styles.majorDot, { backgroundColor: on ? '#FFFFFF' : m.color }]} />
-                <View>
-                  <Text style={[styles.majorSmall, on && { color: '#FFFFFFCC' }]}>{m.is_coming_soon ? 'به‌زودی' : 'لیمو'}</Text>
-                  <Text style={[styles.majorName, on && { color: '#FFFFFF' }]}>{m.name}</Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
         {!!banners.data?.length && <BannerCarousel banners={banners.data} onOpen={(b) => openLink(b.link, b.id)} />}
-
-        <View style={styles.shelfHead}>
-          <Text style={[styles.shelfTitle, rtl]}>{major ? `کتاب‌های لیمو ${major.name}` : 'همه‌ی کتاب‌ها'}</Text>
-          {!!list.length && <Text style={styles.muted}>{toPersianDigits(list.length)} کتاب</Text>}
-        </View>
 
         {books.loading && !list.length ? (
           <Loading />
         ) : books.error ? (
           <ErrorState message={books.error.message} onRetry={books.retry} />
         ) : list.length === 0 ? (
-          <Text style={[styles.muted, rtl]}>هنوز کتابی برای این رشته منتشر نشده است.</Text>
+          <Text style={[styles.muted, rtl]}>هنوز کتابی منتشر نشده است.</Text>
         ) : (
-          <Animated.View style={[styles.shelf, { opacity: shelf }]}>
-            {list.map((book) => {
-              const label = shelfLabel(book);
-              const { on: waiting, canCancel } = notifyState(book);
-              return (
-                <View key={book.slug} style={{ width: coverWidth, gap: 8 }}>
-                  <Pressable
-                    onPress={() => router.push({ pathname: '/book/[slug]', params: { slug: book.slug } })}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${book.title}${book.is_coming_soon ? '، به‌زودی' : ''}`}
-                    style={({ pressed }) => [{ opacity: book.is_coming_soon ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
-                  >
-                    <BookCover book={book} major={coverMajor(book)} width={coverWidth} />
-                    <View style={[styles.ribbon, RIBBON[label.kind].box]}>
-                      {RIBBON[label.kind].icon && <Icon name={RIBBON[label.kind].icon!} size={12} color={RIBBON[label.kind].color} />}
-                      <Text style={[styles.ribbonText, { color: RIBBON[label.kind].color }]}>{label.text}</Text>
-                    </View>
-                    {book.progress != null && (
-                      <View style={styles.progressBadge}>
-                        <LemonProgress parts={wedges(book.progress, book.section_count)} size={18} />
-                        <Text style={styles.progressText}>{toPersianDigits(Math.round(book.progress * 100))}٪</Text>
-                      </View>
-                    )}
-                  </Pressable>
-                  {book.is_coming_soon ? (
-                    <Pressable
-                      onPress={() => toggleNotify(book)}
-                      disabled={waiting && !canCancel}
-                      style={[styles.notify, waiting && styles.notifyOn]}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: waiting }}
-                    >
-                      <Icon name={waiting ? 'bell-ring' : 'bell'} size={15} color={waiting ? colors.ink : colors.ink} />
-                      <Text style={styles.notifyText}>{waiting ? (canCancel ? 'خبرت می‌کنیم' : 'خبرت می‌کنیم ✓') : 'خبرم کن'}</Text>
-                    </Pressable>
-                  ) : (
-                    <Text style={styles.price} numberOfLines={1}>
-                      {book.owned ? 'در دسترس تو' : book.price ? `${formatToman(book.price)}، یا با اشتراک` : 'رایگان'}
-                    </Text>
-                  )}
-                </View>
-              );
-            })}
-          </Animated.View>
+          shelves.map((shelf) => (
+            <View key={shelf.id ?? 'rest'} style={{ gap: 10 }}>
+              <View style={styles.shelfHead}>
+                <Text style={[styles.shelfTitle, rtl]}>{shelf.title}</Text>
+                <Text style={styles.muted}>{toPersianDigits(shelf.books.length)} کتاب</Text>
+              </View>
+              {/* Right to left: the row is flipped, and each book flipped back, so it starts at the right. */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.shelfRow} contentContainerStyle={styles.shelfRowInner}>
+                {shelf.books.map((book) => (
+                  <View key={book.slug} style={{ transform: [{ scaleX: -1 }] }}>
+                    {bookTile(book)}
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          ))
         )}
 
         <View style={styles.soon}>
@@ -392,19 +362,20 @@ const RIBBON: Record<'soon' | 'access' | 'free' | 'locked', { box: object; color
   locked: { box: { backgroundColor: colors.ink }, color: colors.ground, icon: 'lock' },
 };
 
-function TodayRow({ icon, text, onPress }: { icon: 'layers' | 'notebook-pen' | 'book-open'; text: string; onPress: () => void }) {
+function TodayRow({ icon, text, onPress, lines = 1 }: { icon: 'layers' | 'notebook-pen' | 'book-open' | 'rotate-ccw'; text: string; onPress: () => void; lines?: number }) {
   return (
     <Pressable onPress={onPress} style={styles.todayRow} accessibilityRole="button">
       <Icon name={icon} size={18} color={colors.lemon} />
-      <Text style={[styles.todayRowText, rtl]} numberOfLines={1}>{text}</Text>
+      <Text style={[styles.todayRowText, rtl]} numberOfLines={lines}>{text}</Text>
       <Icon name="chevron-left" size={18} color="#8FA095" />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  searchButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line },
+  searchButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center' },
   today: { backgroundColor: colors.ink, borderRadius: 22, padding: 16, gap: 10 },
+  todayMore: { fontSize: 12, color: '#B9C4BC' },
   todayHead: { flexDirection: 'row-reverse', alignItems: 'baseline', justifyContent: 'space-between' },
   todayTitle: { fontSize: 17, fontWeight: '900', color: '#FFFFFF' },
   todayMinutes: { fontSize: 13, fontWeight: '700', color: colors.lemon },
@@ -438,20 +409,12 @@ const styles = StyleSheet.create({
   continuePillText: { fontSize: 12, fontWeight: '800', color: colors.ink },
   review: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: 20, padding: 14, borderWidth: 1.5, borderColor: colors.lemon },
   reviewTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
-  sectionTitle: { fontSize: 15, fontWeight: '900', color: colors.ink, marginBottom: -6 },
-  majorsWrap: { marginHorizontal: -20, flexGrow: 0 },
-  majors: { flexDirection: 'row-reverse', gap: 10, paddingHorizontal: 20, paddingVertical: 4 },
-  major: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, minHeight: 52, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
-  majorDot: { width: 9, height: 9, borderRadius: 5 },
-  majorSmall: { fontSize: 10, color: colors.muted, textAlign: 'right' },
-  majorName: { fontSize: 14, fontWeight: '800', color: colors.ink, textAlign: 'right' },
   shelfHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
   shelfTitle: { fontSize: 18, fontWeight: '900', color: colors.ink },
-  shelf: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 18, rowGap: 22 },
+  shelfRow: { marginHorizontal: -20, flexGrow: 0, transform: [{ scaleX: -1 }] },
+  shelfRowInner: { gap: 14, paddingHorizontal: 20 },
   ribbon: { position: 'absolute', top: 12, left: -4, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
   ribbonText: { fontSize: 10, fontWeight: '800' },
-  pickHint: { fontSize: 13, color: colors.greenDark, marginTop: -4 },
-  majorsAsk: { borderRadius: 18, backgroundColor: '#FFF6CC' },
   ribbonFree: { backgroundColor: colors.lemon, color: colors.ink },
   ribbonSoon: { backgroundColor: colors.ink, color: colors.ground },
   ribbonOwned: { backgroundColor: '#3FB8A9', flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },

@@ -36,12 +36,8 @@ export default function Book() {
   const [note, setNote] = useState<string | null>(null);
   const { confirm } = useFeedback();
   const { width } = useWindowDimensions();
-  const [major, setMajor] = useState<{ name: string; color: string } | null>(null);
   const [notify, setNotify] = useState<{ on: boolean; canCancel: boolean } | null>(null);
   const [aboutOpen, setAboutOpen] = useState(true);
-  useEffect(() => {
-    storage.getMajor().then((m) => m && setMajor({ name: m.name, color: m.color }));
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -99,7 +95,7 @@ export default function Book() {
   const coverW = Math.min(width * 0.46, 200);
   const cover =
     coverTitle !== null ? (
-      <PageTurn kind="cover" title={coverTitle || book.title} face={<BookCover book={book} major={major} width={Math.min(width * 0.62, 300)} />} onDone={() => setCoverTitle(null)} />
+      <PageTurn kind="cover" title={coverTitle || book.title} face={<BookCover book={book} major={book.major ?? null} width={Math.min(width * 0.62, 300)} />} onDone={() => setCoverTitle(null)} />
     ) : null;
   const done = new Set(book.done_ids);
   const sections = book.chapters.flatMap((c) => c.sections);
@@ -155,7 +151,7 @@ export default function Book() {
           </View>
           <View style={{ alignItems: 'center' }}>
             <View>
-              <BookCover book={book} major={major} width={coverW} edge />
+              <BookCover book={book} major={book.major ?? null} width={coverW} edge />
               {book.owned && (
                 <View style={styles.ownedRibbon}>
                   <Icon name="circle-check" size={12} color="#FFFFFF" />
@@ -291,6 +287,19 @@ export default function Book() {
               }}
               done={done}
               owned={book.owned}
+              bookSlug={book.slug}
+              review={book.reviews?.chapters[String(chapter.id)] ?? null}
+              canFinish={!!user && !!book.reviews}
+              onFinish={async () => {
+                const ok = await confirm({
+                  title: 'این فصل را تمام کردی؟',
+                  message: 'مرورهای این فصل زمان‌بندی می‌شوند: فردا، یک هفته بعد و یک ماه بعد. فلش‌کارت‌هایش هم به مرور روزانه اضافه می‌شوند.',
+                  confirmLabel: 'تمام کردم',
+                  icon: 'circle-check',
+                });
+                if (!ok) return;
+                endpoints.finishChapter(chapter.id).then(retry).catch(() => undefined);
+              }}
             />
           ))}
         </View>
@@ -308,7 +317,16 @@ function ChapterCard({
   onToggle,
   done,
   owned,
+  bookSlug,
+  review,
+  canFinish,
+  onFinish,
 }: {
+  bookSlug: string;
+  /** «مرور بعدی: ۶ روز دیگر» once the chapter is finished. */
+  review: { step: number; days: number; done: number } | null;
+  canFinish: boolean;
+  onFinish: () => void;
   chapter: ChapterSummary;
   number: number;
   open: boolean;
@@ -333,6 +351,11 @@ function ChapterCard({
           <Text style={[styles.sectionMeta, rtl]}>
             {toPersianDigits(chapter.sections.length)} بخش{tests ? `، ${toPersianDigits(tests)} تست` : ''}
           </Text>
+          {!!review && (
+            <Text style={[styles.reviewLine, rtl, review.days <= 0 && { color: colors.redDark }]}>
+              {review.days > 0 ? `مرور بعدی: ${toPersianDigits(review.days)} روز دیگر` : review.days === 0 ? 'مرور این فصل: امروز' : 'مرور این فصل عقب افتاده'}
+            </Text>
+          )}
         </View>
         {chapter.is_locked ? <Chip label="نسخه‌ی کامل" icon="lock" /> : !owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
         <Animated.View style={{ transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-180deg'] }) }] }}>
@@ -357,6 +380,23 @@ function ChapterCard({
               </View>
             );
           })}
+          {!!chapter.term_count && (
+            <Pressable
+              onPress={() => router.push({ pathname: '/glossary/[slug]', params: { slug: bookSlug, chapter: String(chapter.id) } })}
+              style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}
+              accessibilityRole="button"
+            >
+              <Icon name="languages" size={18} color={colors.greenDark} />
+              <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>واژه‌های این فصل</Text>
+              <Text style={styles.sectionMeta}>{toPersianDigits(chapter.term_count)} واژه</Text>
+            </Pressable>
+          )}
+          {!chapter.is_locked && canFinish && !review && (
+            <Pressable onPress={onFinish} style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]} accessibilityRole="button">
+              <Icon name="circle-check" size={18} color={colors.greenDark} />
+              <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>این فصل را تمام کردم</Text>
+            </Pressable>
+          )}
           {!chapter.is_locked && (
             <View style={styles.actions}>
               <Pressable style={styles.action} onPress={() => router.push(`/quiz/${chapter.id}`)}>
@@ -376,15 +416,22 @@ function ChapterCard({
   );
 }
 
+/** A section in the contents: the title takes up to two lines (then «…»; a long press shows it whole), the counts stay at
+ * its left so the list never grows wider. */
 function SectionRow({ section, done }: { section: NodeSummary; done: boolean }) {
+  const { toast } = useFeedback();
   return (
     <Pressable
       onPress={() => router.push(`/section/${section.id}`)}
+      onLongPress={() => toast(section.title)}
+      delayLongPress={350}
       style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}
       accessibilityRole="button"
     >
       <View style={[styles.check, done && styles.checkOn]}>{done && <Icon name="check" size={13} color="#fff" strokeWidth={3} />}</View>
-      <Text style={[styles.sectionTitle, rtl, section.is_locked && { color: colors.muted }]}>{section.title}</Text>
+      <Text style={[styles.sectionTitle, rtl, section.is_locked && { color: colors.muted }]} numberOfLines={2}>
+        {section.title}
+      </Text>
       {section.is_locked ? (
         <Icon name="lock" size={16} color={colors.muted} />
       ) : (
@@ -440,7 +487,8 @@ const styles = StyleSheet.create({
   checkOn: { backgroundColor: colors.green, borderColor: colors.green },
   checkMark: { color: '#fff', fontSize: 12, fontWeight: '700' },
   sectionTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.ink },
-  sectionMeta: { fontSize: 12, color: colors.muted },
+  sectionMeta: { fontSize: 12, color: colors.muted, flexShrink: 0 },
+  reviewLine: { fontSize: 12, fontWeight: '700', color: colors.greenDark },
   actions: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
   action: { flex: 1, backgroundColor: colors.ground, borderRadius: 14, paddingVertical: 12, alignItems: 'center' },
   actionText: { fontWeight: '700', color: colors.ink, fontSize: 14 },

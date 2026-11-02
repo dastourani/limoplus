@@ -14,7 +14,6 @@ import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { jalaliDate } from '../../lib/jalali';
 import { play, setSoundEnabled, soundEnabled } from '../../lib/sound';
 import { setCoverTheme, useCoverTheme } from '../../lib/coverTheme';
-import { storage } from '../../lib/storage';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
 function Row({ label, value, onPress, danger }: { label: string; value?: string; onPress: () => void; danger?: boolean }) {
@@ -29,7 +28,6 @@ function Row({ label, value, onPress, danger }: { label: string; value?: string;
 export default function Profile() {
   const { user, signOut } = useAuth();
   const { confirm } = useFeedback();
-  const [major, setMajor] = useState<{ name: string } | null>(null);
   const [purchases, setPurchases] = useState<Purchases | null>(null);
   const [sound, setSound] = useState(true);
   const coverTheme = useCoverTheme();
@@ -40,7 +38,6 @@ export default function Profile() {
 
   const [reloading, setReloading] = useState(false);
   const reload = useCallback(() => {
-    storage.getMajor().then(setMajor);
     if (!user) return;
     setReloading(true);
     Promise.all([
@@ -83,7 +80,6 @@ export default function Profile() {
 
         <View style={styles.group}>
           {user && <Row label="ویرایش نام" onPress={() => router.push('/edit-profile')} />}
-          <Row label="رشته" value={major?.name ?? 'انتخاب نشده'} onPress={() => router.navigate('/home')} />
           {user && <Row label="دستگاه‌های من" onPress={() => router.push('/devices')} />}
           <Row label="کتاب‌های آفلاین" onPress={() => router.push('/offline')} />
           <View style={styles.row}>

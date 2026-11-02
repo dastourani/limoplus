@@ -10,7 +10,28 @@ from .drawing import DrawingError, clean_svg
 from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
 from .filters import BookFilter, ChapterFilter, YesNoFilter
-from .models import Banner, Book, BookWaitlist, ChapterRevision, ContentNode, Major, Section
+from .models import Banner, Book, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, Major, Section, Shelf, ShelfBook
+
+
+class ShelfBookInline(admin.TabularInline):
+    model = ShelfBook
+    extra = 1
+    fields = ("book", "order")
+    verbose_name = "کتاب"
+    verbose_name_plural = "کتاب‌های این قفسه (ترتیب: عدد کمتر، جلوتر)"
+
+
+@admin.register(Shelf)
+class ShelfAdmin(admin.ModelAdmin):
+    """«قفسه‌ها»: the rows of the home page. Books on no shelf still show, in a last row «کتاب‌های دیگر»."""
+
+    list_display = ("title", "order", "is_active", "book_count")
+    list_editable = ("order", "is_active")
+    inlines = [ShelfBookInline]
+
+    @admin.display(description="کتاب‌ها")
+    def book_count(self, obj):
+        return obj.items.count()
 
 
 @admin.register(Major)
@@ -340,7 +361,7 @@ class BookWaitlistAdmin(admin.ModelAdmin):
 @admin.register(Banner)
 class BannerAdmin(admin.ModelAdmin):
     list_display = ("title", "target", "is_active", "priority", "starts_at", "ends_at", "impressions", "clicks")
-    fields = ("template", "title", "subtitle", "button", "motif", "image", "target", "target_value", "link", "majors", "starts_at", "ends_at",
+    fields = ("template", "title", "subtitle", "button", "motif", "image", "target", "target_value", "link", "audience_book", "starts_at", "ends_at",
               "countdown", "priority", "is_active")
     change_form_template = "admin/catalog/banner/change_form.html"
 
@@ -372,3 +393,57 @@ class BannerAdmin(admin.ModelAdmin):
     list_editable = ("is_active", "priority")
     list_filter = ("is_active", "majors")
     filter_horizontal = ("majors",)
+
+
+@admin.register(CleanupRun)
+class StorageAdmin(admin.ModelAdmin):
+    """«فضای سرور»: what takes room on the server, the last clean-ups, and a button to run one now."""
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        from django.contrib import messages
+        from django.shortcuts import redirect
+        from django.template.response import TemplateResponse
+
+        from .jalali import jalali_datetime
+        from .maintenance import run_all, storage_report
+
+        if request.method == "POST" and request.user.is_superuser:
+            s = run_all()
+            messages.success(
+                request,
+                f"پاک‌سازی انجام شد: {s['codes']} کد منقضی، {s['rate_counters']} شمارنده، {s['sessions']} نشست قدیمی، "
+                f"{s['revisions']} نسخه‌ی قدیمی فصل، {s['images']} عکس بی‌استفاده.",
+            )
+            return redirect(request.path)
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "فضای سرور",
+            "report": storage_report(),
+            "runs": [{"at": jalali_datetime(r.at), "summary": r.summary} for r in CleanupRun.objects.all()[:10]],
+            "can_run": request.user.is_superuser,
+            "opts": self.model._meta,
+        }
+        return TemplateResponse(request, "admin/catalog/storage.html", context)
+
+
+_admin_index = admin.site.index
+
+
+def _index_with_daily_cleanup(request, extra_context=None):
+    from .maintenance import run_if_due
+
+    if request.user.is_active and request.user.is_staff:
+        run_if_due()
+    return _admin_index(request, extra_context)
+
+
+admin.site.index = _index_with_daily_cleanup

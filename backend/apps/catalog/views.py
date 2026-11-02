@@ -68,6 +68,35 @@ def all_books(request):
     return Response(payload)
 
 
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def shelves(request):
+    """The home page: one row per active shelf (set in the panel), then the published books on no shelf, so none is hidden."""
+    from .models import Shelf, ShelfBook
+
+    published = {
+        b.id: b
+        for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_published=True, is_archived=False)
+    }
+    cards: dict[int, dict] = {}
+
+    def card(book):
+        if book.id not in cards:
+            cards[book.id] = book_card(request, book, AccessMap(request.user, book))
+        return cards[book.id]
+
+    rows, placed = [], set()
+    for shelf in Shelf.objects.filter(is_active=True).order_by("order", "id"):
+        ids = [i.book_id for i in ShelfBook.objects.filter(shelf=shelf).order_by("order", "id") if i.book_id in published]
+        if ids:
+            rows.append({"id": shelf.id, "title": shelf.title, "books": [card(published[i]) for i in ids]})
+            placed.update(ids)
+    rest = sorted((b for i, b in published.items() if i not in placed), key=lambda b: (b.is_coming_soon, b.position or 9999, b.title))
+    if rest:
+        rows.append({"id": None, "title": "کتاب‌های دیگر" if rows else "همه‌ی کتاب‌ها", "books": [card(b) for b in rest]})
+    return Response(rows)
+
+
 def book_card(request, book, access) -> dict:
     """What a shelf needs to draw a book: its cover, its free part, the reader's progress and «خبرم کن»."""
     chapters = access.children(book)
@@ -75,10 +104,13 @@ def book_card(request, book, access) -> dict:
     done = set(_done_ids(request.user, book)) & {s.id for s in sections}
     free_chapter = next((i for i, c in enumerate(chapters, start=1) if c.is_free), None)
     free_chapters = len(chapters) if book.is_free else sum(1 for c in chapters if c.is_free)
+    major = book.majors.order_by("order", "name").first()
     return {
         "slug": book.slug,
         "title": book.title,
         "title_en": book.title_en,
+        # The cover's small label and colour come from the book's first major (set in the panel).
+        "major": {"slug": major.slug, "name": major.name, "color": major.color} if major else None,
         "author": book.author,
         "edition": book.edition,
         "motif": book.cover_motif,
@@ -148,6 +180,7 @@ def book_detail(request, slug):
         item = summary(chapter)
         item["has_overview"] = bool(chapter.full_body or chapter.summary_body) and not item["is_locked"]
         item["sections"] = [summary(s) for s in access.children(chapter)]
+        item["term_count"] = _term_count(access, chapter)
         chapters.append(item)
     return Response(
         {
@@ -157,8 +190,16 @@ def book_detail(request, slug):
             "chapters": chapters,
             "done_ids": _done_ids(request.user, book),
             "mine": _mine_in_book(request, book),
+            "reviews": _reviews_in_book(request, book),
         }
     )
+
+
+def _reviews_in_book(request, book):
+    """Each finished chapter's next review («مرور بعدی: ۶ روز دیگر»), and the book's mixed review."""
+    from apps.study.reviews import book_schedule
+
+    return book_schedule(request.user, book) if request.user.is_authenticated else None
 
 
 def _mine_in_book(request, book):
@@ -170,6 +211,17 @@ def _mine_in_book(request, book):
 
     exams = ExamAttempt.objects.filter(user=request.user, node__path__startswith=book.path, submitted_at__isnull=False).count()
     return {"mistakes": _notebook_counts(request, book.slug), "exams": exams}
+
+
+def _term_count(access, chapter) -> int:
+    """How many glossary terms the readable sections of a chapter have («واژه‌های این فصل»)."""
+    from .summary import parse_terms
+
+    terms = set()
+    for n in access.nodes.values():
+        if n.kind == ContentNode.Kind.SECTION and n.path.startswith(chapter.path) and n.summary_body and access.readable(n.id):
+            terms.update(t["fa"] for t in parse_terms(n.summary_body))
+    return len(terms)
 
 
 @api_view(["GET"])
@@ -190,7 +242,8 @@ def node_detail(request, node_id):
             "id": node.id,
             "kind": node.kind,
             "title": node.title,
-            "breadcrumb": [{"id": a.id, "kind": a.kind, "slug": a.slug, "title": a.title} for a in ancestors],
+            # A chapter's number is its place in the book (kept in step when chapters are reordered in the panel).
+            "breadcrumb": [{"id": a.id, "kind": a.kind, "slug": a.slug, "title": a.title, "number": a.position} for a in ancestors],
             "summary": media_urls(request, node.summary_body),
             "full": media_urls(request, node.full_body),
             "previous_id": siblings[index - 1] if index > 0 else None,
@@ -217,8 +270,16 @@ def _chapter_end(access, node, chapter):
         sections = access.children(c)
         first = sections[0] if sections else c
         nxt = {"id": first.id, "chapter_title": c.title, "title": first.title, "locked": not access.readable(first.id)}
-    return {"chapter_id": chapter.id, "chapter_title": chapter.title, "book_slug": access.book.slug, "book_title": access.book.title,
-            "next_chapter": nxt}
+    # The summary exam it suggests: 10 questions (fewer if the chapter has fewer), with its time from their own estimates.
+    from apps.learning.models import Question
+
+    pool = [q for q in Question.objects.filter(node_id__in=access.visible_ids_under(chapter), is_archived=False).only("id", "node_id", "is_free", "estimated_seconds")
+            if access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))]
+    count = min(10, len(pool))
+    seconds = sum(q.estimated_seconds or 90 for q in sorted(pool, key=lambda q: q.estimated_seconds or 90)[:count])
+    return {"chapter_id": chapter.id, "chapter_title": chapter.title, "chapter_number": chapter.position,
+            "book_slug": access.book.slug, "book_title": access.book.title, "next_chapter": nxt,
+            "exam_questions": count, "exam_minutes": max(1, round(seconds / 60)) if count else 0}
 
 
 def _section_status(user, access, node):
@@ -253,10 +314,13 @@ def banners(request):
     items = Banner.objects.filter(is_active=True).filter(Q(starts_at__isnull=True) | Q(starts_at__lte=now)).filter(
         Q(ends_at__isnull=True) | Q(ends_at__gte=now)
     )
-    major = request.query_params.get("major")
-    if major:
-        items = items.filter(Q(majors__isnull=True) | Q(majors__slug=major)).distinct()
-    items = list(items[:10])
+    # A banner for the readers of one book is shown only to them; the rest go to everyone.
+    reading = set()
+    if request.user.is_authenticated:
+        from apps.study.models import SectionProgress
+
+        reading = set(SectionProgress.objects.filter(user=request.user).values_list("book_id", flat=True))
+    items = [b for b in items if b.audience_book_id is None or b.audience_book_id in reading][:10]
     Banner.objects.filter(pk__in=[b.pk for b in items]).update(impressions=F("impressions") + 1)
     return Response(
         [
@@ -311,9 +375,13 @@ def book_glossary(request, slug):
     access = AccessMap(request.user, book)
     if not access.visible(book.id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    # «واژه‌های این فصل»: ?chapter=<id> keeps the terms of one chapter.
+    chapter = access.nodes.get(int(request.query_params["chapter"])) if str(request.query_params.get("chapter", "")).isdigit() else None
     seen, terms = set(), []
     for node in sorted(access.nodes.values(), key=lambda n: n.path):
         if node.kind != ContentNode.Kind.SECTION or not access.readable(node.id) or not node.summary_body:
+            continue
+        if chapter is not None and not node.path.startswith(chapter.path):
             continue
         for term in parse_terms(node.summary_body):
             key = term["fa"]
@@ -322,7 +390,7 @@ def book_glossary(request, slug):
             seen.add(key)
             terms.append({**term, "section_id": node.id, "section_title": node.title})
     terms.sort(key=lambda t: t["fa"])
-    return Response({"book": book.title, "terms": terms})
+    return Response({"book": book.title, "chapter": chapter.title if chapter else None, "terms": terms})
 
 
 

@@ -598,7 +598,7 @@ class SearchTests(_Base):
 
 
 class SampleAndBannerTests(_Base):
-    def test_samples_are_capped_per_book_and_shown_to_the_app(self):
+    def test_samples_are_marked_in_the_panel_and_shown_to_the_app(self):
         from rest_framework.test import APIClient
 
         q = Question.objects.get(slug="q1")
@@ -608,18 +608,12 @@ class SampleAndBannerTests(_Base):
         self.assertTrue(q.is_sample)
         item = APIClient().get(f"/api/v1/nodes/{self.chapter.pk}/questions/").json()["questions"][0]
         self.assertTrue(item["shareable"])
-        # The cap: with ten samples already, another is refused.
-        from apps.learning import admin as learning_admin
-
-        old = learning_admin.SAMPLES_PER_BOOK
-        learning_admin.SAMPLES_PER_BOOK = 1
-        try:
-            other = Question.objects.create(node=q.node, slug="q-extra", stem="س", difficulty="easy")
-            self.client.post(url, {"action": "make_sample", "_selected_action": [other.pk]})
-            other.refresh_from_db()
-            self.assertFalse(other.is_sample)
-        finally:
-            learning_admin.SAMPLES_PER_BOOK = old
+        self.assertEqual(item["share_place"]["book"], "کتاب آزمایشی")
+        self.assertEqual(item["share_place"]["chapter"], "فصل یک")
+        # The chapter manager's toggle (not part of the file, so no version is made).
+        self.assertEqual(self.op(op="question.sample", slug="q1", value=False).status_code, 200)
+        self.assertFalse(Question.objects.get(slug="q1").is_sample)
+        self.assertFalse(self.state()["sections"][0]["questions"][0]["is_sample"])
 
     def test_banner_template_and_countdown_in_api(self):
         from datetime import timedelta
@@ -710,3 +704,98 @@ class ChoiceOrderAndCorrectionTests(_Base):
         text = " ".join(str(m) for m in r.context["messages"])
         self.assertIn("«فصل یک» پولی شد", text)
         self.assertIn("بقیه‌ی فصل‌ها", text)
+
+
+class MaintenanceTests(_Base):
+    """The clean-up removes temporary data, old chapter versions and unused pictures, never learners' data."""
+
+    def test_cleanup_keeps_user_data_and_recent_versions(self):
+        import os
+        import time
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.accounts.models import DeviceSession, OTPCode, RateBucket
+        from apps.learning.models import QuizAnswer
+
+        from .maintenance import run_all
+        from .models import CleanupRun
+
+        now = timezone.now()
+        old = OTPCode.objects.create(phone="09120000009", code_hash="x", expires_at=now - timedelta(days=3))
+        fresh = OTPCode.objects.create(phone="09120000009", code_hash="y", expires_at=now + timedelta(minutes=2))
+        RateBucket.objects.create(key="k", window_start=now - timedelta(days=5))
+        s, _ = DeviceSession.start(self.admin, "old")
+        DeviceSession.objects.filter(pk=s.pk).update(revoked_at=now - timedelta(days=200))
+        q = Question.objects.get(slug="q1")
+        QuizAnswer.objects.create(user=self.admin, question=q, choice_order=0, was_correct=False)
+        # Versions: many old ones in the same week, one recent.
+        for i in range(4):
+            r = ChapterRevision.objects.create(chapter=self.chapter, text=f"v{i}", source="panel")
+            ChapterRevision.objects.filter(pk=r.pk).update(updated_at=now - timedelta(days=60, hours=i))
+        ChapterRevision.objects.create(chapter=self.chapter, text="now", source="panel")
+        # Pictures: one used, one unused and old, one unused but new.
+        folder = os.path.join(settings.MEDIA_ROOT, "content", "test-book", "ch1")
+        os.makedirs(folder, exist_ok=True)
+        paths = {}
+        for name in ("used.png", "lost.png", "new.png"):
+            paths[name] = os.path.join(folder, name)
+            with open(paths[name], "wb") as f:
+                f.write(b"x" * 10)
+        month_ago = time.time() - 40 * 86400
+        os.utime(paths["used.png"], (month_ago, month_ago))
+        os.utime(paths["lost.png"], (month_ago, month_ago))
+        q.explanation += "\\n![](media:content/test-book/ch1/used.png)"
+        q.save()
+
+        summary = run_all()
+        self.assertFalse(OTPCode.objects.filter(pk=old.pk).exists())
+        self.assertTrue(OTPCode.objects.filter(pk=fresh.pk).exists())
+        self.assertEqual(summary["rate_counters"], 1)
+        self.assertEqual(summary["sessions"], 1)
+        self.assertEqual(QuizAnswer.objects.count(), 1, "learners' answers are never removed")
+        old_texts = set(ChapterRevision.objects.filter(updated_at__lt=now - timedelta(days=30)).values_list("text", flat=True))
+        self.assertEqual(len(old_texts), 1, "one a week stays from the older versions")
+        self.assertTrue(ChapterRevision.objects.filter(text="now").exists())
+        self.assertTrue(os.path.exists(paths["used.png"]))
+        self.assertFalse(os.path.exists(paths["lost.png"]))
+        self.assertTrue(os.path.exists(paths["new.png"]), "a new picture may be used soon")
+        self.assertEqual(CleanupRun.objects.count(), 1)
+
+        page = self.client.get(reverse("admin:catalog_cleanuprun_changelist"))
+        self.assertContains(page, "فضای سرور")
+        self.client.get(reverse("admin:index"))
+        self.assertEqual(CleanupRun.objects.count(), 1, "runs by itself at most once a day")
+
+    def test_shelves_order_the_home_page_and_nothing_is_hidden(self):
+        from rest_framework.test import APIClient
+
+        from .models import Shelf, ShelfBook
+
+        rows = APIClient().get("/api/v1/shelves/").json()
+        self.assertEqual([r["title"] for r in rows], ["همه‌ی کتاب‌ها"], "no shelves yet: every book in one row")
+        shelf = Shelf.objects.create(title="اقتصاد")
+        ShelfBook.objects.create(shelf=shelf, book=self.book)
+        rows = APIClient().get("/api/v1/shelves/").json()
+        self.assertEqual([r["title"] for r in rows], ["اقتصاد"])
+        self.assertEqual(rows[0]["books"][0]["slug"], "test-book")
+        self.assertEqual(rows[0]["books"][0]["major"]["slug"], "economics")
+        shelf.is_active = False
+        shelf.save()
+        self.assertEqual([r["title"] for r in APIClient().get("/api/v1/shelves/").json()], ["همه‌ی کتاب‌ها"])
+
+    def test_banner_for_the_readers_of_one_book(self):
+        from rest_framework.test import APIClient
+
+        from apps.study.models import SectionProgress
+
+        from .models import Banner
+
+        Banner.objects.create(title="همه")
+        Banner.objects.create(title="خوانندگان", audience_book=self.book)
+        self.assertEqual([b["title"] for b in APIClient().get("/api/v1/banners/").json()], ["همه"])
+        reader = APIClient()
+        reader.force_authenticate(self.admin)
+        SectionProgress.objects.create(user=self.admin, node=ContentNode.objects.get(slug="one"), book=self.book)
+        self.assertEqual(sorted(b["title"] for b in reader.get("/api/v1/banners/").json()), ["خوانندگان", "همه"])

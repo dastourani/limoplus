@@ -137,7 +137,6 @@ class _ManagedInChapter:
         return super().change_view(request, object_id, form_url, extra_context)
 
 
-SAMPLES_PER_BOOK = 10
 
 
 @admin.register(Question)
@@ -148,25 +147,10 @@ class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
                    HasAlternativeFilter, HasFlashcardsFilter, OpenReportsFilter, "is_sample", "is_free", "is_archived")
     actions = ("make_sample", "unmake_sample")
 
-    @admin.action(description="نمونه‌ی قابل اشتراک شود (حداکثر ۱۰ در هر کتاب)")
+    @admin.action(description="قابل اشتراک شود (کاربر می‌تواند تصویرش را بفرستد، بدون جواب)")
     def make_sample(self, request, queryset):
-        from apps.catalog.models import ContentNode
-
-        steplen = ContentNode.steplen
-        added = skipped = 0
-        for q in queryset.select_related("node"):
-            if q.is_sample:
-                continue
-            book_path = q.node.path[:steplen]
-            if Question.objects.filter(is_sample=True, node__path__startswith=book_path).count() >= SAMPLES_PER_BOOK:
-                skipped += 1
-                continue
-            Question.objects.filter(pk=q.pk).update(is_sample=True)
-            added += 1
-        if added:
-            self.message_user(request, f"{added} تست نمونه‌ی قابل اشتراک شد.")
-        if skipped:
-            self.message_user(request, f"{skipped} تست نشد: هر کتاب حداکثر {SAMPLES_PER_BOOK} نمونه دارد.", level=messages.WARNING)
+        n = queryset.update(is_sample=True)
+        self.message_user(request, f"{n} تست قابل اشتراک شد.")
 
     @admin.action(description="از نمونه‌های قابل اشتراک برداشته شود")
     def unmake_sample(self, request, queryset):

@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ApiError } from '../../api/client';
@@ -10,7 +10,6 @@ import { Text } from '../../components/Text';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { coverByline } from '../../lib/cover';
-import { storage } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
 import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
 
@@ -22,28 +21,15 @@ export default function Buy() {
   const { user } = useAuth();
   const { data, error, loading, retry } = useApi(() => endpoints.offers(String(slug)), [slug]);
   const [choice, setChoice] = useState<Choice | null>(null);
-  const [major, setMajor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<number | null>(null);
   const book = useApi(() => endpoints.book(String(slug)), [slug]);
-  const [majorRef, setMajorRef] = useState<{ name: string; color: string } | null>(null);
-  useEffect(() => {
-    storage.getMajor().then((m) => m && setMajorRef({ name: m.name, color: m.color }));
-  }, []);
-
-  // The subscription major defaults to the space the learner is in.
-  useEffect(() => {
-    if (!data) return;
-    storage.getMajor().then((m) => m && data.majors.some((x) => x.slug === m.slug) && setMajor((cur) => cur ?? m.slug));
-  }, [data]);
 
   if (loading) return <Screen><Header title="باز کردن کتاب" /><Loading /></Screen>;
   if (error || !data) return <Screen><Header title="باز کردن کتاب" /><ErrorState message={error?.message ?? ''} onRetry={retry} /></Screen>;
 
-  const majorChoice = major ?? (data.majors.length === 1 ? data.majors[0].slug : null);
-  const needsMajor = choice?.kind === 'plan' && choice.plan.scope === 'major';
-  const ready = !!choice && (!needsMajor || !!majorChoice);
+  const ready = !!choice;
 
   const check = async (orderId: number) => {
     const order = await endpoints.order(orderId, true).catch(() => null);
@@ -57,7 +43,7 @@ export default function Buy() {
     setBusy(true);
     setMessage(null);
     try {
-      const order = await endpoints.createOrder(choice.kind === 'book' ? { book: data.book.slug } : { plan: choice.plan.id, major: needsMajor ? majorChoice! : undefined });
+      const order = await endpoints.createOrder(choice.kind === 'book' ? { book: data.book.slug } : { plan: choice.plan.id });
       setPendingOrder(order.order_id);
       if (Platform.OS === 'web') {
         window.open(order.pay_url, '_blank');
@@ -96,7 +82,7 @@ export default function Buy() {
       <Header title="باز کردن کتاب" />
       <ScrollView contentContainerStyle={styles.page}>
         <View style={styles.bookCard}>
-          {book.data ? <BookCover book={book.data} major={majorRef} width={64} /> : <View style={styles.coverSpace} />}
+          {book.data ? <BookCover book={book.data} major={book.data?.major ?? null} width={64} /> : <View style={styles.coverSpace} />}
           <View style={{ flex: 1, gap: 3 }}>
             <Text style={[styles.bookTitle, rtl]}>{data.book.title}</Text>
             {!!book.data && !!coverByline(book.data.author, book.data.edition) && <Text style={[styles.sub, rtl]}>{coverByline(book.data.author, book.data.edition)}</Text>}
@@ -123,25 +109,13 @@ export default function Buy() {
             key={plan.id}
             on={choice?.kind === 'plan' && choice.plan.id === plan.id}
             title={plan.title}
-            sub={`${plan.scope === 'all' ? 'همه‌ی کتاب‌های همه‌ی رشته‌ها' : 'همه‌ی کتاب‌های یک رشته'} تا وقتی اشتراک داری (${toPersianDigits(plan.months)} ماه)؛ کتاب‌های تازه هم خودکار اضافه می‌شوند.`}
+            sub={`همه‌ی کتاب‌های لیمو پلاس تا وقتی اشتراک داری (${toPersianDigits(plan.months)} ماه)؛ کتاب‌های تازه هم خودکار اضافه می‌شوند.`}
             price={plan.price}
             unit={plan.months === 1 ? 'تومان در ماه' : `تومان برای ${toPersianDigits(plan.months)} ماه`}
             badge={i === 0 ? 'برای چند کتاب به‌صرفه‌تر' : undefined}
             onPress={() => setChoice({ kind: 'plan', plan })}
           />
         ))}
-        {needsMajor && data.majors.length > 1 && (
-          <View style={{ gap: 8 }}>
-            <Text style={[styles.group, rtl]}>اشتراک کدام رشته؟</Text>
-            <View style={styles.majors}>
-              {data.majors.map((m) => (
-                <Pressable key={m.slug} onPress={() => setMajor(m.slug)} style={[styles.major, majorChoice === m.slug && styles.majorOn]}>
-                  <Text style={{ fontWeight: '800', color: majorChoice === m.slug ? colors.lemon : colors.ink }}>{m.name}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
         {!!choice && (
           <View style={styles.summary}>
             <View style={styles.summaryRow}>
@@ -186,9 +160,6 @@ const styles = StyleSheet.create({
   unit: { fontSize: 11, fontWeight: '400', color: colors.muted },
   badge: { position: 'absolute', top: -10, left: 16, backgroundColor: '#3FB8A9', color: '#FFFFFF', fontSize: 10, fontWeight: '800', paddingHorizontal: 9, paddingVertical: 2, borderRadius: 8, overflow: 'hidden' },
   group: { fontSize: 14, fontWeight: '900', color: colors.ink, marginTop: 6 },
-  majors: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
-  major: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.surface },
-  majorOn: { backgroundColor: colors.ink, borderColor: colors.ink },
   summary: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
   summaryRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   summaryValue: { fontSize: 13, color: colors.ink },

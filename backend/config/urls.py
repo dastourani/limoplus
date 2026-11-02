@@ -9,6 +9,7 @@ from apps.commerce import views as commerce
 from apps.learning import views as learning
 from apps.releases import views as releases
 from apps.study import mistakes
+from apps.study import reviews
 from apps.study import views as study
 
 admin.site.site_header = "پنل مدیریت لیمو پلاس"
@@ -18,6 +19,7 @@ admin.site.index_title = "مدیریت"
 api = [
     path("", include("apps.accounts.urls")),
     path("majors/", catalog.majors),
+    path("shelves/", catalog.shelves),
     path("majors/<slug:slug>/books/", catalog.major_books),
     path("books/", catalog.all_books),
     path("search/", catalog_search.search),
@@ -50,6 +52,12 @@ api = [
     path("me/exams/", study.my_exams),
     path("me/mistakes/", mistakes.my_mistakes),
     path("me/today/", mistakes.today),
+    path("me/reviews/", reviews.my_reviews),
+    path("me/reviews/start/", reviews.start_review),
+    path("me/reviews/<int:session_id>/", reviews.review_session),
+    path("me/reviews/<int:session_id>/more/", reviews.review_more),
+    path("me/reviews/<int:session_id>/finish/", reviews.finish_review),
+    path("nodes/<int:node_id>/finish/", reviews.finish_chapter),
     path("me/quick/", mistakes.quick),
     path("me/mistakes/questions/", mistakes.mistake_questions),
     path("me/mistakes/<int:question_id>/reason/", mistakes.mistake_reason),

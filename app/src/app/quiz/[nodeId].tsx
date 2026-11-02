@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, ScrollView, StyleSheet, View, type HostInstance } from 'react-native';
 
 import { ApiError } from '../../api/client';
-import { endpoints } from '../../api/endpoints';
+import { endpoints, type Question, type ReviewSessionData } from '../../api/endpoints';
 import { useFeedback } from '../../components/Feedback';
 import { LemonProgress, type PartState } from '../../components/LemonProgress';
 import { QuestionPicker } from '../../components/QuestionPicker';
@@ -34,20 +34,28 @@ const ORDERS: [Order, string][] = [
 ];
 
 export default function Quiz() {
-  const { nodeId, book: bookParam, q: openQuestion } = useLocalSearchParams<{ nodeId: string; book?: string; q?: string }>();
+  const { nodeId, book: bookParam, q: openQuestion, session } = useLocalSearchParams<{ nodeId: string; book?: string; q?: string; session?: string }>();
+  // /quiz/review?session=N: a chapter or book review, five questions at a time («۵ تست دیگر»).
+  const review = nodeId === 'review';
   // /quiz/mistakes: the questions of the mistakes notebook (optionally one book), practised like a section's.
   const notebook = nodeId === 'mistakes';
   // /quiz/quick: the three questions of «فقط ۵ دقیقه».
   const quick = nodeId === 'quick';
   const { data, error, loading, retry } = useApi(
     () =>
-      quick
+      review
+        ? endpoints.reviewSession(Number(session)).then((r) => ({ questions: r.questions, locked_count: 0, session: r }))
+        : quick
         ? endpoints.quick().then((r) => ({ questions: r.questions, locked_count: 0 }))
         : notebook
           ? endpoints.mistakeQuestions(bookParam ?? '')
           : endpoints.questions(Number(nodeId)),
-    [nodeId, bookParam],
+    [nodeId, bookParam, session],
   );
+  // A review grows by five when the learner asks for more; its result comes from the server when it ends.
+  const [reviewQs, setReviewQs] = useState<Question[] | null>(null);
+  const [reviewInfo, setReviewInfo] = useState<ReviewSessionData | null>(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
   const { user } = useAuth();
   const { confirm, toast: flash } = useFeedback();
 
@@ -76,19 +84,19 @@ export default function Quiz() {
   }, [orderKey]);
 
   const questions = useMemo(() => {
-    const base = data?.questions ?? [];
-    if (!order || order.order === 'book') return base;
+    const base = reviewQs ?? data?.questions ?? [];
+    if (review || !order || order.order === 'book') return base;
     if (order.order === 'wrong') {
       const keep = new Set(order.ids ?? []);
       return base.filter((q) => keep.has(q.id));
     }
     // Choices like «گزینه‌های ۱ و ۳» keep their place (fixed_order).
     return seeded(base, order.seed).map((q) => (q.fixed_order ? q : { ...q, choices: seeded(q.choices, order.seed + q.id) }));
-  }, [data, order]);
+  }, [data, order, reviewQs, review]);
 
   // Signed-in learners continue at the first question they have not answered yet.
   useEffect(() => {
-    if (!user || !data || !order || notebook || quick) return;
+    if (!user || !data || !order || notebook || quick || review) return;
     endpoints
       .practiceState(Number(nodeId))
       .then((s) => {
@@ -103,6 +111,29 @@ export default function Quiz() {
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, data, nodeId, order === null]);
+
+  // A review is counted (and its next date set) when its summary opens; asking again is harmless.
+  useEffect(() => {
+    if (!review || !showSummary || !session) return;
+    endpoints.finishReview(Number(session)).then(setReviewInfo).catch(() => undefined);
+  }, [review, showSummary, session]);
+
+  const moreReview = async () => {
+    if (!session || reviewBusy) return;
+    setReviewBusy(true);
+    try {
+      const s = await endpoints.reviewMore(Number(session));
+      const before = questions.length;
+      setReviewQs(s.questions);
+      setReviewInfo(s);
+      setShowSummary(false);
+      if (s.questions.length > before) setIndex(before);
+    } catch {
+      flash('گرفتن تست‌های بیشتر ممکن نشد.');
+    } finally {
+      setReviewBusy(false);
+    }
+  };
 
   // From search: open at that question.
   useEffect(() => {
@@ -241,12 +272,47 @@ export default function Quiz() {
       icon: 'rotate-ccw',
     });
     if (!ok) return;
-    if (user && !notebook && !quick) await endpoints.practiceReset(Number(nodeId)).catch(() => undefined);
+    if (user && !notebook && !quick && !review) await endpoints.practiceReset(Number(nodeId)).catch(() => undefined);
     setAnswers({});
     setServerAnswered({});
     setShowSummary(false);
     setIndex(0);
   };
+
+  if (showSummary && review) {
+    const info = reviewInfo ?? (data as { session?: ReviewSessionData } | undefined)?.session ?? null;
+    const left = info ? Math.max(0, info.minimum - info.answered) : 0;
+    return (
+      <Screen>
+        <Header title={info?.title ?? 'مرور'} />
+        <ScrollView contentContainerStyle={styles.result}>
+          <Text style={styles.resultPercent}>
+            {toPersianDigits(counts.right)} از {toPersianDigits(counts.right + counts.wrong)}
+          </Text>
+          <Text style={styles.resultLine}>
+            {info?.finished
+              ? info.next_in_days != null
+                ? `مرور انجام شد. مرور بعدی این ${info.kind === 'book' ? 'کتاب' : 'فصل'}: ${toPersianDigits(info.next_in_days)} روز دیگر.`
+                : 'مرور انجام شد.'
+              : left > 0
+                ? `برای اینکه این مرور حساب شود، ${toPersianDigits(left)} تست دیگر بزن.`
+                : 'در حال ثبت…'}
+          </Text>
+          {counts.wrong > 0 && <Text style={[styles.resultLine, { fontSize: 13 }]}>تست‌های غلط به دفترچه‌ی اشتباهات رفتند.</Text>}
+          {(info?.more ?? true) && (
+            <Button
+              label={reviewBusy ? 'صبر کن…' : `۵ تست دیگر از این ${info?.kind === 'book' ? 'کتاب' : 'فصل'}`}
+              onPress={moreReview}
+              disabled={reviewBusy}
+              style={{ alignSelf: 'stretch' }}
+            />
+          )}
+          {info && !info.more && <Text style={[styles.resultLine, { fontSize: 13 }]}>همه‌ی تست‌های این {info.kind === 'book' ? 'کتاب' : 'فصل'} را در این مرور زدی.</Text>}
+          <Button label="کافی است برای امروز" variant="dark" onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
+        </ScrollView>
+      </Screen>
+    );
+  }
 
   if (showSummary) {
     const done = counts.right + counts.wrong;
@@ -298,13 +364,13 @@ export default function Quiz() {
           <Text style={[styles.hint, rtl, { paddingHorizontal: 0, paddingBottom: 0 }]}>بکش تا ورق بخورد؛ لیمو را بزن تا به هر سؤال بروی</Text>
         </View>
       </View>
-      <View style={styles.orders}>
+      {!review && <View style={styles.orders}>
         {ORDERS.map(([key, label]) => (
           <Pressable key={key} onPress={() => changeOrder(key)} style={[styles.order, order.order === key && styles.orderOn]} accessibilityRole="button" accessibilityState={{ selected: order.order === key }}>
             <Text style={[styles.orderText, order.order === key && { color: colors.lemon }]}>{label}</Text>
           </Pressable>
         ))}
-      </View>
+      </View>}
       <QuestionPicker
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}

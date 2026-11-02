@@ -163,6 +163,8 @@ class ExamAnswer(models.Model):
     question = models.ForeignKey(Question, on_delete=models.PROTECT, related_name="+")
     choice_order = models.PositiveSmallIntegerField(null=True, blank=True)  # null = left blank
     was_correct = models.BooleanField(null=True)
+    # «شک‌دار»: the learner marked it during the exam as not sure; such questions come back in the chapter reviews.
+    is_doubtful = models.BooleanField(default=False)
 
     class Meta:
         unique_together = [("attempt", "question")]
@@ -219,3 +221,66 @@ class MistakeNote(models.Model):
         verbose_name = "علت اشتباه"
         verbose_name_plural = "علت‌های اشتباه"
         unique_together = [("user", "question")]
+
+
+class ChapterReview(models.Model):
+    """«چرخه‌ی مرور فصل» for one learner and one finished chapter: which step it is at and when the next review is due.
+    Steps (gap after the previous one): 1 day, 7 days, 30 days, then every ~75 days; a weak result brings it back sooner."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="chapter_reviews")
+    chapter = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
+    book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
+    finished_at = models.DateTimeField("فصل تمام شد")
+    finished_by = models.CharField(max_length=10, default="auto")  # auto | button
+    stage = models.PositiveSmallIntegerField(default=0)
+    due_on = models.DateField()
+    last_done_at = models.DateTimeField(null=True, blank=True)
+    last_score = models.FloatField(null=True, blank=True)
+    done_count = models.PositiveSmallIntegerField(default=0)
+    # Questions served in the last review, so the next one asks others (a wrong one may come back).
+    last_served = models.JSONField(default=list, blank=True)
+    is_archived = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "مرور فصل"
+        verbose_name_plural = "مرورهای فصل"
+        unique_together = [("user", "chapter")]
+
+
+class BookReview(models.Model):
+    """«مرور ترکیبی کتاب»: a weekly review mixing every finished chapter of one book (from two finished chapters on)."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="book_reviews")
+    book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
+    due_on = models.DateField()
+    last_done_at = models.DateTimeField(null=True, blank=True)
+    last_score = models.FloatField(null=True, blank=True)
+    done_count = models.PositiveSmallIntegerField(default=0)
+    last_served = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        verbose_name = "مرور ترکیبی کتاب"
+        verbose_name_plural = "مرورهای ترکیبی کتاب"
+        unique_together = [("user", "book")]
+
+
+class ReviewSession(models.Model):
+    """One sitting of a chapter or book review. Answers go through the normal practice answer (so the mistakes notebook
+    and statistics see them); the session only remembers which questions it served. The one-month step is an exam."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="review_sessions")
+    chapter_review = models.ForeignKey(ChapterReview, on_delete=models.CASCADE, null=True, blank=True, related_name="sessions")
+    book_review = models.ForeignKey(BookReview, on_delete=models.CASCADE, null=True, blank=True, related_name="sessions")
+    stage = models.PositiveSmallIntegerField(default=0)
+    minimum = models.PositiveSmallIntegerField(default=5)
+    served = models.JSONField(default=list, blank=True)
+    exam = models.OneToOneField(ExamAttempt, on_delete=models.SET_NULL, null=True, blank=True, related_name="review_session")
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    score = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "نوبت مرور"
+        verbose_name_plural = "نوبت‌های مرور"
+        ordering = ["-started_at"]
+

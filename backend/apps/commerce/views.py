@@ -48,32 +48,35 @@ def _entitlement_payload(e):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def offers(request):
-    """What can be bought to open a book: the book itself and subscription plans for its majors."""
+    """What can be bought to open a book: the book itself and the subscription plans (every plan covers all books)."""
     book = _book(request.query_params.get("book", ""))
     if book is None:
         return _err("کتاب پیدا نشد.", "not_found", status.HTTP_404_NOT_FOUND)
-    majors = list(book.majors.filter(is_coming_soon=False))
-    plans = Plan.objects.filter(is_active=True)
     return Response(
         {
             "book": {"slug": book.slug, "title": book.title, "price": book.price},
-            "majors": [{"slug": m.slug, "name": m.name} for m in majors],
-            "plans": [_plan_payload(p) for p in plans if p.scope == Plan.Scope.ALL or majors],
+            "majors": [],
+            "plans": [_plan_payload(p) for p in _plans_on_sale()],
         }
     )
+
+
+def _plans_on_sale():
+    """Only all-books plans are sold. Old one-major plans stay for the record (and their subscriptions keep working)."""
+    return Plan.objects.filter(is_active=True, scope=Plan.Scope.ALL)
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def plans(request):
-    return Response([_plan_payload(p) for p in Plan.objects.filter(is_active=True)])
+    return Response([_plan_payload(p) for p in _plans_on_sale()])
 
 
 @api_view(["POST"])
 def create_order(request):
     """Creates an order with a server-computed amount and returns the gateway URL. The client never sends prices."""
     user = request.user
-    book_slug, plan_id, major_slug = request.data.get("book"), request.data.get("plan"), request.data.get("major")
+    book_slug, plan_id = request.data.get("book"), request.data.get("plan")
     if book_slug and not plan_id:
         book = _book(book_slug)
         if book is None or not book.price:
@@ -84,17 +87,13 @@ def create_order(request):
         order = Order.objects.create(user=user, book=book, title=f"خرید کتاب {book.title}", amount=book.price)
     elif plan_id and not book_slug:
         try:
-            plan = Plan.objects.filter(pk=int(plan_id), is_active=True).first()
+            plan = _plans_on_sale().filter(pk=int(plan_id)).first()
         except (TypeError, ValueError):
             plan = None
         if plan is None:
             return _err("این طرح فعال نیست.", "invalid_plan")
         major = None
-        if plan.scope == Plan.Scope.MAJOR:
-            major = Major.objects.filter(slug=major_slug, is_coming_soon=False).first()
-            if major is None:
-                return _err("رشته‌ی اشتراک را انتخاب کنید.", "major_required")
-        title = f"{plan.title}" + (f" — {major.name}" if major else "")
+        title = plan.title
         order = Order.objects.create(
             user=user, plan=plan, major=major, title=title, amount=plan.price, plan_months=plan.months, plan_scope=plan.scope
         )

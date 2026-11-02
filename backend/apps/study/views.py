@@ -445,6 +445,7 @@ def submit_exam(request, attempt_id):
             return Response(_exam_detail(request, attempt))
         late = timezone.now() > attempt.ends_at + EXAM_GRACE
         raw = request.data.get("answers") or {}
+        doubts = {str(x) for x in (request.data.get("doubts") or []) if str(x).isdigit()}
         points = 0.0
         correct = wrong = blank = 0
         existing = set(Question.objects.filter(pk__in=attempt.question_ids).values_list("pk", flat=True))
@@ -453,13 +454,14 @@ def submit_exam(request, attempt_id):
                 continue
             choices = q["choices"]
             at = None if late else next((i for i, c in enumerate(choices) if str(c["id"]) == str(raw.get(str(qid)))), None)
+            doubtful = str(qid) in doubts
             if at is None:
                 blank += 1
-                ExamAnswer.objects.create(attempt=attempt, question_id=qid, choice_order=None, was_correct=None)
+                ExamAnswer.objects.create(attempt=attempt, question_id=qid, choice_order=None, was_correct=None, is_doubtful=doubtful)
                 continue
             ok = bool(choices[at]["ok"])
             first = first_answer(request.user, qid, exclude_attempt=attempt)
-            ExamAnswer.objects.create(attempt=attempt, question_id=qid, choice_order=at, was_correct=ok)
+            ExamAnswer.objects.create(attempt=attempt, question_id=qid, choice_order=at, was_correct=ok, is_doubtful=doubtful)
             if ok:
                 correct += 1
                 points += 1
@@ -475,6 +477,9 @@ def submit_exam(request, attempt_id):
         attempt.score_percent = round(points / total * 100, 1)
         attempt.submitted_at = timezone.now()
         attempt.save()
+        from .reviews import exam_submitted
+
+        exam_submitted(attempt)
     StudyDay.touch(request.user, "answers", correct + wrong)
     return Response(_exam_detail(request, attempt))
 
