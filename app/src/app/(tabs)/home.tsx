@@ -37,6 +37,18 @@ export default function Home() {
   const { toast } = useFeedback();
   // While the page is being scrolled the banners don't turn by themselves (a turn mid-scroll made it jump).
   const pageScrolling = useRef(false);
+  const [idle, setIdle] = useState(false);
+  useEffect(() => {
+    let idleId: number | undefined;
+    const t = setTimeout(() => {
+      if (typeof requestIdleCallback === 'function') idleId = requestIdleCallback(() => setIdle(true), { timeout: 1500 });
+      else setIdle(true);
+    }, 600);
+    return () => {
+      clearTimeout(t);
+      if (idleId !== undefined && typeof cancelIdleCallback === 'function') cancelIdleCallback(idleId);
+    };
+  }, []);
   const [spots, setSpots] = useState<Record<string, ReadingSpot>>({});
   const [serverReading, setServerReading] = useState<Library['reading']>([]);
   useFocusEffect(
@@ -287,8 +299,11 @@ export default function Home() {
         contentContainerStyle={styles.page}
         refreshControl={refresh}
         initialNumToRender={4}
-        windowSize={5}
-        maxToRenderPerBatch={2}
+        // First the top of the page; a moment later, while the phone is idle, the shelves below are made too, so
+        // scrolling down meets them ready (with many shelves, a few screens ahead are kept ready).
+        windowSize={idle ? 21 : 5}
+        maxToRenderPerBatch={1}
+        updateCellsBatchingPeriod={120}
         onScrollBeginDrag={() => (pageScrolling.current = true)}
         onMomentumScrollEnd={() => (pageScrolling.current = false)}
         onScrollEndDrag={(e) => {

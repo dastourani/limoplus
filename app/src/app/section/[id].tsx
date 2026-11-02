@@ -13,6 +13,7 @@ import { Button, ErrorState, Header, Loading, Screen, Sheet } from '../../compon
 import { Watermark } from '../../components/Watermark';
 import { useFeedback } from '../../components/Feedback';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { useStudyTimer } from '../../lib/studyTime';
 import { sendOrQueue } from '../../lib/network';
 import { parseTerms, type Term } from '../../lib/reviewCard';
 import { offlineBooks, offlineSection } from '../../lib/offline';
@@ -395,6 +396,9 @@ export default function Section() {
 
   const { paper, ink } = THEMES[theme];
   const dark = theme === 'dark';
+
+  // «زمان مطالعه»: reading this section while the screen is open (two minutes without a touch stops it).
+  useStudyTimer(node ? nodeId : null, 'read', !!user);
 
   if (loading)
     return arriving ? (

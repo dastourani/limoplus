@@ -19,6 +19,7 @@ import { ReportSheet } from '../../components/ReportSheet';
 import { Text } from '../../components/Text';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { useStudyTimer } from '../../lib/studyTime';
 import { usePageTurn } from '../../lib/pageTurn';
 import { seeded } from '../../lib/shuffle';
 import { resultForView, type QuizViewState } from '../../lib/quizHtml';
@@ -151,6 +152,9 @@ export default function Quiz() {
     },
     [index, questions.length, turn],
   );
+
+  // «زمان مطالعه»: counted on the section of the question on screen (a review counts as review).
+  useStudyTimer(questions[Math.min(index, questions.length - 1)]?.node_id, review ? 'review' : 'quiz', !!user && !showSummary);
 
   if (loading || !order) return <Screen><Header title="تست" /><Loading /></Screen>;
   if (error) return <Screen><Header title="تست" /><ErrorState message={error.message} onRetry={retry} /></Screen>;
@@ -354,7 +358,7 @@ export default function Quiz() {
 
   return (
     <Screen>
-      <Header title={`سؤال ${toPersianDigits(index + 1)} از ${toPersianDigits(questions.length)}`} />
+      <Header subtitle={q.node_title || undefined} title={`سؤال ${toPersianDigits(index + 1)} از ${toPersianDigits(questions.length)}`} />
       <View style={styles.progress}>
         <LemonProgress parts={parts} current={index} size={54} onPress={() => setPickerOpen(true)} accessibilityLabel="پیشرفت تست‌ها؛ برای رفتن به سؤال دیگر بزنید" />
         <View style={{ flex: 1, gap: 2 }}>

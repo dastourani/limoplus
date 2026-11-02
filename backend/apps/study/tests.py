@@ -570,3 +570,66 @@ class ContinueReadingTests(TestCase):
         first = self.chapter.get_children().first()
         self.client.post(f"/api/v1/nodes/{first.id}/progress/", {"percent": 40}, format="json")
         self.assertIsNone(self.client.get("/api/v1/me/library/").data["reading"][0]["next"], "not finished: continue where it was")
+
+
+class SectionStateTests(TestCase):
+    setUp = StudyTests.setUp
+    tearDown = StudyTests.tearDown
+
+    def test_green_tick_needs_reading_and_most_questions(self):
+        from .progress import needed
+
+        self.assertEqual([needed(n) for n in (0, 1, 2, 3, 5, 10, 20)], [0, 1, 1, 2, 3, 7, 14])
+        s = self.section
+        self.client.post(f"/api/v1/nodes/{s.id}/progress/", {"percent": 100, "done": True}, format="json")
+        data = self.client.get("/api/v1/books/math-1/").data
+        questions = list(Question.objects.filter(node=s, is_archived=False))
+        if questions:
+            self.assertIn(s.id, data["read_ids"])
+            self.assertNotIn(s.id, data["done_ids"], "only read: no green tick yet")
+            for q in questions[: needed(len(questions))]:
+                self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.filter(is_correct=False).first().id}, format="json")
+            data = self.client.get("/api/v1/books/math-1/").data
+        self.assertIn(s.id, data["done_ids"], "wrong answers count too")
+        self.assertNotIn(s.id, data["read_ids"])
+
+
+class StudyTimeTests(TestCase):
+    setUp = StudyTests.setUp
+    tearDown = StudyTests.tearDown
+
+    def test_seconds_add_up_exactly_and_are_checked(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from .models import StudyTime
+
+        for _ in range(10):  # ten chunks of 5 minutes 20 seconds
+            self.client.post("/api/v1/me/time/", {"entries": [{"node_id": self.section.id, "kind": "read", "seconds": 320}]}, format="json")
+        self.assertEqual(StudyTime.objects.get().seconds, 3200, "exact: no second lost to rounding")
+        old = (timezone.localdate() - timedelta(days=90)).isoformat()
+        r = self.client.post("/api/v1/me/time/", {"entries": [
+            {"node_id": self.paid_section.id, "kind": "read", "seconds": 60, "day": old},
+            {"node_id": self.section.id, "kind": "nonsense", "seconds": 60},
+            {"node_id": self.section.id, "kind": "quiz", "seconds": 99999},
+        ]}, format="json").data
+        self.assertEqual(r["added"], 15 * 60, "too old and unknown kinds dropped; one chunk is capped")
+        mine = self.client.get("/api/v1/books/math-1/").data["mine"]
+        self.assertEqual(mine["time_seconds"], 3200 + 900)
+        self.assertEqual(mine["chapter_seconds"][str(self.chapter.id)], 3200 + 900)
+        self.assertEqual(self.client.get("/api/v1/me/stats/").data["time"]["week_seconds"], 4100)
+
+    def test_owner_sees_each_learner(self):
+        from django.urls import reverse
+
+        self.client.post("/api/v1/me/time/", {"entries": [{"node_id": self.section.id, "kind": "read", "seconds": 75}]}, format="json")
+        admin = User.objects.create_superuser("09120000099", "pw-123456")
+        from django.test import Client
+
+        c = Client()
+        c.force_login(admin)
+        url = reverse("admin:study_studytime_changelist")
+        self.assertContains(c.get(url), self.user.phone)
+        self.assertContains(c.get(url, {"user": self.user.id}), "۱ دقیقه و ۱۵ ثانیه")
+        self.assertContains(c.get(url, {"book": "math-1"}), self.section.title)

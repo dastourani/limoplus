@@ -13,6 +13,7 @@ import { captureRef } from 'react-native-view-shot';
 import { endpoints, type Flashcard, type Grade, type GradeHints } from '../api/endpoints';
 import { requireLogin, useAuth } from '../lib/auth';
 import { sendOrQueue } from '../lib/network';
+import { useStudyTimer } from '../lib/studyTime';
 import { colors, rtl, toPersianDigits } from '../theme';
 import { useCelebrate } from './Celebrate';
 import { Icon } from './Icon';
@@ -96,6 +97,8 @@ export function FlashcardDeck({
   const gradedCount = Object.keys(graded).length;
   const card = done ? null : byId.get(queue[pos])!;
   const hints = card ? (boxes[card.id]?.hints ?? newHints) : newHints;
+  // «زمان مطالعه»: counted on the section the card belongs to.
+  useStudyTimer(card?.node_id, 'cards', !!user);
 
   const turn = (to: 0 | 1) => {
     setFlipped(to === 1);
@@ -205,8 +208,9 @@ export function FlashcardDeck({
   return (
     <Screen>
       <Header
-        title={title}
-        subtitle={`${toPersianDigits(Math.min(pos + 1, queue.length))} از ${toPersianDigits(queue.length)}`}
+        // The card's own section above, «کارت ۲ از ۸» below (a mixed review changes section card by card).
+        subtitle={card?.node_title || title}
+        title={`کارت ${toPersianDigits(Math.min(pos + 1, queue.length))} از ${toPersianDigits(queue.length)}`}
         right={
           Platform.OS !== 'web' ? (
             <Pressable onPress={share} style={{ padding: 10 }} accessibilityLabel="اشتراک‌گذاری کارت">

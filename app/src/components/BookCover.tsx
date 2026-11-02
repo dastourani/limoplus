@@ -1,11 +1,29 @@
 import { memo, useMemo } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
-import { SvgXml } from 'react-native-svg';
+import { Image } from 'expo-image';
+import { StyleSheet, View } from 'react-native';
+import { parse, SvgAst, type JsxAST } from 'react-native-svg';
 
 import { coverByline, coverMotifSvg, coverPalette, type CoverTheme } from '../lib/cover';
 import { useCoverTheme } from '../lib/coverTheme';
 import { LemonSlice } from './LemonSlice';
 import { Text } from './Text';
+
+// Each line drawing is read once and kept: ten books with the same motif (or one book on several shelves) share it,
+// instead of every cover reading the drawing again as it comes onto the screen.
+const parsed = new Map<string, JsxAST | null>();
+function motifAst(xml: string): JsxAST | null {
+  let ast = parsed.get(xml);
+  if (ast === undefined) {
+    try {
+      ast = parse(xml);
+    } catch {
+      ast = null;
+    }
+    if (parsed.size > 200) parsed.clear();
+    parsed.set(xml, ast);
+  }
+  return ast;
+}
 
 export type CoverBook = {
   title: string;
@@ -42,7 +60,7 @@ export const BookCover = memo(function BookCover({
   const p = coverPalette(theme);
   const k = width / 240;
   const strip = major?.color || '#3FB8A9';
-  const xml = useMemo(() => coverMotifSvg(book.motif || 'ct', theme, book.drawing), [book.motif, book.drawing, theme]);
+  const ast = useMemo(() => motifAst(coverMotifSvg(book.motif || 'ct', theme, book.drawing)), [book.motif, book.drawing, theme]);
   const byline = coverByline(book.author, book.edition);
   const frame = {
     width,
@@ -56,7 +74,8 @@ export const BookCover = memo(function BookCover({
   if (book.cover) {
     return (
       <View style={[styles.shadow, frame, { overflow: 'hidden' }]} accessibilityLabel={`جلد کتاب ${book.title}`}>
-        <Image source={{ uri: book.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        {/* Kept on the phone after the first download (memory and disk), so a shelf never fetches it again. */}
+        <Image source={{ uri: book.cover }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" transition={120} />
       </View>
     );
   }
@@ -76,7 +95,7 @@ export const BookCover = memo(function BookCover({
         </Text>
       )}
       <View style={[styles.motif, { paddingHorizontal: 14 * k, paddingTop: 6 * k }]}>
-        <SvgXml xml={xml} width={208 * k} height={146 * k} />
+        <SvgAst ast={ast} override={{ width: 208 * k, height: 146 * k }} />
       </View>
       <View style={{ paddingHorizontal: 18 * k, paddingBottom: 16 * k, gap: 3 * k }}>
         <Text allowFontScaling={false} numberOfLines={2} style={[styles.title, { fontSize: 21 * k, lineHeight: 30 * k, color: p.title }]}>

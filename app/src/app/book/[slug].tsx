@@ -19,6 +19,7 @@ import { jalaliDate } from '../../lib/jalali';
 import { offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
 import { storage, type LastSection } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
+import { studyDuration } from '../../lib/duration';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
 import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
@@ -98,6 +99,7 @@ export default function Book() {
       <PageTurn kind="cover" title={coverTitle || book.title} face={<BookCover book={book} major={book.major ?? null} width={Math.min(width * 0.62, 300)} />} onDone={() => setCoverTitle(null)} />
     ) : null;
   const done = new Set(book.done_ids);
+  const read = new Set(book.read_ids ?? []);
   const sections = book.chapters.flatMap((c) => c.sections);
   const tests = sections.reduce((n, x) => n + (x.question_count ?? 0), 0);
   const cards = sections.reduce((n, x) => n + (x.flashcard_count ?? 0), 0);
@@ -187,10 +189,10 @@ export default function Book() {
             </View>
           ) : fullAccess ? (
             <View style={[styles.cta, styles.ctaRow]}>
-              <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : 'empty'))} size={54} />
+              <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={54} />
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={[styles.ctaSmall, rtl]}>
-                  {user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش خوانده‌شده` : 'برای ذخیره‌ی پیشرفت وارد شو'}
+                  {user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش تمام‌شده` : 'برای ذخیره‌ی پیشرفت وارد شو'}
                 </Text>
                 <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{last ? last.title : 'از اول کتاب شروع کن'}</Text>
               </View>
@@ -247,6 +249,12 @@ export default function Book() {
                   <Text style={styles.shortcutText}>آزمون‌هایم ({toPersianDigits(book.mine.exams)})</Text>
                 </Pressable>
               )}
+              {!!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
+                <View style={styles.shortcut} accessibilityLabel={`زمان مطالعه‌ی تو در این کتاب: ${studyDuration(book.mine.time_seconds)}`}>
+                  <Icon name="timer" size={18} color={colors.ink} />
+                  <Text style={styles.shortcutText}>زمان مطالعه: {studyDuration(book.mine.time_seconds)}</Text>
+                </View>
+              )}
               {offlineSupported && (
                 <Pressable onPress={download} disabled={downloading} style={styles.shortcut} accessibilityRole="button">
                   <Icon name={offline ? 'circle-check' : 'download'} size={18} color={offline ? colors.greenDark : colors.ink} />
@@ -292,8 +300,10 @@ export default function Book() {
                 setOpenId((v) => (v === chapter.id ? null : chapter.id));
               }}
               done={done}
+              read={read}
               owned={book.owned}
               bookSlug={book.slug}
+              seconds={book.mine?.chapter_seconds?.[String(chapter.id)] ?? 0}
               review={book.reviews?.chapters[String(chapter.id)] ?? null}
               canFinish={!!user && !!book.reviews}
               onFinish={async () => {
@@ -322,12 +332,15 @@ function ChapterCard({
   open,
   onToggle,
   done,
+  read,
   owned,
   bookSlug,
   review,
   canFinish,
   onFinish,
+  seconds,
 }: {
+  seconds: number;
   bookSlug: string;
   /** «مرور بعدی: ۶ روز دیگر» once the chapter is finished. */
   review: { step: number; days: number; done: number } | null;
@@ -338,6 +351,7 @@ function ChapterCard({
   open: boolean;
   onToggle: () => void;
   done: Set<number>;
+  read: Set<number>;
   owned: boolean;
 }) {
   const turn = useRef(new Animated.Value(open ? 1 : 0)).current;
@@ -349,7 +363,7 @@ function ChapterCard({
   return (
     <View style={styles.chapter}>
       <Pressable onPress={onToggle} style={styles.chapterHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
-        <LemonProgress parts={chapter.sections.map((x) => (done.has(x.id) ? 'done' : 'empty'))} size={38} />
+        <LemonProgress parts={chapter.sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={38} />
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={[styles.chapterTitle, rtl]}>
             فصل {toPersianDigits(number)}، {chapter.title}
@@ -357,6 +371,7 @@ function ChapterCard({
           <Text style={[styles.sectionMeta, rtl]}>
             {toPersianDigits(chapter.sections.length)} بخش{tests ? `، ${toPersianDigits(tests)} تست` : ''}
           </Text>
+          {seconds >= 60 && <Text style={[styles.sectionMeta, rtl]}>زمان مطالعه: {studyDuration(seconds)}</Text>}
           {!!review && (
             <Text style={[styles.reviewLine, rtl, review.days <= 0 && { color: colors.redDark }]}>
               {review.days > 0 ? `مرور بعدی: ${toPersianDigits(review.days)} روز دیگر` : review.days === 0 ? 'مرور این فصل: امروز' : 'مرور این فصل عقب افتاده'}
@@ -382,7 +397,7 @@ function ChapterCard({
             return (
               <View key={section.id}>
                 {!!header && <Text style={[styles.group, rtl]}>{header}</Text>}
-                <SectionRow section={section} done={done.has(section.id)} />
+                <SectionRow section={section} state={done.has(section.id) ? 'done' : read.has(section.id) ? 'read' : 'none'} />
               </View>
             );
           })}
@@ -424,7 +439,9 @@ function ChapterCard({
 
 /** A section in the contents: the title takes up to two lines (then «…»; a long press shows it whole), the counts stay at
  * its left so the list never grows wider. */
-function SectionRow({ section, done }: { section: NodeSummary; done: boolean }) {
+/** none: not started; read: «خوانده شد» (half lemon); done: «تمام شد» (green tick: read and its questions mostly answered). */
+function SectionRow({ section, state }: { section: NodeSummary; state: 'none' | 'read' | 'done' }) {
+  const done = state === 'done';
   const { toast } = useFeedback();
   return (
     <Pressable
@@ -434,7 +451,13 @@ function SectionRow({ section, done }: { section: NodeSummary; done: boolean }) 
       style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}
       accessibilityRole="button"
     >
-      <View style={[styles.check, done && styles.checkOn]}>{done && <Icon name="check" size={13} color="#fff" strokeWidth={3} />}</View>
+      <View
+        style={[styles.check, done && styles.checkOn, state === 'read' && styles.checkRead]}
+        accessibilityLabel={done ? 'تمام شد' : state === 'read' ? 'خوانده شد؛ تست‌هایش مانده' : 'شروع‌نشده'}
+      >
+        {done && <Icon name="check" size={13} color="#fff" strokeWidth={3} />}
+        {state === 'read' && <View style={styles.half} />}
+      </View>
       <Text style={[styles.sectionTitle, rtl, section.is_locked && { color: colors.muted }]} numberOfLines={2}>
         {section.title}
       </Text>
@@ -491,6 +514,8 @@ const styles = StyleSheet.create({
   section: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.line, gap: 10 },
   check: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
   checkOn: { backgroundColor: colors.green, borderColor: colors.green },
+  checkRead: { borderColor: colors.lemon, overflow: 'hidden', alignItems: 'flex-end' },
+  half: { width: '50%', height: '100%', backgroundColor: colors.lemon },
   checkMark: { color: '#fff', fontSize: 12, fontWeight: '700' },
   sectionTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.ink },
   sectionMeta: { fontSize: 12, color: colors.muted, flexShrink: 0 },

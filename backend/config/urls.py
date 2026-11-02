@@ -10,6 +10,7 @@ from apps.learning import views as learning
 from apps.releases import views as releases
 from apps.study import mistakes
 from apps.study import reviews
+from apps.study import time as study_time
 from apps.study import views as study
 
 admin.site.site_header = "پنل مدیریت لیمو پلاس"
@@ -48,12 +49,14 @@ api = [
     path("flashcards/<int:flashcard_id>/report/", study.report_flashcard),
     path("nodes/<int:node_id>/report/", study.report_node),
     path("nodes/<int:node_id>/exams/", study.start_exam),
+    path("nodes/<int:node_id>/exam-info/", study.exam_info),
     path("exams/<int:attempt_id>/", study.exam_detail),
     path("exams/<int:attempt_id>/submit/", study.submit_exam),
     path("me/exams/", study.my_exams),
     path("me/mistakes/", mistakes.my_mistakes),
     path("me/today/", mistakes.today),
     path("me/reviews/", reviews.my_reviews),
+    path("me/time/", study_time.add_time),
     path("me/reviews/start/", reviews.start_review),
     path("me/reviews/<int:session_id>/", reviews.review_session),
     path("me/reviews/<int:session_id>/more/", reviews.review_more),

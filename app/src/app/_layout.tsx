@@ -13,6 +13,7 @@ import { UpdateGate } from '../components/UpdateGate';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { FONT_FILES } from '../lib/fonts';
 import { NetworkProvider } from '../lib/network';
+import { markActive } from '../lib/studyTime';
 import { useScreenProtection } from '../lib/protect';
 import { colors } from '../theme';
 
@@ -35,7 +36,8 @@ function Root() {
   }, [ready]);
   if (!ready) return <View style={{ flex: 1, backgroundColor: colors.ink }} />;
   return (
-    <>
+    // Every touch tells the study-time counter the learner is here (it never takes the touch for itself).
+    <View style={{ flex: 1 }} onTouchStart={markActive}>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground }, animation: 'slide_from_left' }}>
         {/* Books open with their own page turn (PageTurn), so the screen itself only fades in. */}
         <Stack.Screen name="book/[slug]" options={{ animation: 'fade' }} />
@@ -43,7 +45,7 @@ function Root() {
       </Stack>
       <UpdateGate />
       <Intro />
-    </>
+    </View>
   );
 }
 

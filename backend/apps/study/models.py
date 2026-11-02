@@ -297,3 +297,29 @@ class FlashcardReviewOp(models.Model):
         unique_together = [("review", "op")]
         indexes = [models.Index(fields=["created_at"])]
 
+
+
+class StudyTime(models.Model):
+    """Seconds a learner spent in the app on one section (or chapter, for an exam) on one day, by activity. Stored
+    exactly; only what is shown is rounded, so nothing is lost by rounding. Counted only while the screen is open and
+    the learner is active (no touch or scroll for two minutes stops the count)."""
+
+    class Kind(models.TextChoices):
+        READ = "read", "جزوه"
+        QUIZ = "quiz", "تست"
+        CARDS = "cards", "فلش‌کارت"
+        EXAM = "exam", "آزمون"
+        REVIEW = "review", "مرور"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="study_times")
+    node = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
+    book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
+    day = models.DateField()
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    seconds = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "زمان مطالعه"
+        verbose_name_plural = "زمان مطالعه"
+        unique_together = [("user", "node", "day", "kind")]
+        indexes = [models.Index(fields=["user", "day"]), models.Index(fields=["book", "user"])]

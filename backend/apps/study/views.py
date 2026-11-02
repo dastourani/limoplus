@@ -247,6 +247,7 @@ def due_flashcards(request):
         if not _usable(maps[book_path], card):
             continue
         cards.append({"id": card.id, "title": card.title, "point": media_urls(request, card.point), "formula": card.formula,
+                      "node_id": card.node_id, "node_title": card.node.title,
                       "box": r.box, "hints": _grade_hints(r.box)})
     limit = 50
     return Response({"count": len(cards), "flashcards": cards[:limit]})
@@ -357,6 +358,17 @@ def _exam_summary(a):
         "blank": a.blank,
         "score_percent": a.score_percent,
     }
+
+
+@api_view(["GET"])
+def exam_info(request, node_id):
+    """How many questions an exam on this book, chapter or section can have: the setup offers sizes up to that."""
+    node = get_object_or_404(ContentNode, pk=node_id)
+    access = AccessMap(request.user, node)
+    if not access.visible(node.id):
+        return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    pool = [q for q in Question.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False).only("id", "node_id", "is_free") if _usable(access, q)]
+    return Response({"questions": min(len(pool), EXAM_MAX_QUESTIONS), "title": node.title})
 
 
 @api_view(["POST"])
@@ -627,6 +639,12 @@ def _streak(days: set) -> int:
     return streak
 
 
+def _time(user):
+    from .time import totals
+
+    return totals(user)
+
+
 def _improvement(user):
     from .mistakes import improvement
 
@@ -688,6 +706,7 @@ def stats(request):
             "books": books,
             "weak_sections": [w for w in weak if w["accuracy"] < 70],
             "improvement": _improvement(user),
+            "time": _time(user),
         }
     )
 

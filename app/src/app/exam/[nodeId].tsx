@@ -13,6 +13,7 @@ import { useFeedback } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
 import { Button, Card, Header, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { useStudyTimer } from '../../lib/studyTime';
 import { usePageTurn } from '../../lib/pageTurn';
 import { seeded } from '../../lib/shuffle';
 import { type QuizViewState } from '../../lib/quizHtml';
@@ -29,8 +30,21 @@ function clock(seconds: number) {
 export default function Exam() {
   const { nodeId, attempt, count: suggested } = useLocalSearchParams<{ nodeId: string; attempt?: string; count?: string }>();
   const { user } = useAuth();
-  // The end of a chapter suggests a size («آزمون ۱۰ سؤالی»); it is still the learner's choice here.
-  const [count, setCount] = useState(() => (COUNTS.includes(Number(suggested)) ? Number(suggested) : 20));
+  // Sizes come from how many questions there really are: 6 questions give one choice «همه‌ی ۶ سؤال»; 25 give 10, 20
+  // and «همه‌ی ۲۵». The end of a chapter suggests a size, chosen here to begin with.
+  const [pool, setPool] = useState<number | null>(null);
+  const [count, setCount] = useState(() => (Number(suggested) > 0 ? Number(suggested) : 20));
+  useEffect(() => {
+    if (attempt) return;
+    endpoints
+      .examInfo(Number(nodeId))
+      .then((info) => {
+        setPool(info.questions);
+        setCount((c) => Math.min(c, info.questions) || info.questions);
+      })
+      .catch(() => undefined);
+  }, [nodeId, attempt]);
+  const counts = pool == null ? COUNTS : [...COUNTS.filter((c) => c < pool), pool];
   const [negative, setNegative] = useState(true);
   const [exam, setExam] = useState<ExamDetail | null>(null);
   const [answers, setAnswers] = useState<Record<string, number | null>>({});
@@ -164,6 +178,9 @@ export default function Exam() {
     if (storeKey && Object.keys(answers).length) AsyncStorage.setItem(storeKey, JSON.stringify(answers)).catch(() => undefined);
   }, [answers, storeKey]);
 
+  // «زمان مطالعه»: the exam counts on its chapter while it runs.
+  useStudyTimer(exam && !exam.submitted_at ? exam.node_id : null, 'exam');
+
   if (!exam && attempt) {
     return (
       <Screen>
@@ -181,9 +198,11 @@ export default function Exam() {
           <Card>
             <Text style={[styles.label, rtl]}>تعداد سؤال</Text>
             <View style={styles.counts}>
-              {COUNTS.map((c) => (
+              {counts.map((c) => (
                 <Pressable key={c} onPress={() => setCount(c)} style={[styles.count, count === c && styles.countOn]}>
-                  <Text style={{ fontWeight: '800', color: count === c ? colors.lemon : colors.ink }}>{toPersianDigits(c)}</Text>
+                  <Text style={{ fontWeight: '800', color: count === c ? colors.lemon : colors.ink }}>
+                    {pool != null && c === pool && !COUNTS.includes(c) ? `همه‌ی ${toPersianDigits(c)}` : pool != null && c === pool ? `همه (${toPersianDigits(c)})` : toPersianDigits(c)}
+                  </Text>
                 </Pressable>
               ))}
             </View>

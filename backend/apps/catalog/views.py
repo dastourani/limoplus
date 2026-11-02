@@ -107,7 +107,10 @@ def book_card(request, book, access) -> dict:
     """What a shelf needs to draw a book: its cover, its free part, the reader's progress and «خبرم کن»."""
     chapters = access.children(book)
     sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
-    done = set(_done_ids(request.user, book, request)) & {s.id for s in sections}
+    # «تمام شد» sections (read, and enough of their questions answered) make the progress.
+    from apps.study.progress import section_states
+
+    done = section_states(request.user, access, request)[1] & {s.id for s in sections}
     free_chapter = next((i for i, c in enumerate(chapters, start=1) if c.is_free), None)
     free_chapters = len(chapters) if book.is_free else sum(1 for c in chapters if c.is_free)
     major = min(book.majors.all(), key=lambda m: (m.order, m.name), default=None)
@@ -164,17 +167,6 @@ def _notify(user, book, request=None) -> dict:
     return {"notify": bool(wait and wait.is_active), "notify_can_cancel": bool(wait and wait.can_cancel)}
 
 
-def _done_ids(user, book, request=None):
-    if not user.is_authenticated:
-        return []
-    cached = getattr(request, "_limo_done", None) if request is not None else None
-    if cached is not None:
-        return cached.get(book.id, [])
-    from apps.study.models import SectionProgress
-
-    return list(SectionProgress.objects.filter(user=user, book=book, is_done=True).values_list("node_id", flat=True))
-
-
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def book_detail(request, slug):
@@ -182,6 +174,9 @@ def book_detail(request, slug):
     access = AccessMap(request.user, book)
     if not access.visible(book.id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    from apps.study.progress import section_states
+
+    _states = section_states(request.user, access, request)
 
     sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION]
     counts = {}
@@ -214,7 +209,9 @@ def book_detail(request, slug):
             "about": media_urls(request, book.about),
             "majors": list(book.majors.values_list("slug", flat=True)),
             "chapters": chapters,
-            "done_ids": _done_ids(request.user, book),
+            # «تمام شد» (green tick) and «خوانده شد» (read, questions still to do).
+            "done_ids": sorted(_states[1]),
+            "read_ids": sorted(_states[0] - _states[1]),
             "mine": _mine_in_book(request, book),
             "reviews": _reviews_in_book(request, book),
             "sample_count": _sample_count(access, book),
@@ -248,7 +245,11 @@ def _mine_in_book(request, book):
     from apps.study.views import _notebook_counts
 
     exams = ExamAttempt.objects.filter(user=request.user, node__path__startswith=book.path, submitted_at__isnull=False).count()
-    return {"mistakes": _notebook_counts(request, book.slug), "exams": exams}
+    from apps.study.time import totals
+
+    t = totals(request.user, book)
+    # «زمان مطالعه‌ی تو در این کتاب»: exact seconds; the app rounds what it shows.
+    return {"mistakes": _notebook_counts(request, book.slug), "exams": exams, "time_seconds": t["seconds"], "chapter_seconds": t["chapters"]}
 
 
 def _term_count(access, chapter) -> int:

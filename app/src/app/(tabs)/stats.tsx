@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { endpoints, type ExamPage, type Stats } from '../../api/endpoints';
+import { endpoints, type ExamPage, type Stats, type StudyKindName, type StudyTimeTotals } from '../../api/endpoints';
 import { useCelebrate } from '../../components/Celebrate';
 import { ExamsCard } from '../../components/ExamsCard';
 import { IconBadge, type IconName } from '../../components/Icon';
@@ -11,6 +11,7 @@ import { Text } from '../../components/Text';
 import { Button, Card, Empty, ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { weekdayShort } from '../../lib/jalali';
+import { studyDuration } from '../../lib/duration';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
 function Tile({ label, value, accent, icon }: { label: string; value: string; accent?: boolean; icon: IconName }) {
@@ -104,6 +105,8 @@ export default function StatsTab() {
           </Card>
         )}
 
+        {!!data.time && data.time.seconds >= 60 && <StudyTimeCard time={data.time} />}
+
         {exams && exams.summary.count > 0 && <ExamsCard exams={exams} />}
 
         <Card>
@@ -156,6 +159,42 @@ export default function StatsTab() {
         )}
       </ScrollView>
     </Screen>
+  );
+}
+
+const KIND_LABEL: [StudyKindName, string][] = [
+  ['read', 'جزوه'],
+  ['quiz', 'تست'],
+  ['cards', 'فلش‌کارت'],
+  ['review', 'مرور'],
+  ['exam', 'آزمون'],
+];
+
+/** «زمان مطالعه»: this week, the last 14 days and what the time went to (rounded to minutes only here). */
+function StudyTimeCard({ time }: { time: StudyTimeTotals }) {
+  const peak = Math.max(1, ...time.last_14_days.map((d) => d.seconds));
+  const kinds = KIND_LABEL.filter(([k]) => (time.by_kind[k] ?? 0) >= 60);
+  return (
+    <Card>
+      <Text style={[styles.cardTitle, rtl]}>زمان مطالعه</Text>
+      <Text style={[styles.better, rtl]}>
+        این هفته: {studyDuration(time.week_seconds)}؛ روی هم: {studyDuration(time.seconds)}
+      </Text>
+      <View style={styles.chart}>
+        {time.last_14_days.map((d) => (
+          <View key={d.date} style={styles.barCol} accessibilityLabel={`${weekdayShort(d.date)}: ${studyDuration(d.seconds)}`}>
+            <View style={styles.barTrack}>
+              <View style={[styles.bar, { backgroundColor: colors.greenDark, height: `${Math.max(d.seconds ? 8 : 0, (d.seconds / peak) * 100)}%` }]} />
+            </View>
+            <Text style={styles.barLabel}>{weekdayShort(d.date)}</Text>
+          </View>
+        ))}
+      </View>
+      {kinds.length > 0 && (
+        <Text style={[styles.muted, rtl]}>{kinds.map(([k, label]) => `${label}: ${studyDuration(time.by_kind[k] ?? 0)}`).join('؛ ')}</Text>
+      )}
+      <Text style={[styles.muted, rtl]}>وقتی دو دقیقه به صفحه دست نزنی، شمردن می‌ایستد.</Text>
+    </Card>
   );
 }
 

@@ -50,9 +50,18 @@ export type BookDetail = BookListItem & {
   about: string;
   majors: string[];
   chapters: ChapterSummary[];
+  /** «تمام شد»: read, and enough of the section's questions answered (green tick). */
   done_ids: number[];
+  /** «خوانده شد»: read to the end, questions still to do (half lemon). */
+  read_ids?: number[];
   /** Signed-in learners: «اشتباه‌هایم در این کتاب» and «آزمون‌هایم از این کتاب». */
-  mine?: { mistakes: { count: number; open: number; settling: number; due: number }; exams: number } | null;
+  mine?: {
+    mistakes: { count: number; open: number; settling: number; due: number };
+    exams: number;
+    /** «زمان مطالعه»: exact seconds in this book, and per chapter id. */
+    time_seconds?: number;
+    chapter_seconds?: Record<string, number>;
+  } | null;
   /** Shareable questions of this book the learner can see («تست‌های نمونه»). */
   sample_count?: number;
   /** Each finished chapter's next review, and the book's weekly mixed review. */
@@ -76,8 +85,9 @@ export type NodeDetail = {
 };
 export type Question = {
   id: number;
-  /** The section the question belongs to («این نکته در جزوه»). */
+  /** The section the question belongs to («این نکته در جزوه»), and its title (shown above «سؤال ۱ از ۴»). */
   node_id?: number;
+  node_title?: string;
   /** One of the book's few sample questions that may be shared as an image. */
   shareable?: boolean;
   /** For the shared picture: the book and chapter it comes from. */
@@ -205,7 +215,8 @@ export type Mistakes = {
   books: { slug: string; title: string }[];
   reasons: { key: string; label: string }[];
 };
-export type Flashcard = { id: number; title: string; point: string; formula: string };
+/** node_title: the section the card belongs to (shown above «کارت ۲ از ۸»). */
+export type Flashcard = { id: number; title: string; point: string; formula: string; node_id?: number; node_title?: string };
 export type Banner = {
   id: number;
   title: string;
@@ -310,6 +321,15 @@ export type Stats = {
   weak_sections: { id: number; title: string; answers: number; accuracy: number }[];
   /** Of the questions got wrong in the last `days` days: answered right later, and settled. */
   improvement?: { days: number; wrong: number; fixed: number; settled: number };
+  /** «زمان مطالعه» in exact seconds (rounded only when shown). */
+  time?: StudyTimeTotals;
+};
+export type StudyKindName = 'read' | 'quiz' | 'cards' | 'exam' | 'review';
+export type StudyTimeTotals = {
+  seconds: number;
+  week_seconds: number;
+  by_kind: Partial<Record<StudyKindName, number>>;
+  last_14_days: { date: string; seconds: number }[];
 };
 export type Plan = { id: number; title: string; scope: 'major' | 'all'; months: number; price: number };
 export type Offers = { book: { slug: string; title: string; price: number | null }; majors: { slug: string; name: string }[]; plans: Plan[] };
@@ -388,6 +408,7 @@ export const endpoints = {
   reportNode: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`nodes/${id}/report/`, { body: { reason, note } }),
   startExam: (nodeId: number, body: { count: number; negative_marking: boolean; minutes?: number }) => api<ExamDetail>(`nodes/${nodeId}/exams/`, { body }),
   exam: (id: number) => api<ExamDetail>(`exams/${id}/`),
+  examInfo: (nodeId: number) => api<{ questions: number; title: string }>(`nodes/${nodeId}/exam-info/`),
   submitExam: (id: number, answers: Record<string, number | null>, doubts: number[] = []) =>
     api<ExamDetail>(`exams/${id}/submit/`, { body: { answers, doubts } }),
   myExams: () => api<ExamSummary[]>('me/exams/'),

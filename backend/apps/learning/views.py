@@ -48,6 +48,8 @@ def node_questions(request, node_id):
             {
                 "id": q.id,
                 "node_id": q.node_id,
+                # Shown above «سؤال ۱ از ۴»: the section the question belongs to.
+                "node_title": access.nodes[q.node_id].title if q.node_id in access.nodes else "",
                 "shareable": q.is_sample,
                 # Printed on the shared picture: the book and chapter it comes from.
                 "share_place": _share_place(access, q) if q.is_sample else None,
@@ -137,7 +139,8 @@ def node_flashcards(request, node_id):
         if not _usable(access, f):
             locked += 1
             continue
-        items.append({"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula})
+        items.append({"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula,
+                      "node_id": f.node_id, "node_title": access.nodes[f.node_id].title if f.node_id in access.nodes else ""})
     return Response({"flashcards": items, "locked_count": locked})
 
 
@@ -151,7 +154,7 @@ def book_samples(request, slug):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
     questions = (
         Question.objects.filter(node_id__in=access.visible_ids_under(book), is_sample=True, is_archived=False)
-        .prefetch_related("choices", "questionsource_set__source")
+        .select_related("node").prefetch_related("choices", "questionsource_set__source")
         .order_by("node__path", "order", "id")
     )
     from apps.study.mistakes import _practice_payload

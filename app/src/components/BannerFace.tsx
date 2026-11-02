@@ -4,7 +4,8 @@
  * The panel's preview draws the same layouts (admin-preview `bannerHtml`).
  */
 import { memo, useMemo } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
+import { StyleSheet, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 
 import type { Banner } from '../api/endpoints';
@@ -21,7 +22,7 @@ export const BannerFace = memo(function BannerFace({ banner: b, w, h, offset = 0
   const left = useCountdown(b.ends_at, offset);
   const k = h / 180;
   const motif = useMemo(() => (b.template === 'exam' ? coverMotifSvg(b.motif || 'book', 'dark') : ''), [b.template, b.motif]);
-  if (b.image) return <Image source={{ uri: b.image }} style={[styles.image, { width: w, height: h }]} resizeMode="cover" />;
+  if (b.image) return <Image source={{ uri: b.image }} style={[styles.image, { width: w, height: h }]} contentFit="cover" cachePolicy="memory-disk" transition={120} />;
 
   const text = (dark: boolean) => (
     <View style={{ gap: 6 * k, maxWidth: w * 0.62 }}>

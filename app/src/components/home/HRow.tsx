@@ -13,7 +13,8 @@ export function HRow<T>({ data, keyOf, render, gap = 12, initial = 3 }: { data: 
       style={styles.row}
       contentContainerStyle={{ gap, paddingHorizontal: 20 }}
       initialNumToRender={initial}
-      windowSize={3}
+      // A screen and a half on each side is made ahead, so swiping a shelf rarely meets a cover still being made.
+      windowSize={5}
       maxToRenderPerBatch={2}
       removeClippedSubviews
     />

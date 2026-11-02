@@ -223,7 +223,7 @@ def mistake_questions(request):
     """The notebook's questions whose turn it is (open, or settling and due), shaped like a section's practice questions."""
     items, _ = _mistakes(request, request.query_params.get("book") or "")
     items = due_items(items)
-    qs = Question.objects.filter(pk__in=[q.id for q, _, _ in items]).prefetch_related("choices", "questionsource_set__source")
+    qs = Question.objects.filter(pk__in=[q.id for q, _, _ in items]).select_related("node").prefetch_related("choices", "questionsource_set__source")
     by_id = {q.id: q for q in qs}
     return Response({"questions": [_practice_payload(request, by_id[q.id]) for q, _, _ in items], "locked_count": 0})
 
@@ -388,6 +388,7 @@ def quick(request):
 
     cards = [
         {"id": r.flashcard.id, "title": r.flashcard.title, "point": media_urls(request, r.flashcard.point), "formula": r.flashcard.formula,
+         "node_id": r.flashcard.node_id, "node_title": r.flashcard.node.title,
          "box": r.box, "hints": _grade_hints(r.box)}
         for r in _due_cards(request, limit=60)[:5]
     ]
@@ -395,7 +396,8 @@ def quick(request):
         cont = _continue(request)
         if cont:
             fresh = Flashcard.objects.filter(node=cont.node, is_archived=False).exclude(reviews__user=request.user).order_by("order", "id")[:3]
-            cards = [{"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula, "box": 0, "hints": _grade_hints(1)} for f in fresh]
+            cards = [{"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula, "node_id": f.node_id, "node_title": cont.node.title,
+                      "box": 0, "hints": _grade_hints(1)} for f in fresh]
     picked = [q for q, _, _ in due_items(_mistakes(request)[0])[:3]]
     if len(picked) < 3:
         cont = _continue(request)
@@ -407,7 +409,7 @@ def quick(request):
                     break
                 if q.id not in answered and q not in picked and access.visible(q.node_id) and (q.is_free or access.readable(q.node_id)):
                     picked.append(q)
-    qs = {q.id: q for q in Question.objects.filter(pk__in=[q.id for q in picked]).prefetch_related("choices", "questionsource_set__source")}
+    qs = {q.id: q for q in Question.objects.filter(pk__in=[q.id for q in picked]).select_related("node").prefetch_related("choices", "questionsource_set__source")}
     return Response({"cards": cards, "questions": [_practice_payload(request, qs[q.id]) for q in picked]})
 
 
@@ -415,6 +417,7 @@ def _practice_payload(request, q):
     return {
         "id": q.id,
         "node_id": q.node_id,
+        "node_title": q.node.title,
         "stem": media_urls(request, q.stem),
         "choices": [{"id": c.id, "text": media_urls(request, c.text)} for c in q.choices.all()],
         "difficulty": q.difficulty,

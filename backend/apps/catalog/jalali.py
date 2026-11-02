@@ -28,3 +28,15 @@ def jalali_datetime(value) -> str:
     local = timezone.localtime(value) if timezone.is_aware(value) else value
     y, m, d = to_jalali(local.year, local.month, local.day)
     return f"{y}/{m}/{d} ساعت {local.hour:02d}:{local.minute:02d}".translate(_FA)
+
+
+def jalali_date(value) -> str:
+    """A date as «۱۴۰۵/۸/۹»."""
+    if value is None:
+        return ""
+    y, m, d = to_jalali(value.year, value.month, value.day)
+    return f"{y}/{m}/{d}".translate(_FA)
+
+
+def fa_digits(text: str) -> str:
+    return str(text).translate(_FA)

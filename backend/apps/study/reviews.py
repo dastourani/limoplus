@@ -92,7 +92,10 @@ def is_finished(user, access, chapter) -> bool:
     if read < len(sections):
         return False
     pool = chapter_pool(access, chapter)
-    return not pool or len(_answered_ids(user, [q.id for q in pool])) >= FINISH_SHARE * len(pool)
+    from .progress import needed
+
+    # The same rule as a section's green tick: 70% answered, rounded down, at least one.
+    return not pool or len(_answered_ids(user, [q.id for q in pool])) >= needed(len(pool))
 
 
 def start_cycle(user, access, chapter, by="auto") -> ChapterReview:
@@ -353,7 +356,7 @@ def book_schedule(user, book) -> dict:
 def _payload(request, session: ReviewSession) -> dict:
     from .mistakes import _practice_payload
 
-    qs = {q.id: q for q in Question.objects.filter(pk__in=session.served, is_archived=False).prefetch_related("choices", "questionsource_set__source")}
+    qs = {q.id: q for q in Question.objects.filter(pk__in=session.served, is_archived=False).select_related("node").prefetch_related("choices", "questionsource_set__source")}
     answered = _session_answers(session)
     review = session.chapter_review or session.book_review
     access = AccessMap(request.user, review.book)

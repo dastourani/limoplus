@@ -1,0 +1,46 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div dir="rtl" style="max-width:980px">
+  <p style="color:#56655B">زمانی که هر کاربر با صفحه‌ی باز در جزوه، تست، فلش‌کارت، مرور یا آزمون گذرانده (اگر دو دقیقه هیچ لمس و اسکرولی نباشد شمرده نمی‌شود). دقیق تا ثانیه.</p>
+
+  <form method="get" style="margin:10px 0">
+    <label>میانگین زمان هر بخش در کتاب:
+      <select name="book" onchange="this.form.submit()">
+        <option value="">انتخاب کتاب…</option>
+        {% for b in books %}<option value="{{ b.slug }}" {% if book and book.pk == b.pk %}selected{% endif %}>{{ b.title }}</option>{% endfor %}
+      </select>
+    </label>
+  </form>
+
+  {% if person %}
+    <h2>{{ person.first_name }} {{ person.last_name }} ({{ person.phone }})، مجموع: {{ person_total }}</h2>
+    <h3>بر اساس کتاب</h3>
+    <table>{% for r in by_book %}<tr><td>{{ r.title }}</td><td>{{ r.time }}</td></tr>{% empty %}<tr><td>—</td></tr>{% endfor %}</table>
+    <h3>بر اساس فصل</h3>
+    <table>{% for r in by_chapter %}<tr><td>{{ r.title }}</td><td>{{ r.time }}</td></tr>{% empty %}<tr><td>—</td></tr>{% endfor %}</table>
+    <h3>بر اساس نوع کار</h3>
+    <table>{% for r in by_kind %}<tr><td>{{ r.kind }}</td><td>{{ r.time }}</td></tr>{% empty %}<tr><td>—</td></tr>{% endfor %}</table>
+    <h3>۳۰ روز اخیر</h3>
+    <table>{% for r in by_day %}<tr><td>{{ r.day }}</td><td>{{ r.time }}</td></tr>{% empty %}<tr><td>—</td></tr>{% endfor %}</table>
+    <p><a href="?">← همه‌ی کاربران</a></p>
+  {% elif book %}
+    <h2>{{ book.title }}: میانگین زمان هر بخش</h2>
+    <table>
+      <tr><th>بخش</th><th>تعداد کاربر</th><th>میانگین برای هر کاربر</th><th>مجموع</th></tr>
+      {% for r in sections %}<tr><td>{{ r.title }}</td><td>{{ r.people }}</td><td>{{ r.average }}</td><td>{{ r.total }}</td></tr>
+      {% empty %}<tr><td colspan="4">هنوز زمانی ثبت نشده است.</td></tr>{% endfor %}
+    </table>
+    <p><a href="?">← همه‌ی کاربران</a></p>
+  {% endif %}
+
+  {% if not person %}
+  <h2>فعال‌ترین کاربران</h2>
+  <table>
+    <tr><th>کاربر</th><th>مجموع</th><th>۷ روز اخیر</th><th>آخرین روز مطالعه</th></tr>
+    {% for u in users %}
+      <tr><td><a href="?user={{ u.id }}">{{ u.name|default:u.phone }}</a> <span style="color:#888">{{ u.phone }}</span></td><td>{{ u.total }}</td><td>{{ u.week }}</td><td>{{ u.last }}</td></tr>
+    {% empty %}<tr><td colspan="4">هنوز زمانی ثبت نشده است.</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+</div>
+{% endblock %}
