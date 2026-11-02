@@ -10,6 +10,7 @@ const LOOK: Record<PartState, { bg: string; fg: string; border: string }> = {
   done: { bg: '#FFD43B', fg: colors.ink, border: '#FFD43B' },
   soft: { bg: '#FFF1B8', fg: colors.ink, border: '#FFE070' },
   wrong: { bg: '#FBE7E6', fg: '#9E2F2A', border: '#F49B93' },
+  flag: { bg: colors.amberSoft, fg: colors.amberDark, border: colors.amber },
 };
 
 /** Numbered grid of all questions; tap one to jump to it. Opened from the lemon progress. */
@@ -60,5 +61,5 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, paddingBottom: 8 },
   cell: { width: 44, height: 44, borderRadius: 14, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   now: { borderWidth: 2.5 },
-  num: { fontSize: 14, fontWeight: '800' },
+  num: { fontSize: 15, fontWeight: '800' },
 });

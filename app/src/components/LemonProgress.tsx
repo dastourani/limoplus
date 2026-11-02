@@ -6,7 +6,8 @@ import { useEffect, useRef } from 'react';
 import { Animated, Pressable, View } from 'react-native';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 
-export type PartState = 'empty' | 'done' | 'soft' | 'wrong';
+/** flag: «شک‌دار», marked to look at again (amber: not wrong, only unsure). */
+export type PartState = 'empty' | 'done' | 'soft' | 'wrong' | 'flag';
 
 const MAX_WEDGES = 24;
 const FILL: Record<PartState | 'partial', string> = {
@@ -15,6 +16,7 @@ const FILL: Record<PartState | 'partial', string> = {
   soft: '#FFDB5C',
   done: '#FFC414',
   wrong: '#F28B82',
+  flag: '#E8892B',
 };
 
 function point(r: number, deg: number) {

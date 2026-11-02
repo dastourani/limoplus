@@ -93,7 +93,9 @@ export default function Book() {
   if (error || !data) return <Screen><Header subtitle="کتاب" /><ErrorState message={error?.message ?? ''} onRetry={retry} /></Screen>;
 
   const book = data;
-  const coverW = Math.min(width * 0.46, 200);
+  // The cover is the width of the page (less its margins) divided by the golden ratio, in its 2:3 book shape: about a
+  // fifth larger than before on a phone, and still leaving the counts under it in view on a small screen.
+  const coverW = Math.round(Math.min((Math.min(width, 760) - 32) / 1.618, 240));
   const cover =
     coverTitle !== null ? (
       <PageTurn kind="cover" title={coverTitle || book.title} face={<BookCover book={book} major={book.major ?? null} width={Math.min(width * 0.62, 300)} />} onDone={() => setCoverTitle(null)} />
@@ -153,7 +155,8 @@ export default function Book() {
             </Pressable>
           </View>
           <View style={{ alignItems: 'center' }}>
-            <View>
+            {/* The cover carries the title (and author), so it is not written again under it; screen readers hear it here. */}
+            <View accessible accessibilityRole="header" accessibilityLabel={[book.title, coverByline(book.author, book.edition)].filter(Boolean).join('، ')}>
               <BookCover book={book} major={book.major ?? null} width={coverW} edge />
               {book.owned && (
                 <View style={styles.ownedRibbon}>
@@ -163,13 +166,25 @@ export default function Book() {
               )}
             </View>
           </View>
-          <Text style={styles.heroTitle}>{book.title}</Text>
-          {!!coverByline(book.author, book.edition) && <Text style={styles.heroSub}>{coverByline(book.author, book.edition)}</Text>}
+          {/* An uploaded cover image may not show the title clearly: then it stays, small. */}
+          {!!book.cover && <Text style={styles.heroTitle}>{book.title}</Text>}
           {!book.is_coming_soon && (
-            <View style={styles.pills}>
-              <Text style={styles.pill}>{toPersianDigits(book.chapters.length)} فصل، {toPersianDigits(sections.length)} بخش</Text>
-              {!!tests && <Text style={styles.pill}>{toPersianDigits(tests)} تست</Text>}
-              {!!cards && <Text style={styles.pill}>{toPersianDigits(cards)} فلش‌کارت</Text>}
+            <View style={styles.stats}>
+              {(
+                [
+                  [book.chapters.length, 'فصل'],
+                  [sections.length, 'بخش'],
+                  [tests, 'تست'],
+                  [cards, 'فلش‌کارت'],
+                ] as const
+              )
+                .filter(([n], i) => i < 2 || n > 0)
+                .map(([n, label]) => (
+                  <View key={label} style={styles.stat}>
+                    <Text style={styles.statValue}>{toPersianDigits(n)}</Text>
+                    <Text style={styles.statLabel}>{label}</Text>
+                  </View>
+                ))}
             </View>
           )}
         </View>
@@ -217,8 +232,8 @@ export default function Book() {
                   <Text style={[styles.resumeLineText, rtl]} numberOfLines={1}>ادامه از «{last.title}»</Text>
                 </Pressable>
               )}
-              {!!firstOpen && !last && <Button label={`شروع رایگان از فصل ${toPersianDigits(firstOpenIndex)}`} variant="dark" onPress={startFree} />}
-              <Pressable onPress={() => router.push(`/buy/${book.slug}`)} style={styles.unlock} accessibilityRole="button">
+              {!!firstOpen && !last && <Button label={`شروع رایگان از فصل ${toPersianDigits(firstOpenIndex)}`} onPress={startFree} />}
+              <Pressable onPress={() => router.push(`/buy/${book.slug}`)} style={[styles.unlock, !(firstOpen && !last) && styles.unlockMain]} accessibilityRole="button">
                 <Icon name="lock-open" size={18} color={colors.ink} />
                 <Text style={styles.unlockText}>باز کردن همه‌ی کتاب</Text>
               </Pressable>
@@ -364,26 +379,48 @@ function ChapterCard({
   return (
     <View style={styles.chapter}>
       <Pressable onPress={onToggle} style={styles.chapterHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
-        <LemonProgress parts={chapter.sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={38} />
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={[styles.chapterTitle, rtl]}>
+        {/* As tall as two lines of the title, so the lemon and the name read as one. */}
+        <LemonProgress parts={chapter.sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={46} />
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={[styles.chapterTitle, rtl]} numberOfLines={2}>
             فصل {toPersianDigits(number)}، {chapter.title}
           </Text>
-          <Text style={[styles.sectionMeta, rtl]}>
-            {toPersianDigits(chapter.sections.length)} بخش{tests ? `، ${toPersianDigits(tests)} تست` : ''}
-          </Text>
-          {seconds >= 60 && <Text style={[styles.sectionMeta, rtl]}>زمان مطالعه: {studyDuration(seconds)}</Text>}
-          {!!review && (
-            <Text style={[styles.reviewLine, rtl, review.days <= 0 && { color: colors.redDark }]}>
-              {review.days > 0 ? `مرور بعدی: ${toPersianDigits(review.days)} روز دیگر` : review.days === 0 ? 'مرور این فصل: امروز' : 'مرور این فصل عقب افتاده'}
+          {/* Counts and the free/locked label share one line, so the title keeps the width. */}
+          <View style={styles.metaRow}>
+            <Text style={[styles.sectionMeta, rtl]}>
+              {toPersianDigits(chapter.sections.length)} بخش{tests ? `، ${toPersianDigits(tests)} تست` : ''}
             </Text>
-          )}
+            {chapter.is_locked ? <Chip label="نسخه‌ی کامل" icon="lock" /> : !owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
+          </View>
         </View>
-        {chapter.is_locked ? <Chip label="نسخه‌ی کامل" icon="lock" /> : !owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
         <Animated.View style={{ transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-180deg'] }) }] }}>
           <Icon name="chevron-down" size={22} color={colors.muted} />
         </Animated.View>
       </Pressable>
+      {/* A quiet strip for what is the learner's own: time spent and the next review. Nothing when there is none. */}
+      {(seconds >= 60 || !!review) && (
+        <View style={styles.strip}>
+          {seconds >= 60 ? (
+            <View style={styles.stripItem}>
+              <Icon name="timer" size={14} color={colors.muted} />
+              <Text style={styles.stripText}>{studyDuration(seconds)} مطالعه</Text>
+            </View>
+          ) : (
+            <View />
+          )}
+          {!!review &&
+            (review.days > 0 ? (
+              <View style={styles.stripItem}>
+                <Icon name="calendar" size={14} color={colors.muted} />
+                <Text style={styles.stripText}>مرور: {toPersianDigits(review.days)} روز دیگر</Text>
+              </View>
+            ) : review.days === 0 ? (
+              <Chip label="مرور امروز" icon="rotate-ccw" color={colors.ink} background={colors.lemon} />
+            ) : (
+              <Chip label="مرور عقب افتاده" icon="rotate-ccw" color={colors.amberDark} background={colors.amberSoft} />
+            ))}
+        </View>
+      )}
       {open && (
         <>
           {chapter.has_overview && (
@@ -477,23 +514,27 @@ const styles = StyleSheet.create({
   hero: { backgroundColor: colors.ink, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 36, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, gap: 6 },
   heroTop: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 4 },
   heroButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  heroTitle: { marginTop: 14, textAlign: 'center', fontSize: 22, fontWeight: '900', color: '#FFFFFF' },
-  heroSub: { textAlign: 'center', fontSize: 13, color: '#A9B6AD' },
-  pills: { flexDirection: 'row-reverse', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  pill: { fontSize: 12, color: '#FFFFFF', backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 10, overflow: 'hidden' },
+  heroTitle: { marginTop: 10, textAlign: 'center', fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
+  // Equal boxes across the width of the cards below them, so their edges line up.
+  stats: { flexDirection: 'row-reverse', gap: 8, marginTop: 16, width: '100%', maxWidth: 728, alignSelf: 'center' },
+  stat: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.07)' },
+  statValue: { fontSize: 18, fontWeight: '900', color: colors.lemon },
+  statLabel: { fontSize: 12, color: '#C9D3CC' },
   ownedRibbon: { position: 'absolute', top: 12, left: -6, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: '#3FB8A9', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
-  ownedRibbonText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  ownedRibbonText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
   cta: { marginTop: -34, backgroundColor: colors.surface, borderRadius: 22, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
   ctaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   ctaHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   ctaTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   ctaSmall: { fontSize: 12, color: colors.muted },
-  ctaButton: { backgroundColor: colors.ink, borderRadius: 14, paddingHorizontal: 16, minHeight: 46, justifyContent: 'center' },
-  ctaButtonText: { color: colors.lemon, fontWeight: '900', fontSize: 14 },
-  unlock: { minHeight: 52, borderRadius: 16, backgroundColor: colors.lemon, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  ctaButton: { backgroundColor: colors.lemon, borderRadius: 14, paddingHorizontal: 18, minHeight: 46, justifyContent: 'center' },
+  ctaButtonText: { color: colors.ink, fontWeight: '900', fontSize: 15 },
+  unlock: { minHeight: 52, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  // The one main action of the box is lemon; next to «شروع رایگان» it is the outlined second.
+  unlockMain: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   unlockText: { fontSize: 15, fontWeight: '900', color: colors.ink },
   resumeLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.greenSoft, borderRadius: 12, paddingHorizontal: 12, minHeight: 44 },
-  resumeLineText: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.greenDark },
+  resumeLineText: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.greenDark },
   shortcuts: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
   shortcut: { flexGrow: 1, flexBasis: '45%', minHeight: 46, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
   shortcutText: { fontSize: 13, fontWeight: '700', color: colors.ink },
@@ -502,16 +543,20 @@ const styles = StyleSheet.create({
   about: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 6 },
   aboutHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   aboutTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
-  chaptersTitle: { fontSize: 17, fontWeight: '900', color: colors.ink, marginTop: 6 },
+  chaptersTitle: { fontSize: 18, fontWeight: '900', color: colors.ink, marginTop: 6 },
   chapter: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
-  chapterHead: { flexDirection: 'row-reverse', alignItems: 'center', padding: 14, gap: 10 },
+  chapterHead: { flexDirection: 'row-reverse', alignItems: 'center', padding: 16, gap: 12 },
+  strip: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingVertical: 8, minHeight: 40, backgroundColor: '#F9FAF5', borderTopWidth: 1, borderTopColor: colors.line },
+  metaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  stripItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  stripText: { fontSize: 12, color: colors.muted },
   group: { fontSize: 12.5, fontWeight: '800', color: colors.muted, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.ground },
   glossary: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, alignSelf: 'flex-end', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
   glossaryText: { fontSize: 13, fontWeight: '700', color: colors.ink },
   resume: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 12 },
   resumeLabel: { fontSize: 12, color: colors.muted },
   resumeTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
-  chapterTitle: { flex: 1, fontSize: 17, fontWeight: '800', color: colors.ink },
+  chapterTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: colors.ink },
   section: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.line, gap: 10 },
   check: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
   checkOn: { backgroundColor: colors.green, borderColor: colors.green },
@@ -522,6 +567,6 @@ const styles = StyleSheet.create({
   sectionMeta: { fontSize: 12, color: colors.muted, flexShrink: 0 },
   reviewLine: { fontSize: 12, fontWeight: '700', color: colors.greenDark },
   actions: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
-  action: { flex: 1, backgroundColor: colors.ground, borderRadius: 14, paddingVertical: 12, alignItems: 'center' },
-  actionText: { fontWeight: '700', color: colors.ink, fontSize: 14 },
+  action: { flex: 1, backgroundColor: colors.ground, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  actionText: { fontWeight: '700', color: colors.ink, fontSize: 15 },
 });

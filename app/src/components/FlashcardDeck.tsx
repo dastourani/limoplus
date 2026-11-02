@@ -284,7 +284,7 @@ export function FlashcardDeck({
             </Pressable>
           ))
         ) : (
-          <Button label="برگرداندن کارت" variant="dark" onPress={() => turn(1)} style={{ flex: 1 }} />
+          <Button label="برگرداندن کارت" variant="primary" onPress={() => turn(1)} style={{ flex: 1 }} />
         )}
       </View>
       {flipped && <Text style={[styles.swipeHint]}>یا بکش: راست = خوب، چپ = دوباره</Text>}
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
   boxLabel: { position: 'absolute', top: 20, left: 20, fontSize: 12, color: colors.muted },
   cardTitle: { fontSize: 28, fontWeight: '800', color: colors.ink, textAlign: 'center', lineHeight: 42 },
   hint: { fontSize: 13, color: colors.muted },
-  point: { fontSize: 19, fontWeight: '700', color: colors.ground, textAlign: 'center', lineHeight: 34, writingDirection: 'rtl' },
+  point: { fontSize: 18, fontWeight: '700', color: colors.ground, textAlign: 'center', lineHeight: 34, writingDirection: 'rtl' },
   formula: { backgroundColor: colors.surface, borderRadius: 14, padding: 4 },
   brand: { position: 'absolute', bottom: 14, fontSize: 11, color: '#B9C4BC' },
   tint: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
@@ -323,6 +323,6 @@ const styles = StyleSheet.create({
   gradeWhen: { fontSize: 12, opacity: 0.85 },
   swipeHint: { textAlign: 'center', fontSize: 12, color: colors.muted, paddingBottom: 8 },
   done: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
-  doneTitle: { fontSize: 26, fontWeight: '800', color: colors.ink },
+  doneTitle: { fontSize: 28, fontWeight: '800', color: colors.ink },
   doneText: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 26 },
 });

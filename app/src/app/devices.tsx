@@ -45,5 +45,5 @@ export default function Devices() {
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 12 },
   help: { fontSize: 13, color: colors.muted, lineHeight: 22 },
-  name: { fontSize: 16, fontWeight: '800', color: colors.ink },
+  name: { fontSize: 15, fontWeight: '800', color: colors.ink },
 });

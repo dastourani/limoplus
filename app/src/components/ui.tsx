@@ -137,7 +137,7 @@ export function Empty({ icon = 'book-open', title, text, action }: { icon?: Icon
 export function Chip({ label, color = colors.muted, background = colors.surface, icon }: { label: string; color?: string; background?: string; icon?: IconName }) {
   return (
     <View style={[styles.chip, { backgroundColor: background }]}>
-      {icon && <Icon name={icon} size={13} color={color} strokeWidth={2.2} />}
+      {icon && <Icon name={icon} size={14} color={color} strokeWidth={2.2} />}
       <Text style={[styles.chipText, { color }]}>{label}</Text>
     </View>
   );
@@ -148,10 +148,10 @@ const styles = StyleSheet.create({
   inner: { flex: 1, width: '100%', maxWidth: 900, alignSelf: 'center' },
   header: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6, gap: 4 },
   iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  back: { fontSize: 24, color: colors.ink },
+  back: { fontSize: 22, color: colors.ink },
   headerText: { flex: 1 },
   headerRight: { minWidth: 44, alignItems: 'flex-start' },
-  title: { fontSize: 17, fontWeight: '800', color: colors.ink },
+  title: { fontSize: 18, fontWeight: '800', color: colors.ink },
   subtitle: { fontSize: 12, color: colors.muted },
   button: { minHeight: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
   primary: { backgroundColor: colors.lemon },
@@ -161,21 +161,22 @@ const styles = StyleSheet.create({
   outline: { borderWidth: 1.5, borderColor: colors.ink, backgroundColor: 'transparent' },
   disabled: { backgroundColor: colors.disabled, borderColor: colors.disabled },
   buttonInner: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-  buttonText: { fontSize: 16, fontWeight: '700' },
+  buttonText: { fontSize: 15, fontWeight: '700' },
   primaryText: { color: colors.ink },
   darkText: { color: colors.lemon },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   errorText: { fontSize: 15, color: colors.ink, textAlign: 'center', lineHeight: 26 },
   link: { color: colors.greenDark, fontWeight: '700', fontSize: 13 },
-  chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
+  // Every status label (رایگان، به‌زودی، نسخه‌ی کامل، a question's tags) has this height and shape; its colour says what it means.
+  chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
   sheetWrap: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#17201A66' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingTop: 10, maxHeight: '85%', gap: 12 },
   sheetHandle: { alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line, marginBottom: 6 },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.ink },
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 16, gap: 10 },
   empty: { alignItems: 'center', justifyContent: 'center', padding: 28, gap: 8 },
-  emptyTitle: { fontSize: 17, fontWeight: '800', color: colors.ink, textAlign: 'center' },
-  emptyText: { fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 24, marginBottom: 8 },
+  emptyTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, textAlign: 'center' },
+  emptyText: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 24, marginBottom: 8 },
   chipText: { fontSize: 12, fontWeight: '700' },
 });
 

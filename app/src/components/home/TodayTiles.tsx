@@ -67,9 +67,9 @@ function Tile({ t, onError }: { t: TodayTask; onError: () => void }) {
 const styles = StyleSheet.create({
   tile: { backgroundColor: colors.ink, borderRadius: 20, padding: 14, gap: 6, minHeight: 176 },
   icon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' },
-  title: { fontSize: 14, fontWeight: '900', color: '#FFFFFF', lineHeight: 22 },
+  title: { fontSize: 15, fontWeight: '900', color: '#FFFFFF', lineHeight: 22 },
   place: { fontSize: 11, color: '#A9B6AD' },
   size: { fontSize: 12, fontWeight: '700', color: colors.lemon, lineHeight: 19 },
   done: { backgroundColor: colors.greenSoft, minHeight: 0, gap: 10 },
-  doneText: { flex: 1, fontSize: 14, fontWeight: '800', color: colors.greenDark },
+  doneText: { flex: 1, fontSize: 15, fontWeight: '800', color: colors.greenDark },
 });

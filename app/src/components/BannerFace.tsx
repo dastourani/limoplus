@@ -27,7 +27,7 @@ export const BannerFace = memo(function BannerFace({ banner: b, w, h, offset = 0
   const text = (dark: boolean) => (
     <View style={{ gap: 6 * k, maxWidth: w * 0.62 }}>
       {!!b.subtitle && <Text style={[styles.small, rtl, { fontSize: 12 * k, color: dark ? colors.lemon : colors.greenDark }]}>{b.subtitle}</Text>}
-      <Text style={[styles.title, rtl, { fontSize: 21 * k, lineHeight: 31 * k, color: dark ? '#FFFFFF' : colors.ink }]} numberOfLines={3}>
+      <Text style={[styles.title, rtl, { fontSize: 22 * k, lineHeight: 31 * k, color: dark ? '#FFFFFF' : colors.ink }]} numberOfLines={3}>
         {b.title}
       </Text>
       <View style={styles.row}>
@@ -77,7 +77,7 @@ export const BannerFace = memo(function BannerFace({ banner: b, w, h, offset = 0
       ) : (
         <View style={{ paddingLeft: h * 0.7, gap: 4 }}>
           <Text style={[styles.small, rtl, { color: '#B9C4BC' }]}>{b.subtitle || 'ویژه'}</Text>
-          <Text style={[styles.title, rtl, { color: colors.lemon, fontSize: 20, lineHeight: 30 }]} numberOfLines={3}>
+          <Text style={[styles.title, rtl, { color: colors.lemon, fontSize: 22, lineHeight: 30 }]} numberOfLines={3}>
             {b.title}
           </Text>
           {!!left && <Text style={[styles.small, rtl, { color: '#FFFFFF' }]}>{left}</Text>}

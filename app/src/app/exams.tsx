@@ -7,6 +7,8 @@ import { endpoints, type ExamPage } from '../api/endpoints';
 import { ScoreTrend } from '../components/ScoreTrend';
 import { Text } from '../components/Text';
 import { Button, Empty, ErrorState, Header, Loading, Screen, usePullRefresh } from '../components/ui';
+import { ListRow } from '../components/ListRow';
+import { Pill } from '../components/Pill';
 import { jalaliDateTime } from '../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../theme';
 
@@ -60,23 +62,19 @@ export default function Exams() {
           {data.books.length > 1 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
               {[{ slug: '', title: 'همه‌ی کتاب‌ها' }, ...data.books].map((b) => (
-                <Pressable key={b.slug} onPress={() => setBook(b.slug)} style={[styles.chip, book === b.slug && styles.chipOn]} accessibilityRole="radio" accessibilityState={{ checked: book === b.slug }}>
-                  <Text style={[styles.chipText, book === b.slug && { color: colors.lemon }]}>{b.title}</Text>
-                </Pressable>
+                <Pill key={b.slug} label={b.title} selected={book === b.slug} onPress={() => setBook(b.slug)} role="radio" />
               ))}
             </ScrollView>
           )}
           {data.results.map((e) => (
-            <Pressable key={e.id} onPress={() => router.push(`/exam-result/${e.id}`)} style={styles.row}>
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={[styles.title, rtl]} numberOfLines={1}>{e.node_title}</Text>
-                <Text style={[styles.muted, rtl]} numberOfLines={1}>
-                  {e.book_title ? `${e.book_title}، ` : ''}
-                  {jalaliDateTime(e.started_at)}، {toPersianDigits(e.question_count)} سؤال
-                </Text>
-              </View>
-              <Text style={[styles.score, !e.submitted_at && { color: colors.muted, fontSize: 14 }]}>{e.submitted_at ? pct(e.score_percent) : 'ناتمام'}</Text>
-            </Pressable>
+            <ListRow
+              key={e.id}
+              icon="trophy"
+              title={e.node_title}
+              subtitle={`${e.book_title ? `${e.book_title}، ` : ''}${jalaliDateTime(e.started_at)}، ${toPersianDigits(e.question_count)} سؤال`}
+              value={<Text style={[styles.score, !e.submitted_at && { color: colors.muted, fontSize: 15 }]}>{e.submitted_at ? pct(e.score_percent) : 'ناتمام'}</Text>}
+              onPress={() => router.push(`/exam-result/${e.id}`)}
+            />
           ))}
           {data.has_more && <Button label="آزمون‌های قدیمی‌تر" variant="outline" loading={busy} onPress={() => load(page + 1, book)} />}
         </ScrollView>
@@ -100,9 +98,6 @@ const styles = StyleSheet.create({
   nums: { flexDirection: 'row-reverse' },
   statValue: { fontSize: 22, fontWeight: '900', color: colors.lemon },
   chips: { flexDirection: 'row-reverse', gap: 8, paddingVertical: 2 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.surface },
-  chipOn: { backgroundColor: colors.ink, borderColor: colors.ink },
-  chipText: { fontSize: 13, fontWeight: '700', color: colors.ink },
   row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14 },
   title: { fontSize: 15, fontWeight: '800', color: colors.ink },
   muted: { fontSize: 12, color: colors.muted },

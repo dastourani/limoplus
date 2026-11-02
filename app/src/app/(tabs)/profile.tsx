@@ -8,7 +8,7 @@ import { Text } from '../../components/Text';
 import { APP_BUILD } from '../../config';
 import { useFeedback } from '../../components/Feedback';
 import { Icon, IconBadge } from '../../components/Icon';
-import { Button, Card, Screen, usePullRefresh } from '../../components/ui';
+import { Button, Card, Screen, usePullRefresh, Chip } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { jalaliDate } from '../../lib/jalali';
@@ -52,6 +52,7 @@ export default function Profile() {
   return (
     <Screen tab>
       <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
+        <Text style={[styles.pageTitle, rtl]}>حساب من</Text>
         <View style={styles.hero}>
           <View style={styles.avatar}>
             <LemonSlice size={64} />
@@ -129,7 +130,7 @@ export default function Profile() {
             <IconBadge name="sparkles" size={32} />
             <Text style={[styles.soonText, rtl, { flex: 1 }]}>دستیار هوش مصنوعی</Text>
           </View>
-          <Text style={styles.soonBadge}>به‌زودی</Text>
+          <Chip label="به‌زودی" color="#6B5200" background={colors.lemonSoft} />
         </View>
 
         {user && (
@@ -157,21 +158,21 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
+  pageTitle: { fontSize: 22, fontWeight: '800', color: colors.ink, marginTop: -4, marginBottom: -4 },
   rowHint: { fontSize: 12, color: colors.muted, marginTop: 2 },
-  page: { padding: 20, gap: 16 },
+  page: { padding: 16, gap: 16 },
   hero: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: colors.ink, borderRadius: 26, padding: 18 },
   avatar: { width: 72, height: 72, borderRadius: 36, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#24302A' },
-  name: { fontSize: 20, fontWeight: '800', color: colors.lemon },
-  phone: { fontSize: 14, color: '#C9D0C6' },
+  name: { fontSize: 22, fontWeight: '800', color: colors.lemon },
+  phone: { fontSize: 15, color: '#C9D0C6' },
   cardTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
-  line: { fontSize: 14, color: colors.muted },
+  line: { fontSize: 15, color: colors.muted },
   group: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
   row: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.line },
   rowLabel: { fontSize: 15, fontWeight: '700', color: colors.ink },
-  rowValue: { fontSize: 14, color: colors.muted },
+  rowValue: { fontSize: 15, color: colors.muted },
   soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, padding: 12 },
   soonText: { color: colors.muted, fontSize: 13 },
-  soonBadge: { backgroundColor: colors.lemonSoft, color: '#6B5200', fontSize: 12, fontWeight: '700', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2, overflow: 'hidden' },
   segment: { flexDirection: 'row-reverse', backgroundColor: colors.ground, borderRadius: 12, padding: 3, gap: 3 },
   segmentItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
   segmentOn: { backgroundColor: colors.surface, shadowColor: '#17201A', shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 },

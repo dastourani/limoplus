@@ -70,9 +70,9 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   page: { padding: 24, gap: 12 },
-  reason: { backgroundColor: colors.lemonSoft, color: '#6B5200', borderRadius: radius.sm, padding: 12, fontSize: 14, lineHeight: 24 },
-  label: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  reason: { backgroundColor: colors.lemonSoft, color: '#6B5200', borderRadius: radius.sm, padding: 12, fontSize: 15, lineHeight: 24 },
+  label: { fontSize: 15, fontWeight: '700', color: colors.ink },
   input: { backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, paddingHorizontal: 16, height: 60, fontSize: 22, textAlign: 'center' },
   help: { fontSize: 13, color: colors.muted, lineHeight: 22 },
-  error: { color: colors.redDark, fontSize: 14 },
+  error: { color: colors.redDark, fontSize: 15 },
 });

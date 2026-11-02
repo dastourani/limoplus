@@ -6,6 +6,7 @@ import { endpoints, type SearchResult } from '../api/endpoints';
 import { Icon, type IconName } from '../components/Icon';
 import { Text, TextInput } from '../components/Text';
 import { Header, Loading, Screen } from '../components/ui';
+import { Pill } from '../components/Pill';
 import { colors, rtl, toPersianDigits } from '../theme';
 
 type Kind = SearchResult['kind'] | 'all';
@@ -90,11 +91,7 @@ export default function SearchScreen() {
       {results && results.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ transform: [{ scaleX: -1 }], flexGrow: 0 }} contentContainerStyle={styles.tabs}>
           {TABS.filter(([k]) => k === 'all' || count(k) > 0).map(([k, label]) => (
-            <Pressable key={k} onPress={() => setTab(k)} style={[styles.tab, tab === k && styles.tabOn, { transform: [{ scaleX: -1 }] }]} accessibilityRole="tab" accessibilityState={{ selected: tab === k }}>
-              <Text style={[styles.tabText, tab === k && { color: colors.lemon }]}>
-                {label} {toPersianDigits(count(k))}
-              </Text>
-            </Pressable>
+            <Pill key={k} label={`${label} ${toPersianDigits(count(k))}`} selected={tab === k} onPress={() => setTab(k)} role="tab" style={{ transform: [{ scaleX: -1 }] }} />
           ))}
         </ScrollView>
       )}
@@ -143,16 +140,13 @@ function highlight(snippet: string, match: string) {
 
 const styles = StyleSheet.create({
   box: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.surface },
-  input: { flex: 1, minHeight: 48, fontSize: 16, textAlign: 'right', writingDirection: 'rtl' },
+  input: { flex: 1, minHeight: 48, fontSize: 15, textAlign: 'right', writingDirection: 'rtl' },
   tabs: { gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
-  tab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.surface },
-  tabOn: { backgroundColor: colors.ink, borderColor: colors.ink },
-  tabText: { fontSize: 13, fontWeight: '700', color: colors.ink },
   list: { padding: 16, paddingTop: 4, gap: 10 },
   hint: { fontSize: 13, color: colors.muted, lineHeight: 22 },
   row: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 6 },
   rowHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   kind: { flex: 1, fontSize: 12, fontWeight: '700', color: colors.greenDark },
-  snippet: { fontSize: 14, color: colors.ink, lineHeight: 24 },
+  snippet: { fontSize: 15, color: colors.ink, lineHeight: 24 },
   mark: { backgroundColor: '#FFE98A', fontWeight: '800' },
 });

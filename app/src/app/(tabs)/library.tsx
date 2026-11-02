@@ -6,6 +6,8 @@ import { endpoints, type Library } from '../../api/endpoints';
 import { Text } from '../../components/Text';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Card, Empty, ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
+import { ListRow, RowCount } from '../../components/ListRow';
+import { Pill } from '../../components/Pill';
 import { useAuth } from '../../lib/auth';
 import { relativeDay } from '../../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../../theme';
@@ -20,24 +22,21 @@ const TABS = [
 function NotebookCard({ counts }: { counts?: Library['mistakes'] }) {
   const n = counts?.count ?? 0;
   return (
-    <Pressable onPress={() => router.push('/mistakes')} style={styles.notebook} accessibilityRole="button" accessibilityLabel="دفترچه‌ی اشتباهات">
-      <IconBadge name="notebook-pen" size={40} />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={[styles.itemTitle, rtl]}>دفترچه‌ی اشتباهات</Text>
-        <Text style={[styles.muted, rtl]}>
-          {n === 0
-            ? 'تست‌های غلط و بی‌پاسخت این‌جا جمع می‌شوند.'
-            : [
-                counts!.open ? `${toPersianDigits(counts!.open)} منتظر جبران` : '',
-                counts!.settling ? `${toPersianDigits(counts!.settling)} نیازمند تثبیت` : '',
-              ]
-                .filter(Boolean)
-                .join('، ')}
-        </Text>
-      </View>
-      {!!counts?.due && <Text style={styles.due}>{toPersianDigits(counts.due)}</Text>}
-      <Icon name="chevron-left" size={20} color={colors.muted} />
-    </Pressable>
+    <ListRow
+      icon="notebook-pen"
+      title="دفترچه‌ی اشتباهات"
+      subtitle={
+        n === 0
+          ? 'تست‌های غلط و بی‌پاسخت این‌جا جمع می‌شوند.'
+          : [counts!.open ? `${toPersianDigits(counts!.open)} منتظر جبران` : '', counts!.settling ? `${toPersianDigits(counts!.settling)} نیازمند تثبیت` : '']
+              .filter(Boolean)
+              .join('، ')
+      }
+      value={counts?.due ? <RowCount n={toPersianDigits(counts.due)} label={`${toPersianDigits(counts.due)} تست نوبتش رسیده`} /> : undefined}
+      onPress={() => router.push('/mistakes')}
+      chevron
+      accessibilityLabel="دفترچه‌ی اشتباهات"
+    />
   );
 }
 
@@ -84,9 +83,7 @@ export default function LibraryTab() {
       <Text style={[styles.title, rtl]}>کتابخانه‌ی من</Text>
       <View style={styles.tabs}>
         {TABS.map(([key, label]) => (
-          <Pressable key={key} onPress={() => setTab(key)} style={[styles.tab, tab === key && styles.tabOn]} accessibilityRole="tab">
-            <Text style={[styles.tabText, tab === key && { color: colors.lemon }]}>{label}</Text>
-          </Pressable>
+          <Pill key={key} label={label} selected={tab === key} onPress={() => setTab(key)} role="tab" />
         ))}
       </View>
       {!data ? (
@@ -99,13 +96,18 @@ export default function LibraryTab() {
               <Empty title="هنوز کتابی را شروع نکرده‌ای" text="از صفحه‌ی خانه یک کتاب باز کن." />
             ) : (
               data!.reading.map((r) => (
-                <Pressable key={r.book_slug} onPress={() => router.push(`/book/${r.book_slug}`)}>
-                  <Card>
-                    <Text style={[styles.itemTitle, rtl]}>{r.book_title}</Text>
-                    <Text style={[styles.muted, rtl]}>آخرین بخش: {r.last_section.title}، {relativeDay(r.updated_at)}</Text>
-                    <Button label="ادامه‌ی مطالعه" variant="dark" onPress={() => router.push(`/section/${r.last_section.id}`)} />
-                  </Card>
-                </Pressable>
+                <ListRow
+                  key={r.book_slug}
+                  icon="book-open"
+                  title={r.book_title}
+                  subtitle={`آخرین بخش: ${r.last_section.title}، ${relativeDay(r.updated_at)}`}
+                  onPress={() => router.push(`/book/${r.book_slug}`)}
+                  value={
+                    <Pressable onPress={() => router.push(`/section/${r.last_section.id}`)} style={styles.go} accessibilityRole="button" accessibilityLabel={`ادامه‌ی ${r.book_title}`}>
+                      <Text style={styles.goText}>ادامه</Text>
+                    </Pressable>
+                  }
+                />
               ))
             ))}
           {tab === 'bookmarks' &&
@@ -113,11 +115,7 @@ export default function LibraryTab() {
               <Empty icon="bookmark" title="بخشی نشان نکرده‌ای" text="در صفحه‌ی درس، دکمه‌ی نشان را بزن تا اینجا بیاید." />
             ) : (
               data!.bookmarks.map((b) => (
-                <Pressable key={b.id} onPress={() => router.push(`/section/${b.id}`)} style={styles.rowItem}>
-                  <IconBadge name="bookmark" size={36} />
-                  <Text style={[styles.itemTitle, rtl, { flex: 1 }]}>{b.title}</Text>
-                  <Text style={styles.muted}>{relativeDay(b.created_at)}</Text>
-                </Pressable>
+                <ListRow key={b.id} icon="bookmark" title={b.title} subtitle={relativeDay(b.created_at)} onPress={() => router.push(`/section/${b.id}`)} chevron />
               ))
             ))}
           {tab === 'notes' &&
@@ -141,17 +139,14 @@ export default function LibraryTab() {
 }
 
 const styles = StyleSheet.create({
-  notebook: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14 },
-  due: { minWidth: 26, textAlign: 'center', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.lemon, color: colors.ink, fontWeight: '800', fontSize: 13 },
-  title: { fontSize: 24, fontWeight: '800', color: colors.ink, paddingHorizontal: 20, paddingTop: 12 },
-  tabs: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 20, paddingVertical: 12 },
-  tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
-  tabOn: { backgroundColor: colors.ink, borderColor: colors.ink },
-  tabText: { fontWeight: '700', color: colors.muted, fontSize: 13 },
+  go: { backgroundColor: colors.lemon, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
+  goText: { fontSize: 13, fontWeight: '800', color: colors.ink },
+  // The four tabs start alike: the page title 12 from the top, on the 16 margin.
+  title: { fontSize: 22, fontWeight: '800', color: colors.ink, paddingHorizontal: 16, paddingTop: 12 },
+  tabs: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
   page: { padding: 16, paddingTop: 0, gap: 12 },
-  itemTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
+  itemTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   muted: { fontSize: 12, color: colors.muted },
-  rowItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.surface, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: colors.line },
   quote: { fontSize: 15, lineHeight: 28, color: colors.ink, borderRadius: 8, padding: 8 },
-  body: { fontSize: 14, lineHeight: 24, color: colors.ink },
+  body: { fontSize: 15, lineHeight: 24, color: colors.ink },
 });

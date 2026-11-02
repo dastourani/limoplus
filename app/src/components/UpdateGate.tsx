@@ -125,10 +125,10 @@ export function UpdateGate() {
 const styles = StyleSheet.create({
   wall: { flex: 1, backgroundColor: colors.ground },
   wallInner: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 },
-  wallTitle: { fontSize: 24, fontWeight: '800', color: colors.ink, textAlign: 'center' },
+  wallTitle: { fontSize: 22, fontWeight: '800', color: colors.ink, textAlign: 'center' },
   wallText: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 26 },
   notes: { alignSelf: 'stretch', backgroundColor: colors.surface, borderRadius: 16, padding: 14, gap: 4 },
-  note: { fontSize: 14, color: colors.ink, lineHeight: 24 },
+  note: { fontSize: 15, color: colors.ink, lineHeight: 24 },
   offerHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
-  offerText: { flex: 1, fontSize: 14, color: colors.ink, lineHeight: 24 },
+  offerText: { flex: 1, fontSize: 15, color: colors.ink, lineHeight: 24 },
 });

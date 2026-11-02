@@ -107,10 +107,10 @@ export function PageTurn({
 
 const styles = StyleSheet.create({
   cover: { backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center', gap: 18, padding: 32 },
-  coverTitle: { color: colors.lemon, fontSize: 24, fontWeight: '900', textAlign: 'center', lineHeight: 38 },
+  coverTitle: { color: colors.lemon, fontSize: 22, fontWeight: '900', textAlign: 'center', lineHeight: 38 },
   coverRule: { width: 60, height: 4, borderRadius: 2, backgroundColor: '#3A4A40' },
   coverBrand: { color: '#8FA095', fontSize: 13 },
   paper: { backgroundColor: '#FFFDF6', paddingTop: 120, paddingHorizontal: 24, gap: 14 },
-  paperTitle: { fontSize: 20, fontWeight: '800', color: colors.ink, marginBottom: 10 },
+  paperTitle: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 10 },
   line: { height: 8, borderRadius: 4, backgroundColor: '#E2E5DA', alignSelf: 'flex-end' },
 });

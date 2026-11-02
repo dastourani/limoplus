@@ -90,7 +90,7 @@ export const BookCover = memo(function BookCover({
     >
       <View style={{ height: 6 * k, backgroundColor: strip }} />
       {!!major?.name && (
-        <Text allowFontScaling={false} style={[styles.major, { fontSize: 10 * k, color: strip, paddingHorizontal: 18 * k, paddingTop: 12 * k }]}>
+        <Text allowFontScaling={false} style={[styles.major, { fontSize: 11 * k, color: strip, paddingHorizontal: 18 * k, paddingTop: 12 * k }]}>
           لیمو {major.name}
         </Text>
       )}
@@ -98,7 +98,7 @@ export const BookCover = memo(function BookCover({
         <SvgAst ast={ast} override={{ width: 208 * k, height: 146 * k }} />
       </View>
       <View style={{ paddingHorizontal: 18 * k, paddingBottom: 16 * k, gap: 3 * k }}>
-        <Text allowFontScaling={false} numberOfLines={2} style={[styles.title, { fontSize: 21 * k, lineHeight: 30 * k, color: p.title }]}>
+        <Text allowFontScaling={false} numberOfLines={2} style={[styles.title, { fontSize: 22 * k, lineHeight: 30 * k, color: p.title }]}>
           {book.title}
         </Text>
         {!!book.title_en && (
@@ -114,7 +114,7 @@ export const BookCover = memo(function BookCover({
         <View style={{ height: 2 * k, width: 34 * k, borderRadius: 2, backgroundColor: p.rule, marginTop: 8 * k, marginBottom: 6 * k }} />
         <View style={styles.brand}>
           <LemonSlice size={16 * k} />
-          <Text allowFontScaling={false} style={{ fontSize: 10 * k, fontWeight: '700', color: p.brand }}>
+          <Text allowFontScaling={false} style={{ fontSize: 11 * k, fontWeight: '700', color: p.brand }}>
             لیمو پلاس
           </Text>
         </View>

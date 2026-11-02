@@ -7,6 +7,7 @@ import { useCelebrate } from '../../components/Celebrate';
 import { RichText } from '../../components/RichText';
 import { Text } from '../../components/Text';
 import { Button, Card, ErrorState, Header, Loading, Screen } from '../../components/ui';
+import { Pill } from '../../components/Pill';
 import { jalaliDate, jalaliDateTime } from '../../lib/jalali';
 import { seeded } from '../../lib/shuffle';
 import { useApi } from '../../lib/useApi';
@@ -72,9 +73,7 @@ export default function ExamResult() {
         </View>
         <View style={styles.filters}>
           {(['all', 'wrong'] as const).map((f) => (
-            <Pressable key={f} onPress={() => setFilter(f)} style={[styles.filter, filter === f && styles.filterOn]}>
-              <Text style={{ fontWeight: '800', color: filter === f ? colors.lemon : colors.muted }}>{f === 'all' ? 'همه' : 'غلط‌ها و نزده‌ها'}</Text>
-            </Pressable>
+            <Pill key={f} label={f === 'all' ? 'همه' : 'غلط‌ها و نزده‌ها'} selected={filter === f} onPress={() => setFilter(f)} />
           ))}
         </View>
         {questions.map((q) => {
@@ -153,11 +152,9 @@ const styles = StyleSheet.create({
   heroText: { fontSize: 15, color: colors.ground, fontWeight: '700' },
   heroSmall: { fontSize: 12, color: '#B9C4BC' },
   filters: { flexDirection: 'row-reverse', gap: 8 },
-  filter: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
-  filterOn: { backgroundColor: colors.ink, borderColor: colors.ink },
   qHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
-  qNum: { fontSize: 14, fontWeight: '700', color: colors.ink },
-  badge: { fontSize: 12, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },
+  qNum: { fontSize: 15, fontWeight: '700', color: colors.ink },
+  badge: { fontSize: 12, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' },
   right: { backgroundColor: colors.greenSoft, color: colors.greenDark },
   wrong: { backgroundColor: colors.redSoft, color: colors.redDark },
   blank: { backgroundColor: colors.disabled, color: colors.muted },

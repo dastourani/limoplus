@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
   clip: { overflow: 'hidden' },
   page: { position: 'absolute', left: 0, top: 0, transformOrigin: 'top left', overflow: 'hidden' },
   paper: { paddingTop: 28, paddingHorizontal: 24, gap: 14 },
-  paperTitle: { fontSize: 20, fontWeight: '800', marginBottom: 10 },
+  paperTitle: { fontSize: 22, fontWeight: '800', marginBottom: 10 },
   line: { height: 8, borderRadius: 4, alignSelf: 'flex-end' },
   hint: { position: 'absolute', left: 0, bottom: 0 },
 });

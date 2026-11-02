@@ -230,7 +230,7 @@ export default function Exam() {
 
   const q = shownQ!;
   const answeredCount = Object.values(answers).filter((v) => v != null).length;
-  const parts: PartState[] = exam.questions.map((x) => (flags.includes(x.id) ? 'wrong' : answers[x.id] != null ? 'done' : 'empty'));
+  const parts: PartState[] = exam.questions.map((x) => (flags.includes(x.id) ? 'flag' : answers[x.id] != null ? 'done' : 'empty'));
   const flagged = flags.includes(q.id);
   const toggleFlag = () => {
     const next = flagged ? flags.filter((f) => f !== q.id) : [...flags, q.id];
@@ -280,7 +280,7 @@ export default function Exam() {
           accessibilityState={{ checked: flagged }}
           accessibilityLabel="علامت شک‌دار برای مرور دوباره"
         >
-          <Icon name="flag" size={18} color={flagged ? '#FFFFFF' : colors.ink} />
+          <Icon name="flag" size={18} color={colors.ink} />
         </Pressable>
         <View style={styles.clock}>
           <Icon name="timer" size={20} color={left < 60 ? colors.red : colors.ink} />
@@ -293,7 +293,7 @@ export default function Exam() {
         parts={parts}
         current={index}
         onPick={(i) => go(i)}
-        legend="زرد: پاسخ داده‌شده، صورتی: شک‌دار، سفید: بی‌پاسخ. برای پاک کردن یک پاسخ، دوباره روی همان گزینه بزنید."
+        legend="زرد: پاسخ داده‌شده، نارنجی با پرچم: شک‌دار، سفید: بی‌پاسخ. برای پاک کردن یک پاسخ، دوباره روی همان گزینه بزنید."
       />
       <Animated.View style={[{ flex: 1 }, pageStyle]}>
         <QuizView key={q.id} mode="exam" question={q} state={viewState} onEvent={onEvent} />
@@ -307,7 +307,7 @@ export default function Exam() {
         {last ? (
           <Button label="پایان آزمون" loading={busy} onPress={finish} style={{ flex: 1.3 }} />
         ) : (
-          <Button label="بعدی" variant="dark" onPress={() => go(index + 1)} style={{ flex: 1 }} />
+          <Button label="بعدی" variant="primary" onPress={() => go(index + 1)} style={{ flex: 1 }} />
         )}
       </View>
     </Screen>
@@ -327,6 +327,6 @@ const styles = StyleSheet.create({
   clock: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
   timer: { fontSize: 22, fontWeight: '800', color: colors.ink },
   flag: { width: 40, height: 40, borderRadius: 12, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
-  flagOn: { backgroundColor: '#E2706A', borderColor: '#E2706A' },
+  flagOn: { backgroundColor: colors.amber, borderColor: colors.amber },
   bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
 });

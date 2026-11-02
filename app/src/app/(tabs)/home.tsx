@@ -11,7 +11,7 @@ import { Icon, IconBadge } from '../../components/Icon';
 import { LemonProgress } from '../../components/LemonProgress';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
-import { ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
+import { ErrorState, Loading, Screen, usePullRefresh, Chip } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { useFeedback } from '../../components/Feedback';
 import { HRow } from '../../components/home/HRow';
@@ -135,7 +135,7 @@ export default function Home() {
   }, [serverReading, spots, list]);
   // A shelf row shows about two and a half covers on a phone (the cut one says «there is more»), more on wide screens.
   const pageWidth = Math.min(width, 1200);
-  const coverWidth = Math.max(120, Math.min(170, Math.floor((pageWidth - 40) / 2.4)));
+  const coverWidth = Math.max(120, Math.min(170, Math.floor((pageWidth - 32) / 2.4)));
 
   const bookTile = (book: BookListItem) => {
     const label = shelfLabel(book);
@@ -285,7 +285,7 @@ export default function Home() {
             <IconBadge name="sparkles" size={32} />
             <Text style={[styles.soonText, rtl, { flex: 1 }]}>دستیار هوش مصنوعی برای رفع اشکال</Text>
           </View>
-          <Text style={styles.soonBadge}>به‌زودی</Text>
+          <Chip label="به‌زودی" color="#6B5200" background={colors.lemonSoft} />
         </View>
     ),
   });
@@ -331,18 +331,18 @@ const styles = StyleSheet.create({
   searchButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center' },
   asLearner: { backgroundColor: '#FFF6CC', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 },
   asLearnerText: { fontSize: 12, fontWeight: '700', color: colors.ink, textAlign: 'center' },
-  page: { padding: 20, gap: 16, maxWidth: 1200, width: '100%', alignSelf: 'center' },
+  page: { padding: 16, gap: 16, maxWidth: 1200, width: '100%', alignSelf: 'center' },
   top: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-  hello: { fontSize: 20, fontWeight: '900', color: colors.ink },
+  hello: { fontSize: 22, fontWeight: '900', color: colors.ink },
   muted: { fontSize: 13, color: colors.muted },
   loginPill: { backgroundColor: colors.ink, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10 },
   loginText: { color: colors.lemon, fontWeight: '800' },
   ribbon: { position: 'absolute', top: 12, left: -4, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
-  ribbonText: { fontSize: 10, fontWeight: '800' },
+  ribbonText: { fontSize: 11, fontWeight: '800' },
   ribbonFree: { backgroundColor: colors.lemon, color: colors.ink },
   ribbonSoon: { backgroundColor: colors.ink, color: colors.ground },
   ribbonOwned: { backgroundColor: '#3FB8A9', flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
-  ribbonOwnedText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  ribbonOwnedText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
   progressBadge: { position: 'absolute', bottom: 10, left: 10, flexDirection: 'row-reverse', alignItems: 'center', gap: 5, backgroundColor: 'rgba(23,32,26,0.88)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
   progressText: { fontSize: 11, fontWeight: '800', color: colors.lemon },
   notify: { minHeight: 38, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6 },
@@ -351,5 +351,4 @@ const styles = StyleSheet.create({
   price: { fontSize: 12, color: colors.muted, minHeight: 38, textAlignVertical: 'center', textAlign: 'center', writingDirection: 'rtl' },
   soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, padding: 12 },
   soonText: { color: colors.muted, fontSize: 13 },
-  soonBadge: { backgroundColor: colors.lemonSoft, color: '#6B5200', fontSize: 12, fontWeight: '700', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2, overflow: 'hidden' },
 });

@@ -18,6 +18,7 @@ import { QuizView, type QuizEvent } from '../../components/QuizView';
 import { ReportSheet } from '../../components/ReportSheet';
 import { Text } from '../../components/Text';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
+import { Pill } from '../../components/Pill';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { useGuestNudge } from '../../lib/guestNudge';
 import { placeLabel } from '../../lib/place';
@@ -321,7 +322,7 @@ export default function Quiz() {
             />
           )}
           {info && !info.more && <Text style={[styles.resultLine, { fontSize: 13 }]}>همه‌ی تست‌های این {info.kind === 'book' ? 'کتاب' : 'فصل'} را در این مرور زدی.</Text>}
-          <Button label="کافی است برای امروز" variant="dark" onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
+          <Button label="کافی است برای امروز" variant={info?.more ? 'outline' : 'primary'} onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
         </ScrollView>
       </Screen>
     );
@@ -350,11 +351,11 @@ export default function Quiz() {
             />
           )}
           {quick ? (
-            <Button label="کافی است برای امروز" variant="dark" onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
+            <Button label="کافی است برای امروز" variant={firstOpen >= 0 ? 'outline' : 'primary'} onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
           ) : notebook ? (
-            <Button label="دفترچه‌ی اشتباهات" variant="dark" onPress={() => router.replace('/mistakes')} style={{ alignSelf: 'stretch' }} />
+            <Button label="دفترچه‌ی اشتباهات" variant={firstOpen >= 0 ? 'outline' : 'primary'} onPress={() => router.replace('/mistakes')} style={{ alignSelf: 'stretch' }} />
           ) : (
-            <Button label="آزمون زمان‌دار با نمره‌ی منفی" variant="dark" onPress={() => router.replace(`/exam/${nodeId}`)} style={{ alignSelf: 'stretch' }} />
+            <Button label="آزمون زمان‌دار با نمره‌ی منفی" variant={firstOpen >= 0 ? 'outline' : 'primary'} onPress={() => router.replace(`/exam/${nodeId}`)} style={{ alignSelf: 'stretch' }} />
           )}
           <Button label="شروع دوباره‌ی تست‌ها" variant="outline" onPress={restart} style={{ alignSelf: 'stretch' }} />
           <Button label="بازگشت" variant="outline" onPress={() => router.back()} style={{ alignSelf: 'stretch' }} />
@@ -379,9 +380,7 @@ export default function Quiz() {
       </View>
       {!review && <View style={styles.orders}>
         {ORDERS.map(([key, label]) => (
-          <Pressable key={key} onPress={() => changeOrder(key)} style={[styles.order, order.order === key && styles.orderOn]} accessibilityRole="button" accessibilityState={{ selected: order.order === key }}>
-            <Text style={[styles.orderText, order.order === key && { color: colors.lemon }]}>{label}</Text>
-          </Pressable>
+          <Pill key={key} label={label} small selected={order.order === key} onPress={() => changeOrder(key)} />
         ))}
       </View>}
       <QuestionPicker
@@ -415,9 +414,9 @@ export default function Quiz() {
       <View style={styles.bar}>
         <Button label="قبلی" variant="outline" disabled={index === 0} onPress={() => go(index - 1)} style={{ flex: 1 }} />
         {index + 1 < questions.length ? (
-          <Button label={current?.result ? 'سؤال بعد' : 'بعداً جواب می‌دهم'} variant="dark" onPress={() => go(index + 1)} style={{ flex: 1.6 }} />
+          <Button label={current?.result ? 'سؤال بعد' : 'بعداً جواب می‌دهم'} variant={current?.result ? 'primary' : 'outline'} onPress={() => go(index + 1)} style={{ flex: 1.6 }} />
         ) : (
-          <Button label="دیدن نتیجه" variant="dark" onPress={() => setShowSummary(true)} style={{ flex: 1.6 }} />
+          <Button label="دیدن نتیجه" variant="primary" onPress={() => setShowSummary(true)} style={{ flex: 1.6 }} />
         )}
       </View>
       {!!counts.none && index + 1 === questions.length && (
@@ -429,11 +428,8 @@ export default function Quiz() {
 
 const styles = StyleSheet.create({
   progress: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 6 },
-  counts: { fontSize: 14, fontWeight: '800', color: colors.ink },
+  counts: { fontSize: 15, fontWeight: '800', color: colors.ink },
   orders: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 16, paddingBottom: 6 },
-  order: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
-  orderOn: { backgroundColor: colors.ink, borderColor: colors.ink },
-  orderText: { fontSize: 12.5, fontWeight: '700', color: colors.ink },
   page: { flex: 1, backfaceVisibility: 'hidden' },
   share: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, alignSelf: 'flex-end', marginHorizontal: 16, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.lemonSoft },
   shareText: { fontSize: 12.5, fontWeight: '800', color: colors.ink },
@@ -442,5 +438,5 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.muted, paddingHorizontal: 16, paddingBottom: 8 },
   result: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
   resultPercent: { fontSize: 64, fontWeight: '900', color: colors.ink },
-  resultLine: { fontSize: 16, color: colors.muted, marginBottom: 12 },
+  resultLine: { fontSize: 15, color: colors.muted, marginBottom: 12 },
 });

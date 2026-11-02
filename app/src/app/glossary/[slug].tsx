@@ -61,8 +61,8 @@ const styles = StyleSheet.create({
   count: { fontSize: 12, color: colors.muted, marginBottom: 4 },
   item: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 4 },
   head: { flexDirection: 'row-reverse', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' },
-  fa: { fontSize: 16, fontWeight: '800', color: colors.ink },
-  en: { fontSize: 14, color: '#3B44B8', writingDirection: 'ltr' },
-  mean: { fontSize: 14, color: colors.ink, lineHeight: 24 },
+  fa: { fontSize: 15, fontWeight: '800', color: colors.ink },
+  en: { fontSize: 15, color: '#3B44B8', writingDirection: 'ltr' },
+  mean: { fontSize: 15, color: colors.ink, lineHeight: 24 },
   where: { fontSize: 12, color: colors.muted },
 });

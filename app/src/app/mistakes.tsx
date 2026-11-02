@@ -8,6 +8,7 @@ import { Icon } from '../components/Icon';
 import { RichText } from '../components/RichText';
 import { Text } from '../components/Text';
 import { Button, Empty, ErrorState, Header, Loading, Screen, usePullRefresh } from '../components/ui';
+import { Pill } from '../components/Pill';
 import { requireLogin, useAuth } from '../lib/auth';
 import { jalaliDate } from '../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../theme';
@@ -100,15 +101,7 @@ export default function MistakesScreen() {
           {data.books.length > 1 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={{ transform: [{ scaleX: -1 }] }}>
               {[{ slug: '', title: 'همه‌ی کتاب‌ها' }, ...data.books].map((b) => (
-                <Pressable
-                  key={b.slug}
-                  onPress={() => setBook(b.slug)}
-                  style={[styles.chip, book === b.slug && styles.chipOn, { transform: [{ scaleX: -1 }] }]}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: book === b.slug }}
-                >
-                  <Text style={[styles.chipText, book === b.slug && { color: colors.lemon }]}>{b.title}</Text>
-                </Pressable>
+                <Pill key={b.slug} label={b.title} selected={book === b.slug} onPress={() => setBook(b.slug)} role="radio" style={{ transform: [{ scaleX: -1 }] }} />
               ))}
             </ScrollView>
           )}
@@ -136,15 +129,7 @@ export default function MistakesScreen() {
                 {data.reasons.map((r) => {
                   const on = m.reason === r.key;
                   return (
-                    <Pressable
-                      key={r.key}
-                      onPress={() => setReason(m.question_id, on ? '' : r.key)}
-                      style={[styles.reason, on && styles.reasonOn]}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: on }}
-                    >
-                      <Text style={[styles.reasonText, on && { color: colors.ink }]}>{r.label}</Text>
-                    </Pressable>
+                    <Pill key={r.key} label={r.label} small selected={on} onPress={() => setReason(m.question_id, on ? '' : r.key)} role="radio" />
                   );
                 })}
               </View>
@@ -163,9 +148,6 @@ const styles = StyleSheet.create({
   topTitle: { fontSize: 18, fontWeight: '900', color: colors.lemon },
   topText: { fontSize: 13, color: '#C9D2C6' },
   chips: { gap: 8, paddingVertical: 2 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.surface },
-  chipOn: { backgroundColor: colors.ink, borderColor: colors.ink },
-  chipText: { fontSize: 13, fontWeight: '700', color: colors.ink },
   row: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 6 },
   text: { fontSize: 15, color: colors.ink, lineHeight: 26 },
   where: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5 },
@@ -174,7 +156,4 @@ const styles = StyleSheet.create({
   settling: { alignSelf: 'flex-end', fontSize: 12, fontWeight: '700', color: colors.greenDark, backgroundColor: '#E3F3E9', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
   corrected: { alignSelf: 'flex-end', fontSize: 12, fontWeight: '700', color: '#3A2F7A', backgroundColor: '#F1EEFC', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
   reasons: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginTop: 2 },
-  reason: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: colors.line },
-  reasonOn: { backgroundColor: colors.lemon, borderColor: colors.lemon },
-  reasonText: { fontSize: 12, fontWeight: '700', color: colors.muted },
 });

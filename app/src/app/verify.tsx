@@ -135,8 +135,8 @@ export default function Verify() {
 
 const styles = StyleSheet.create({
   page: { padding: 24, gap: 12 },
-  help: { fontSize: 14, color: colors.muted, lineHeight: 24 },
+  help: { fontSize: 15, color: colors.muted, lineHeight: 24 },
   input: { backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, paddingHorizontal: 16, height: 64, fontSize: 28, textAlign: 'center', letterSpacing: 8 },
-  error: { color: colors.redDark, fontSize: 14 },
-  device: { fontSize: 16, fontWeight: '800', color: colors.ink },
+  error: { color: colors.redDark, fontSize: 15 },
+  device: { fontSize: 15, fontWeight: '800', color: colors.ink },
 });

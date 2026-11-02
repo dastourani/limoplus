@@ -11,7 +11,7 @@ export function HRow<T>({ data, keyOf, render, gap = 12, initial = 3 }: { data: 
       renderItem={({ item }) => <View style={styles.flip}>{render(item)}</View>}
       showsHorizontalScrollIndicator={false}
       style={styles.row}
-      contentContainerStyle={{ gap, paddingHorizontal: 20 }}
+      contentContainerStyle={{ gap, paddingHorizontal: 16 }}
       initialNumToRender={initial}
       // A screen and a half on each side is made ahead, so swiping a shelf rarely meets a cover still being made.
       windowSize={5}
@@ -23,6 +23,6 @@ export function HRow<T>({ data, keyOf, render, gap = 12, initial = 3 }: { data: 
 
 const styles = StyleSheet.create({
   // Flipped so the first card is on the right; each card is flipped back.
-  row: { marginHorizontal: -20, flexGrow: 0, transform: [{ scaleX: -1 }] },
+  row: { marginHorizontal: -16, flexGrow: 0, transform: [{ scaleX: -1 }] },
   flip: { transform: [{ scaleX: -1 }] },
 });

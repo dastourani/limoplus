@@ -136,7 +136,7 @@ export default function Buy() {
       </ScrollView>
       <View style={styles.bar}>
         {pendingOrder && <Button label="بررسی پرداخت" variant="outline" onPress={() => check(pendingOrder)} />}
-        <Button label={busy ? 'اتصال به درگاه' : 'پرداخت امن با زیبال'} variant="dark" disabled={!ready} loading={busy} onPress={pay} />
+        <Button label={busy ? 'اتصال به درگاه' : 'پرداخت امن با زیبال'} variant="primary" disabled={!ready} loading={busy} onPress={pay} />
       </View>
     </Screen>
   );
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   page: { padding: 16, gap: 12, maxWidth: 760, width: '100%', alignSelf: 'center' },
   bookCard: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 12 },
   coverSpace: { width: 64, height: 96, borderRadius: 8, backgroundColor: colors.ink },
-  bookTitle: { fontSize: 16, fontWeight: '900', color: colors.ink },
+  bookTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
   option: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
   optionOn: { borderWidth: 2, borderColor: colors.ink, shadowColor: '#17201A', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
   optionTop: { flexDirection: 'row-reverse', alignItems: 'baseline', gap: 8 },
@@ -158,8 +158,8 @@ const styles = StyleSheet.create({
   sub: { fontSize: 12.5, color: colors.muted, lineHeight: 22 },
   price: { fontSize: 15, fontWeight: '900', color: colors.ink },
   unit: { fontSize: 11, fontWeight: '400', color: colors.muted },
-  badge: { position: 'absolute', top: -10, left: 16, backgroundColor: '#3FB8A9', color: '#FFFFFF', fontSize: 10, fontWeight: '800', paddingHorizontal: 9, paddingVertical: 2, borderRadius: 8, overflow: 'hidden' },
-  group: { fontSize: 14, fontWeight: '900', color: colors.ink, marginTop: 6 },
+  badge: { position: 'absolute', top: -10, left: 16, backgroundColor: '#3FB8A9', color: '#FFFFFF', fontSize: 11, fontWeight: '800', paddingHorizontal: 9, paddingVertical: 2, borderRadius: 8, overflow: 'hidden' },
+  group: { fontSize: 15, fontWeight: '900', color: colors.ink, marginTop: 6 },
   summary: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
   summaryRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   summaryValue: { fontSize: 13, color: colors.ink },

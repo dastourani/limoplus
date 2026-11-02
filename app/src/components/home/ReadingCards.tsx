@@ -30,7 +30,7 @@ function wedges(progress: number | null | undefined, sections: number) {
 
 export function ReadingCards({ items }: { items: ReadingItem[] }) {
   const { width } = useWindowDimensions();
-  const cardW = items.length > 1 ? Math.min(Math.round(Math.min(width, 760) * 0.82), 420) : Math.min(width, 760) - 40;
+  const cardW = items.length > 1 ? Math.min(Math.round(Math.min(width, 760) * 0.82), 420) : Math.min(width, 760) - 32;
   return <HRow data={items} keyOf={(r) => r.slug} render={(r) => <Card r={r} width={cardW} />} initial={2} />;
 }
 
@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.ink, borderRadius: 22, padding: 14, minHeight: 128 },
   blank: { width: 64, height: 96, borderRadius: 10, backgroundColor: '#24302A', alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: 11, fontWeight: '800', color: colors.lemon },
-  title: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
+  title: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },
   sub: { fontSize: 12, color: '#A9B6AD', lineHeight: 19 },
   pill: { alignSelf: 'flex-end', marginTop: 4, backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 5 },
   pillText: { fontSize: 12, fontWeight: '800', color: colors.ink },

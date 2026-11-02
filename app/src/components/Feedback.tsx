@@ -98,6 +98,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row-reverse', gap: 10, marginTop: 8 },
   toast: { position: 'absolute', zIndex: 1000, elevation: 10, left: 16, right: 16, alignItems: 'center' },
   toastBox: { flexDirection: 'row-reverse', alignItems: 'center', gap: 16, backgroundColor: colors.ink, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, maxWidth: 480 },
-  toastText: { color: colors.ground, fontSize: 14, flexShrink: 1 },
-  toastAction: { color: colors.lemon, fontWeight: '700', fontSize: 14 },
+  toastText: { color: colors.ground, fontSize: 15, flexShrink: 1 },
+  toastAction: { color: colors.lemon, fontWeight: '700', fontSize: 15 },
 });

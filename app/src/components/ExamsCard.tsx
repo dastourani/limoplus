@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
   line: { fontSize: 13, color: '#C9D2C6' },
   row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: '#2B3830', paddingTop: 8 },
-  examTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: '#EDEFE6' },
+  examTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: '#EDEFE6' },
   score: { fontSize: 15, fontWeight: '800', color: colors.lemon },
   more: { fontSize: 13, fontWeight: '800', color: colors.lemon },
 });

@@ -80,7 +80,7 @@ export default function StatsTab() {
   return (
     <Screen tab>
       <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
-        <Text style={[styles.title, rtl, { padding: 0 }]}>آمار من</Text>
+        <Text style={[styles.title, rtl, { paddingHorizontal: 0, paddingTop: 0, marginTop: -4 }]}>آمار من</Text>
         <View style={styles.tiles}>
           <Tile accent icon="flame" label="روز پیاپی" value={toPersianDigits(data.streak_days)} />
           <Tile icon="target" label="درصد پاسخ درست" value={data.accuracy === null ? '—' : `${toPersianDigits(data.accuracy)}٪`} />
@@ -199,11 +199,11 @@ function StudyTimeCard({ time }: { time: StudyTimeTotals }) {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 24, fontWeight: '800', color: colors.ink, padding: 20, paddingBottom: 0 },
+  title: { fontSize: 22, fontWeight: '800', color: colors.ink, paddingHorizontal: 16, paddingTop: 12 },
   page: { padding: 16, gap: 14 },
   tiles: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
   tile: { flexBasis: '30%', flexGrow: 1, backgroundColor: colors.surface, borderRadius: 18, padding: 12, borderWidth: 1, borderColor: colors.line, gap: 6, alignItems: 'flex-end' },
-  tileValue: { fontSize: 20, fontWeight: '800', color: colors.ink, textAlign: 'right' },
+  tileValue: { fontSize: 22, fontWeight: '800', color: colors.ink, textAlign: 'right' },
   tileLabel: { fontSize: 12, color: colors.muted, textAlign: 'right' },
   cardTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   chart: { flexDirection: 'row-reverse', gap: 4, height: 120, alignItems: 'flex-end' },
@@ -211,11 +211,11 @@ const styles = StyleSheet.create({
   barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
   bar: { width: '100%', backgroundColor: colors.lemon, borderRadius: 6 },
   barLabel: { fontSize: 12, color: colors.muted },
-  bookTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  bookTitle: { fontSize: 15, fontWeight: '700', color: colors.ink },
   muted: { fontSize: 12, color: colors.muted },
   progressTrack: { height: 8, backgroundColor: colors.line, borderRadius: 4, overflow: 'hidden', flexDirection: 'row-reverse' },
   progressFill: { backgroundColor: colors.green, borderRadius: 4 },
   progressPart: { backgroundColor: '#A8D8B9' },
-  better: { fontSize: 14, color: colors.ink, lineHeight: 24 },
+  better: { fontSize: 15, color: colors.ink, lineHeight: 24 },
   weak: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 6 },
 });

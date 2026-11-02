@@ -77,9 +77,9 @@ export default function Settings() {
 }
 
 const styles = StyleSheet.create({
-  page: { padding: 20, gap: 12 },
-  label: { fontSize: 14, fontWeight: '700', color: colors.ink },
-  input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: radius.sm, padding: 14, fontSize: 16, textAlign: 'left', writingDirection: 'ltr' },
+  page: { padding: 16, gap: 12 },
+  label: { fontSize: 15, fontWeight: '700', color: colors.ink },
+  input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: radius.sm, padding: 14, fontSize: 15, textAlign: 'left', writingDirection: 'ltr' },
   help: { fontSize: 13, color: colors.muted, lineHeight: 24 },
-  status: { fontSize: 14, fontWeight: '700' },
+  status: { fontSize: 15, fontWeight: '700' },
 });
