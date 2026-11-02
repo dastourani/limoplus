@@ -31,7 +31,7 @@ export const QuestionShareCard = forwardRef<HostInstance, { questions: Question[
     <View ref={ref} collapsable={false} style={styles.card}>
       <View style={styles.head}>
         <LemonSlice size={30} />
-        <Text style={styles.brand}>لیمو پلاس</Text>
+        <Text style={styles.brand}>لیموخوان</Text>
         {!!book && <Text style={[styles.book, rtl]} numberOfLines={1}>{book}</Text>}
       </View>
       {questions.map((q, n) => (
@@ -53,7 +53,7 @@ export const QuestionShareCard = forwardRef<HostInstance, { questions: Question[
           </View>
         </View>
       ))}
-      <Text style={[styles.cta, rtl]}>{many ? 'جواب‌ها را با پاسخ تشریحی در لیمو پلاس ببین' : 'جوابش را با پاسخ تشریحی در لیمو پلاس ببین'}</Text>
+      <Text style={[styles.cta, rtl]}>{many ? 'جواب‌ها را با پاسخ تشریحی در لیموخوان ببین' : 'جوابش را با پاسخ تشریحی در لیموخوان ببین'}</Text>
     </View>
   );
 });

@@ -9,6 +9,7 @@ import { BookCover } from '../../components/BookCover';
 import { MarkdownView } from '../../components/MarkdownView';
 import { Text } from '../../components/Text';
 import { useFeedback } from '../../components/Feedback';
+import { useCelebrate } from '../../components/Celebrate';
 import { LemonProgress } from '../../components/LemonProgress';
 import { PageTurn } from '../../components/PageTurn';
 import { Icon, IconBadge } from '../../components/Icon';
@@ -19,6 +20,7 @@ import { jalaliDate } from '../../lib/jalali';
 import { offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
 import { storage, type LastSection } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
+import { celebrateProgress } from '../../lib/milestones';
 import { studyDuration } from '../../lib/duration';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -28,6 +30,11 @@ export default function Book() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
   const { data, error, loading, retry } = useApi(() => endpoints.book(String(slug)), [slug, user?.id]);
+  const celebrate = useCelebrate();
+  // Coming back with a section, a chapter or the whole book newly finished: celebrated here, once each.
+  useEffect(() => {
+    if (user && data && data.slug === slug) celebrateProgress(user.id, data, celebrate).catch(() => undefined);
+  }, [data, user, slug, celebrate]);
   const refresh = usePullRefresh(loading, retry);
   // Entering a book: its cover opens like a real book (once per visit).
   const { title: titleParam } = useLocalSearchParams<{ title?: string }>();
@@ -146,7 +153,7 @@ export default function Book() {
               <Icon name="search" size={20} color="#FFFFFF" />
             </Pressable>
             <Pressable
-              onPress={() => Share.share({ message: `«${book.title}» را در لیمو پلاس بخوان: خلاصه، جزوه، تست و فلش‌کارت.` }).catch(() => undefined)}
+              onPress={() => Share.share({ message: `«${book.title}» را در لیموخوان بخوان: خلاصه، جزوه، تست و فلش‌کارت.${book.share_link ? `\n${book.share_link}` : ''}` }).catch(() => undefined)}
               style={styles.heroButton}
               accessibilityRole="button"
               accessibilityLabel="معرفی به دوست"
@@ -266,9 +273,9 @@ export default function Book() {
                 </Pressable>
               )}
               {!!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
-                <View style={styles.shortcut} accessibilityLabel={`زمان مطالعه‌ی تو در این کتاب: ${studyDuration(book.mine.time_seconds)}`}>
-                  <Icon name="timer" size={18} color={colors.ink} />
-                  <Text style={styles.shortcutText}>زمان مطالعه: {studyDuration(book.mine.time_seconds)}</Text>
+                <View style={styles.shortcut} accessibilityLabel={`تا الان ${studyDuration(book.mine.time_seconds)} روی این کتاب وقت گذاشتی`}>
+                  <Icon name="time-spent" size={18} color={colors.ink} />
+                  <Text style={styles.shortcutText}>تا الان {studyDuration(book.mine.time_seconds)} وقت گذاشتی</Text>
                 </View>
               )}
               {offlineSupported && (
@@ -402,8 +409,8 @@ function ChapterCard({
         <View style={styles.strip}>
           {seconds >= 60 ? (
             <View style={styles.stripItem}>
-              <Icon name="timer" size={14} color={colors.muted} />
-              <Text style={styles.stripText}>{studyDuration(seconds)} مطالعه</Text>
+              <Icon name="time-spent" size={14} color={colors.muted} />
+              <Text style={styles.stripText}>{studyDuration(seconds)} وقت گذاشتی</Text>
             </View>
           ) : (
             <View />
@@ -512,7 +519,7 @@ const styles = StyleSheet.create({
   scroll: { paddingBottom: 28 },
   page: { padding: 16, gap: 14, maxWidth: 760, width: '100%', alignSelf: 'center' },
   hero: { backgroundColor: colors.ink, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 36, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, gap: 6 },
-  heroTop: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 4 },
+  heroTop: { flexDirection: 'row-reverse', justifyContent: 'space-between', gap: 10, marginBottom: 4 },
   heroButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   heroTitle: { marginTop: 10, textAlign: 'center', fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
   // Equal boxes across the width of the cards below them, so their edges line up.
@@ -522,12 +529,12 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: '#C9D3CC' },
   ownedRibbon: { position: 'absolute', top: 12, left: -6, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: '#3FB8A9', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
   ownedRibbonText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  cta: { marginTop: -34, backgroundColor: colors.surface, borderRadius: 22, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+  cta: { marginTop: -34, backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
   ctaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   ctaHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   ctaTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   ctaSmall: { fontSize: 12, color: colors.muted },
-  ctaButton: { backgroundColor: colors.lemon, borderRadius: 14, paddingHorizontal: 18, minHeight: 46, justifyContent: 'center' },
+  ctaButton: { backgroundColor: colors.lemon, borderRadius: 12, paddingHorizontal: 18, minHeight: 46, justifyContent: 'center' },
   ctaButtonText: { color: colors.ink, fontWeight: '900', fontSize: 15 },
   unlock: { minHeight: 52, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
   // The one main action of the box is lemon; next to «شروع رایگان» it is the outlined second.
@@ -544,7 +551,7 @@ const styles = StyleSheet.create({
   aboutHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   aboutTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
   chaptersTitle: { fontSize: 18, fontWeight: '900', color: colors.ink, marginTop: 6 },
-  chapter: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
+  chapter: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
   chapterHead: { flexDirection: 'row-reverse', alignItems: 'center', padding: 16, gap: 12 },
   strip: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingVertical: 8, minHeight: 40, backgroundColor: '#F9FAF5', borderTopWidth: 1, borderTopColor: colors.line },
   metaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
@@ -553,7 +560,7 @@ const styles = StyleSheet.create({
   group: { fontSize: 12.5, fontWeight: '800', color: colors.muted, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.ground },
   glossary: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, alignSelf: 'flex-end', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
   glossaryText: { fontSize: 13, fontWeight: '700', color: colors.ink },
-  resume: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 12 },
+  resume: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 12 },
   resumeLabel: { fontSize: 12, color: colors.muted },
   resumeTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   chapterTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: colors.ink },

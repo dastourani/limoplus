@@ -36,7 +36,7 @@ export default function EditProfile() {
     <Screen>
       <Header title={first ? 'خوش آمدید!' : 'ویرایش نام'} />
       <View style={styles.page}>
-        {!!first && <Text style={[styles.help, rtl]}>اسمتان را بگویید تا لیمو پلاس شما را با نام صدا کند.</Text>}
+        {!!first && <Text style={[styles.help, rtl]}>اسمتان را بگویید تا لیموخوان شما را با نام صدا کند.</Text>}
         <Text style={[styles.label, rtl]}>نام</Text>
         <TextInput value={firstName} onChangeText={setFirstName} style={styles.input} maxLength={60} />
         <Text style={[styles.label, rtl]}>نام خانوادگی</Text>

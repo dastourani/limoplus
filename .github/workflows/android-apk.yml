@@ -75,8 +75,8 @@ jobs:
 
       - name: Name the APKs
         run: |
-          cp android/app/build/outputs/apk/release/app-arm64-v8a-release.apk "limoplus-test-${{ github.run_number }}-arm64.apk"
-          cp android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "limoplus-test-${{ github.run_number }}-32bit.apk"
+          cp android/app/build/outputs/apk/release/app-arm64-v8a-release.apk "limokhan-test-${{ github.run_number }}-arm64.apk"
+          cp android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "limokhan-test-${{ github.run_number }}-32bit.apk"
 
       - name: Publish on the Releases page
         uses: softprops/action-gh-release@v2
@@ -90,5 +90,5 @@ jobs:
             - `-32bit.apk`: گوشی‌هایی با اندروید ۳۲ بیتی، مثل Galaxy A03 و مدل‌های ارزان.
             اگر یکی نصب نشد، دیگری را امتحان کنید. بعد از نصب، از «تنظیمات سرور» آدرس سرور را وارد کنید.
           files: |
-            app/limoplus-test-${{ github.run_number }}-arm64.apk
-            app/limoplus-test-${{ github.run_number }}-32bit.apk
+            app/limokhan-test-${{ github.run_number }}-arm64.apk
+            app/limokhan-test-${{ github.run_number }}-32bit.apk

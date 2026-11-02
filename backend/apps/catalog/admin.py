@@ -10,7 +10,7 @@ from .drawing import DrawingError, clean_svg
 from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
 from .filters import BookFilter, ChapterFilter, YesNoFilter
-from .models import Banner, Book, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, Major, Section, Shelf, ShelfBook
+from .models import Banner, Book, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, Major, Section, ShareSettings, Shelf, ShelfBook
 
 
 class ShelfBookInline(admin.TabularInline):
@@ -92,6 +92,7 @@ class BookAdmin(admin.ModelAdmin):
         (None, {"fields": ("title", "title_en", "slug", "author", "edition", "majors")}),
         ("جلد و معرفی", {"fields": ("cover_motif", "drawing_file", "clear_drawing", "cover", "about")}),
         ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "position", "is_published", "is_archived")}),
+        ("اشتراک‌گذاری", {"fields": ("share_link",)}),
     )
 
     def get_queryset(self, request):
@@ -447,3 +448,16 @@ def _index_with_daily_cleanup(request, extra_context=None):
 
 
 admin.site.index = _index_with_daily_cleanup
+
+
+@admin.register(ShareSettings)
+class ShareSettingsAdmin(admin.ModelAdmin):
+    """A single row: the link the book page sends when a book has no link of its own."""
+
+    list_display = ("__str__", "default_link")
+
+    def has_add_permission(self, request):
+        return not ShareSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False

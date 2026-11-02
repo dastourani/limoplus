@@ -94,7 +94,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 10 },
-  summary: { backgroundColor: colors.ink, borderRadius: 20, padding: 16, gap: 14 },
+  summary: { backgroundColor: colors.ink, borderRadius: 18, padding: 16, gap: 14 },
   nums: { flexDirection: 'row-reverse' },
   statValue: { fontSize: 22, fontWeight: '900', color: colors.lemon },
   chips: { flexDirection: 'row-reverse', gap: 8, paddingVertical: 2 },

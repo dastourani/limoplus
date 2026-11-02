@@ -14,6 +14,6 @@ export function useGuestNudge() {
   return useCallback(() => {
     if (user || shown) return;
     shown = true;
-    toast('وارد شو تا خوانده‌ها و تست‌هایت ذخیره شود', { label: 'ورود', onPress: () => router.push('/login') });
+    toast('وارد شو تا خوانده‌ها و تست‌هایت ذخیره شود', { label: 'ورود', onPress: () => router.push('/login') }, { top: true });
   }, [user, toast]);
 }

@@ -103,6 +103,33 @@ class StudyTests(TestCase):
         self.client.post(f"/api/v1/questions/{q.id}/report/", {"reason": "typo"}, format="json")  # no duplicate
         self.assertEqual(self.client.get(f"/api/v1/nodes/{self.chapter.id}/practice/").data["reported"], [q.id])
 
+    def test_exam_focus_on_mistakes_takes_up_to_half_from_them(self):
+        qs = list(Question.objects.filter(node__path__startswith=self.chapter.path, is_archived=False))
+        self.assertGreaterEqual(len(qs), 5)
+        wrong = qs[:2]
+        for q in wrong:
+            self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.filter(is_correct=False).first().id}, format="json")
+        e = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 4, "focus_mistakes": True}, format="json").data
+        self.assertEqual(e["focused"], 2, "both mistakes, which is half of 4")
+        self.assertTrue({q.id for q in wrong} <= {x["id"] for x in e["questions"]})
+        self.assertEqual(len(e["questions"]), 4)
+        # Left blank, its questions join the mistakes: still never more than half.
+        self.client.post(f"/api/v1/exams/{e['id']}/submit/", {"answers": {}}, format="json")
+        e = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 4, "focus_mistakes": True}, format="json").data
+        self.assertEqual(e["focused"], 2)
+        self.client.post(f"/api/v1/exams/{e['id']}/submit/", {"answers": {}}, format="json")
+        plain = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 4}, format="json").data
+        self.assertEqual(plain["focused"], 0, "off: all at random")
+
+    def test_exam_report_knows_the_previous_score(self):
+        first = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 3}, format="json").data
+        self.client.post(f"/api/v1/exams/{first['id']}/submit/", {"answers": {}}, format="json")
+        second = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 3}, format="json").data
+        self.client.post(f"/api/v1/exams/{second['id']}/submit/", {"answers": {}}, format="json")
+        r = self.client.get(f"/api/v1/exams/{second['id']}/").data
+        self.assertIsNotNone(r["previous_score"])
+        self.assertIsNone(self.client.get(f"/api/v1/exams/{first['id']}/").data["previous_score"])
+
     def test_exam_with_negative_marking(self):
         r = self.client.post(f"/api/v1/nodes/{self.chapter.id}/exams/", {"count": 4}, format="json")
         self.assertEqual(r.status_code, 201)
@@ -614,6 +641,25 @@ class SectionStateTests(TestCase):
         self.assertEqual({q["chapter_number"] for q in qs}, {1}, "«فصل ۱، …» above the counter")
         cards = self.client.get(f"/api/v1/nodes/{self.section.id}/flashcards/").data["flashcards"]
         self.assertTrue(all(c["chapter_number"] == 1 for c in cards))
+
+    def test_chapter_end_says_what_is_left_and_book_has_a_share_link(self):
+        from apps.catalog.models import ShareSettings
+
+        last = list(self.chapter.get_children())[-1]
+        end = self.client.get(f"/api/v1/nodes/{last.id}/").data["chapter_end"]
+        self.assertIn(end["progress"]["state"], ("notes", "tests"))
+        self.assertGreater(end["progress"]["tests_left"] + end["progress"]["notes_left"], 0)
+        for s in self.chapter.get_children():
+            self.client.post(f"/api/v1/nodes/{s.id}/progress/", {"percent": 100, "done": True}, format="json")
+        for q in Question.objects.filter(node__path__startswith=self.chapter.path, is_archived=False):
+            self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.first().id}, format="json")
+        end = self.client.get(f"/api/v1/nodes/{last.id}/").data["chapter_end"]
+        self.assertEqual(end["progress"], {"state": "complete", "tests_left": 0, "notes_left": 0})
+        self.assertEqual(self.client.get("/api/v1/books/math-1/").data["share_link"], "")
+        ShareSettings.objects.create(default_link="https://t.me/example")
+        self.assertEqual(self.client.get("/api/v1/books/math-1/").data["share_link"], "https://t.me/example")
+        ContentNode.objects.filter(slug="math-1").update(share_link="https://example.com/math-1")
+        self.assertEqual(self.client.get("/api/v1/books/math-1/").data["share_link"], "https://example.com/math-1", "the book's own link wins")
 
     def test_too_few_tests_leave_the_circle_empty(self):
         from .progress import needed

@@ -42,7 +42,7 @@ export default function ShareSamples() {
     try {
       await new Promise((r) => setTimeout(r, 900 + 300 * chosen.length)); // let the formulas draw
       const uri = await captureRef(ref, { format: 'png', quality: 1 });
-      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'تست‌های لیمو پلاس' });
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'تست‌های لیموخوان' });
     } catch {
       // cancelled
     } finally {
@@ -95,7 +95,7 @@ export default function ShareSamples() {
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 10, paddingBottom: 100 },
   hint: { fontSize: 13, color: colors.muted, lineHeight: 22 },
-  row: { flexDirection: 'row-reverse', gap: 12, alignItems: 'flex-start', backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1.5, borderColor: colors.line, padding: 12 },
+  row: { flexDirection: 'row-reverse', gap: 12, alignItems: 'flex-start', backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1.5, borderColor: colors.line, padding: 12 },
   rowOn: { borderColor: colors.ink },
   check: { width: 24, height: 24, borderRadius: 8, borderWidth: 2, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   checkOn: { backgroundColor: colors.ink, borderColor: colors.ink },

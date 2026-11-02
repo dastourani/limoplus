@@ -26,7 +26,7 @@ export type ReaderEvent =
   /** The «بخش بعد» card at the end was tapped. */
   | { type: 'next' }
   /** A part of the page end was tapped: «N تست باقی است», a due card, the chapter exam, the next chapter, the book. */
-  | { type: 'go'; to: 'quiz' | 'cards' | 'exam' | 'next-chapter' | 'book' };
+  | { type: 'go'; to: 'quiz' | 'cards' | 'exam' | 'next-chapter' | 'book' | 'chapter-quiz' };
 
 type Props = {
   markdown: string;

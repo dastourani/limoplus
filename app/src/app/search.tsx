@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   tabs: { gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
   list: { padding: 16, paddingTop: 4, gap: 10 },
   hint: { fontSize: 13, color: colors.muted, lineHeight: 22 },
-  row: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 6 },
+  row: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 6 },
   rowHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   kind: { flex: 1, fontSize: 12, fontWeight: '700', color: colors.greenDark },
   snippet: { fontSize: 15, color: colors.ink, lineHeight: 24 },

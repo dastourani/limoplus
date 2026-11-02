@@ -23,6 +23,7 @@ import House from 'lucide-react-native/icons/house';
 import Layers from 'lucide-react-native/icons/layers';
 import LibraryBig from 'lucide-react-native/icons/library-big';
 import CalendarDays from 'lucide-react-native/icons/calendar-days';
+import ClockCheck from 'lucide-react-native/icons/clock-check';
 import Lock from 'lucide-react-native/icons/lock';
 import LogOut from 'lucide-react-native/icons/log-out';
 import MonitorSmartphone from 'lucide-react-native/icons/monitor-smartphone';
@@ -94,6 +95,7 @@ const ICONS = {
   'notebook-pen': NotebookPen,
   'rotate-ccw': RotateCcw,
   calendar: CalendarDays,
+  'time-spent': ClockCheck,
   settings: Settings,
   'share-2': Share2,
   smartphone: Smartphone,

@@ -71,7 +71,7 @@ class OTPFlowTests(TestCase):
         with mock.patch("apps.accounts.views.send_sms") as send:
             self.client.post("/api/v1/auth/request-otp/", {"phone": self.phone, "app_hash": "FA+9qCX9VSu"}, format="json")
         text = send.call_args[0][1]
-        self.assertTrue(text.startswith("لیمو پلاس"))
+        self.assertTrue(text.startswith("لیموخوان"))
         self.assertTrue(text.endswith("\nFA+9qCX9VSu"))
         self.assertLessEqual(len(text), 70)
 

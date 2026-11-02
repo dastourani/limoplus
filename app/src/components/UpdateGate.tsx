@@ -81,7 +81,7 @@ export function UpdateGate() {
             <LemonSlice size={120} />
             <Text style={styles.wallTitle}>وقت به‌روزرسانی است</Text>
             <Text style={[styles.wallText]}>
-              این نسخه‌ی لیمو پلاس دیگر پشتیبانی نمی‌شود. برای ادامه، {versionLabel(required)} را نصب کنید؛ کتاب‌ها، یادداشت‌ها و پیشرفت شما
+              این نسخه‌ی لیموخوان دیگر پشتیبانی نمی‌شود. برای ادامه، {versionLabel(required)} را نصب کنید؛ کتاب‌ها، یادداشت‌ها و پیشرفت شما
               سر جایش می‌ماند.
             </Text>
             <Notes release={required} />
@@ -97,7 +97,7 @@ export function UpdateGate() {
   }
 
   return (
-    <Sheet visible={!!offer} onClose={() => setOffer(null)} title="نسخه‌ی جدید لیمو پلاس">
+    <Sheet visible={!!offer} onClose={() => setOffer(null)} title="نسخه‌ی جدید لیموخوان">
       <View style={styles.offerHead}>
         <IconBadge name="sparkles" size={44} />
         <Text style={[styles.offerText, rtl]}>{versionLabel(offer)} آماده است. نصبش چند ثانیه طول می‌کشد و اطلاعات شما سر جایش می‌ماند.</Text>

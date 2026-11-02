@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingTop: 10, maxHeight: '85%', gap: 12 },
   sheetHandle: { alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line, marginBottom: 6 },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.ink },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, padding: 16, gap: 10 },
+  card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 16, gap: 10 },
   empty: { alignItems: 'center', justifyContent: 'center', padding: 28, gap: 8 },
   emptyTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, textAlign: 'center' },
   emptyText: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 24, marginBottom: 8 },

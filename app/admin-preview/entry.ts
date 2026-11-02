@@ -77,7 +77,7 @@ function coverSvg(book: CoverInput, theme: CoverTheme, fontCss = ''): string {
     parts.join('') +
     `<rect x="188" y="324" width="34" height="2" rx="1" fill="${p.rule}"/>` +
     `<g transform="translate(206 328)">${LEMON(16).replace('<svg ', '<svg x="0" y="0" ')}</g>` +
-    `<text x="200" y="340" direction="rtl" text-anchor="start" font-size="10" font-weight="700" fill="${p.brand}">لیمو پلاس</text>` +
+    `<text x="200" y="340" direction="rtl" text-anchor="start" font-size="10" font-weight="700" fill="${p.brand}">لیموخوان</text>` +
     `</g></svg>`
   );
 }
@@ -104,7 +104,7 @@ function coverHtml(
     (book.title_en ? `<div style="font-size:${11 * k}px;color:${p.muted};direction:ltr;text-align:right;font-family:Georgia,serif;font-style:italic">${esc(book.title_en)}</div>` : '') +
     (byline ? `<div style="font-size:${11 * k}px;color:${p.muted}">${esc(byline)}</div>` : '') +
     `<div style="height:${2 * k}px;width:${34 * k}px;background:${p.rule};border-radius:2px;margin:${8 * k}px 0 ${6 * k}px"></div>` +
-    `<div style="display:flex;align-items:center;gap:${6 * k}px;font-size:${10 * k}px;font-weight:700;color:${p.brand}">${LEMON(16 * k)}لیمو پلاس</div></div></div>`
+    `<div style="display:flex;align-items:center;gap:${6 * k}px;font-size:${10 * k}px;font-weight:700;color:${p.brand}">${LEMON(16 * k)}لیموخوان</div></div></div>`
   );
 }
 

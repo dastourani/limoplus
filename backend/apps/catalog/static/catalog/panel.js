@@ -1,4 +1,4 @@
-/* LimoPlus panel: Markdown editor with a phone-sized live preview, and the chapter manager.
+/* LimoKhan panel: Markdown editor with a phone-sized live preview, and the chapter manager.
  * The preview uses the app's own renderer (limo-preview.js), so it looks exactly like the app. */
 (function () {
   'use strict';

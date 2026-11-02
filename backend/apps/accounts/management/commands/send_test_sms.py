@@ -30,8 +30,8 @@ class Command(BaseCommand):
         if settings.SMS_BACKEND != "raygan":
             self.stdout.write(self.style.WARNING("پیامک واقعی فرستاده نمی‌شود؛ در .env بنویسید SMS_BACKEND=raygan و سرور را دوباره اجرا کنید."))
         tests = [
-            ("۱ (بدون خط آخر)", "لیمو پلاس\nکد ورود: 111111\nاین کد را به کسی ندهید"),
-            ("۲ (با خط کد اپ)", "لیمو پلاس\nکد ورود: 222222\nاین کد را به کسی ندهید\n" + SAMPLE_HASH),
+            ("۱ (بدون خط آخر)", "لیموخوان\nکد ورود: 111111\nاین کد را به کسی ندهید"),
+            ("۲ (با خط کد اپ)", "لیموخوان\nکد ورود: 222222\nاین کد را به کسی ندهید\n" + SAMPLE_HASH),
         ]
         for name, text in tests:
             try:

@@ -166,11 +166,11 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
 .rc-important a.jump .go { margin-right: auto; color: #B9A23A; font-weight: 800; }
 .rc-traps { border-color: #F2C7C4; background: #FFF8F7; } .rc-traps h4 { color: #9E2F2A; }
 .rc-memorize h4 { color: #6B5200; }
-.next-card { display: block; margin: 28px 0 8px; padding: 14px 16px; border-radius: 16px; background: #17201A; color: #F3F1E7; text-decoration: none; cursor: pointer; }
+.next-card { display: block; margin: 28px 0 8px; padding: 14px 16px; border-radius: 18px; min-height: 48px; box-sizing: border-box; background: #17201A; color: #F3F1E7; text-decoration: none; cursor: pointer; }
 .next-card small { display: block; color: #F5C518; font-weight: 800; font-size: .8em; }
 .next-card b { display: block; font-size: 1em; margin-top: 2px; }
 .next-card b::after { content: " ←"; color: #F5C518; } /* «←»; «‹» is mirrored in Persian text and points back */
-.st-box { margin: 28px 0 0; padding: 10px 12px; border-radius: 16px; border: 1px solid #E3E8DE; background: #F6F7F2; }
+.st-box { margin: 28px 0 0; padding: 10px 12px; border-radius: 18px; border: 1px solid #E3E8DE; background: #F6F7F2; }
 .st-box small { display: block; color: #56655B; font-weight: 800; font-size: .75em; margin-bottom: 6px; }
 .st-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .st-done, .st-go { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: .82em; font-weight: 700; line-height: 1.8; text-decoration: none; }
@@ -179,9 +179,11 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
 .st-go.st-ok { background: #E3F3E9; color: #1F5E3A; border-color: #BFE8CF; }
 .st-box + .next-card, .st-box + .ch-end { margin-top: 10px; }
 .ch-end { margin: 28px 0 8px; padding: 16px; border-radius: 18px; background: #17201A; color: #F3F1E7; }
-.ch-title { color: #F5C518; font-weight: 900; font-size: 1.05em; }
-.ch-text { font-size: .88em; color: #C9D2C6; margin: 4px 0 12px; }
-.ch-btn { display: block; text-align: center; padding: 10px 12px; border-radius: 14px; margin-top: 8px; border: 1.5px solid #3A4A40; color: #F3F1E7;
+.ch-title { color: #F5C518; font-weight: 900; font-size: 17px; line-height: 1.7; }
+.ch-text { font-size: 14px; line-height: 1.8; color: #C9D2C6; margin: 4px 0 12px; }
+/* Controls keep the app's size whatever the reading font: 48 high, 15px text, corners 12 inside the box's 18. */
+.ch-btn { display: flex; align-items: center; justify-content: center; min-height: 48px; box-sizing: border-box; text-align: center;
+  padding: 6px 12px; border-radius: 12px; margin-top: 8px; border: 1.5px solid #3A4A40; color: #F3F1E7; font-size: 15px; line-height: 1.6;
   font-weight: 800; text-decoration: none; cursor: pointer; }
 .ch-main { background: #F5C518; border-color: #F5C518; color: #17201A; }
 .lesson.dark .st-box { background: #1E2621; border-color: #33403A; } .lesson.dark .st-go { background: #26302A; color: #E4E9E2; border-color: #33403A; }
@@ -377,6 +379,8 @@ export type ChapterEnd = {
   book_slug: string;
   book_title: string;
   next_chapter: { id: number; chapter_title: string; title: string; locked: boolean } | null;
+  /** The learner's chapter: complete (read and tested), or what is left. Null for a guest. */
+  progress?: { state: 'complete' | 'tests' | 'notes'; tests_left: number; notes_left: number } | null;
 };
 export type PageEnd = { nextTitle?: string | null; status?: SectionStatus | null; chapterEnd?: ChapterEnd | null };
 
@@ -408,14 +412,35 @@ export function pageEndHtml(end?: PageEnd): string {
     const next = c.next_chapter;
     const name = `فصل ${c.chapter_number ? fa(c.chapter_number) + ' ' : ''}«${escHtml(c.chapter_title)}»`;
     const n = c.exam_questions ?? 0;
-    const exam = n
-      ? `با یک آزمون ${fa(n)} سؤالی از کل این فصل (حدود ${fa(c.exam_minutes || 1)} دقیقه) ببین چقدرش در ذهنت مانده.`
-      : '';
-    html += `<div class="ch-end"><div class="ch-title">${name} تمام شد${next ? '' : `؛ کتاب «${escHtml(c.book_title)}» هم به آخر رسید!`}</div>
-${exam ? `<div class="ch-text">${exam}</div><a class="ch-btn ch-main" data-go="exam" role="button">آزمون ${fa(n)} سؤالی این فصل</a>` : ''}
-${next
-  ? `<a class="ch-btn${exam ? '' : ' ch-main'}" data-go="next-chapter" role="button">${next.locked ? '🔒 ' : ''}فصل بعد: ${escHtml(next.chapter_title)} ←</a>`
-  : '<a class="ch-btn" data-go="book" role="button">برگشت به صفحه‌ی کتاب</a>'}</div>`;
+    const p = c.progress;
+    // Three states, so reaching the last page is never mistaken for finishing the chapter.
+    const title =
+      p?.state === 'complete'
+        ? `${name} را کامل کردی!${next ? '' : ` کتاب «${escHtml(c.book_title)}» هم به آخر رسید.`}`
+        : `به پایان جزوه‌های ${name} رسیدی`;
+    const text =
+      p?.state === 'tests'
+        ? `برای کامل شدن این فصل، ${fa(p.tests_left)} تست مانده.`
+        : p?.state === 'notes'
+          ? `${fa(p.notes_left)} بخش این فصل هنوز تا آخر خوانده نشده.`
+          : n
+            ? `با یک آزمون ${fa(n)} سؤالی از کل این فصل (حدود ${fa(c.exam_minutes || 1)} دقیقه) ببین چقدرش در ذهنت مانده.`
+            : '';
+    // One main action that fits the state; the next chapter (or the book) is the second.
+    const main =
+      p?.state === 'tests'
+        ? `<a class="ch-btn ch-main" data-go="chapter-quiz" role="button">زدن ${fa(p.tests_left)} تست مانده</a>`
+        : p?.state === 'notes'
+          ? '<a class="ch-btn ch-main" data-go="book" role="button">دیدن بخش‌های مانده</a>'
+          : n
+            ? `<a class="ch-btn ch-main" data-go="exam" role="button">آزمون ${fa(n)} سؤالی این فصل</a>`
+            : '';
+    const second = next
+      ? `<a class="ch-btn${main ? '' : ' ch-main'}" data-go="next-chapter" role="button">${next.locked ? '🔒 ' : ''}فصل بعد: ${escHtml(next.chapter_title)} ←</a>`
+      : p?.state === 'notes'
+        ? ''
+        : '<a class="ch-btn" data-go="book" role="button">برگشت به صفحه‌ی کتاب</a>';
+    html += `<div class="ch-end"><div class="ch-title">${title}</div>${text ? `<div class="ch-text">${text}</div>` : ''}${main}${second}</div>`;
   }
   return html;
 }

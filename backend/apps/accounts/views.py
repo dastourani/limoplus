@@ -71,7 +71,7 @@ _APP_HASH = re.compile(r"^[A-Za-z0-9+/]{11}$")
 def _otp_message(code: str, app_hash=None) -> str:
     """Short enough for one Persian SMS (70 characters). The Android app's hash on the last line lets the phone read
     the code by itself (SMS Retriever); a malformed hash is ignored."""
-    text = f"لیمو پلاس\nکد ورود: {code}\nاین کد را به کسی ندهید"
+    text = f"لیموخوان\nکد ورود: {code}\nاین کد را به کسی ندهید"
     if settings.OTP_SMS_APP_HASH and isinstance(app_hash, str) and _APP_HASH.match(app_hash):
         text += f"\n{app_hash}"
     return text

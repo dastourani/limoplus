@@ -15,7 +15,9 @@ import { Button } from './ui';
 
 type ConfirmOptions = { title: string; message?: string; confirmLabel?: string; cancelLabel?: string; destructive?: boolean; icon?: IconName };
 type ToastAction = { label: string; onPress: () => void };
-type Feedback = { confirm: (o: ConfirmOptions) => Promise<boolean>; toast: (text: string, action?: ToastAction) => void };
+/** top: under the screen's header, for screens whose own buttons sit at the bottom (the reader). */
+type ToastPlace = { top?: boolean };
+type Feedback = { confirm: (o: ConfirmOptions) => Promise<boolean>; toast: (text: string, action?: ToastAction, place?: ToastPlace) => void };
 
 const FeedbackContext = createContext<Feedback>({ confirm: async () => false, toast: () => undefined });
 
@@ -26,13 +28,13 @@ export function useFeedback() {
 export function FeedbackProvider({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
   const [dialog, setDialog] = useState<(ConfirmOptions & { resolve: (v: boolean) => void }) | null>(null);
-  const [message, setMessage] = useState<{ text: string; action?: ToastAction } | null>(null);
+  const [message, setMessage] = useState<{ text: string; action?: ToastAction; top?: boolean } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const confirm = useCallback((o: ConfirmOptions) => new Promise<boolean>((resolve) => setDialog({ ...o, resolve })), []);
-  const toast = useCallback((text: string, action?: ToastAction) => {
+  const toast = useCallback((text: string, action?: ToastAction, place?: ToastPlace) => {
     if (timer.current) clearTimeout(timer.current);
-    setMessage({ text, action });
+    setMessage({ text, action, top: place?.top });
     timer.current = setTimeout(() => setMessage(null), action ? 5000 : 2800);
   }, []);
 
@@ -68,7 +70,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
         </View>
       </Modal>
       {message && (
-        <View style={[styles.toast, { bottom: Math.max(insets.bottom, 12) + 76 }]} pointerEvents="box-none">
+        <View style={[styles.toast, message.top ? { top: insets.top + 64 } : { bottom: Math.max(insets.bottom, 12) + 76 }]} pointerEvents="box-none">
           <View style={styles.toastBox}>
             <Text style={[styles.toastText, rtl]}>{message.text}</Text>
             {message.action && (

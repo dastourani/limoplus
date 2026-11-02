@@ -41,6 +41,8 @@ class ContentNode(MP_Node):
     full_body = models.TextField("متن جزوه (Markdown)", blank=True)
     is_free = models.BooleanField("رایگان", default=False, help_text="برای نمونه‌ی رایگان از کتاب پولی")
     position = models.PositiveSmallIntegerField("شماره‌ی فصل", null=True, blank=True)
+    # Sent with «معرفی به دوست» on the book page (a channel, a download page, later the book's page on the site).
+    share_link = models.URLField("لینک اشتراک", blank=True, help_text="با دکمه‌ی اشتراک صفحه‌ی کتاب فرستاده می‌شود. خالی: لینک پیش‌فرض (تنظیمات اشتراک).")
     group = models.CharField("گروه", max_length=120, blank=True, help_text="سرتیتر گروه بخش‌ها در فهرست کتاب (از خط «# ...» در فایل فصل)")
     price = models.PositiveIntegerField("قیمت (تومان)", null=True, blank=True, help_text="فقط برای کتاب")
     # Book only.
@@ -290,3 +292,23 @@ class CleanupRun(models.Model):
         verbose_name = "فضای سرور"
         verbose_name_plural = "فضای سرور"
         ordering = ["-at"]
+
+
+class ShareSettings(models.Model):
+    """One row: the link sent when a book has none of its own."""
+
+    default_link = models.URLField("لینک پیش‌فرض", blank=True, help_text="مثلاً لینک کانال یا صفحه‌ی دانلود اپ.")
+
+    class Meta:
+        verbose_name = "تنظیمات اشتراک"
+        verbose_name_plural = "تنظیمات اشتراک"
+
+    def __str__(self):
+        return "تنظیمات اشتراک"
+
+    @classmethod
+    def link_for(cls, book) -> str:
+        if book.share_link:
+            return book.share_link
+        row = cls.objects.first()
+        return row.default_link if row else ""

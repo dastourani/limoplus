@@ -64,6 +64,8 @@ export type BookDetail = BookListItem & {
   } | null;
   /** Shareable questions of this book the learner can see («تست‌های نمونه»). */
   sample_count?: number;
+  /** Sent with «معرفی به دوست»: the book's own link, or the default one set in the panel (empty: none). */
+  share_link?: string;
   /** Each finished chapter's next review, and the book's weekly mixed review. */
   reviews?: { chapters: Record<string, { step: number; due_on: string; days: number; done: number }>; book: { due_on: string; days: number } | null } | null;
 };
@@ -286,6 +288,10 @@ export type ExamSummary = {
   wrong: number;
   blank: number;
   score_percent: number | null;
+  /** «تمرکز روی اشتباه‌هایم»: how many questions came from the learner's mistakes. */
+  focused?: number;
+  /** The previous finished exam on the same chapter (for «نسبت به دفعه‌ی قبل بهتر شدی»). */
+  previous_score?: number | null;
 };
 export type ExamPage = {
   results: (ExamSummary & { book_title: string })[];
@@ -408,7 +414,7 @@ export const endpoints = {
   reportQuestion: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`questions/${id}/report/`, { body: { reason, note } }),
   reportFlashcard: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`flashcards/${id}/report/`, { body: { reason, note } }),
   reportNode: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`nodes/${id}/report/`, { body: { reason, note } }),
-  startExam: (nodeId: number, body: { count: number; negative_marking: boolean; minutes?: number }) => api<ExamDetail>(`nodes/${nodeId}/exams/`, { body }),
+  startExam: (nodeId: number, body: { count: number; negative_marking: boolean; minutes?: number; focus_mistakes?: boolean }) => api<ExamDetail>(`nodes/${nodeId}/exams/`, { body }),
   exam: (id: number) => api<ExamDetail>(`exams/${id}/`),
   examInfo: (nodeId: number) => api<{ questions: number; title: string }>(`nodes/${nodeId}/exam-info/`),
   submitExam: (id: number, answers: Record<string, number | null>, doubts: number[] = []) =>

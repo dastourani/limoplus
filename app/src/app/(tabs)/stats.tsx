@@ -42,17 +42,19 @@ export default function StatsTab() {
         setData(d);
         setError(null);
         // Streak milestones are celebrated once each.
-        const milestone = [100, 30, 7, 3].find((m) => d.streak_days >= m);
-        if (milestone) {
-          const key = `limo.streak.${user.id}.${milestone}`;
-          AsyncStorage.getItem(key)
-            .then((seen) => {
-              if (seen) return;
+        // 7, 30 and 100 days in a row get the big moment once each; an ordinary day of a streak, a banner once a day.
+        const milestone = [100, 30, 7].find((m) => d.streak_days >= m);
+        const key = milestone ? `limo.streak.${user.id}.${milestone}` : '';
+        AsyncStorage.getItem(key || 'limo.none')
+          .catch(() => '1')
+          .then((seen) => {
+            if (milestone && !seen) {
               AsyncStorage.setItem(key, '1').catch(() => undefined);
               celebrate('streak', { title: milestone === 7 ? 'یک هفته‌ی کامل!' : `${toPersianDigits(milestone)} روز پشت سر هم!`, text: 'عادت مطالعه‌ات دارد شکل می‌گیرد. فردا هم یک بخش کوتاه بخوان.', days: d.streak_days });
-            })
-            .catch(() => undefined);
-        }
+            } else if (d.streak_days >= 2) {
+              celebrate('small', { title: `${toPersianDigits(d.streak_days)} روز پیاپی!`, text: 'فردا هم سر بزن تا زنجیره نشکند.', once: `streak-day.${user.id}.${new Date().toDateString()}` });
+            }
+          });
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -176,9 +178,9 @@ function StudyTimeCard({ time }: { time: StudyTimeTotals }) {
   const kinds = KIND_LABEL.filter(([k]) => (time.by_kind[k] ?? 0) >= 60);
   return (
     <Card>
-      <Text style={[styles.cardTitle, rtl]}>زمان مطالعه</Text>
+      <Text style={[styles.cardTitle, rtl]}>وقتی که گذاشتی</Text>
       <Text style={[styles.better, rtl]}>
-        این هفته: {studyDuration(time.week_seconds)}؛ روی هم: {studyDuration(time.seconds)}
+        این هفته {studyDuration(time.week_seconds)}؛ تا الان روی هم {studyDuration(time.seconds)}
       </Text>
       <View style={styles.chart}>
         {time.last_14_days.map((d) => (

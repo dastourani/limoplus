@@ -144,6 +144,8 @@ class ExamAttempt(models.Model):
     blank = models.PositiveSmallIntegerField(default=0)
     score_percent = models.FloatField(null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+    # «تمرکز روی اشتباه‌هایم»: how many of the questions were picked from the learner's weak ones (0 = all at random).
+    focused = models.PositiveSmallIntegerField(default=0)
     # The questions as they were when the exam started (stem, choices with ids and the right one, explanations), so
     # editing the content later changes neither the grading nor the report card of this exam.
     snapshot = models.JSONField(default=dict, blank=True)

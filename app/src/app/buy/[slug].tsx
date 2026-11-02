@@ -49,7 +49,7 @@ export default function Buy() {
         window.open(order.pay_url, '_blank');
         setMessage('بعد از پرداخت در صفحه‌ی باز‌شده، اینجا «بررسی پرداخت» را بزنید.');
       } else {
-        await WebBrowser.openAuthSessionAsync(order.pay_url, 'limoplus://payment-result');
+        await WebBrowser.openAuthSessionAsync(order.pay_url, 'limokhan://payment-result');
         await check(order.order_id);
       }
     } catch (e) {
@@ -109,7 +109,7 @@ export default function Buy() {
             key={plan.id}
             on={choice?.kind === 'plan' && choice.plan.id === plan.id}
             title={plan.title}
-            sub={`همه‌ی کتاب‌های لیمو پلاس تا وقتی اشتراک داری (${toPersianDigits(plan.months)} ماه)؛ کتاب‌های تازه هم خودکار اضافه می‌شوند.`}
+            sub={`همه‌ی کتاب‌های لیموخوان تا وقتی اشتراک داری (${toPersianDigits(plan.months)} ماه)؛ کتاب‌های تازه هم خودکار اضافه می‌شوند.`}
             price={plan.price}
             unit={plan.months === 1 ? 'تومان در ماه' : `تومان برای ${toPersianDigits(plan.months)} ماه`}
             badge={i === 0 ? 'برای چند کتاب به‌صرفه‌تر' : undefined}
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   bookCard: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 12 },
   coverSpace: { width: 64, height: 96, borderRadius: 8, backgroundColor: colors.ink },
   bookTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
-  option: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
+  option: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
   optionOn: { borderWidth: 2, borderColor: colors.ink, shadowColor: '#17201A', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
   optionTop: { flexDirection: 'row-reverse', alignItems: 'baseline', gap: 8 },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#CBD3C6', alignItems: 'center', justifyContent: 'center', marginTop: 2 },

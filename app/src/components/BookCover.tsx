@@ -39,7 +39,7 @@ export type CoverBook = {
 
 /**
  * A book's cover, drawn from one template: the major's colour strip, the subject's line motif, the title, the
- * English name, author and edition, and the LimoPlus mark. 2:3, any width; dark or light by the learner's choice.
+ * English name, author and edition, and the LimoKhan mark. 2:3, any width; dark or light by the learner's choice.
  */
 export const BookCover = memo(function BookCover({
   book,
@@ -115,7 +115,7 @@ export const BookCover = memo(function BookCover({
         <View style={styles.brand}>
           <LemonSlice size={16 * k} />
           <Text allowFontScaling={false} style={{ fontSize: 11 * k, fontWeight: '700', color: p.brand }}>
-            لیمو پلاس
+            لیموخوان
           </Text>
         </View>
       </View>

@@ -13,8 +13,8 @@ from apps.study import reviews
 from apps.study import time as study_time
 from apps.study import views as study
 
-admin.site.site_header = "پنل مدیریت لیمو پلاس"
-admin.site.site_title = "لیمو پلاس"
+admin.site.site_header = "پنل مدیریت لیموخوان"
+admin.site.site_title = "لیموخوان"
 admin.site.index_title = "مدیریت"
 
 api = [

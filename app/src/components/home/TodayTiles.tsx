@@ -10,7 +10,7 @@ import { Icon, type IconName } from '../Icon';
 import { Text } from '../Text';
 import { HRow } from './HRow';
 
-const W = 156;
+const W = 170; // wide enough for «مرور فصل ۱ «حد و پیوستگی»» in three lines
 
 export function TodayTiles({ tasks, onError }: { tasks: TodayTask[]; onError: () => void }) {
   if (!tasks.length) {
@@ -65,7 +65,7 @@ function Tile({ t, onError }: { t: TodayTask; onError: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  tile: { backgroundColor: colors.ink, borderRadius: 20, padding: 14, gap: 6, minHeight: 176 },
+  tile: { backgroundColor: colors.ink, borderRadius: 18, padding: 14, gap: 6, minHeight: 176 },
   icon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' },
   title: { fontSize: 15, fontWeight: '900', color: '#FFFFFF', lineHeight: 22 },
   place: { fontSize: 11, color: '#A9B6AD' },

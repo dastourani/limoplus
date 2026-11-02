@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from .access import AccessMap
 from .drawing import loads as loads_drawing
 from .importer import MEDIA_PREFIX
-from .models import Banner, ContentNode, Major
+from .models import Banner, ContentNode, Major, ShareSettings
 
 NOT_FOUND = {"code": "not_found", "message": "پیدا نشد."}
 
@@ -215,6 +215,7 @@ def book_detail(request, slug):
             "mine": _mine_in_book(request, book),
             "reviews": _reviews_in_book(request, book),
             "sample_count": _sample_count(access, book),
+            "share_link": ShareSettings.link_for(book),
         }
     )
 
@@ -291,13 +292,13 @@ def node_detail(request, node_id):
             "previous_title": access.nodes[siblings[index - 1]].title if index > 0 else None,
             "next_title": access.nodes[siblings[index + 1]].title if index + 1 < len(siblings) else None,
             "updated_at": node.updated_at,
-            "chapter_end": _chapter_end(access, node, parent) if index + 1 == len(siblings) else None,
+            "chapter_end": _chapter_end(access, node, parent, request) if index + 1 == len(siblings) else None,
             "status": _section_status(request.user, access, node),
         }
     )
 
 
-def _chapter_end(access, node, chapter):
+def _chapter_end(access, node, chapter, request=None):
     """The last section of a chapter: no dead end. The chapter's summary exam, and the next chapter (or the book's end)."""
     if node.kind != ContentNode.Kind.SECTION or chapter is None or chapter.kind != ContentNode.Kind.CHAPTER:
         return None
@@ -316,9 +317,13 @@ def _chapter_end(access, node, chapter):
             if access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))]
     count = min(10, len(pool))
     seconds = sum(q.estimated_seconds or 90 for q in sorted(pool, key=lambda q: q.estimated_seconds or 90)[:count])
+    from apps.study.progress import chapter_state
+
     return {"chapter_id": chapter.id, "chapter_title": chapter.title, "chapter_number": chapter.position,
             "book_slug": access.book.slug, "book_title": access.book.title, "next_chapter": nxt,
-            "exam_questions": count, "exam_minutes": max(1, round(seconds / 60)) if count else 0}
+            "exam_questions": count, "exam_minutes": max(1, round(seconds / 60)) if count else 0,
+            # «فصل ۲ را کامل کردی» / «۸ تست مانده» / «به پایان جزوه‌ها رسیدی»; null for a guest.
+            "progress": chapter_state(request.user, access, chapter, reading=node.id, request=request) if request is not None else None}
 
 
 def _section_status(user, access, node):

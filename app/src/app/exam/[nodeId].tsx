@@ -53,6 +53,7 @@ export default function Exam() {
   }, [nodeId, attempt, suggested]);
   const counts = typeof pool === 'number' ? examSizes(pool) : pool === 'unknown' ? [ALL_THERE_ARE] : [];
   const [negative, setNegative] = useState(true);
+  const [focus, setFocus] = useState(false);
   const [exam, setExam] = useState<ExamDetail | null>(null);
   const [answers, setAnswers] = useState<Record<string, number | null>>({});
   // The timer's submit must send the answers as they are now, not as they were when the timer started.
@@ -139,7 +140,7 @@ export default function Exam() {
     setBusy(true);
     setError(null);
     try {
-      const e = await endpoints.startExam(Number(nodeId), { count, negative_marking: negative });
+      const e = await endpoints.startExam(Number(nodeId), { count, negative_marking: negative, focus_mistakes: focus });
       setExam(e);
       setAnswers({});
       setIndex(0);
@@ -219,6 +220,16 @@ export default function Exam() {
               <Text style={[styles.label, rtl, { flex: 1 }]}>نمره‌ی منفی (هر ۳ غلط، ۱ درست را خنثی می‌کند)</Text>
               <Switch value={negative} onValueChange={setNegative} trackColor={{ true: colors.green }} />
             </View>
+            {/* Up to half of the questions from the learner's own mistakes; off by default so a plain exam shows the true level. */}
+            {typeof pool === 'number' && count < pool && (
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[styles.label, rtl]}>تمرکز روی اشتباه‌هایم</Text>
+                  <Text style={[styles.help, rtl]}>تا نیمی از سؤال‌ها از تست‌هایی که غلط زده‌ای یا شک داشتی.</Text>
+                </View>
+                <Switch value={focus} onValueChange={setFocus} trackColor={{ true: colors.green }} />
+              </View>
+            )}
             <Text style={[styles.help, rtl]}>زمان بر اساس سطح سؤال‌ها تعیین می‌شود. پاسخ‌ها تا پایان آزمون نشان داده نمی‌شوند.</Text>
           </Card>
           {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}

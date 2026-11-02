@@ -10,17 +10,26 @@
  * a crown and a stain where they land, small drops splitting off). Sounds and a short buzz mark the peak.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Ellipse, G, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Device from 'expo-device';
 
 import { buzz, play, preloadSounds } from '../lib/sound';
 import { colors, rtl, toPersianDigits } from '../theme';
 import { Text } from './Text';
 
-export type CelebrationKind = 'great' | 'good' | 'low' | 'login' | 'purchase' | 'deck' | 'streak';
+/**
+ * Three levels (how big the moment is, not what kind of work it was):
+ *   big    — great (exam), chapter, book, streak milestones: the whole screen, juice and sound
+ *   medium — purchase: short, straight to «شروع مطالعه»
+ *   small  — small, login (and a section, a deck, an average exam, an ordinary streak day): a banner at the top
+ *   calm   — low (exam): no sound, no juice, the way back in
+ */
+export type CelebrationKind = 'great' | 'good' | 'low' | 'login' | 'purchase' | 'deck' | 'streak' | 'small' | 'chapter' | 'book';
+const BIG: CelebrationKind[] = ['great', 'chapter', 'book', 'streak'];
 export type CelebrationOptions = {
   title: string;
   text?: string;
@@ -31,6 +40,12 @@ export type CelebrationOptions = {
   secondary?: { label: string; onPress: () => void };
   /** Streak: number of days. */
   days?: number;
+  /** Lemon wedges, one per item as on the progress lemon (chapter: its sections; deck: its cards). */
+  parts?: number;
+  /** Shown once ever for this key (per phone): opening the same page again does not celebrate again. */
+  once?: string;
+  /** More good news of the same moment, shown under the text («و ۷ روز پیاپی!»). */
+  extra?: string[];
 };
 type Celebration = CelebrationOptions & { kind: CelebrationKind; key: number };
 
@@ -43,6 +58,13 @@ function P(r: number, deg: number) {
   return [r * Math.cos(a), r * Math.sin(a)];
 }
 const f2 = (p: number[]) => `${p[0].toFixed(2)} ${p[1].toFixed(2)}`;
+/** A full wedge from the centre, as LemonProgress draws them. */
+function sectorPath(i: number, n: number, r: number) {
+  if (n <= 1) return `M 0 ${-r} A ${r} ${r} 0 1 1 -0.01 ${-r} Z`;
+  const a0 = (i * 360) / n;
+  const a1 = ((i + 1) * 360) / n;
+  return `M 0 0 L ${f2(P(r, a0))} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${f2(P(r, a1))} Z`;
+}
 function segPath(i: number, n: number, rIn: number, rOut: number) {
   const st = 360 / n;
   const gap = n > 12 ? 2 : 3;
@@ -102,10 +124,17 @@ function Lemon({ fills, size }: { fills: Fill[]; size: number }) {
         <Circle key={k} cx={p[0]} cy={p[1]} r={1.2} fill="#D49A06" opacity={0.5} />
       ))}
       <Circle r={87} fill="url(#cPith)" />
+      {/* Wedges cut like the progress lemon's (full sectors, white lines between), so it is the same lemon dressed up. */}
       {fills.map((f, i) => (
-        <Path key={i} d={segPath(i, n, 9, 78)} fill={f === 'juicy' ? 'url(#cJuicy)' : f === 'pink' ? 'url(#cPink)' : 'url(#cDry)'} stroke="rgba(255,255,255,0.35)" strokeWidth={1.2} />
+        <Path
+          key={i}
+          d={sectorPath(i, n, 80)}
+          fill={f === 'juicy' ? 'url(#cJuicy)' : f === 'pink' ? 'url(#cPink)' : 'url(#cDry)'}
+          stroke="#FFFFFF"
+          strokeWidth={n > 16 ? 3.8 : n > 8 ? 4.8 : 6.4}
+          strokeLinejoin="round"
+        />
       ))}
-      <Circle r={8} fill="#FFFCEF" />
       <Ellipse cx={-40} cy={-54} rx={28} ry={10} rotation={-36} originX={-40} originY={-54} fill="#FFFFFF" opacity={0.24} />
     </Svg>
   );
@@ -272,12 +301,15 @@ function useReveal(delay: number) {
 }
 
 function LemonScene({ c, onClose, reduce }: { c: Celebration; onClose: () => void; reduce: boolean }) {
-  const { width } = useWindowDimensions();
-  const size = Math.min(220, width * 0.58);
+  const { width, height } = useWindowDimensions();
+  // Fits a short screen too: the lemon gives way first, the words and buttons always stay in view (the page scrolls).
+  const size = Math.max(120, Math.min(220, width * 0.58, height * 0.3));
   const exam = c.exam;
-  const n = c.kind === 'deck' ? 10 : 20;
+  const juicy = c.kind === 'deck' || c.kind === 'chapter' || c.kind === 'book';
+  const total = exam ? exam.right + exam.wrong + exam.blank : c.parts ?? 8;
+  const n = Math.max(1, Math.min(24, total));
   const order: Fill[] = useMemo(() => {
-    if (c.kind === 'deck') return Array<Fill>(10).fill('juicy');
+    if (juicy) return Array<Fill>(n).fill('juicy');
     const total = Math.max(1, (exam?.right ?? 0) + (exam?.wrong ?? 0) + (exam?.blank ?? 0));
     const right = Math.round(((exam?.right ?? 0) / total) * n);
     const wrong = Math.min(n - right, Math.round(((exam?.wrong ?? 0) / total) * n));
@@ -292,7 +324,7 @@ function LemonScene({ c, onClose, reduce }: { c: Celebration; onClose: () => voi
   const rot = useRef(new Animated.Value(0)).current;
   const glow = useRef(new Animated.Value(0)).current;
   const breath = useRef(new Animated.Value(1)).current;
-  const [textStyle, revealText] = useReveal(c.kind === 'great' || c.kind === 'deck' ? 0.25 : 0.1);
+  const [textStyle, revealText] = useReveal(c.kind === 'great' || juicy ? 0.25 : 0.1);
 
   useEffect(() => {
     if (reduce) {
@@ -308,14 +340,14 @@ function LemonScene({ c, onClose, reduce }: { c: Celebration; onClose: () => voi
         setTimeout(() => {
           setFilled(i + 1);
           setShown(Math.round(((exam?.score ?? 0) * (i + 1)) / order.length));
-          if (i % 3 === 0) play('tick', 0.5);
+          if (i % 3 === 0 && c.kind !== 'low') play('tick', 0.5);
         }, 400 + i * step * (1 + i / 60)),
       ),
     );
     const end = 400 + order.length * step * 1.15 + 60;
     timers.push(
       setTimeout(() => {
-        if (c.kind === 'great') {
+        if (c.kind === 'great' || c.kind === 'chapter' || c.kind === 'book') {
           // soft-body squeeze: sink and widen, juice out at the peak, spring back with overshoot
           Animated.parallel([
             Animated.timing(sx, { toValue: 1.1, duration: 160, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
@@ -362,7 +394,7 @@ function LemonScene({ c, onClose, reduce }: { c: Celebration; onClose: () => voi
   const fills = Array.from({ length: n }, (_, i) => (i < filled ? order[i] : 'dry')) as Fill[];
   const spin = rot.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   return (
-    <View style={styles.scene}>
+    <ScrollView contentContainerStyle={styles.scene} bounces={false} showsVerticalScrollIndicator={false}>
       <View style={{ width: size, height: size }}>
         <Animated.View style={[styles.glow, { width: size * 1.5, height: size * 1.5, borderRadius: size, left: -size * 0.25, top: -size * 0.25, opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }), transform: [{ scale: glow.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1.1] }) }] }]} />
         <Animated.View style={{ transform: [{ translateY: ty }, { rotate: spin }, { scale: breath }, { scaleX: sx }, { scaleY: sy }] }}>
@@ -379,6 +411,9 @@ function LemonScene({ c, onClose, reduce }: { c: Celebration; onClose: () => voi
       <Animated.View style={[styles.copy, textStyle]}>
         <Text style={styles.title}>{c.title}</Text>
         {!!c.text && <Text style={[styles.text, { textAlign: 'center' }]}>{c.text}</Text>}
+        {c.extra?.map((line) => (
+          <Text key={line} style={styles.extra}>{line}</Text>
+        ))}
         {exam && (
           <View style={styles.chips}>
             <Text style={[styles.chip, { color: '#9BE3B4' }]}>{toPersianDigits(exam.right)} درست</Text>
@@ -388,7 +423,7 @@ function LemonScene({ c, onClose, reduce }: { c: Celebration; onClose: () => voi
         )}
         <Buttons c={c} onClose={onClose} />
       </Animated.View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -588,7 +623,7 @@ function LoginBanner({ c, onDone }: { c: Celebration; onDone: () => void }) {
         </Animated.View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.toastTitle, rtl]}>{c.title}</Text>
-          <Text style={[styles.toastText, rtl]}>{c.text ?? 'از همان جایی که ماندی ادامه بده.'}</Text>
+          {(c.text || c.kind === 'login') && <Text style={[styles.toastText, rtl]}>{c.text ?? 'از همان جایی که ماندی ادامه بده.'}</Text>}
         </View>
       </Animated.View>
     </SafeAreaView>
@@ -621,16 +656,45 @@ export function CelebrationProvider({ children }: { children: ReactNode }) {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduce).catch(() => undefined);
   }, []);
 
-  const celebrate = useCallback(
+  const currentRef = useRef<Celebration | null>(null);
+  currentRef.current = current;
+  const lastBig = useRef(0);
+  const show = useCallback(
     (kind: CelebrationKind, o: CelebrationOptions) => {
+      const now = currentRef.current;
+      // Good news while a full-screen moment is open joins it as one more line, instead of a second celebration.
+      if (now && now.kind !== 'login' && now.kind !== 'small') {
+        if (!now.extra?.includes(o.title)) setCurrent({ ...now, extra: [...(now.extra ?? []), o.title] });
+        return;
+      }
+      // A second big moment within a few minutes is told in a banner: big ones stay rare.
+      let k = kind;
+      if (BIG.includes(k)) {
+        if (Date.now() - lastBig.current < 3 * 60 * 1000) k = 'small';
+        else lastBig.current = Date.now();
+      }
       seq.current += 1;
-      setCurrent({ kind, ...o, key: seq.current });
-      if (kind !== 'login') {
+      setCurrent({ ...o, kind: k, key: seq.current });
+      if (k !== 'login' && k !== 'small') {
         fade.setValue(0);
         Animated.timing(fade, { toValue: 1, duration: 260, useNativeDriver: true }).start();
       }
     },
     [fade],
+  );
+  const celebrate = useCallback(
+    (kind: CelebrationKind, o: CelebrationOptions) => {
+      if (!o.once) return show(kind, o);
+      const key = `limo.celebrated.${o.once}`;
+      AsyncStorage.getItem(key)
+        .catch(() => null)
+        .then((seen) => {
+          if (seen) return;
+          AsyncStorage.setItem(key, '1').catch(() => undefined);
+          show(kind, o);
+        });
+    },
+    [show],
   );
   const close = useCallback(() => {
     Animated.timing(fade, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setCurrent(null));
@@ -640,8 +704,8 @@ export function CelebrationProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={celebrate}>
       {children}
-      {current?.kind === 'login' && <LoginBanner key={current.key} c={current} onDone={done} />}
-      {current && current.kind !== 'login' && (
+      {(current?.kind === 'login' || current?.kind === 'small') && <LoginBanner key={current.key} c={current} onDone={done} />}
+      {current && current.kind !== 'login' && current.kind !== 'small' && (
         <Animated.View style={[StyleSheet.absoluteFill, styles.overlay, { opacity: fade }]}>
           <Backdrop />
           <SafeAreaView style={{ flex: 1 }}>
@@ -661,7 +725,8 @@ export function CelebrationProvider({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   overlay: { zIndex: 1500, elevation: 15 },
-  scene: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
+  scene: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
+  extra: { fontSize: 15, fontWeight: '800', color: colors.lemon, textAlign: 'center' },
   glow: { position: 'absolute', backgroundColor: 'rgba(255,212,59,0.55)' },
   score: { fontSize: 46, fontWeight: '900', color: '#FFF7D6', marginTop: 6 },
   scorePct: { fontSize: 22, color: colors.lemon },
@@ -671,9 +736,10 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row-reverse', gap: 6, flexWrap: 'wrap', justifyContent: 'center' },
   chip: { fontSize: 12, fontWeight: '700', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' },
   btns: { alignSelf: 'stretch', gap: 8, marginTop: 8 },
-  btnY: { backgroundColor: colors.lemon, borderRadius: 16, paddingVertical: 13, alignItems: 'center' },
+  // The same buttons as the rest of the app: 52 high, corners 18.
+  btnY: { backgroundColor: colors.lemon, borderRadius: 18, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
   btnYText: { fontSize: 15, fontWeight: '800', color: colors.ink },
-  btnG: { borderRadius: 16, paddingVertical: 12, alignItems: 'center', borderWidth: 1.5, borderColor: '#3A4A40' },
+  btnG: { borderRadius: 18, minHeight: 52, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: '#3A4A40' },
   btnGText: { fontSize: 15, fontWeight: '800', color: '#F1F4EC' },
   big: { fontSize: 80, fontWeight: '900', color: '#FFF7D6' },
   bigLabel: { fontSize: 15, color: '#B9C4BC', marginTop: -4 },

@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "لیمو پلاس",
-    "slug": "limoplus",
+    "name": "لیموخوان",
+    "slug": "limokhan",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ir.limoplus.app"
+      "bundleIdentifier": "ir.limokhan.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,12 +18,12 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "ir.limoplus.app"
+      "package": "ir.limokhan.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "limoplus",
+    "scheme": "limokhan",
     "plugins": [
       "expo-router",
       [

@@ -264,6 +264,7 @@ export default function Section() {
       const end = node.chapter_end;
       const book = node.breadcrumb.find((b) => b.kind === 'book');
       if (e.to === 'quiz') router.push(`/quiz/${node.id}`);
+      else if (e.to === 'chapter-quiz' && end) router.push(`/quiz/${end.chapter_id}`);
       else if (e.to === 'cards') router.push(`/flashcards/${node.id}`);
       else if (e.to === 'exam' && end) router.push({ pathname: '/exam/[nodeId]', params: { nodeId: String(end.chapter_id), count: String(end.exam_questions ?? 10) } });
       else if (e.to === 'book' && (end?.book_slug || book)) router.push(`/book/${end?.book_slug ?? book!.slug}`);
@@ -493,7 +494,7 @@ export default function Section() {
           end={pageEnd}
           startAt={startAt}
         />
-        <Watermark text={user?.phone || 'لیمو پلاس'} dark={dark} />
+        <Watermark text={user?.phone || 'لیموخوان'} dark={dark} />
         </Animated.View>
         <Sheet visible={!!term} onClose={() => setTerm(null)} title={term?.fa ?? ''}>
           {!!term?.en && <Text style={styles.termEn}>{term.en}</Text>}

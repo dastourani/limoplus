@@ -47,7 +47,7 @@ export default function Profile() {
   useFocusEffect(reload);
   const refresh = usePullRefresh(reloading, reload);
 
-  const name = user ? [user.first_name, user.last_name].filter(Boolean).join(' ') || 'کاربر لیمو پلاس' : 'مهمان';
+  const name = user ? [user.first_name, user.last_name].filter(Boolean).join(' ') || 'کاربر لیموخوان' : 'مهمان';
 
   return (
     <Screen tab>
@@ -151,7 +151,7 @@ export default function Profile() {
             />
           </View>
         )}
-        <Text style={styles.version}>لیمو پلاس، نسخه‌ی {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}</Text>
+        <Text style={styles.version}>لیموخوان، نسخه‌ی {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}</Text>
       </ScrollView>
     </Screen>
   );

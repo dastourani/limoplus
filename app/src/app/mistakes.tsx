@@ -144,7 +144,7 @@ export default function MistakesScreen() {
 
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 10 },
-  top: { backgroundColor: colors.ink, borderRadius: 20, padding: 16, gap: 8 },
+  top: { backgroundColor: colors.ink, borderRadius: 18, padding: 16, gap: 8 },
   topTitle: { fontSize: 18, fontWeight: '900', color: colors.lemon },
   topText: { fontSize: 13, color: '#C9D2C6' },
   chips: { gap: 8, paddingVertical: 2 },

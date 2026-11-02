@@ -35,7 +35,7 @@ export function ExamsCard({ exams, book }: { exams: ExamPage; book?: { slug: str
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.ink, borderRadius: 20, padding: 16, gap: 10 },
+  card: { backgroundColor: colors.ink, borderRadius: 18, padding: 16, gap: 10 },
   head: { flexDirection: 'row-reverse', alignItems: 'center' },
   title: { flex: 1, fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
   line: { fontSize: 13, color: '#C9D2C6' },

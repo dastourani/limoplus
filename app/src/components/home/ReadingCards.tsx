@@ -79,7 +79,7 @@ function Card({ r, width }: { r: ReadingItem; width: number }) {
 }
 
 const styles = StyleSheet.create({
-  card: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.ink, borderRadius: 22, padding: 14, minHeight: 128 },
+  card: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.ink, borderRadius: 18, padding: 14, minHeight: 128 },
   blank: { width: 64, height: 96, borderRadius: 10, backgroundColor: '#24302A', alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: 11, fontWeight: '800', color: colors.lemon },
   title: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },

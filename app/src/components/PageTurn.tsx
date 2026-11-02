@@ -23,7 +23,7 @@ function Face({ kind, title, w, h, face }: { kind: 'cover' | 'paper'; title?: st
         <LemonSlice size={Math.min(140, w * 0.38)} />
         {!!title && <Text style={styles.coverTitle}>{title}</Text>}
         <View style={styles.coverRule} />
-        <Text style={styles.coverBrand}>لیمو پلاس</Text>
+        <Text style={styles.coverBrand}>لیموخوان</Text>
       </View>
     );
   }

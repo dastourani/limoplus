@@ -23,7 +23,8 @@ export default function ExamResult() {
   const [open, setOpen] = useState<number | null>(null);
   const [filter, setFilter] = useState<'all' | 'wrong'>('all');
 
-  // Right after finishing an exam: a moment that matches the score (gentle when it went badly).
+  // Right after finishing an exam: a moment that matches the score (big when it went well, a banner when it was
+  // average, calm when it went badly), one level up when it beat the previous exam on the same chapter. Once per exam.
   useEffect(() => {
     if (!fresh || shown.current || !data?.submitted_at) return;
     shown.current = true;
@@ -31,13 +32,31 @@ export default function ExamResult() {
     const exam = { score: s, right: data.correct, wrong: data.wrong, blank: data.blank };
     const back = { label: 'بازگشت به کتاب', onPress: () => router.back() };
     const misses = data.wrong + data.blank;
-    if (s >= 80)
-      celebrate('great', { title: 'عالی بود!', text: data.wrong ? `فقط ${toPersianDigits(data.wrong)} غلط. همین مسیر را ادامه بده.` : 'بدون غلط! همین مسیر را ادامه بده.', exam, primary: 'دیدن پاسخ‌ها', secondary: back });
-    else if (s >= 50)
-      celebrate('good', { title: 'خوب بود!', text: `${toPersianDigits(misses)} سؤال مانده تا همه را بلد باشی. غلط‌ها را مرور کن.`, exam, primary: `مرور ${toPersianDigits(misses)} غلط و نزده`, secondary: back });
+    const gain = data.previous_score != null ? Math.round(s - data.previous_score) : 0;
+    const better = gain >= 5 ? `نسبت به دفعه‌ی قبل ${toPersianDigits(gain)}٪ بهتر شدی.` : '';
+    const once = `exam.${data.id}`;
+    if (misses) setFilter('wrong');
+    if (s >= 80 || (s >= 50 && better))
+      celebrate('great', {
+        once,
+        title: s >= 80 ? 'عالی بود!' : 'خوب بود!',
+        text: misses ? `${toPersianDigits(misses)} سؤال مانده تا همه را بلد باشی.` : 'بدون غلط! همین مسیر را ادامه بده.',
+        extra: better ? [better] : undefined,
+        exam,
+        primary: misses ? 'مرور پاسخ‌های غلط' : 'دیدن پاسخ‌ها',
+        secondary: back,
+      });
+    else if (s >= 50 || better)
+      celebrate('small', { once, title: `${s >= 50 ? 'خوب بود' : 'داری بهتر می‌شوی'}: ${toPersianDigits(s)}٪`, text: better || `${toPersianDigits(misses)} سؤال مانده تا همه را بلد باشی.` });
     else
-      celebrate('low', { title: 'شروع خوبی برای یاد گرفتن است', text: 'پاسخ تشریحی غلط‌ها را بخوان؛ دفعه‌ی بعد خیلی بهتر می‌شود.', exam, primary: 'خواندن پاسخ‌ها', secondary: { label: 'بعداً', onPress: () => router.back() } });
-    if (s < 80 && misses) setFilter('wrong');
+      celebrate('low', {
+        once,
+        title: 'شروع خوبی برای یاد گرفتن است',
+        text: misses ? `از همین ${toPersianDigits(misses)} سؤال شروع کنیم.` : undefined,
+        exam,
+        primary: 'مرور پاسخ‌های غلط',
+        secondary: { label: 'بعداً', onPress: () => router.back() },
+      });
   }, [fresh, data, celebrate]);
 
   if (loading) return <Screen><Header title="نتیجه‌ی آزمون" /><Loading /></Screen>;
@@ -70,7 +89,16 @@ export default function ExamResult() {
           <Text style={styles.heroSmall}>
             {data.negative_marking ? 'با نمره‌ی منفی' : 'بدون نمره‌ی منفی'}، {jalaliDateTime(data.submitted_at)}
           </Text>
+          {!!data.focused && (
+            <Text style={styles.heroSmall}>{toPersianDigits(data.focused)} سؤال از اشتباه‌های قبلی تو بود؛ نمره را با این در نظر بگیر.</Text>
+          )}
+          {data.previous_score != null && Math.round(score - data.previous_score) >= 5 && (
+            <Text style={[styles.heroSmall, { color: colors.lemon }]}>نسبت به دفعه‌ی قبل {toPersianDigits(Math.round(score - data.previous_score))}٪ بهتر شدی.</Text>
+          )}
         </View>
+        {data.wrong + data.blank > 0 && (
+          <Button label={`مرور پاسخ‌های غلط (${toPersianDigits(data.wrong + data.blank)})`} onPress={() => setFilter('wrong')} />
+        )}
         <View style={styles.filters}>
           {(['all', 'wrong'] as const).map((f) => (
             <Pill key={f} label={f === 'all' ? 'همه' : 'غلط‌ها و نزده‌ها'} selected={filter === f} onPress={() => setFilter(f)} />
@@ -139,7 +167,7 @@ export default function ExamResult() {
             </Card>
           );
         })}
-        <Button label="آزمون دوباره" onPress={() => router.replace(`/exam/${data.node_id}`)} />
+        <Button label="آزمون دوباره" variant={data.wrong + data.blank > 0 ? 'outline' : 'primary'} onPress={() => router.replace(`/exam/${data.node_id}`)} />
       </ScrollView>
     </Screen>
   );
@@ -147,7 +175,7 @@ export default function ExamResult() {
 
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 12 },
-  hero: { backgroundColor: colors.ink, borderRadius: radius.lg, padding: 22, alignItems: 'center', gap: 6 },
+  hero: { backgroundColor: colors.ink, borderRadius: radius.md, padding: 22, alignItems: 'center', gap: 6 },
   score: { fontSize: 56, fontWeight: '900', color: colors.lemon },
   heroText: { fontSize: 15, color: colors.ground, fontWeight: '700' },
   heroSmall: { fontSize: 12, color: '#B9C4BC' },

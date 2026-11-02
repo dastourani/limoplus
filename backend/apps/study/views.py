@@ -358,6 +358,7 @@ def _exam_summary(a):
         "wrong": a.wrong,
         "blank": a.blank,
         "score_percent": a.score_percent,
+        "focused": a.focused,
     }
 
 
@@ -370,6 +371,41 @@ def exam_info(request, node_id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
     pool = [q for q in Question.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False).only("id", "node_id", "is_free") if _usable(access, q)]
     return Response({"questions": min(len(pool), EXAM_MAX_QUESTIONS), "title": node.title})
+
+
+def _pick_focused(user, pool, count):
+    """«تمرکز روی اشتباه‌هایم»: up to half of the exam from the learner's weak questions, in this order: wrong ones
+    still in the mistakes notebook, then ones marked «شک‌دار» in an exam, then ones never answered; the rest at random.
+    An exam of every question there is is the same either way. Returns (questions in random order, how many were weak)."""
+    from .mistakes import in_notebook, notebook
+    from .progress import answered_ids
+
+    if count >= len(pool):
+        return random.sample(pool, len(pool)), 0
+    ids = [q.id for q in pool]
+    book = notebook(user, ids)
+    wrong = [q for q in pool if in_notebook(book.get(q.id))]
+    doubtful_ids = set(
+        ExamAnswer.objects.filter(attempt__user=user, attempt__submitted_at__isnull=False, is_doubtful=True, question_id__in=ids).values_list("question_id", flat=True)
+    )
+    answered = answered_ids(user)
+    taken: set[int] = set()
+    weak: list = []
+    mistakes = 0  # from the notebook or «شک‌دار»: what the report card calls «از اشتباه‌های قبلی تو»
+    for n, group in enumerate((wrong, [q for q in pool if q.id in doubtful_ids], [q for q in pool if q.id not in answered])):
+        group = [q for q in group if q.id not in taken]
+        random.shuffle(group)
+        for q in group:
+            if len(weak) >= count // 2:
+                break
+            weak.append(q)
+            taken.add(q.id)
+            if n < 2:
+                mistakes += 1
+    rest = [q for q in pool if q.id not in taken]
+    picked = weak + random.sample(rest, count - len(weak))
+    random.shuffle(picked)
+    return picked, mistakes
 
 
 @api_view(["POST"])
@@ -385,7 +421,8 @@ def start_exam(request, node_id):
         count = max(1, min(EXAM_MAX_QUESTIONS, int(request.data.get("count") or 20), len(pool)))
     except (TypeError, ValueError):
         count = min(20, len(pool))
-    picked = random.sample(pool, count)
+    focus = request.data.get("focus_mistakes") in (True, "true", 1, "1")
+    picked, focused = (_pick_focused(request.user, pool, count) if focus else (random.sample(pool, count), 0))
     seconds = sum(q.estimated_seconds or 90 for q in picked)
     try:
         if request.data.get("minutes"):
@@ -401,6 +438,7 @@ def start_exam(request, node_id):
         snapshot=_snapshot(picked),
         negative_marking=request.data.get("negative_marking", True) not in (False, "false", 0, "0"),
         time_limit_seconds=seconds,
+        focused=focused,
     )
     return Response(_exam_detail(request, attempt), status=status.HTTP_201_CREATED)
 
@@ -408,6 +446,14 @@ def start_exam(request, node_id):
 def _exam_detail(request, attempt):
     ordered = _exam_questions(attempt)
     data = _exam_summary(attempt)
+    # «نسبت به دفعه‌ی قبل بهتر شدی»: the score of the learner's previous finished exam on the same chapter.
+    if attempt.submitted_at:
+        data["previous_score"] = (
+            ExamAttempt.objects.filter(user=attempt.user, node=attempt.node, submitted_at__isnull=False, started_at__lt=attempt.started_at, is_archived=False)
+            .order_by("-started_at")
+            .values_list("score_percent", flat=True)
+            .first()
+        )
     data["questions"] = [
         {
             "id": qid,

@@ -237,7 +237,7 @@ export default function Quiz() {
       setSharing(true);
       await new Promise((r) => setTimeout(r, 900)); // let the card (and its formulas) draw
       const uri = await captureRef(shareRef, { format: 'png', quality: 1 });
-      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'تست لیمو پلاس' });
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'تست لیموخوان' });
     } catch {
       // cancelled
     } finally {

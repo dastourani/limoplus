@@ -9,7 +9,7 @@ import { Icon } from '../components/Icon';
 import { Button, Loading, Screen } from '../components/ui';
 import { colors, formatToman, toPersianDigits } from '../theme';
 
-/** Landing page after the gateway (deep link limoplus://payment-result?order=…). Asks the server, never trusts the link. */
+/** Landing page after the gateway (deep link limokhan://payment-result?order=…). Asks the server, never trusts the link. */
 export default function PaymentResult() {
   const { order } = useLocalSearchParams<{ order?: string }>();
   const [status, setStatus] = useState<OrderStatus | null>(null);
@@ -26,7 +26,7 @@ export default function PaymentResult() {
       .order(id, true)
       .then((s) => {
         setStatus(s);
-        if (s.status === 'paid') celebrate('purchase', { title: s.book_slug ? 'کتاب باز شد!' : 'اشتراکت فعال شد!', text: s.book_slug ? 'نسخه‌ی کامل حالا در دسترس توست. مطالعه‌ی خوبی داشته باشی!' : 'همه‌ی کتاب‌های اشتراک برایت باز است.', primary: 'شروع مطالعه' });
+        if (s.status === 'paid') celebrate('purchase', { once: `purchase.${id}`, title: s.book_slug ? 'کتاب باز شد!' : 'اشتراکت فعال شد!', text: s.book_slug ? 'نسخه‌ی کامل حالا در دسترس توست. مطالعه‌ی خوبی داشته باشی!' : 'همه‌ی کتاب‌های اشتراک برایت باز است.', primary: 'شروع مطالعه' });
       })
       .catch(() => setFailed(true));
   }, [order, celebrate]);

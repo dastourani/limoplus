@@ -129,10 +129,10 @@ export function FlashcardDeck({
     const next = pos + 1;
     setPos(next);
     if (g !== 'again' && next >= queue.length) {
-      celebrate('deck', {
-        title: 'مرور تمام شد!',
-        text: againIds.size ? `${toPersianDigits(queue.length - againIds.size)} کارت مرور شد. ${toPersianDigits(againIds.size)} کارت سخت بود و دوباره می‌آید.` : 'همه‌ی کارت‌ها را بلد بودی!',
-        primary: 'بازگشت',
+      // Cards are done most days: a banner, not the whole screen.
+      celebrate('small', {
+        title: `مرور تمام شد: ${toPersianDigits(cards.length)} کارت`,
+        text: againIds.size ? `${toPersianDigits(againIds.size)} کارت سخت بود و دوباره می‌آید.` : 'همه‌ی کارت‌ها را بلد بودی!',
       });
     }
   };
@@ -238,7 +238,7 @@ export function FlashcardDeck({
                 {!!box && <Text style={styles.boxLabel}>جعبه‌ی {toPersianDigits(box)}</Text>}
                 <Text style={styles.cardTitle}>{card!.title}</Text>
                 <Text style={styles.hint}>بزن تا نکته را ببینی</Text>
-                <Text style={styles.brand}>لیمو پلاس</Text>
+                <Text style={styles.brand}>لیموخوان</Text>
               </Animated.View>
               <Animated.View
                 ref={cardRef}
@@ -254,7 +254,7 @@ export function FlashcardDeck({
                     </View>
                   )}
                 </View>
-                <Text style={[styles.brand, { color: '#56655B' }]}>لیمو پلاس</Text>
+                <Text style={[styles.brand, { color: '#56655B' }]}>لیموخوان</Text>
               </Animated.View>
               <Animated.View pointerEvents="none" style={[styles.tint, { backgroundColor: '#2F7D4F', opacity: goodTint }]}>
                 <Text style={styles.tintText}>خوب</Text>
@@ -266,7 +266,7 @@ export function FlashcardDeck({
           </Pressable>
         </Animated.View>
         {/* On screen only: the shared image carries just the brand, never the reader's phone number. */}
-        <Watermark text={user?.phone || 'لیمو پلاس'} />
+        <Watermark text={user?.phone || 'لیموخوان'} />
         <View style={{ alignSelf: 'center', marginTop: 12 }}>
           <ReportButton
             reported={reported.includes(card!.id)}

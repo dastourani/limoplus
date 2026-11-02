@@ -96,3 +96,24 @@ def section_states(user, access, request=None) -> tuple[set[int], set[int]]:
     done = {sid for sid in read if sid in tested or not per_section.get(sid)}
     started = read | tested
     return started, done
+
+
+def chapter_state(user, access, chapter, reading=None, request=None) -> dict | None:
+    """For the box at the end of a chapter's last section: is the chapter complete (every section read and tested),
+    or how many sections and questions are left. `reading`: the section on screen, counted as read."""
+    if not user.is_authenticated:
+        return None
+    sections = [n for n in access.children(chapter) if n.kind == "section" and access.readable(n.id)]
+    if not sections:
+        return None
+    read = read_ids(user, access.book, request) | ({reading} if reading else set())
+    answered, _ = _answered(user, request)
+    per_section: dict[int, list[int]] = {}
+    for node_id, rows in _questions_of({s.id for s in sections}, request).items():
+        for qid, is_free in rows:
+            if access.visible(node_id) and (is_free or access.readable(node_id)):
+                per_section.setdefault(node_id, []).append(qid)
+    tests_left = sum(max(0, needed(len(qs)) - sum(1 for q in qs if q in answered)) for qs in per_section.values())
+    notes_left = sum(1 for s in sections if s.id not in read)
+    state = "complete" if not tests_left and not notes_left else "tests" if tests_left else "notes"
+    return {"state": state, "tests_left": tests_left, "notes_left": notes_left}
