@@ -620,6 +620,18 @@ class StudyTimeTests(TestCase):
         self.assertEqual(mine["chapter_seconds"][str(self.chapter.id)], 3200 + 900)
         self.assertEqual(self.client.get("/api/v1/me/stats/").data["time"]["week_seconds"], 4100)
 
+    def test_a_report_sent_twice_counts_once(self):
+        from .models import StudyTime
+
+        body = {"id": "r-1234567890", "entries": [{"node_id": self.section.id, "kind": "read", "seconds": 60}]}
+        self.assertEqual(self.client.post("/api/v1/me/time/", body, format="json").data["added"], 60)
+        again = self.client.post("/api/v1/me/time/", body, format="json").data
+        self.assertEqual((again["added"], again.get("repeated")), (0, True))
+        self.assertEqual(StudyTime.objects.get().seconds, 60)
+        body["id"] = "r-0987654321"
+        self.client.post("/api/v1/me/time/", body, format="json")
+        self.assertEqual(StudyTime.objects.get().seconds, 120, "a new report is added")
+
     def test_owner_sees_each_learner(self):
         from django.urls import reverse
 

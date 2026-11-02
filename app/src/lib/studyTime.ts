@@ -6,6 +6,7 @@
  */
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 
 import { sendOrQueue } from './network';
@@ -37,11 +38,44 @@ function add(nodeId: number, kind: StudyKind, seconds: number) {
   pending.set(key, row);
 }
 
-/** Sends what was counted (kept exactly; a failed send is queued and retried by the outbox). */
+// What is counted but not sent yet is also kept on the phone, so closing the app suddenly loses at most a few seconds.
+const KEEP = 'limo.studytime.pending';
+let restored = false;
+function keep() {
+  if (!restored) return; // not before what an earlier run kept has been read back
+  AsyncStorage.setItem(KEEP, JSON.stringify([...pending.values()])).catch(() => undefined);
+}
+async function restore() {
+  try {
+    const saved = JSON.parse((await AsyncStorage.getItem(KEEP)) ?? '[]') as { node_id: number; kind: StudyKind; day: string; seconds: number }[];
+    for (const e of saved) {
+      const key = `${e.node_id}|${e.kind}|${e.day}`;
+      const row = pending.get(key) ?? { ...e, seconds: 0 };
+      row.seconds += e.seconds;
+      pending.set(key, row);
+    }
+  } catch {
+    // nothing kept
+  }
+  restored = true;
+  flushStudyTime();
+}
+
+/** Sends what was counted, exactly. Each report has its own id: if it is sent again (the outbox retries it after a lost
+ * answer), the server adds it only once. */
 export function flushStudyTime() {
   const entries = [...pending.values()].filter((e) => e.seconds >= 1).map((e) => ({ ...e, seconds: Math.round(e.seconds) }));
   pending.clear();
-  if (entries.length) sendOrQueue('me/time/', { entries }).catch(() => undefined);
+  keep();
+  if (!entries.length) return;
+  const id = `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+  sendOrQueue('me/time/', { id, entries }).catch(() => undefined);
+}
+
+/** On sign-out: what was counted belongs to the account that is leaving. */
+export function forgetStudyTime() {
+  pending.clear();
+  AsyncStorage.removeItem(KEEP).catch(() => undefined);
 }
 
 /** The app is in front (on the web: the tab is visible). */
@@ -54,6 +88,7 @@ let sender: ReturnType<typeof setInterval> | null = null;
 function startSender() {
   if (sender) return;
   sender = setInterval(flushStudyTime, SEND_MS);
+  restore();
   // Web (desktop browsers and the iPhone PWA): mouse, keys and the wheel count as being here too, and closing the tab
   // sends what was counted.
   if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
@@ -79,7 +114,10 @@ export function useStudyTimer(nodeId: number | null | undefined, kind: StudyKind
         const now = Date.now();
         const step = Math.min(now - last, TICK_MS * 2);
         last = now;
-        if (here() && now - lastActive < IDLE_MS) add(nodeId, kind, step / 1000);
+        if (here() && now - lastActive < IDLE_MS) {
+          add(nodeId, kind, step / 1000);
+          keep();
+        }
       }, TICK_MS);
       return () => {
         clearInterval(tick);

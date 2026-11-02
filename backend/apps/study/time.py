@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from apps.catalog.access import AccessMap
 from apps.catalog.models import ContentNode
 
-from .models import StudyTime
+from .models import StudyTime, StudyTimeReport
 
 MAX_CHUNK = 15 * 60  # one report never adds more than this to one entry (the app sends about once a minute)
 MAX_DAY = 24 * 3600
@@ -32,8 +32,14 @@ def add_time(request):
     today = timezone.localdate()
     maps: dict[int, AccessMap] = {}
     nodes = {n.id: n for n in ContentNode.objects.filter(pk__in=[e.get("node_id") for e in entries if isinstance(e, dict)])}
+    key = request.data.get("id")
+    if key is not None and (not isinstance(key, str) or not 8 <= len(key) <= 40):
+        return Response({"code": "invalid", "message": "داده نامعتبر است."}, status=status.HTTP_400_BAD_REQUEST)
     added = 0
     with transaction.atomic():
+        # A report the app sends again (the answer was lost on the way) is added only once.
+        if key and not StudyTimeReport.objects.get_or_create(user=request.user, key=key)[1]:
+            return Response({"added": 0, "repeated": True})
         for e in entries:
             if not isinstance(e, dict):
                 continue

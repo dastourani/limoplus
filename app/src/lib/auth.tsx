@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearOffline } from './offline';
 import { secure } from './secure';
+import { flushStudyTime, forgetStudyTime } from './studyTime';
 
 const TOKEN_KEY = 'limo.token';
 const USER_KEY = 'limo.user'; // last known profile, so the app works signed-in while offline
@@ -93,7 +94,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signOut: async ({ remote = true } = {}) => {
         // Send what is still waiting from this account while it is still signed in.
-        if (remote) await flushOutbox().catch(() => undefined);
+        if (remote) {
+          flushStudyTime();
+          await flushOutbox().catch(() => undefined);
+        }
+        forgetStudyTime();
         if (remote) await endpoints.logout().catch(() => undefined);
         await forget();
       },

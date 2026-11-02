@@ -323,3 +323,16 @@ class StudyTime(models.Model):
         verbose_name_plural = "زمان مطالعه"
         unique_together = [("user", "node", "day", "kind")]
         indexes = [models.Index(fields=["user", "day"]), models.Index(fields=["book", "user"])]
+
+
+class StudyTimeReport(models.Model):
+    """The id of every time report the app sent, so a report re-sent after a dropped connection is added once. Kept 35
+    days by the nightly clean-up (a report older than 30 days is refused anyway)."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    key = models.CharField(max_length=40)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("user", "key")]
+        indexes = [models.Index(fields=["created_at"])]

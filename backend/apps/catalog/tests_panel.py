@@ -842,6 +842,41 @@ class ShelfSpeedTests(_Base):
         many = count()
         self.assertLessEqual(many - one, 10 * 2, f"{one} queries for 1 book, {many} for 11")
 
+    def test_progress_of_many_read_books_needs_no_query_per_book(self):
+        """The three-state progress (read / done) is worked out for every book on the shelves from shared queries."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from rest_framework.test import APIClient
+
+        from apps.commerce.models import Entitlement
+        from apps.study.models import SectionProgress
+
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        self.admin.is_staff = False
+        self.admin.save()
+        Entitlement.objects.create(user=self.admin, all_majors=True)
+
+        def add_books(start, n):
+            for i in range(start, start + n):
+                b = ContentNode.add_root(kind="book", title=f"کتاب {i}", slug=f"rb{i}", is_published=True)
+                c = b.add_child(kind="chapter", title="ف", slug=f"rb{i}c", is_published=True)
+                sec = c.add_child(kind="section", title="ب", slug=f"rb{i}s", is_published=True)
+                Question.objects.create(node=sec, slug=f"rq{i}", stem="؟", explanation="-", difficulty="easy")
+                SectionProgress.objects.create(user=self.admin, node=sec, book=b, is_done=True)
+
+        def count():
+            with CaptureQueriesContext(connection) as ctx:
+                self.assertEqual(client.get("/api/v1/shelves/").status_code, 200)
+            return len(ctx.captured_queries)
+
+        add_books(0, 2)
+        few = count()
+        add_books(2, 8)
+        many = count()
+        # One query per book is the book's own tree (as for a book never opened); progress adds none.
+        self.assertLessEqual(many - few, 8, f"{few} queries with 2 read books, {many} with 10")
+
     def test_book_samples_for_group_sharing(self):
         from rest_framework.test import APIClient
 

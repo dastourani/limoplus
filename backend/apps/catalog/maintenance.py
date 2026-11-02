@@ -28,7 +28,7 @@ PENDING_IMPORT_HOURS = 24
 
 def cleanup_temporary(now=None) -> dict:
     from apps.accounts.models import DeviceSession, OTPCode, RateBucket
-    from apps.study.models import FlashcardReviewOp
+    from apps.study.models import FlashcardReviewOp, StudyTimeReport
 
     now = now or timezone.now()
     codes = OTPCode.objects.filter(expires_at__lt=now - timedelta(days=1)).delete()[0]
@@ -50,6 +50,7 @@ def cleanup_temporary(now=None) -> dict:
             except FileNotFoundError:
                 pass
     ops = FlashcardReviewOp.objects.filter(created_at__lt=now - timedelta(days=30)).delete()[0]
+    ops += StudyTimeReport.objects.filter(created_at__lt=now - timedelta(days=35)).delete()[0]
     return {"codes": codes, "rate_counters": buckets, "sessions": sessions, "pending_imports": pending, "review_ids": ops}
 
 
