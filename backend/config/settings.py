@@ -1,5 +1,5 @@
 """
-LimoKhan backend settings.
+LimooKhan backend settings.
 
 Every value that differs between your computer and the real server comes from
 `backend/.env` (see `.env.example`). Nothing secret or host-specific is written
@@ -176,7 +176,7 @@ if not DEBUG and not TESTING and ZIBAL_MERCHANT == "zibal":
     # The test merchant "pays" without real money; it must never run on the real server.
     raise ImproperlyConfigured("ZIBAL_MERCHANT=zibal is Zibal's test merchant. Set the real merchant code on the server.")
 # Where the payment result page sends the user afterwards: the app's deep link (or the web app's address).
-APP_RETURN_URL = env("APP_RETURN_URL", default="limokhan://payment-result")
+APP_RETURN_URL = env("APP_RETURN_URL", default="limookhan://payment-result")
 
 # --- Security on the real server --------------------------------------------
 

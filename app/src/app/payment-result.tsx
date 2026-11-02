@@ -9,7 +9,7 @@ import { Icon } from '../components/Icon';
 import { Button, Loading, Screen } from '../components/ui';
 import { colors, formatToman, toPersianDigits } from '../theme';
 
-/** Landing page after the gateway (deep link limokhan://payment-result?order=…). Asks the server, never trusts the link. */
+/** Landing page after the gateway (deep link limookhan://payment-result?order=…). Asks the server, never trusts the link. */
 export default function PaymentResult() {
   const { order } = useLocalSearchParams<{ order?: string }>();
   const [status, setStatus] = useState<OrderStatus | null>(null);

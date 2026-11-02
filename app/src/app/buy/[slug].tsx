@@ -49,7 +49,7 @@ export default function Buy() {
         window.open(order.pay_url, '_blank');
         setMessage('بعد از پرداخت در صفحه‌ی باز‌شده، اینجا «بررسی پرداخت» را بزنید.');
       } else {
-        await WebBrowser.openAuthSessionAsync(order.pay_url, 'limokhan://payment-result');
+        await WebBrowser.openAuthSessionAsync(order.pay_url, 'limookhan://payment-result');
         await check(order.order_id);
       }
     } catch (e) {

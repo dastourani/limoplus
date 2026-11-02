@@ -1,7 +1,7 @@
-# LimoKhan (لیموخوان; formerly LimoPlus) — notes for AI agents
+# LimooKhan (لیموخوان; formerly LimoPlus) — notes for AI agents
 
 The app is called «لیموخوان» everywhere users see it (app name, SMS, panel, covers, share images). Android package
-`ir.limokhan.app`, deep-link scheme `limokhan://`. The repo, folders and the internal SMS module keep the old `limoplus` name.
+`ir.limookhan.app`, deep-link scheme `limookhan://`. The repo, folders and the internal SMS module keep the old `limoplus` name.
 
 Interactive learning platform for Iranian university students: books per major (field of study), each with a
 summary mode and a full-notes mode, plus tests, flashcards and study stats. The owner does not write code; agents
@@ -22,7 +22,7 @@ Code, identifiers and commit messages are in English.
   edit-profile, devices, book (progress, buy, offline download), section (summary/full, highlights and notes,
   bookmark, night mode, font size, watermark, copy limit, offline fallback), quiz (practice, resume, reset,
   report), exam (timed, negative marking) and exam-result, exams (history), flashcards (Leitner, report, share as
-  image), buy/[slug] and payment-result (deep link `limokhan://payment-result`), offline, settings (server address).
+  image), buy/[slug] and payment-result (deep link `limookhan://payment-result`), offline, settings (server address).
   Guests can read free parts; `requireLogin()` sends them to login when a feature needs an account.
   Auth state: `src/lib/auth.tsx` (token in expo-secure-store). Offline books: `src/lib/offline.ts`, AES-256-GCM,
   key in the secure store, wiped on sign-out, valid 30 days. Screenshots are blocked app-wide on Android
