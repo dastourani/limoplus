@@ -761,6 +761,19 @@ class MaintenanceTests(_Base):
         self.assertTrue(os.path.exists(paths["used.png"]))
         self.assertFalse(os.path.exists(paths["lost.png"]))
         self.assertTrue(os.path.exists(paths["new.png"]), "a new picture may be used soon")
+        # A picture only a past exam still shows stays too.
+        from apps.study.models import ExamAttempt
+
+        kept = os.path.join(folder, "exam.png")
+        with open(kept, "wb") as f:
+            f.write(b"x")
+        os.utime(kept, (month_ago, month_ago))
+        ExamAttempt.objects.create(user=self.admin, node=self.chapter, time_limit_seconds=60,
+                                   snapshot={"1": {"stem": "![](media:content/test-book/ch1/exam.png)"}})
+        from .maintenance import orphan_images
+
+        orphan_images()
+        self.assertTrue(os.path.exists(kept))
         self.assertEqual(CleanupRun.objects.count(), 1)
 
         page = self.client.get(reverse("admin:catalog_cleanuprun_changelist"))

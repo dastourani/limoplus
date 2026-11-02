@@ -50,6 +50,8 @@ BOOK_EVERY_DAYS = 7
 FINISH_SHARE = 0.7
 DAILY_CAP = 2
 SECONDS_PER_QUESTION = 80  # «۵ تست، حدود ۷ دقیقه»
+EXAM_LATE = timedelta(minutes=5)
+SYNC_EVERY = timedelta(minutes=10)
 
 
 # --- When a chapter is finished --------------------------------------------------------------------------------------
@@ -109,10 +111,24 @@ def start_cycle(user, access, chapter, by="auto") -> ChapterReview:
     return review
 
 
-def sync(user) -> None:
-    """Start the cycle of every chapter that became finished (in the books this learner reads)."""
+def recheck(user) -> None:
+    """Something that can finish a chapter happened (a section read, a question answered): look again next time."""
+    from django.core.cache import cache
+
+    cache.delete(f"limo.review_sync.{user.pk}")
+
+
+def sync(user, force=False) -> None:
+    """Start the cycle of every chapter that became finished (in the books this learner reads). Checked at most every
+    ten minutes per learner, since it looks at every book they read."""
     if not user.is_authenticated:
         return
+    from django.core.cache import cache
+
+    key = f"limo.review_sync.{user.pk}"
+    if not force and cache.get(key):
+        return
+    cache.set(key, True, SYNC_EVERY.total_seconds())
     started = set(ChapterReview.objects.filter(user=user).values_list("chapter_id", flat=True))
     for book in ContentNode.objects.filter(pk__in=SectionProgress.objects.filter(user=user, is_done=True).values("book_id")):
         access = AccessMap(user, book)
@@ -324,7 +340,7 @@ def book_schedule(user, book) -> dict:
 def _payload(request, session: ReviewSession) -> dict:
     from .mistakes import _practice_payload
 
-    qs = {q.id: q for q in Question.objects.filter(pk__in=session.served).prefetch_related("choices", "questionsource_set__source")}
+    qs = {q.id: q for q in Question.objects.filter(pk__in=session.served, is_archived=False).prefetch_related("choices", "questionsource_set__source")}
     answered = _session_answers(session)
     review = session.chapter_review or session.book_review
     access = AccessMap(request.user, review.book)
@@ -392,9 +408,15 @@ def start_review(request):
     access = AccessMap(request.user, review.book)
     lookup = {"chapter_review": review} if kind == "chapter" else {"book_review": review}
     with transaction.atomic():
+        # The review row is locked so two quick taps open one sitting (and at most one exam).
+        type(review).objects.select_for_update().filter(pk=review.pk).first()
         session = ReviewSession.objects.select_for_update().filter(user=request.user, finished_at__isnull=True, **lookup).first()
-        if session and session.exam_id and session.exam and session.exam.submitted_at:
-            session = None
+        if session and session.exam_id:
+            exam = session.exam
+            if exam is None or exam.submitted_at or timezone.now() > exam.ends_at + EXAM_LATE:
+                # An exam left to run out is set aside (kept, not scored) and a fresh one is made.
+                ReviewSession.objects.filter(pk=session.pk).update(finished_at=timezone.now())
+                session = None
         if session is None:
             stage = review.stage if kind == "chapter" else 0
             session = ReviewSession(user=request.user, stage=stage, **lookup)

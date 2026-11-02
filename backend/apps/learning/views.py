@@ -99,6 +99,9 @@ def answer(request, question_id):
         if question.key_changed_at:
             answered_before = QuizAnswer.objects.filter(user=request.user, question=question, answered_at__lt=question.key_changed_at).exists()
         QuizAnswer.objects.create(user=request.user, question=question, choice_order=picked.order, was_correct=picked.is_correct)
+        from apps.study.reviews import recheck
+
+        recheck(request.user)
         if first:
             Question.objects.filter(pk=question.pk).update(
                 answer_count=F("answer_count") + 1, correct_count=F("correct_count") + (1 if picked.is_correct else 0)

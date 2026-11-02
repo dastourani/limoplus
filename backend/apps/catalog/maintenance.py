@@ -11,6 +11,7 @@ Run nightly with `python manage.py nightly_cleanup`; the panel's «فضای سر
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from datetime import timedelta
@@ -41,9 +42,12 @@ def cleanup_temporary(now=None) -> dict:
         limit = (now - timedelta(hours=PENDING_IMPORT_HOURS)).timestamp()
         for name in os.listdir(folder):
             path = os.path.join(folder, name)
-            if os.path.isfile(path) and os.path.getmtime(path) < limit:
-                os.remove(path)
-                pending += 1
+            try:
+                if os.path.isfile(path) and os.path.getmtime(path) < limit:
+                    os.remove(path)
+                    pending += 1
+            except FileNotFoundError:
+                pass
     return {"codes": codes, "rate_counters": buckets, "sessions": sessions, "pending_imports": pending}
 
 
@@ -94,6 +98,12 @@ def _used_files() -> set[str]:
     scan(Choice.objects.values_list("text", flat=True))
     scan(Flashcard.objects.values_list("point", flat=True))
     scan(ChapterRevision.objects.values_list("text", flat=True).iterator())
+    # Past exams keep their own copy of each question (pictures included), so a learner's report card never breaks.
+    from apps.study.models import ExamAttempt
+
+    for snap in ExamAttempt.objects.values_list("snapshot", flat=True).iterator():
+        if snap:
+            used.update(_REF.findall(json.dumps(snap, ensure_ascii=False)))
     used.update(p for p in ContentNode.objects.exclude(cover="").values_list("cover", flat=True))
     used.update(p for p in Banner.objects.exclude(image="").values_list("image", flat=True))
     return used
@@ -113,21 +123,31 @@ def orphan_images(now=None, delete=True) -> dict:
                 rel = os.path.relpath(path, settings.MEDIA_ROOT).replace(os.sep, "/")
                 if rel in used or os.path.getmtime(path) >= limit:
                     continue
+                try:
+                    bytes_ = os.path.getsize(path)
+                    if delete:
+                        os.remove(path)
+                except FileNotFoundError:
+                    continue
                 count += 1
-                size += os.path.getsize(path)
-                if delete:
-                    os.remove(path)
+                size += bytes_
     return {"files": count, "bytes": size}
 
 
-def run_all() -> dict:
+def run_all(run=None) -> dict:
+    from django.db import transaction
+
     from .models import CleanupRun
 
     now = timezone.now()
-    summary = {**cleanup_temporary(now), "revisions": prune_revisions(now)}
+    with transaction.atomic():
+        summary = {**cleanup_temporary(now), "revisions": prune_revisions(now)}
     images = orphan_images(now)
     summary["images"], summary["image_bytes"] = images["files"], images["bytes"]
-    CleanupRun.objects.create(summary=summary)
+    if run is None:
+        run = CleanupRun.objects.create(summary=summary)
+    else:
+        CleanupRun.objects.filter(pk=run.pk).update(summary=summary)
     return summary
 
 
@@ -187,9 +207,20 @@ def run_if_due() -> None:
 
     from .models import CleanupRun
 
-    if CleanupRun.objects.filter(at__gte=timezone.now() - timedelta(hours=24)).exists():
+    from django.db import transaction
+
+    # The run is recorded first, under a lock, so two staff opening the panel together (or a run that fails part way)
+    # never start it again the same day; its own savepoint keeps a database error from spoiling the panel's page.
+    try:
+        with transaction.atomic():
+            if CleanupRun.objects.select_for_update().filter(at__gte=timezone.now() - timedelta(hours=24)).exists():
+                return
+            run = CleanupRun.objects.create(summary={"started": True})
+    except Exception:  # noqa: BLE001
         return
     try:
-        run_all()
+        with transaction.atomic():
+            run_all(run)
     except Exception:  # noqa: BLE001 — tidying must never break the panel
         logging.getLogger(__name__).exception("cleanup failed")
+        CleanupRun.objects.filter(pk=run.pk).update(summary={"failed": True})

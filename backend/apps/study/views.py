@@ -94,6 +94,10 @@ def save_progress(request, node_id):
     progress.save()
     if created or became_done:
         StudyDay.touch(request.user, "sections")
+    if became_done:
+        from .reviews import recheck
+
+        recheck(request.user)
     return Response({"percent": progress.percent, "is_done": progress.is_done})
 
 

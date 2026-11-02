@@ -482,3 +482,14 @@ class ReviewCycleTests(TestCase):
         s = self.client.post("/api/v1/me/reviews/start/", {"kind": "book", "id": r.id}, format="json").data
         chapters = {Question.objects.get(pk=q["id"]).node.get_parent().id for q in s["questions"]}
         self.assertEqual(len(chapters), 2, "mixed from both chapters")
+
+    def test_two_quick_taps_open_one_sitting(self):
+        from .models import ChapterReview, ReviewSession
+
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        ChapterReview.objects.update(stage=2)
+        rid = ChapterReview.objects.get().id
+        a = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": rid}, format="json").data
+        b = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": rid}, format="json").data
+        self.assertEqual((a["id"], a["exam_id"]), (b["id"], b["exam_id"]))
+        self.assertEqual(ReviewSession.objects.count(), 1)
