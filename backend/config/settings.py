@@ -102,6 +102,13 @@ if env.str("DATABASE_URL", default="").strip():
 else:
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
+if DATABASES["default"]["ENGINE"].endswith("sqlite3"):
+    # SQLite (the laptop server): the app sends several requests at once. Each request takes the write lock when it
+    # starts and others wait for it (up to 20 s) instead of failing with «database is locked»; WAL lets reads go on
+    # while one request writes. PostgreSQL on the real server needs none of this.
+    DATABASES["default"].setdefault("OPTIONS", {}).update(
+        {"timeout": 20, "transaction_mode": "IMMEDIATE", "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;"}
+    )
 
 AUTH_USER_MODEL = "accounts.User"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
