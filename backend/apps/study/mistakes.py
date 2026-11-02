@@ -306,34 +306,61 @@ def _continue(request):
 
 @api_view(["GET"])
 def today(request):
-    """What to do today: due cards (fewer after a break), a few mistakes, and the section in progress."""
-    away = _away_days(request.user)
-    comeback = away >= COMEBACK_DAYS
-    due = len(_due_cards(request))
-    cards = min(due, COMEBACK_CARDS) if comeback else due
-    mistakes = len(due_items(_mistakes(request)[0]))
-    practise = min(mistakes, 5)
-    cont = _continue(request)
+    """«کارهای امروز»: one tile per job, in this order: the chapter reviews due (at most two), the flashcards due (fewer
+    after a break), and five questions from the mistakes notebook. A job done today leaves the list."""
     from .reviews import DAILY_CAP, due_reviews
 
-    due = due_reviews(request.user)
-    todays = due[:DAILY_CAP]
-    minutes = round(cards * 0.4 + practise * 1.5 + (8 if cont else 0) + sum(r["minutes"] for r in todays))
+    away = _away_days(request.user)
+    comeback = away >= COMEBACK_DAYS
+    cards_due = len(_due_cards(request))
+    cards = min(cards_due, COMEBACK_CARDS) if comeback else cards_due
+    mistakes = len(due_items(_mistakes(request)[0]))
+    practised = _notebook_answered_today(request.user)
+    practise = 0 if practised >= NOTEBOOK_DAILY else min(mistakes, NOTEBOOK_DAILY - practised)
+    cont = _continue(request)
+    reviews_due = due_reviews(request.user)
+    todays = reviews_due[:DAILY_CAP]
+
+    tasks = [{**r, "kind": "review", "review_kind": r["kind"]} for r in todays]
+    if cards:
+        tasks.append({"kind": "cards", "count": cards, "total": cards_due, "comeback": comeback, "minutes": max(1, round(cards * 0.4))})
+    if practise:
+        tasks.append({"kind": "notebook", "count": practise, "total": mistakes, "minutes": max(1, round(practise * 1.5))})
+    minutes = sum(t["minutes"] for t in tasks)
     return Response(
         {
             "away_days": away,
             "comeback": comeback,
             "cards": cards,
-            "cards_total": due,
+            "cards_total": cards_due,
             "mistakes": mistakes,
             "practise": practise,
             "continue": {"id": cont.node_id, "title": cont.node.title, "book_title": cont.book.title, "book_slug": cont.book.slug} if cont else None,
             # «مرور فصل ۲ «…» از …: ۵ تست، حدود ۷ دقیقه» (at most two a day, the oldest first).
             "reviews": todays,
-            "reviews_waiting": max(0, len(due) - len(todays)),
-            "minutes": max(minutes, 5) if (cards or practise or cont or todays) else 0,
+            "reviews_waiting": max(0, len(reviews_due) - len(todays)),
+            "tasks": tasks,
+            "minutes": minutes,
         }
     )
+
+
+NOTEBOOK_DAILY = 5
+
+
+def _notebook_answered_today(user) -> int:
+    """Questions from the notebook answered today in practice (not counting the wrong answer that put one there)."""
+    start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_ids = set(QuizAnswer.objects.filter(user=user, answered_at__gte=start).values_list("question_id", flat=True))
+    if not today_ids:
+        return 0
+    earlier_wrong = set(
+        QuizAnswer.objects.filter(user=user, question_id__in=today_ids, answered_at__lt=start, was_correct=False).values_list("question_id", flat=True)
+    ) | set(
+        ExamAnswer.objects.filter(attempt__user=user, question_id__in=today_ids, attempt__submitted_at__lt=start)
+        .exclude(was_correct=True).values_list("question_id", flat=True)
+    )
+    return len(earlier_wrong)
 
 
 @api_view(["GET"])

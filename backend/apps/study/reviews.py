@@ -4,13 +4,16 @@
 A chapter is finished when every readable section is read and at least 70% of its questions are answered, or when the
 learner presses «این فصل را تمام کردم». Its review cycle then starts:
 
-    step 0: 1 day later    at least 5 questions, practice (answer shown after each)
-    step 1: 7 days later   at least 10 questions, practice
-    step 2: 30 days later  an exam without negative marking (answers at the end)
-    step 3+: every ~75 days, the same exam
+    step 0: 1 day after the chapter was finished    at least 5 questions, practice (answer shown after each)
+    step 1: 7 days after it                         at least 10 questions, practice
+    step 2: 30 days after it                        an exam without negative marking (answers at the end)
+    step 3+: then every ~75 days, the same exam
 
-Questions come five at a time; after the minimum, «۵ تست دیگر» goes on until the chapter has none left. A result of
-60% or less keeps the step and brings it back in half the time; 90% or more stretches the next gap a little.
+The first three are counted from the day the chapter was finished, whatever the results (so «یک‌ماهه» is a month). A
+result under 60% repeats the same step sooner (half its distance from the previous step). After the month step the
+gaps follow the results: 75 days, a little longer for 90% or more, half for under 60%.
+
+Questions come five at a time; after the minimum, «۵ تست دیگر» goes on until the chapter has none left.
 
 Which questions: notebook ones that are due, then «شک‌دار» ones, then earlier right answers (oldest first, one per idea:
 another question tied to the same flashcard rather than the same one again), then never-answered ones; at least one per
@@ -40,7 +43,9 @@ from apps.learning.models import Flashcard, Question, QuizAnswer
 
 from .models import BookReview, ChapterReview, ExamAnswer, ExamAttempt, FlashcardReview, ReviewSession, SectionProgress
 
-STEP_DAYS = [1, 7, 30, 75]
+STEP_DAYS = [1, 7, 30]  # days after the chapter was finished
+LATER_DAYS = 75  # after the month step, between reviews
+MIN_GAP_AFTER_LATE = 2  # a step reached late still waits a couple of days after the previous review
 EXAM_STEP = 2
 PRACTICE_MINIMUM = {0: 5, 1: 10}
 EXAM_MIN, EXAM_MAX = 15, 25
@@ -215,20 +220,26 @@ def _cover_sections(ordered: list[int], by_id, n) -> list[int]:
 # --- Scheduling ------------------------------------------------------------------------------------------------------
 
 
-def _gap(step: int) -> int:
-    return STEP_DAYS[min(step, len(STEP_DAYS) - 1)]
+def next_due(review: ChapterReview, score: float, today) -> tuple[int, object]:
+    """(step, due date) after a review with this score (see the module notes)."""
+    stage = review.stage
+    if stage < len(STEP_DAYS):
+        if score < 0.6:
+            previous = STEP_DAYS[stage - 1] if stage else 0
+            return stage, today + timedelta(days=max(1, (STEP_DAYS[stage] - previous) // 2))
+        stage += 1
+        if stage < len(STEP_DAYS):
+            planned = timezone.localdate(review.finished_at) + timedelta(days=STEP_DAYS[stage])
+            return stage, max(planned, today + timedelta(days=MIN_GAP_AFTER_LATE))
+        return stage, today + timedelta(days=LATER_DAYS)
+    if score < 0.6:
+        return stage, today + timedelta(days=LATER_DAYS // 2)
+    return stage + 1, today + timedelta(days=math.ceil(LATER_DAYS * (1.25 if score >= 0.9 else 1)))
 
 
 def advance(review: ChapterReview, score: float, now=None) -> None:
     now = now or timezone.now()
-    if score < 0.6:
-        gap = max(1, _gap(review.stage) // 2)
-    else:
-        review.stage += 1
-        gap = _gap(review.stage)
-        if score >= 0.9:
-            gap = math.ceil(gap * 1.25)
-    review.due_on = timezone.localdate(now) + timedelta(days=gap)
+    review.stage, review.due_on = next_due(review, score, timezone.localdate(now))
     review.last_done_at, review.last_score = now, score
     review.done_count += 1
     review.save()

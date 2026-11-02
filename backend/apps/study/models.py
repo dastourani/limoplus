@@ -284,3 +284,16 @@ class ReviewSession(models.Model):
         verbose_name_plural = "نوبت‌های مرور"
         ordering = ["-started_at"]
 
+
+class FlashcardReviewOp(models.Model):
+    """Every review id the app sent for a card, so a review re-sent after a dropped connection counts once however many
+    other reviews came in between. Old ones (a month) are cleared by the nightly clean-up; a resend never waits that long."""
+
+    review = models.ForeignKey(FlashcardReview, on_delete=models.CASCADE, related_name="ops")
+    op = models.CharField(max_length=40)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("review", "op")]
+        indexes = [models.Index(fields=["created_at"])]
+

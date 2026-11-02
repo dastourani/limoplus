@@ -292,12 +292,27 @@ class StudyTests(TestCase):
         self.assertEqual((data["cards"], data["mistakes"], data["practise"]), (1, 1, 1))
         self.assertEqual(data["continue"]["id"], self.section.id)
         self.assertTrue(data["comeback"])
-        self.assertGreaterEqual(data["minutes"], 5)
+        self.assertEqual([t["kind"] for t in data["tasks"]], ["cards", "notebook"])
+        self.assertEqual(data["minutes"], sum(t["minutes"] for t in data["tasks"]))
         quick = self.client.get("/api/v1/me/quick/").data
         self.assertEqual([c["id"] for c in quick["cards"]], [card.id])
         self.assertEqual(quick["questions"][0]["id"], q.id)
         self.assertLessEqual(len(quick["questions"]), 3)
         self.assertNotIn("is_correct", str(quick["questions"]))
+
+    def test_notebook_tile_leaves_after_five_today(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        qs = list(Question.objects.filter(node__path__startswith=self.chapter.path, is_archived=False)[:6])
+        for q in qs:
+            self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.filter(is_correct=False).first().id}, format="json")
+        QuizAnswer.objects.update(answered_at=timezone.now() - timedelta(days=1))
+        self.assertIn("notebook", [t["kind"] for t in self.client.get("/api/v1/me/today/").data["tasks"]])
+        for q in qs[:5]:
+            self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.get(is_correct=True).id}, format="json")
+        self.assertNotIn("notebook", [t["kind"] for t in self.client.get("/api/v1/me/today/").data["tasks"]])
 
     def test_place_and_mode_follow_the_account(self):
         self.client.post(f"/api/v1/nodes/{self.section.id}/progress/", {"percent": 60, "position": 60, "mode": "full"}, format="json")
@@ -493,3 +508,62 @@ class ReviewCycleTests(TestCase):
         b = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": rid}, format="json").data
         self.assertEqual((a["id"], a["exam_id"]), (b["id"], b["exam_id"]))
         self.assertEqual(ReviewSession.objects.count(), 1)
+
+    def test_steps_count_from_the_day_the_chapter_was_finished(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from .models import ChapterReview
+        from .reviews import next_due
+
+        finished = timezone.now() - timedelta(days=1)
+        r = ChapterReview(finished_at=finished, stage=0)
+        day = timezone.localdate(finished)
+        # Perfect results never push the steps later: 1, 7 and 30 days after the chapter.
+        stage, due = next_due(r, 1.0, day + timedelta(days=1))
+        self.assertEqual((stage, (due - day).days), (1, 7))
+        r.stage = 1
+        stage, due = next_due(r, 1.0, day + timedelta(days=7))
+        self.assertEqual((stage, (due - day).days), (2, 30))
+        r.stage = 2
+        stage, due = next_due(r, 1.0, day + timedelta(days=30))
+        self.assertEqual((stage, (due - day).days), (3, 30 + 75))
+        # A weak result repeats the same step sooner.
+        r.stage = 1
+        stage, due = next_due(r, 0.4, day + timedelta(days=7))
+        self.assertEqual((stage, (due - day).days), (1, 10))
+
+
+class ReviewOpTests(TestCase):
+    setUp = StudyTests.setUp
+    tearDown = StudyTests.tearDown
+
+    def test_a_resent_review_counts_once_however_many_came_between(self):
+        from .models import FlashcardReview
+
+        card = Flashcard.objects.filter(node=self.section).first()
+        url = f"/api/v1/flashcards/{card.id}/review/"
+        self.client.post(url, {"grade": "good", "op": "first"}, format="json")
+        for i in range(7):
+            self.client.post(url, {"grade": "good", "op": f"other-{i}"}, format="json")
+        before = FlashcardReview.objects.get(user=self.user, flashcard=card).review_count
+        self.client.post(url, {"grade": "good", "op": "first"}, format="json")
+        self.assertEqual(FlashcardReview.objects.get(user=self.user, flashcard=card).review_count, before)
+
+
+class ContinueReadingTests(TestCase):
+    setUp = StudyTests.setUp
+    tearDown = StudyTests.tearDown
+
+    def test_finished_chapter_continues_at_the_next_chapter(self):
+        last = self.chapter.get_children().last()
+        self.client.post(f"/api/v1/nodes/{last.id}/progress/", {"percent": 100, "done": True}, format="json")
+        item = self.client.get("/api/v1/me/library/").data["reading"][0]
+        nxt = item["next"]
+        self.assertTrue(nxt["new_chapter"])
+        self.assertTrue(nxt["locked"], "the next chapter of the sample is paid")
+        self.assertEqual(nxt["chapter_title"], ContentNode.objects.get(slug="derivatives").title)
+        first = self.chapter.get_children().first()
+        self.client.post(f"/api/v1/nodes/{first.id}/progress/", {"percent": 40}, format="json")
+        self.assertIsNone(self.client.get("/api/v1/me/library/").data["reading"][0]["next"], "not finished: continue where it was")

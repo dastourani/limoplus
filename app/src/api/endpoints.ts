@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ReadingNext } from '../components/home/ReadingCards';
 import type { ChapterEnd, SectionStatus } from '../lib/renderMarkdown';
 
 export type Major = { slug: string; name: string; color: string; is_coming_soon: boolean };
@@ -139,7 +140,13 @@ export type Today = {
   /** Chapter and book reviews due today (at most two), and how many more wait. */
   reviews?: ReviewItem[];
   reviews_waiting?: number;
+  /** «کارهای امروز» tiles, in order; a job done today is gone. */
+  tasks?: TodayTask[];
 };
+export type TodayTask =
+  | (Omit<ReviewItem, 'kind'> & { kind: 'review'; review_kind: 'chapter' | 'book' })
+  | { kind: 'cards'; count: number; total: number; comeback: boolean; minutes: number }
+  | { kind: 'notebook'; count: number; total: number; minutes: number };
 /** A review whose day has come: «مرور فصل ۲ «…» از …: ۵ تست، حدود ۷ دقیقه». */
 export type ReviewItem = {
   kind: 'chapter' | 'book';
@@ -273,7 +280,16 @@ export type ExamPage = {
 };
 export type ExamDetail = ExamSummary & { questions: ExamQuestion[]; review?: ExamReview[] };
 export type Library = {
-  reading: { book_slug: string; book_title: string; last_section: { id: number; title: string }; percent?: number; updated_at: string; book?: BookListItem }[];
+  reading: {
+    book_slug: string;
+    book_title: string;
+    last_section: { id: number; title: string };
+    percent?: number;
+    updated_at: string;
+    book?: BookListItem;
+    /** The section was finished: where «ادامه بده» goes (the next chapter at a chapter's end). */
+    next?: ReadingNext | null;
+  }[];
   bookmarks: { id: number; title: string; created_at: string }[];
   notes: (Note & { node_title: string })[];
   mistakes?: { count: number; open: number; settling: number; due: number };

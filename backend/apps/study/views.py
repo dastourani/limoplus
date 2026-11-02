@@ -202,12 +202,16 @@ def review_flashcard(request, flashcard_id):
 
 
 def _review(request, review):
+    from .models import FlashcardReviewOp
+
     op = str(request.data.get("op") or "")[:40].replace(",", "")
     seen = [x for x in review.last_op.split(",") if x]
-    if op and op in seen:  # the same review sent again after a dropped connection
+    if op and (op in seen or FlashcardReviewOp.objects.filter(review=review, op=op).exists()):
+        # The same review sent again after a dropped connection (the review row is locked, so copies queue up here).
         return Response({"box": review.box, "due_at": review.due_at, "mastered": review.box >= FlashcardReview.MASTERED_BOX})
     if op:
         review.last_op = ",".join((seen + [op])[-5:])
+        FlashcardReviewOp.objects.create(review=review, op=op)
     grade = request.data.get("grade")
     if grade is None and "known" in request.data:
         grade = request.data.get("known") in (True, "true", 1, "1")
@@ -534,6 +538,25 @@ def _section_ref(node):
     return {"id": node.id, "title": node.title}
 
 
+def _next_section(access, node):
+    sections = sorted((n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)), key=lambda n: n.path)
+    ids = [n.id for n in sections]
+    if node.id not in ids or ids.index(node.id) + 1 >= len(ids):
+        return None
+    nxt = sections[ids.index(node.id) + 1]
+    chapter = next((c for c in access.nodes.values() if c.kind == ContentNode.Kind.CHAPTER and nxt.path.startswith(c.path)), None)
+    here = next((c for c in access.nodes.values() if c.kind == ContentNode.Kind.CHAPTER and node.path.startswith(c.path)), None)
+    return {
+        "id": nxt.id,
+        "title": nxt.title,
+        "locked": not access.readable(nxt.id),
+        "new_chapter": bool(chapter and here and chapter.id != here.id),
+        "chapter_title": chapter.title if chapter else "",
+        "chapter_number": chapter.position if chapter else None,
+        "finished_chapter_number": here.position if here else None,
+    }
+
+
 @api_view(["GET"])
 def library(request):
     user = request.user
@@ -562,6 +585,8 @@ def library(request):
                 "mode": p.mode,
                 "updated_at": p.updated_at,
                 "book": book_card(request, p.book, access),
+                # Section finished: «ادامه بده» opens the next one (the first of the next chapter at a chapter's end).
+                "next": _next_section(access, p.node) if p.is_done else None,
             }
         )
     bookmarks = Bookmark.objects.filter(user=user, is_archived=False).select_related("node").order_by("-created_at")[:100]

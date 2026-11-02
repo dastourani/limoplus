@@ -99,7 +99,8 @@ export const BookCover = memo(function BookCover({
 });
 
 const styles = StyleSheet.create({
-  shadow: { shadowColor: '#17201A', shadowOpacity: 0.25, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 6 },
+  // A light shadow: many covers with a heavy one made scrolling stutter on slower Android phones.
+  shadow: { shadowColor: '#17201A', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
   major: { fontWeight: '700', textAlign: 'right', writingDirection: 'rtl' },
   motif: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   title: { fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },

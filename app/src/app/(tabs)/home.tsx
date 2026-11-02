@@ -14,8 +14,11 @@ import { Text } from '../../components/Text';
 import { ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { useFeedback } from '../../components/Feedback';
-import { openReview, reviewLabel } from '../../lib/reviews';
-import { storage, type LastSection, type ReadingSpot } from '../../lib/storage';
+import { HRow } from '../../components/home/HRow';
+import { ReadingCards, type ReadingItem } from '../../components/home/ReadingCards';
+import { SectionHeader } from '../../components/home/SectionHeader';
+import { TodayTiles } from '../../components/home/TodayTiles';
+import { storage, type ReadingSpot } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
 import { colors, formatToman, rtl, toPersianDigits } from '../../theme';
 
@@ -32,7 +35,6 @@ export default function Home() {
   const { width } = useWindowDimensions();
   const asLearner = useViewAsLearner();
   const { toast } = useFeedback();
-  const [last, setLast] = useState<LastSection | null>(null);
   const [spots, setSpots] = useState<Record<string, ReadingSpot>>({});
   const [serverReading, setServerReading] = useState<Library['reading']>([]);
   useFocusEffect(
@@ -44,7 +46,6 @@ export default function Home() {
 
   useFocusEffect(
     useCallback(() => {
-      storage.getLastSection().then(setLast);
       storage.getReading().then(setSpots);
     }, []),
   );
@@ -52,15 +53,12 @@ export default function Home() {
   // «قفسه‌ها»: one row per subject, set in the panel; books on no shelf come last.
   const books = useApi(() => endpoints.shelves(), [user?.id, asLearner]);
   const banners = useApi(() => endpoints.banners(), [user?.id]);
-  const [due, setDue] = useState(0);
   const [today, setToday] = useState<Today | null>(null);
   useFocusEffect(
     useCallback(() => {
       if (user) {
-        endpoints.dueFlashcards().then((d) => setDue(d.count)).catch(() => undefined);
         endpoints.today().then(setToday).catch(() => setToday(null));
       } else {
-        setDue(0);
         setToday(null);
       }
     }, [user]),
@@ -107,25 +105,23 @@ export default function Home() {
   const list = shelves.flatMap((s) => s.books);
   // Books being read, newest first: this phone's own spots, and (signed in) the account's from other devices.
   const reading = (() => {
-    const bySlug = new Map<string, { slug: string; bookTitle: string; id: number; title: string; at: number; book?: BookListItem }>();
+    const bySlug = new Map<string, ReadingItem & { at: number }>();
     for (const r of serverReading)
-      bySlug.set(r.book_slug, { slug: r.book_slug, bookTitle: r.book_title, id: r.last_section.id, title: r.last_section.title, at: Date.parse(r.updated_at), book: r.book });
+      bySlug.set(r.book_slug, { slug: r.book_slug, bookTitle: r.book_title, id: r.last_section.id, title: r.last_section.title, at: Date.parse(r.updated_at), book: r.book, next: r.next });
     for (const s of Object.values(spots)) {
       const had = bySlug.get(s.bookSlug);
-      if (!had || s.at >= had.at) bySlug.set(s.bookSlug, { slug: s.bookSlug, bookTitle: s.bookTitle, id: s.id, title: s.title, at: s.at, book: had?.book });
+      // This phone's own spot is newer: the account's «next section» still counts if it is the same section.
+      if (!had || s.at >= had.at)
+        bySlug.set(s.bookSlug, { slug: s.bookSlug, bookTitle: s.bookTitle, id: s.id, title: s.title, at: s.at, book: had?.book, next: had?.id === s.id ? had.next : null });
     }
     return [...bySlug.values()]
       .map((r) => ({ ...r, book: list.find((b) => b.slug === r.slug) ?? r.book }))
       .filter((r) => !(r.book?.progress != null && r.book.progress >= 1)) // finished books leave the row
       .sort((a, b) => b.at - a.at);
   })();
-  const current = reading[0] ?? (last ? { slug: last.bookSlug, bookTitle: last.bookTitle, id: last.id, title: last.title, at: 0, book: undefined } : null);
-  const lastBook = current ? current.book ?? list.find((b) => b.slug === current.slug) : undefined;
-  const others = reading.slice(1);
   // A shelf row shows about two and a half covers on a phone (the cut one says «there is more»), more on wide screens.
   const pageWidth = Math.min(width, 1200);
   const coverWidth = Math.max(120, Math.min(170, Math.floor((pageWidth - 40) / 2.4)));
-  const coverMajor = (b: BookListItem) => (b.major ? { name: b.major.name, color: b.major.color } : null);
 
   const bookTile = (book: BookListItem) => {
     const label = shelfLabel(book);
@@ -138,7 +134,7 @@ export default function Home() {
           accessibilityLabel={`${book.title}${book.is_coming_soon ? '، به‌زودی' : ''}`}
           style={({ pressed }) => [{ opacity: book.is_coming_soon ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
         >
-          <BookCover book={book} major={coverMajor(book)} width={coverWidth} />
+          <BookCover book={book} major={book.major ?? null} width={coverWidth} />
           <View style={[styles.ribbon, RIBBON[label.kind].box]}>
             {RIBBON[label.kind].icon && <Icon name={RIBBON[label.kind].icon!} size={12} color={RIBBON[label.kind].color} />}
             <Text style={[styles.ribbonText, { color: RIBBON[label.kind].color }]}>{label.text}</Text>
@@ -195,127 +191,47 @@ export default function Home() {
           </Pressable>
         )}
 
-        {current && (
-          <Pressable
-            onPress={() => router.push({ pathname: '/section/[id]', params: { id: String(current.id), resume: '1' } })}
-            style={styles.continue}
-            accessibilityRole="button"
-            accessibilityLabel={`ادامه‌ی خواندن ${current.title}`}
-          >
-            {lastBook ? (
-              <BookCover book={lastBook} major={coverMajor(lastBook)} width={64} />
-            ) : (
-              <View style={styles.continueLemon}>
-                <LemonSlice size={52} />
-              </View>
-            )}
-            <View style={{ flex: 1, gap: 3 }}>
-              <Text style={[styles.continueLabel, rtl]}>ادامه‌ی خواندن</Text>
-              <Text style={[styles.continueTitle, rtl]} numberOfLines={1}>{current.bookTitle}</Text>
-              <Text style={[styles.continueSub, rtl]} numberOfLines={1}>{current.title}</Text>
-              <View style={styles.continuePill}>
-                <Text style={styles.continuePillText}>ادامه بده</Text>
-              </View>
-            </View>
-            {lastBook?.progress != null && <LemonProgress parts={wedges(lastBook.progress, lastBook.section_count)} size={46} />}
-          </Pressable>
-        )}
-
-        {others.length > 0 && (
-          <View style={{ gap: 8 }}>
-            <View style={styles.readingHead}>
-              <Text style={[styles.readingTitle, rtl]}>در حال خواندن</Text>
-              <Pressable onPress={() => router.navigate('/library')} hitSlop={8} accessibilityRole="link">
-                <Text style={styles.readingAll}>همه</Text>
-              </Pressable>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.readingRow} style={{ transform: [{ scaleX: -1 }] }}>
-              {others.map((r) => (
-                <Pressable
-                  key={r.slug}
-                  onPress={() => router.push({ pathname: '/section/[id]', params: { id: String(r.id), resume: '1' } })}
-                  style={[styles.readingItem, { transform: [{ scaleX: -1 }] }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`ادامه‌ی ${r.bookTitle}، ${r.title}`}
-                >
-                  {r.book ? (
-                    <View>
-                      <BookCover book={r.book} major={coverMajor(r.book)} width={84} />
-                      {r.book.progress != null && (
-                        <View style={styles.readingLemon}>
-                          <LemonProgress parts={wedges(r.book.progress, r.book.section_count)} size={26} />
-                        </View>
-                      )}
-                    </View>
-                  ) : (
-                    <View style={styles.readingBlank}>
-                      <LemonSlice size={40} />
-                    </View>
-                  )}
-                  <Text style={[styles.readingSub, rtl]} numberOfLines={2}>{r.title}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+        {reading.length > 0 && (
+          <View style={styles.section}>
+            <SectionHeader title="ادامه‌ی خواندن" side={reading.length > 1 ? `${toPersianDigits(reading.length)} کتاب` : undefined} />
+            <ReadingCards items={reading} />
           </View>
         )}
 
-        {today && today.minutes > 0 ? (
-          <View style={styles.today}>
-            <View style={styles.todayHead}>
-              <Text style={[styles.todayTitle, rtl]}>مطالعه‌ی امروز</Text>
-              <Text style={styles.todayMinutes}>حدود {toPersianDigits(today.minutes)} دقیقه</Text>
-            </View>
+        {user && today && (
+          <View style={styles.section}>
+            <SectionHeader
+              title="کارهای امروز"
+              sub={
+                today.tasks?.length
+                  ? `${toPersianDigits(today.tasks.length)} کار، حدود ${toPersianDigits(today.minutes)} دقیقه`
+                  : null
+              }
+              side={
+                <Pressable onPress={() => router.push('/quick')} style={styles.quick} accessibilityRole="button" accessibilityLabel="فقط ۵ دقیقه وقت دارم">
+                  <Icon name="timer" size={15} color={colors.ink} />
+                  <Text style={styles.quickText}>۵ دقیقه وقت دارم</Text>
+                </Pressable>
+              }
+            />
             {today.comeback && (
-              <Text style={[styles.todayNote, rtl]}>
+              <Text style={[styles.note, rtl]}>
                 خوش برگشتی! {toPersianDigits(today.away_days)} روز نبودی؛ یک شروع کوتاه برایت چیدیم، نه همه‌ی کارهای عقب‌افتاده.
               </Text>
             )}
-            {today.cards > 0 && (
-              <TodayRow
-                icon="layers"
-                text={today.comeback && today.cards_total > today.cards ? `${toPersianDigits(today.cards)} کارت مهم‌تر برای مرور` : `مرور ${toPersianDigits(today.cards)} فلش‌کارت`}
-                onPress={() => router.push(today.comeback ? { pathname: '/review', params: { limit: String(today.cards) } } : '/review')}
-              />
-            )}
-            {(today.reviews ?? []).map((r) => (
-              <TodayRow
-                key={`${r.kind}-${r.id}`}
-                icon="rotate-ccw"
-                lines={2}
-                text={reviewLabel(r)}
-                onPress={() => openReview(r).catch(() => toast('شروع مرور ممکن نشد؛ دوباره امتحان کن.'))}
-              />
-            ))}
+            <TodayTiles tasks={today.tasks ?? []} onError={() => toast('شروع مرور ممکن نشد؛ دوباره امتحان کن.')} />
             {!!today.reviews_waiting && (
-              <Text style={[styles.todayMore, rtl]}>{toPersianDigits(today.reviews_waiting)} مرور دیگر هم منتظر است؛ فردا نوبت آن‌هاست.</Text>
+              <Text style={[styles.note, rtl]}>{toPersianDigits(today.reviews_waiting)} مرور دیگر هم منتظر است؛ فردا نوبت آن‌هاست.</Text>
             )}
-            {today.practise > 0 && (
-              <TodayRow icon="notebook-pen" text={`دفترچه‌ی اشتباهات: ${toPersianDigits(today.mistakes)} تست`} onPress={() => router.push('/mistakes')} />
-            )}
-            {today.continue && (
-              <TodayRow
-                icon="book-open"
-                text={`ادامه‌ی «${today.continue.title}»`}
-                onPress={() => router.push({ pathname: '/section/[id]', params: { id: String(today.continue!.id), resume: '1' } })}
-              />
-            )}
-            <Pressable onPress={() => router.push('/quick')} style={styles.quick} accessibilityRole="button">
-              <Icon name="timer" size={18} color={colors.ink} />
-              <Text style={styles.quickText}>فقط ۵ دقیقه وقت دارم</Text>
-            </Pressable>
           </View>
-        ) : due > 0 && (
-          <Pressable onPress={() => router.push('/review')} style={styles.review} accessibilityRole="button">
-            <IconBadge name="layers" size={44} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.reviewTitle, rtl]}>مرور امروز</Text>
-              <Text style={[styles.muted, rtl]}>{toPersianDigits(due)} فلش‌کارت منتظر مرور است</Text>
-            </View>
-            <Icon name="chevron-left" size={22} color={colors.muted} />
-          </Pressable>
         )}
 
-        {!!banners.data?.length && <BannerCarousel banners={banners.data} onOpen={(b) => openLink(b.link, b.id)} />}
+        {!!banners.data?.length && (
+          <View style={styles.section}>
+            <SectionHeader title="تازه‌های لیمو" />
+            <BannerCarousel banners={banners.data} onOpen={(b) => openLink(b.link, b.id)} />
+          </View>
+        )}
 
         {books.loading && !list.length ? (
           <Loading />
@@ -325,19 +241,9 @@ export default function Home() {
           <Text style={[styles.muted, rtl]}>هنوز کتابی منتشر نشده است.</Text>
         ) : (
           shelves.map((shelf) => (
-            <View key={shelf.id ?? 'rest'} style={{ gap: 10 }}>
-              <View style={styles.shelfHead}>
-                <Text style={[styles.shelfTitle, rtl]}>{shelf.title}</Text>
-                <Text style={styles.muted}>{toPersianDigits(shelf.books.length)} کتاب</Text>
-              </View>
-              {/* Right to left: the row is flipped, and each book flipped back, so it starts at the right. */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.shelfRow} contentContainerStyle={styles.shelfRowInner}>
-                {shelf.books.map((book) => (
-                  <View key={book.slug} style={{ transform: [{ scaleX: -1 }] }}>
-                    {bookTile(book)}
-                  </View>
-                ))}
-              </ScrollView>
+            <View key={shelf.id ?? 'rest'} style={styles.section}>
+              <SectionHeader title={shelf.title} side={`${toPersianDigits(shelf.books.length)} کتاب`} />
+              <HRow data={shelf.books} keyOf={(b) => b.slug} render={bookTile} gap={14} />
             </View>
           ))
         )}
@@ -362,36 +268,13 @@ const RIBBON: Record<'soon' | 'access' | 'free' | 'locked', { box: object; color
   locked: { box: { backgroundColor: colors.ink }, color: colors.ground, icon: 'lock' },
 };
 
-function TodayRow({ icon, text, onPress, lines = 1 }: { icon: 'layers' | 'notebook-pen' | 'book-open' | 'rotate-ccw'; text: string; onPress: () => void; lines?: number }) {
-  return (
-    <Pressable onPress={onPress} style={styles.todayRow} accessibilityRole="button">
-      <Icon name={icon} size={18} color={colors.lemon} />
-      <Text style={[styles.todayRowText, rtl]} numberOfLines={lines}>{text}</Text>
-      <Icon name="chevron-left" size={18} color="#8FA095" />
-    </Pressable>
-  );
-}
 
 const styles = StyleSheet.create({
+  section: { gap: 10, marginTop: 8 },
+  note: { fontSize: 12, color: colors.muted, lineHeight: 20 },
+  quick: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, backgroundColor: colors.lemon, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 },
+  quickText: { fontSize: 12, fontWeight: '800', color: colors.ink },
   searchButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center' },
-  today: { backgroundColor: colors.ink, borderRadius: 22, padding: 16, gap: 10 },
-  todayMore: { fontSize: 12, color: '#B9C4BC' },
-  todayHead: { flexDirection: 'row-reverse', alignItems: 'baseline', justifyContent: 'space-between' },
-  todayTitle: { fontSize: 17, fontWeight: '900', color: '#FFFFFF' },
-  todayMinutes: { fontSize: 13, fontWeight: '700', color: colors.lemon },
-  todayNote: { fontSize: 13, color: '#C9D2C6', lineHeight: 22 },
-  todayRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#2B3830' },
-  todayRowText: { flex: 1, fontSize: 14, fontWeight: '700', color: '#EDEFE6' },
-  quick: { marginTop: 4, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.lemon, borderRadius: 14, paddingVertical: 11 },
-  quickText: { fontSize: 14, fontWeight: '800', color: colors.ink },
-  readingHead: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  readingTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
-  readingAll: { fontSize: 13, fontWeight: '700', color: colors.greenDark },
-  readingRow: { gap: 12, paddingVertical: 4 },
-  readingItem: { width: 84, gap: 6 },
-  readingLemon: { position: 'absolute', bottom: -6, left: -6, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 1 },
-  readingBlank: { width: 84, height: 126, borderRadius: 10, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
-  readingSub: { fontSize: 11, color: colors.muted, lineHeight: 17 },
   asLearner: { backgroundColor: '#FFF6CC', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 },
   asLearnerText: { fontSize: 12, fontWeight: '700', color: colors.ink, textAlign: 'center' },
   page: { padding: 20, gap: 16, maxWidth: 1200, width: '100%', alignSelf: 'center' },
@@ -400,19 +283,6 @@ const styles = StyleSheet.create({
   muted: { fontSize: 13, color: colors.muted },
   loginPill: { backgroundColor: colors.ink, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10 },
   loginText: { color: colors.lemon, fontWeight: '800' },
-  continue: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: colors.ink, borderRadius: 22, padding: 14 },
-  continueLemon: { width: 64, height: 96, borderRadius: 10, backgroundColor: '#24302A', alignItems: 'center', justifyContent: 'center' },
-  continueLabel: { fontSize: 11, fontWeight: '800', color: colors.lemon },
-  continueTitle: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
-  continueSub: { fontSize: 12, color: '#A9B6AD' },
-  continuePill: { alignSelf: 'flex-end', marginTop: 6, backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 5 },
-  continuePillText: { fontSize: 12, fontWeight: '800', color: colors.ink },
-  review: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: 20, padding: 14, borderWidth: 1.5, borderColor: colors.lemon },
-  reviewTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
-  shelfHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
-  shelfTitle: { fontSize: 18, fontWeight: '900', color: colors.ink },
-  shelfRow: { marginHorizontal: -20, flexGrow: 0, transform: [{ scaleX: -1 }] },
-  shelfRowInner: { gap: 14, paddingHorizontal: 20 },
   ribbon: { position: 'absolute', top: 12, left: -4, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
   ribbonText: { fontSize: 10, fontWeight: '800' },
   ribbonFree: { backgroundColor: colors.lemon, color: colors.ink },

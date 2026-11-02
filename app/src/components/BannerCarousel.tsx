@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type ScrollViewInstance } from 'react-native';
 
 import type { Banner } from '../api/endpoints';
-import { countdownText } from '../lib/countdown';
 import { colors } from '../theme';
 import { BannerFace } from './BannerFace';
 
@@ -20,17 +19,16 @@ export function BannerCarousel({ banners: all, onOpen, gutter = 20 }: { banners:
     const now = all.find((b) => b.server_now)?.server_now;
     return now ? Date.parse(now) - Date.now() : 0;
   }, [all]);
+  // Each banner's own countdown ticks inside it; here a check twice a minute takes out the banners whose time is up.
   const counting = all.some((b) => b.ends_at);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!counting) return;
-    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    const t = setInterval(() => setTick((n) => n + 1), 30_000);
     return () => clearInterval(t);
   }, [counting]);
   const msLeft = (b: Banner) => (b.ends_at ? Date.parse(b.ends_at) - (Date.now() + offset) : Infinity);
-  const leftFor = (b: Banner) => (b.ends_at ? countdownText(msLeft(b)) : null);
-  // A banner whose time is up leaves at once.
-  const banners = useMemo(() => all.filter((b) => msLeft(b) > 0), [all, tick > 0 && Math.floor(tick / 30)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const banners = useMemo(() => all.filter((b) => msLeft(b) > 0), [all, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const w = Math.min(width, 760) - gutter * 2;
   const h = Math.round(w / 2);
   const ordered = [...banners].reverse(); // first banner sits at the right end
@@ -81,7 +79,7 @@ export function BannerCarousel({ banners: all, onOpen, gutter = 20 }: { banners:
       >
         {ordered.map((b) => (
           <Pressable key={b.id} onPress={() => onOpen(b)} style={{ width: w, height: h }} accessibilityRole="button" accessibilityLabel={b.title}>
-            <BannerFace banner={b} w={w} h={h} left={leftFor(b)} />
+            <BannerFace banner={b} w={w} h={h} offset={offset} />
           </Pressable>
         ))}
       </ScrollView>

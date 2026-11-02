@@ -3,19 +3,22 @@
  * cover), «یادآوری» (with a subject motif) and the plain lemon card. An uploaded image replaces the template.
  * The panel's preview draws the same layouts (admin-preview `bannerHtml`).
  */
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 
 import type { Banner } from '../api/endpoints';
 import { coverMotifSvg } from '../lib/cover';
+import { useCountdown } from '../lib/countdown';
 import { colors, rtl } from '../theme';
 import { BookCover } from './BookCover';
 import { Icon } from './Icon';
 import { LemonSlice } from './LemonSlice';
 import { Text } from './Text';
 
-export function BannerFace({ banner: b, w, h, left }: { banner: Banner; w: number; h: number; left: string | null }) {
+/** Drawn once; only its countdown text ticks (see useCountdown). */
+export const BannerFace = memo(function BannerFace({ banner: b, w, h, offset = 0 }: { banner: Banner; w: number; h: number; offset?: number }) {
+  const left = useCountdown(b.ends_at, offset);
   const k = h / 180;
   const motif = useMemo(() => (b.template === 'exam' ? coverMotifSvg(b.motif || 'book', 'dark') : ''), [b.template, b.motif]);
   if (b.image) return <Image source={{ uri: b.image }} style={[styles.image, { width: w, height: h }]} resizeMode="cover" />;
@@ -81,7 +84,7 @@ export function BannerFace({ banner: b, w, h, left }: { banner: Banner; w: numbe
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   image: { borderRadius: 22, backgroundColor: colors.line },
