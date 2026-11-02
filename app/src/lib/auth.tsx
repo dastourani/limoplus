@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearOffline } from './offline';
 import { secure } from './secure';
-import { flushStudyTime, forgetStudyTime } from './studyTime';
+import { flushStudyTime, forgetStudyTime, setStudyOwner } from './studyTime';
 
 const TOKEN_KEY = 'limo.token';
 const USER_KEY = 'limo.user'; // last known profile, so the app works signed-in while offline
@@ -42,12 +42,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const remember = useCallback((u: User) => {
     setOutboxOwner(u.id);
+    setStudyOwner(u.id);
     setUser(u);
     AsyncStorage.setItem(USER_KEY, JSON.stringify(u)).catch(() => undefined);
   }, []);
 
   const forget = useCallback(async () => {
     setOutboxOwner(null);
+    setStudyOwner(null);
     setAuthToken(null);
     setUser(null);
     await secure.set(TOKEN_KEY, null);
@@ -70,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cached) {
           const u = JSON.parse(cached) as User;
           setOutboxOwner(u.id);
+          setStudyOwner(u.id);
           setUser(u);
         }
       }

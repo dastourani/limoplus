@@ -13,6 +13,7 @@ import { captureRef } from 'react-native-view-shot';
 import { endpoints, type Flashcard, type Grade, type GradeHints } from '../api/endpoints';
 import { requireLogin, useAuth } from '../lib/auth';
 import { sendOrQueue } from '../lib/network';
+import { placeLabel } from '../lib/place';
 import { useStudyTimer } from '../lib/studyTime';
 import { colors, rtl, toPersianDigits } from '../theme';
 import { useCelebrate } from './Celebrate';
@@ -209,7 +210,7 @@ export function FlashcardDeck({
     <Screen>
       <Header
         // The card's own section above, «کارت ۲ از ۸» below (a mixed review changes section card by card).
-        subtitle={card?.node_title || title}
+        subtitle={placeLabel(card?.node_title, card?.chapter_number) || title}
         title={`کارت ${toPersianDigits(Math.min(pos + 1, queue.length))} از ${toPersianDigits(queue.length)}`}
         right={
           Platform.OS !== 'web' ? (

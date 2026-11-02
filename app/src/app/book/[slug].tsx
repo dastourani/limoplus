@@ -111,7 +111,8 @@ export default function Book() {
     const target = firstOpen.has_overview ? firstOpen.id : firstOpen.sections.find((x) => !x.is_locked)?.id;
     if (target) router.push(`/section/${target}`);
   };
-  const fullAccess = book.owned || !book.price;
+  // A book that is free from start to end has nothing to buy: it reads like an owned one (no price, no «باز کردن»).
+  const fullAccess = book.owned || !book.price || !!book.all_free;
   const now = notify ?? { on: book.notify, canCancel: !!book.notify_can_cancel };
   const waiting = now.on;
   const toggleNotify = async () => {
@@ -439,7 +440,7 @@ function ChapterCard({
 
 /** A section in the contents: the title takes up to two lines (then «…»; a long press shows it whole), the counts stay at
  * its left so the list never grows wider. */
-/** none: not started; read: «خوانده شد» (half lemon); done: «تمام شد» (green tick: read and its questions mostly answered). */
+/** none: not started; read: half (the notes read, or most of its questions answered); done: «تمام شد» (green tick: both). */
 function SectionRow({ section, state }: { section: NodeSummary; state: 'none' | 'read' | 'done' }) {
   const done = state === 'done';
   const { toast } = useFeedback();
@@ -453,7 +454,7 @@ function SectionRow({ section, state }: { section: NodeSummary; state: 'none' | 
     >
       <View
         style={[styles.check, done && styles.checkOn, state === 'read' && styles.checkRead]}
-        accessibilityLabel={done ? 'تمام شد' : state === 'read' ? 'خوانده شد؛ تست‌هایش مانده' : 'شروع‌نشده'}
+        accessibilityLabel={done ? 'تمام شد' : state === 'read' ? 'نیمه‌کاره: جزوه یا تست‌هایش مانده' : 'شروع‌نشده'}
       >
         {done && <Icon name="check" size={13} color="#fff" strokeWidth={3} />}
         {state === 'read' && <View style={styles.half} />}

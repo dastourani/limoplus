@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from apps.catalog.places import chapter_number
 from apps.catalog.access import AccessMap
 from apps.catalog.models import ContentNode
 from apps.catalog.views import NOT_FOUND, media_urls
@@ -50,6 +51,7 @@ def node_questions(request, node_id):
                 "node_id": q.node_id,
                 # Shown above «سؤال ۱ از ۴»: the section the question belongs to.
                 "node_title": access.nodes[q.node_id].title if q.node_id in access.nodes else "",
+                "chapter_number": chapter_number(request, access.nodes.get(q.node_id)),
                 "shareable": q.is_sample,
                 # Printed on the shared picture: the book and chapter it comes from.
                 "share_place": _share_place(access, q) if q.is_sample else None,
@@ -140,7 +142,8 @@ def node_flashcards(request, node_id):
             locked += 1
             continue
         items.append({"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula,
-                      "node_id": f.node_id, "node_title": access.nodes[f.node_id].title if f.node_id in access.nodes else ""})
+                      "node_id": f.node_id, "node_title": access.nodes[f.node_id].title if f.node_id in access.nodes else "",
+                      "chapter_number": chapter_number(request, access.nodes.get(f.node_id))})
     return Response({"flashcards": items, "locked_count": locked})
 
 

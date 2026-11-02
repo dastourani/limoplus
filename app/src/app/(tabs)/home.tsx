@@ -173,7 +173,7 @@ export default function Home() {
           </Pressable>
         ) : (
           <Text style={styles.price} numberOfLines={1}>
-            {book.owned ? 'در دسترس تو' : book.price ? `${formatToman(book.price)}، یا با اشتراک` : 'رایگان'}
+            {book.owned ? 'در دسترس تو' : book.all_free || !book.price ? 'رایگان' : `${formatToman(book.price)}، یا با اشتراک`}
           </Text>
         )}
       </View>

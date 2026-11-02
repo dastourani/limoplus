@@ -9,6 +9,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from apps.catalog.places import chapter_number
 from apps.catalog.access import AccessMap, access_until, book_of
 from apps.catalog.models import ContentNode
 from apps.catalog.views import NOT_FOUND, media_urls
@@ -247,7 +248,7 @@ def due_flashcards(request):
         if not _usable(maps[book_path], card):
             continue
         cards.append({"id": card.id, "title": card.title, "point": media_urls(request, card.point), "formula": card.formula,
-                      "node_id": card.node_id, "node_title": card.node.title,
+                      "node_id": card.node_id, "node_title": card.node.title, "chapter_number": chapter_number(request, card.node),
                       "box": r.box, "hints": _grade_hints(r.box)})
     limit = 50
     return Response({"count": len(cards), "flashcards": cards[:limit]})

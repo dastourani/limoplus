@@ -579,7 +579,7 @@ class SectionStateTests(TestCase):
     def test_green_tick_needs_reading_and_most_questions(self):
         from .progress import needed
 
-        self.assertEqual([needed(n) for n in (0, 1, 2, 3, 5, 10, 20)], [0, 1, 1, 2, 3, 7, 14])
+        self.assertEqual([needed(n) for n in (0, 1, 2, 3, 4, 5, 10, 20)], [0, 1, 2, 3, 3, 4, 7, 14], "at least 70%, rounded up")
         s = self.section
         self.client.post(f"/api/v1/nodes/{s.id}/progress/", {"percent": 100, "done": True}, format="json")
         data = self.client.get("/api/v1/books/math-1/").data
@@ -592,6 +592,41 @@ class SectionStateTests(TestCase):
             data = self.client.get("/api/v1/books/math-1/").data
         self.assertIn(s.id, data["done_ids"], "wrong answers count too")
         self.assertNotIn(s.id, data["read_ids"])
+
+    def test_tests_alone_give_half_and_reading_then_finishes(self):
+        from .progress import needed
+
+        s = self.section
+        questions = list(Question.objects.filter(node=s, is_archived=False))
+        self.assertTrue(questions)
+        for q in questions[: needed(len(questions))]:
+            self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.first().id}, format="json")
+        data = self.client.get("/api/v1/books/math-1/").data
+        self.assertIn(s.id, data["read_ids"], "tests alone: half, like reading alone")
+        self.assertNotIn(s.id, data["done_ids"])
+        self.client.post(f"/api/v1/nodes/{s.id}/progress/", {"percent": 100, "done": True}, format="json")
+        data = self.client.get("/api/v1/books/math-1/").data
+        self.assertIn(s.id, data["done_ids"], "both: green tick")
+
+    def test_questions_and_cards_name_their_chapter(self):
+        qs = self.client.get(f"/api/v1/nodes/{self.section.id}/questions/").data["questions"]
+        self.assertTrue(qs)
+        self.assertEqual({q["chapter_number"] for q in qs}, {1}, "«فصل ۱، …» above the counter")
+        cards = self.client.get(f"/api/v1/nodes/{self.section.id}/flashcards/").data["flashcards"]
+        self.assertTrue(all(c["chapter_number"] == 1 for c in cards))
+
+    def test_too_few_tests_leave_the_circle_empty(self):
+        from .progress import needed
+
+        s = self.section
+        questions = list(Question.objects.filter(node=s, is_archived=False))
+        if needed(len(questions)) < 2:
+            self.skipTest("the sample section has too few questions")
+        q = questions[0]
+        self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.first().id}, format="json")
+        data = self.client.get("/api/v1/books/math-1/").data
+        self.assertNotIn(s.id, data["read_ids"])
+        self.assertNotIn(s.id, data["done_ids"])
 
 
 class StudyTimeTests(TestCase):

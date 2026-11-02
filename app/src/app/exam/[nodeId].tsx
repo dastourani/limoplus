@@ -15,11 +15,13 @@ import { Button, Card, Header, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { useStudyTimer } from '../../lib/studyTime';
 import { usePageTurn } from '../../lib/pageTurn';
+import { examSizes } from '../../lib/examSizes';
 import { seeded } from '../../lib/shuffle';
 import { type QuizViewState } from '../../lib/quizHtml';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
-const COUNTS = [10, 20, 30, 50];
+/** Sent when the number of questions could not be learned: the server gives all there are (it never gives more). */
+const ALL_THERE_ARE = 100;
 
 function clock(seconds: number) {
   const s = Math.max(0, seconds);
@@ -30,21 +32,26 @@ function clock(seconds: number) {
 export default function Exam() {
   const { nodeId, attempt, count: suggested } = useLocalSearchParams<{ nodeId: string; attempt?: string; count?: string }>();
   const { user } = useAuth();
-  // Sizes come from how many questions there really are: 6 questions give one choice «همه‌ی ۶ سؤال»; 25 give 10, 20
-  // and «همه‌ی ۲۵». The end of a chapter suggests a size, chosen here to begin with.
-  const [pool, setPool] = useState<number | null>(null);
-  const [count, setCount] = useState(() => (Number(suggested) > 0 ? Number(suggested) : 20));
+  // Sizes come from how many questions there really are (examSizes). Until the server says, nothing is offered; if
+  // it cannot be asked, only «همه‌ی تست‌ها». The end of a chapter suggests a size, chosen here to begin with.
+  const [pool, setPool] = useState<number | 'unknown' | null>(null);
+  const [count, setCount] = useState(0);
   useEffect(() => {
     if (attempt) return;
     endpoints
       .examInfo(Number(nodeId))
       .then((info) => {
         setPool(info.questions);
-        setCount((c) => Math.min(c, info.questions) || info.questions);
+        const sizes = examSizes(info.questions);
+        const wish = Number(suggested) > 0 ? Number(suggested) : info.questions;
+        setCount([...sizes].reverse().find((c) => c <= wish) ?? info.questions);
       })
-      .catch(() => undefined);
-  }, [nodeId, attempt]);
-  const counts = pool == null ? COUNTS : [...COUNTS.filter((c) => c < pool), pool];
+      .catch(() => {
+        setPool('unknown');
+        setCount(ALL_THERE_ARE);
+      });
+  }, [nodeId, attempt, suggested]);
+  const counts = typeof pool === 'number' ? examSizes(pool) : pool === 'unknown' ? [ALL_THERE_ARE] : [];
   const [negative, setNegative] = useState(true);
   const [exam, setExam] = useState<ExamDetail | null>(null);
   const [answers, setAnswers] = useState<Record<string, number | null>>({});
@@ -198,10 +205,12 @@ export default function Exam() {
           <Card>
             <Text style={[styles.label, rtl]}>تعداد سؤال</Text>
             <View style={styles.counts}>
+              {pool === null && <Text style={[styles.help, rtl, { flex: 1 }]}>در حال بارگذاری…</Text>}
+              {typeof pool === 'number' && pool === 0 && <Text style={[styles.help, rtl, { flex: 1 }]}>برای این بخش هنوز تستی نیست.</Text>}
               {counts.map((c) => (
                 <Pressable key={c} onPress={() => setCount(c)} style={[styles.count, count === c && styles.countOn]}>
                   <Text style={{ fontWeight: '800', color: count === c ? colors.lemon : colors.ink }}>
-                    {pool != null && c === pool && !COUNTS.includes(c) ? `همه‌ی ${toPersianDigits(c)}` : pool != null && c === pool ? `همه (${toPersianDigits(c)})` : toPersianDigits(c)}
+                    {pool === 'unknown' ? 'همه‌ی تست‌ها' : c === pool ? `همه‌ی ${toPersianDigits(c)}` : toPersianDigits(c)}
                   </Text>
                 </Pressable>
               ))}
@@ -213,7 +222,7 @@ export default function Exam() {
             <Text style={[styles.help, rtl]}>زمان بر اساس سطح سؤال‌ها تعیین می‌شود. پاسخ‌ها تا پایان آزمون نشان داده نمی‌شوند.</Text>
           </Card>
           {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}
-          <Button label="شروع آزمون" onPress={start} loading={busy} />
+          <Button label="شروع آزمون" onPress={start} loading={busy} disabled={!count} />
         </ScrollView>
       </Screen>
     );

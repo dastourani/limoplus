@@ -31,6 +31,7 @@ function today(): string {
 }
 
 function add(nodeId: number, kind: StudyKind, seconds: number) {
+  if (owner == null) return;
   const day = today();
   const key = `${nodeId}|${kind}|${day}`;
   const row = pending.get(key) ?? { node_id: nodeId, kind, day, seconds: 0 };
@@ -39,15 +40,23 @@ function add(nodeId: number, kind: StudyKind, seconds: number) {
 }
 
 // What is counted but not sent yet is also kept on the phone, so closing the app suddenly loses at most a few seconds.
-const KEEP = 'limo.studytime.pending';
+// It is kept per account: time counted by one account is never sent by another (a session that expired, then someone
+// else signing in on the same phone). The account's own time waits until it signs in again.
+type Entry = { node_id: number; kind: StudyKind; day: string; seconds: number };
+let owner: number | null = null;
 let restored = false;
+const keyOf = (id: number) => `limo.studytime.pending.${id}`;
+// Version 25 kept it without an account: it cannot be told whose it was, so it is dropped.
+AsyncStorage.removeItem('limo.studytime.pending').catch(() => undefined);
+
 function keep() {
-  if (!restored) return; // not before what an earlier run kept has been read back
-  AsyncStorage.setItem(KEEP, JSON.stringify([...pending.values()])).catch(() => undefined);
+  if (!restored || owner == null) return; // not before what an earlier run kept has been read back
+  AsyncStorage.setItem(keyOf(owner), JSON.stringify([...pending.values()])).catch(() => undefined);
 }
-async function restore() {
+async function restore(id: number) {
   try {
-    const saved = JSON.parse((await AsyncStorage.getItem(KEEP)) ?? '[]') as { node_id: number; kind: StudyKind; day: string; seconds: number }[];
+    const saved = JSON.parse((await AsyncStorage.getItem(keyOf(id))) ?? '[]') as Entry[];
+    if (owner !== id) return; // the account changed meanwhile
     for (const e of saved) {
       const key = `${e.node_id}|${e.kind}|${e.day}`;
       const row = pending.get(key) ?? { ...e, seconds: 0 };
@@ -57,13 +66,28 @@ async function restore() {
   } catch {
     // nothing kept
   }
+  if (owner !== id) return;
   restored = true;
   flushStudyTime();
+}
+
+/** Who is signed in (null: nobody). Called by the auth state together with the outbox's owner. */
+export function setStudyOwner(id: number | null) {
+  if (id === owner) return;
+  // Time the leaving account counted stays on the phone under its own name.
+  if (owner != null && restored && pending.size) {
+    AsyncStorage.setItem(keyOf(owner), JSON.stringify([...pending.values()])).catch(() => undefined);
+  }
+  pending.clear();
+  restored = false;
+  owner = id;
+  if (id != null) restore(id);
 }
 
 /** Sends what was counted, exactly. Each report has its own id: if it is sent again (the outbox retries it after a lost
  * answer), the server adds it only once. */
 export function flushStudyTime() {
+  if (owner == null || !restored) return;
   const entries = [...pending.values()].filter((e) => e.seconds >= 1).map((e) => ({ ...e, seconds: Math.round(e.seconds) }));
   pending.clear();
   keep();
@@ -72,10 +96,10 @@ export function flushStudyTime() {
   sendOrQueue('me/time/', { id, entries }).catch(() => undefined);
 }
 
-/** On sign-out: what was counted belongs to the account that is leaving. */
+/** On sign-out (after flushStudyTime): nothing of the leaving account stays on the phone. */
 export function forgetStudyTime() {
+  if (owner != null) AsyncStorage.removeItem(keyOf(owner)).catch(() => undefined);
   pending.clear();
-  AsyncStorage.removeItem(KEEP).catch(() => undefined);
 }
 
 /** The app is in front (on the web: the tab is visible). */
@@ -88,7 +112,6 @@ let sender: ReturnType<typeof setInterval> | null = null;
 function startSender() {
   if (sender) return;
   sender = setInterval(flushStudyTime, SEND_MS);
-  restore();
   // Web (desktop browsers and the iPhone PWA): mouse, keys and the wheel count as being here too, and closing the tab
   // sends what was counted.
   if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {

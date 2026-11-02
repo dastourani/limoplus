@@ -88,6 +88,8 @@ export type Question = {
   /** The section the question belongs to («این نکته در جزوه»), and its title (shown above «سؤال ۱ از ۴»). */
   node_id?: number;
   node_title?: string;
+  /** Its chapter's number: «فصل ۱، نام بخش». */
+  chapter_number?: number | null;
   /** One of the book's few sample questions that may be shared as an image. */
   shareable?: boolean;
   /** For the shared picture: the book and chapter it comes from. */
@@ -216,7 +218,7 @@ export type Mistakes = {
   reasons: { key: string; label: string }[];
 };
 /** node_title: the section the card belongs to (shown above «کارت ۲ از ۸»). */
-export type Flashcard = { id: number; title: string; point: string; formula: string; node_id?: number; node_title?: string };
+export type Flashcard = { id: number; title: string; point: string; formula: string; node_id?: number; node_title?: string; chapter_number?: number | null };
 export type Banner = {
   id: number;
   title: string;

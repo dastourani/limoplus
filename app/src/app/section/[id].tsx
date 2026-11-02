@@ -13,6 +13,7 @@ import { Button, ErrorState, Header, Loading, Screen, Sheet } from '../../compon
 import { Watermark } from '../../components/Watermark';
 import { useFeedback } from '../../components/Feedback';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { useGuestNudge } from '../../lib/guestNudge';
 import { useStudyTimer } from '../../lib/studyTime';
 import { sendOrQueue } from '../../lib/network';
 import { parseTerms, type Term } from '../../lib/reviewCard';
@@ -293,6 +294,7 @@ export default function Section() {
       }
     } else if (e.type === 'scroll' && node) {
       rememberSpot(e.percent);
+      if (!user && e.percent >= 90) nudgeGuest();
       if (!(user && !offline && mode === 'full')) return;
       const p = progress.current;
       if (e.percent >= p.sent + 10 || (e.percent >= 90 && !p.done)) {
@@ -397,6 +399,7 @@ export default function Section() {
   const { paper, ink } = THEMES[theme];
   const dark = theme === 'dark';
 
+  const nudgeGuest = useGuestNudge();
   // «زمان مطالعه»: reading this section while the screen is open (two minutes without a touch stops it).
   useStudyTimer(node ? nodeId : null, 'read', !!user);
 
@@ -435,7 +438,7 @@ export default function Section() {
 
   const chapter = node.breadcrumb[node.breadcrumb.length - 1];
   // «فصل ۲: تابش و اتم»: the number comes from the chapter's place in the book.
-  const chapterLabel = chapter ? (chapter.kind === 'chapter' && chapter.number ? `فصل ${toPersianDigits(chapter.number)}: ${chapter.title}` : chapter.title) : '';
+  const chapterLabel = chapter ? (chapter.kind === 'chapter' && chapter.number ? `فصل ${toPersianDigits(chapter.number)}، ${chapter.title}` : chapter.title) : '';
   const body = mode === 'summary' && node.summary ? node.summary : node.full;
   const bookSlug = node.breadcrumb.find((b) => b.kind === 'book')?.slug;
   const missingNotes = notes.filter((n) => missing.includes(n.id) && n.mode === mode);

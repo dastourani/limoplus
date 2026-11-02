@@ -19,6 +19,8 @@ import { ReportSheet } from '../../components/ReportSheet';
 import { Text } from '../../components/Text';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { useGuestNudge } from '../../lib/guestNudge';
+import { placeLabel } from '../../lib/place';
 import { useStudyTimer } from '../../lib/studyTime';
 import { usePageTurn } from '../../lib/pageTurn';
 import { seeded } from '../../lib/shuffle';
@@ -152,6 +154,13 @@ export default function Quiz() {
     },
     [index, questions.length, turn],
   );
+
+  // A guest who answered every question here hears once that nothing is kept without an account.
+  const nudgeGuest = useGuestNudge();
+  const answeredHere = Object.values(answers).filter((a) => a.result).length;
+  useEffect(() => {
+    if (!user && questions.length > 0 && (showSummary || answeredHere >= questions.length)) nudgeGuest();
+  }, [user, showSummary, answeredHere, questions.length, nudgeGuest]);
 
   // «زمان مطالعه»: counted on the section of the question on screen (a review counts as review).
   useStudyTimer(questions[Math.min(index, questions.length - 1)]?.node_id, review ? 'review' : 'quiz', !!user && !showSummary);
@@ -358,7 +367,7 @@ export default function Quiz() {
 
   return (
     <Screen>
-      <Header subtitle={q.node_title || undefined} title={`سؤال ${toPersianDigits(index + 1)} از ${toPersianDigits(questions.length)}`} />
+      <Header subtitle={placeLabel(q.node_title, q.chapter_number)} title={`سؤال ${toPersianDigits(index + 1)} از ${toPersianDigits(questions.length)}`} />
       <View style={styles.progress}>
         <LemonProgress parts={parts} current={index} size={54} onPress={() => setPickerOpen(true)} accessibilityLabel="پیشرفت تست‌ها؛ برای رفتن به سؤال دیگر بزنید" />
         <View style={{ flex: 1, gap: 2 }}>
