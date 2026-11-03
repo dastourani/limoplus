@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 
 from apps.catalog import search as catalog_search
 from apps.catalog import views as catalog
@@ -85,3 +85,12 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# The web version of the app at the root (anything not matched above), when WEBAPP_DIR holds a build.
+from apps.catalog.webapp import webapp  # noqa: E402
+
+import re  # noqa: E402
+
+# Not for the API, the panel, static files or media (so «/admin» still gets its slash added, and so on).
+_reserved = "|".join(re.escape(x.strip("/")) for x in ("api", "static", "media", settings.ADMIN_URL) if x.strip("/"))
+urlpatterns += [re_path(rf"^(?!(?:{_reserved})(?:/|$))(?P<path>.*)$", webapp)]

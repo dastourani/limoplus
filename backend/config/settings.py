@@ -131,6 +131,8 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
+# The web version of the app (served at the root by apps.catalog.webapp); update.bat fills it.
+WEBAPP_DIR = Path(env("WEBAPP_DIR", default=str(BASE_DIR / "webapp")))
 
 # --- API --------------------------------------------------------------------
 

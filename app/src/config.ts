@@ -11,7 +11,11 @@ export const APP_PLATFORM = Platform.OS === 'android' && APP_BUILD > 0 ? 'androi
  * Server address. The default comes from app/.env (EXPO_PUBLIC_API_URL) — never written in code.
  * Test builds can override it from the settings screen (e.g. the laptop's IP on the same Wi-Fi).
  */
-const defaultApiUrl = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
+const defaultApiUrl = (
+  process.env.EXPO_PUBLIC_API_URL ||
+  // The web version built for the laptop server is served by that same server: no address needed, it asks its own.
+  (Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : '')
+).replace(/\/+$/, '');
 
 let override: string | null | undefined;
 

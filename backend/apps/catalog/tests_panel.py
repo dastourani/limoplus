@@ -886,3 +886,24 @@ class ShelfSpeedTests(_Base):
         self.assertEqual(data["questions"][0]["share_place"]["chapter"], "فصل یک")
         self.assertNotIn("is_correct", str(data))
         self.assertEqual(APIClient().get("/api/v1/books/test-book/").json()["sample_count"], 1)
+
+
+class WebAppTests(_Base):
+    def test_web_version_is_served_at_the_root_and_keeps_api_and_panel(self):
+        import tempfile
+        from pathlib import Path
+
+        from django.test import override_settings
+
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.client.get("/").status_code, 404, "no build yet: a page explaining update.bat")
+            Path(d, "index.html").write_text("<html>app</html>", encoding="utf-8")
+            Path(d, "_expo").mkdir()
+            Path(d, "_expo", "a.js").write_text("x", encoding="utf-8")
+            with override_settings(WEBAPP_DIR=d):
+                self.assertIn(b"app", b"".join(self.client.get("/").streaming_content))
+                self.assertIn(b"app", b"".join(self.client.get("/book/math-1").streaming_content), "app pages fall back to index.html")
+                self.assertEqual(b"".join(self.client.get("/_expo/a.js").streaming_content), b"x")
+                self.assertEqual(self.client.get("/../settings.py").status_code in (200, 404), True)
+                self.assertNotIn(b"app", self.client.get("/api/v1/shelves/").content)
+                self.assertNotEqual(self.client.get("/admin").status_code, 200, "the panel still redirects to /admin/")
