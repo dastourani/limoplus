@@ -2,6 +2,14 @@
  * Icons: one family everywhere (Lucide, ISC licence). Imported one by one so only the icons used end up in the app.
  * Use <Icon name="…" /> for plain icons and <IconBadge name="…" /> for an icon in the lemon frame.
  */
+import Tag from 'lucide-react-native/icons/tag';
+import Play from 'lucide-react-native/icons/play';
+import Lightbulb from 'lucide-react-native/icons/lightbulb';
+import TriangleAlert from 'lucide-react-native/icons/triangle-alert';
+import Pin from 'lucide-react-native/icons/pin';
+import Repeat from 'lucide-react-native/icons/repeat';
+import Sigma from 'lucide-react-native/icons/sigma';
+import ListChecks from 'lucide-react-native/icons/list-checks';
 import ALargeSmall from 'lucide-react-native/icons/a-large-small';
 import ArrowRight from 'lucide-react-native/icons/arrow-right';
 import BookOpen from 'lucide-react-native/icons/book-open';
@@ -102,6 +110,14 @@ const ICONS = {
   sparkles: Sparkles,
   sun: Sun,
   target: Target,
+  'tag': Tag,
+  'play': Play,
+  'lightbulb': Lightbulb,
+  'triangle-alert': TriangleAlert,
+  'pin': Pin,
+  'repeat': Repeat,
+  'sigma': Sigma,
+  'list-checks': ListChecks,
   timer: Timer,
   trash: Trash,
   trophy: Trophy,

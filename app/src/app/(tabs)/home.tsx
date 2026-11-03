@@ -8,7 +8,6 @@ import { endpoints, type Library, type Today, type BookListItem } from '../../ap
 import { BannerCarousel } from '../../components/BannerCarousel';
 import { BookCover } from '../../components/BookCover';
 import { Icon, IconBadge } from '../../components/Icon';
-import { LemonProgress } from '../../components/LemonProgress';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
 import { ErrorState, Loading, Screen, usePullRefresh, Chip } from '../../components/ui';
@@ -18,17 +17,11 @@ import { HRow } from '../../components/home/HRow';
 import { ReadingCards, type ReadingItem } from '../../components/home/ReadingCards';
 import { SectionHeader } from '../../components/home/SectionHeader';
 import { TodayTiles } from '../../components/home/TodayTiles';
+import { BookPill } from '../../components/home/BookPill';
 import { storage, type ReadingSpot } from '../../lib/storage';
 import { keepIfSame, useApi } from '../../lib/useApi';
-import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
+import { colors, radius, rtl, toPersianDigits } from '../../theme';
 
-
-/** Read sections as lemon wedges, from a book's share read (0–1) and its number of sections. */
-function wedges(progress: number | null, count: number) {
-  const n = Math.max(1, Math.min(count || 10, 24));
-  const done = Math.round((progress ?? 0) * n);
-  return Array.from({ length: n }, (_, i) => (i < done ? ('done' as const) : ('empty' as const)));
-}
 
 export default function Home() {
   const { user } = useAuth();
@@ -153,29 +146,8 @@ export default function Home() {
             {RIBBON[label.kind].icon && <Icon name={RIBBON[label.kind].icon!} size={12} color={RIBBON[label.kind].color} />}
             <Text style={[styles.ribbonText, { color: RIBBON[label.kind].color }]}>{label.text}</Text>
           </View>
-          {book.progress != null && (
-            <View style={styles.progressBadge}>
-              <LemonProgress parts={wedges(book.progress, book.section_count)} size={18} />
-              <Text style={styles.progressText}>{toPersianDigits(Math.round(book.progress * 100))}٪</Text>
-            </View>
-          )}
         </Pressable>
-        {book.is_coming_soon ? (
-          <Pressable
-            onPress={() => toggleNotify(book)}
-            disabled={waiting && !canCancel}
-            style={[styles.notify, waiting && styles.notifyOn]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: waiting }}
-          >
-            <Icon name={waiting ? 'bell-ring' : 'bell'} size={15} color={colors.ink} />
-            <Text style={styles.notifyText}>{waiting ? (canCancel ? 'خبرت می‌کنیم' : 'خبرت می‌کنیم ✓') : 'خبرم کن'}</Text>
-          </Pressable>
-        ) : (
-          <Text style={styles.price} numberOfLines={1}>
-            {book.owned ? 'در دسترس تو' : book.all_free || !book.price ? 'رایگان' : `${formatToman(book.price)}، یا با اشتراک`}
-          </Text>
-        )}
+        <BookPill book={book} notify={{ on: waiting, canCancel }} onNotify={() => toggleNotify(book)} />
       </View>
     );
   };
@@ -379,12 +351,6 @@ const styles = StyleSheet.create({
   ribbonSoon: { backgroundColor: colors.ink, color: colors.ground },
   ribbonOwned: { backgroundColor: '#3FB8A9', flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
   ribbonOwnedText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  progressBadge: { position: 'absolute', bottom: 10, left: 10, flexDirection: 'row-reverse', alignItems: 'center', gap: 5, backgroundColor: 'rgba(23,32,26,0.88)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
-  progressText: { fontSize: 11, fontWeight: '800', color: colors.lemon },
-  notify: { minHeight: 38, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  notifyOn: { backgroundColor: colors.lemonSoft, borderColor: colors.lemon },
-  notifyText: { fontSize: 12, fontWeight: '700', color: colors.ink },
-  price: { fontSize: 12, color: colors.muted, minHeight: 38, textAlignVertical: 'center', textAlign: 'center', writingDirection: 'rtl' },
   soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, padding: 12 },
   soonText: { color: colors.muted, fontSize: 13 },
 });

@@ -339,11 +339,14 @@ def _today_data(request) -> dict:
     reviews_due = due_reviews(request.user)
     todays = reviews_due[:DAILY_CAP]
 
-    tasks = [{**r, "kind": "review", "review_kind": r["kind"]} for r in todays]
+    # «done»: what of each job is already done today, for its lemon (one wedge per question or card).
+    tasks = [{**r, "kind": "review", "review_kind": r["kind"], "done": _review_done_today(request.user, r)} for r in todays]
     if cards:
-        tasks.append({"kind": "cards", "count": cards, "total": cards_due, "comeback": comeback, "minutes": max(1, round(cards * 0.4))})
+        tasks.append({"kind": "cards", "count": cards, "total": cards_due, "comeback": comeback, "minutes": max(1, round(cards * 0.4)),
+                      "done": _cards_today(request.user)})
     if practise:
-        tasks.append({"kind": "notebook", "count": practise, "total": mistakes, "minutes": max(1, round(practise * 1.5))})
+        tasks.append({"kind": "notebook", "count": practise, "total": mistakes, "minutes": max(1, round(practise * 1.5)),
+                      "done": min(practised, NOTEBOOK_DAILY - practise)})
     minutes = sum(t["minutes"] for t in tasks)
     return (
         {
@@ -366,6 +369,23 @@ def _today_data(request) -> dict:
 
 
 NOTEBOOK_DAILY = 5
+
+
+def _cards_today(user) -> int:
+    from .models import StudyDay
+
+    return StudyDay.objects.filter(user=user, date=timezone.localdate()).values_list("cards", flat=True).first() or 0
+
+
+def _review_done_today(user, item: dict) -> int:
+    """Questions already answered in today's unfinished sitting of this review."""
+    from .models import ReviewSession
+    from .reviews import _session_answers
+
+    start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    field = "chapter_review_id" if item["kind"] == "chapter" else "book_review_id"
+    session = ReviewSession.objects.filter(user=user, finished_at__isnull=True, started_at__gte=start, **{field: item["id"]}).first()
+    return min(len(_session_answers(session)), item["questions"]) if session else 0
 
 
 def _notebook_answered_today(user) -> int:

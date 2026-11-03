@@ -37,6 +37,14 @@ DEFAULT_LABELS = [
 ]
 
 NUMBERED = {"مثال", "نمودار"}  # numbered from the start (migration 0016)
+# The starting icon of each label (migration 0017; app/src/lib/labelIcons.ts draws them).
+DEFAULT_ICONS = {
+    "تعریف": "book-open", "قضیه": "sigma", "فرمول": "sigma", "قاعده": "list-checks", "نتیجه": "list-checks", "گزاره": "list-checks",
+    "شرط کاربرد": "triangle-alert", "نمودار": "chart-spline", "مثال": "pen-line", "مثال نقض": "circle-x", "نکته": "lightbulb",
+    "یادآوری": "repeat", "حفظی": "brain", "تله": "triangle-alert", "هشدار": "triangle-alert", "مهم": "pin", "در یک نگاه": "target",
+    "واژه": "languages", "مترادف": "languages", "متضاد": "languages",
+}
+
 
 _ARABIC = str.maketrans({"ي": "ی", "ك": "ک", "ى": "ی"})
 
@@ -53,7 +61,7 @@ def _split(text, sep):
 def _defaults() -> list[dict]:
     return [
         {"name": n, "group": g, "style": s, "role": r, "aliases": _split(a, r"[،,]"), "columns": _split(c, r"\|"), "hidden": h,
-         "numbered": n in NUMBERED}
+         "numbered": n in NUMBERED, "icon": DEFAULT_ICONS.get(n, "")}
         for n, g, s, r, a, c, h in DEFAULT_LABELS
     ]
 

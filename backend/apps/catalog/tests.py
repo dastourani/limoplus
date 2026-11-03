@@ -449,3 +449,17 @@ class BoxesTests(TestCase):
         data = client.get(f"/api/v1/nodes/{book.id}/boxes/?label=مثال").json()
         self.assertEqual([(b["title"], b["body"], b["name"]) for b in data["boxes"]], [("مثال ۲-۱", "یک", "a"), ("مثال ۲-۲", "دو", "")])
         self.assertEqual(data["boxes"][1]["section_id"], ContentNode.objects.get(slug="two").id)
+
+
+class LabelIconTests(TestCase):
+    def test_icons_seeded_and_sent(self):
+        from apps.catalog.labels import all_labels, forget
+
+        from .models import Label
+
+        self.assertEqual(Label.objects.get(name="تعریف").icon, "book-open")
+        Label.objects.filter(name="نکته").update(icon="")
+        forget()
+        icons = {l["name"]: l["icon"] for l in all_labels()}
+        self.assertEqual(icons["تعریف"], "book-open")
+        self.assertEqual(icons["نکته"], "")  # turned off in the panel: no icon

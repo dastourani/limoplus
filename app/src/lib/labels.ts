@@ -25,6 +25,8 @@ export type Label = {
   hidden?: boolean;
   /** Boxes numbered over the whole chapter («مثال ۳-۵»); see lib/numbering.ts. */
   numbered?: boolean;
+  /** The icon by its title (lib/labelIcons.ts); '' for none; missing: the starting one for its name. */
+  icon?: string;
 };
 
 export const DEFAULT_LABELS: Label[] = [

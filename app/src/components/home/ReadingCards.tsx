@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { BookListItem } from '../../api/endpoints';
 import { colors, rtl, toPersianDigits } from '../../theme';
 import { BookCover } from '../BookCover';
+import { useAppearance } from '../../lib/coverTheme';
 import { LemonProgress } from '../LemonProgress';
 import { LemonSlice } from '../LemonSlice';
 import { Text } from '../Text';
@@ -35,6 +36,7 @@ export function ReadingCards({ items }: { items: ReadingItem[] }) {
 }
 
 function Card({ r, width }: { r: ReadingItem; width: number }) {
+  const light = useAppearance() === 'light';
   const fa = (n: number | null | undefined) => (n ? toPersianDigits(n) : '');
   const next = r.next;
   let label = ''; // the section's own title already says «ادامه‌ی خواندن»
@@ -57,18 +59,18 @@ function Card({ r, width }: { r: ReadingItem; width: number }) {
     open = () => router.push({ pathname: '/section/[id]', params: { id: String(next.id) } });
   }
   return (
-    <Pressable onPress={open} style={[styles.card, { width }]} accessibilityRole="button" accessibilityLabel={`${r.bookTitle}، ${sub}`}>
+    <Pressable onPress={open} style={[styles.card, light && styles.cardLight, { width }]} accessibilityRole="button" accessibilityLabel={`${r.bookTitle}، ${sub}`}>
       {r.book ? (
         <BookCover book={r.book} major={r.book.major ?? null} width={64} />
       ) : (
-        <View style={styles.blank}>
+        <View style={[styles.blank, light && styles.blankLight]}>
           <LemonSlice size={52} />
         </View>
       )}
       <View style={{ flex: 1, gap: 3 }}>
-        {!!label && <Text style={[styles.label, rtl]} numberOfLines={1}>{label}</Text>}
-        <Text style={[styles.title, rtl]} numberOfLines={1}>{r.bookTitle}</Text>
-        <Text style={[styles.sub, rtl]} numberOfLines={2}>{sub}</Text>
+        {!!label && <Text style={[styles.label, light && { color: '#8A6A00' }, rtl]} numberOfLines={1}>{label}</Text>}
+        <Text style={[styles.title, light && { color: colors.ink }, rtl]} numberOfLines={1}>{r.bookTitle}</Text>
+        <Text style={[styles.sub, light && { color: colors.muted }, rtl]} numberOfLines={2}>{sub}</Text>
         <View style={styles.pill}>
           <Text style={styles.pillText}>{button}</Text>
         </View>
@@ -80,6 +82,8 @@ function Card({ r, width }: { r: ReadingItem; width: number }) {
 
 const styles = StyleSheet.create({
   card: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.ink, borderRadius: 18, padding: 14, minHeight: 128 },
+  cardLight: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
+  blankLight: { backgroundColor: '#F4F0E3' },
   blank: { width: 64, height: 96, borderRadius: 10, backgroundColor: '#24302A', alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: 11, fontWeight: '800', color: colors.lemon },
   title: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },

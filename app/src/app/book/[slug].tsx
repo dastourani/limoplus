@@ -20,6 +20,7 @@ import { jalaliDate } from '../../lib/jalali';
 import { offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
 import { storage, type LastSection } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
+import { useAppearance } from '../../lib/coverTheme';
 import { celebrateProgress } from '../../lib/milestones';
 import { studyDuration } from '../../lib/duration';
 
@@ -49,6 +50,11 @@ export default function Book() {
   // The green part with the cover stays put; the page slides up over it. A bar with the buttons stays on top, and the
   // book's name shows in it once the cover is covered.
   const scrollY = useRef(new Animated.Value(0)).current;
+  // «ظاهر اپ»: the top of the page is dark green, or warm cream when the learner chose the light look.
+  const light = useAppearance() === 'light';
+  const top = light
+    ? { bg: '#EFEADA', fg: colors.ink, button: 'rgba(23,32,26,0.07)', stat: 'rgba(23,32,26,0.06)', value: '#7A5B00', label: colors.muted }
+    : { bg: colors.ink, fg: '#FFFFFF', button: 'rgba(255,255,255,0.08)', stat: 'rgba(255,255,255,0.07)', value: colors.lemon, label: '#C9D3CC' };
   const [heroH, setHeroH] = useState(0);
 
   useFocusEffect(
@@ -148,8 +154,8 @@ export default function Book() {
 
   return (
     <Screen background={colors.ground}>
-      <View style={[styles.inkBack, { height: BAR_H + heroHeight + 40 }]} />
-      <Animated.View style={[styles.hero, { top: BAR_H, opacity: heroFade }]} onLayout={(e) => setHeroH(Math.round(e.nativeEvent.layout.height))}>
+      <View style={[styles.inkBack, { height: BAR_H + heroHeight + 40, backgroundColor: top.bg }]} />
+      <Animated.View style={[styles.hero, { top: BAR_H, opacity: heroFade, backgroundColor: top.bg }]} onLayout={(e) => setHeroH(Math.round(e.nativeEvent.layout.height))}>
           <View style={{ alignItems: 'center' }}>
             {/* The cover carries the title (and author), so it is not written again under it; screen readers hear it here. */}
             <View accessible accessibilityRole="header" accessibilityLabel={[book.title, coverByline(book.author, book.edition)].filter(Boolean).join('، ')}>
@@ -163,7 +169,7 @@ export default function Book() {
             </View>
           </View>
           {/* An uploaded cover image may not show the title clearly: then it stays, small. */}
-          {!!book.cover && <Text style={styles.heroTitle}>{book.title}</Text>}
+          {!!book.cover && <Text style={[styles.heroTitle, { color: top.fg }]}>{book.title}</Text>}
           {!book.is_coming_soon && (
             <View style={styles.stats}>
               {(
@@ -176,9 +182,9 @@ export default function Book() {
               )
                 .filter(([n], i) => i < 2 || n > 0)
                 .map(([n, label]) => (
-                  <View key={label} style={styles.stat}>
-                    <Text style={styles.statValue}>{toPersianDigits(n)}</Text>
-                    <Text style={styles.statLabel}>{label}</Text>
+                  <View key={label} style={[styles.stat, { backgroundColor: top.stat }]}>
+                    <Text style={[styles.statValue, { color: top.value }]}>{toPersianDigits(n)}</Text>
+                    <Text style={[styles.statLabel, { color: top.label }]}>{label}</Text>
                   </View>
                 ))}
             </View>
@@ -368,26 +374,28 @@ export default function Book() {
       </Animated.ScrollView>
       </View>
       <View style={styles.bar}>
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.barShade, { opacity: barShade }]} />
-        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={styles.heroButton} accessibilityRole="button" accessibilityLabel="بازگشت">
-          <Icon name="arrow-right" size={22} color="#FFFFFF" />
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.barShade, { opacity: barShade, backgroundColor: top.bg }]} />
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={[styles.heroButton, { backgroundColor: top.button }]} accessibilityRole="button" accessibilityLabel="بازگشت">
+          <Icon name="arrow-right" size={22} color={top.fg} />
         </Pressable>
-        <Animated.Text numberOfLines={1} style={[styles.barTitle, { opacity: barTitle }]}>{book.title}</Animated.Text>
+        <Animated.View style={{ flex: 1, opacity: barTitle }}>
+          <Text numberOfLines={1} style={[styles.barTitle, { color: top.fg }]}>{book.title}</Text>
+        </Animated.View>
         <Pressable
           onPress={() => router.push({ pathname: '/search', params: { book: book.slug, bookTitle: book.title } })}
-          style={styles.heroButton}
+          style={[styles.heroButton, { backgroundColor: top.button }]}
           accessibilityRole="button"
           accessibilityLabel="جست‌وجو در این کتاب"
         >
-          <Icon name="search" size={20} color="#FFFFFF" />
+          <Icon name="search" size={20} color={top.fg} />
         </Pressable>
         <Pressable
           onPress={() => Share.share({ message: `«${book.title}» را در لیموخوان بخوان: خلاصه، جزوه، تست و فلش‌کارت.${book.share_link ? `\n${book.share_link}` : ''}` }).catch(() => undefined)}
-          style={styles.heroButton}
+          style={[styles.heroButton, { backgroundColor: top.button }]}
           accessibilityRole="button"
           accessibilityLabel="معرفی به دوست"
         >
-          <Icon name="share-2" size={20} color="#FFFFFF" />
+          <Icon name="share-2" size={20} color={top.fg} />
         </Pressable>
       </View>
       {cover && <View style={StyleSheet.absoluteFill}>{cover}</View>}
@@ -570,8 +578,9 @@ const styles = StyleSheet.create({
   inkBack: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: colors.ink },
   sheet: { flexGrow: 1, backgroundColor: colors.ground, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingBottom: 28 },
   bar: { position: 'absolute', top: 0, left: 0, right: 0, height: BAR_H, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 16, zIndex: 2 },
-  barShade: { backgroundColor: colors.ink, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
-  barTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
+  // Once the page covers the cover: a soft shadow under the bar, so the page seems to slide beneath it.
+  barShade: { backgroundColor: colors.ink, shadowColor: '#000000', shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  barTitle: { textAlign: 'center', fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
   page: { padding: 16, gap: 14, maxWidth: 760, width: '100%', alignSelf: 'center' },
   hero: { position: 'absolute', left: 0, right: 0, backgroundColor: colors.ink, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 36, gap: 6 },
   heroButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },

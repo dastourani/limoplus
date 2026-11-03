@@ -96,21 +96,42 @@ export default function Profile() {
               accessibilityLabel="صدای جشن‌ها"
             />
           </View>
-          <View style={styles.row}>
-            <Text style={[styles.rowLabel, rtl]}>جلد کتاب‌ها</Text>
-            <View style={styles.segment} accessibilityRole="radiogroup">
-              {(['dark', 'light'] as const).map((t) => (
-                <Pressable
-                  key={t}
-                  onPress={() => setCoverTheme(t)}
-                  style={[styles.segmentItem, coverTheme === t && styles.segmentOn]}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: coverTheme === t }}
-                >
-                  <View style={[styles.swatch, { backgroundColor: t === 'dark' ? colors.ink : '#F4F0E3' }]} />
-                  <Text style={[styles.segmentText, coverTheme === t && { color: colors.ink }]}>{t === 'dark' ? 'تیره' : 'روشن'}</Text>
-                </Pressable>
-              ))}
+          {/* «ظاهر اپ»: two little covers; the chosen one has a lemon border and a tick. */}
+          <View style={[styles.row, { flexDirection: 'column', alignItems: 'stretch', gap: 10 }]}>
+            <View>
+              <Text style={[styles.rowLabel, rtl]}>ظاهر اپ</Text>
+              <Text style={[styles.rowHint, rtl]}>جلد کتاب‌ها، کارت‌های صفحه‌ی اول و بالای صفحه‌ی کتاب</Text>
+            </View>
+            <View style={styles.looks} accessibilityRole="radiogroup">
+              {(['dark', 'light'] as const).map((t) => {
+                const on = coverTheme === t;
+                return (
+                  <Pressable
+                    key={t}
+                    onPress={() => setCoverTheme(t)}
+                    style={[styles.look, on && styles.lookOn]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: on }}
+                    accessibilityLabel={t === 'dark' ? 'ظاهر تیره' : 'ظاهر روشن'}
+                  >
+                    <View style={[styles.mini, t === 'light' ? styles.miniLight : styles.miniDark]}>
+                      <View style={styles.miniTop} />
+                      <View style={[styles.miniRing, { borderColor: t === 'light' ? '#C9A400' : colors.lemon }]} />
+                      <View style={[styles.miniLine, { backgroundColor: t === 'light' ? colors.ink : '#FFFFFF' }]} />
+                      <View style={[styles.miniDash, { backgroundColor: t === 'light' ? '#C9A400' : colors.lemon }]} />
+                    </View>
+                    <View style={styles.lookLabel}>
+                      <Icon name={t === 'dark' ? 'moon' : 'sun'} size={16} color={colors.ink} />
+                      <Text style={styles.lookText}>{t === 'dark' ? 'تیره' : 'روشن'}</Text>
+                    </View>
+                    {on && (
+                      <View style={styles.lookTick}>
+                        <Icon name="check" size={14} color={colors.ink} />
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
           <Row label="تنظیمات سرور" onPress={() => router.push('/settings')} />
@@ -173,6 +194,19 @@ const styles = StyleSheet.create({
   rowValue: { fontSize: 15, color: colors.muted },
   soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, padding: 12 },
   soonText: { color: colors.muted, fontSize: 13 },
+  looks: { flexDirection: 'row-reverse', gap: 12 },
+  look: { flex: 1, alignItems: 'center', gap: 8, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
+  lookOn: { borderWidth: 3, borderColor: colors.lemon, paddingVertical: 10 },
+  lookLabel: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  lookText: { fontSize: 14, fontWeight: '900', color: colors.ink },
+  lookTick: { position: 'absolute', top: -9, left: -9, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center' },
+  mini: { width: 48, height: 70, borderTopLeftRadius: 7, borderBottomLeftRadius: 7, borderTopRightRadius: 3, borderBottomRightRadius: 3, overflow: 'hidden', alignItems: 'center' },
+  miniDark: { backgroundColor: '#1E2A23' },
+  miniLight: { backgroundColor: '#FBF8EC', borderWidth: 1, borderColor: '#E6DFC4' },
+  miniTop: { alignSelf: 'stretch', height: 3, backgroundColor: '#3B44B8' },
+  miniRing: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, marginTop: 10 },
+  miniLine: { width: 28, height: 4, borderRadius: 2, marginTop: 10, opacity: 0.85 },
+  miniDash: { width: 12, height: 2, marginTop: 5 },
   segment: { flexDirection: 'row-reverse', backgroundColor: colors.ground, borderRadius: 12, padding: 3, gap: 3 },
   segmentItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
   segmentOn: { backgroundColor: colors.surface, shadowColor: '#17201A', shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 },

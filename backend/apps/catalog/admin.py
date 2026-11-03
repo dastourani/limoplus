@@ -469,12 +469,12 @@ class ShareSettingsAdmin(admin.ModelAdmin):
 class LabelAdmin(admin.ModelAdmin):
     """«برچسب‌های متن»: boxes in the notes (:::تعریف) and parts of the summary (تعریف:). Never deleted: hide instead."""
 
-    list_display = ("name", "group", "style", "numbered", "role", "order", "is_hidden")
-    list_editable = ("group", "style", "numbered", "order", "is_hidden")
+    list_display = ("name", "group", "style", "icon", "numbered", "role", "order", "is_hidden")
+    list_editable = ("group", "style", "icon", "numbered", "order", "is_hidden")
     list_filter = ("group", "style", "is_hidden")
     search_fields = ("name", "aliases")
     fieldsets = (
-        (None, {"fields": ("name", "group", "style", "numbered", "order", "is_hidden"),
+        (None, {"fields": ("name", "group", "style", "icon", "numbered", "order", "is_hidden"),
                 "description": "هر برچسب در «درسنامه» یک کادر است (:::تعریف … :::) و در «چکیده» یک بخش (تعریف: و بعد موردها با «- »). "
                                "برچسبی را که در متن‌ها به کار رفته پاک نکنید؛ «پنهان» کنید تا در دکمه‌های پنل نیاید."}),
         ("بیشتر", {"fields": ("aliases", "columns", "role"), "classes": ("collapse",)}),

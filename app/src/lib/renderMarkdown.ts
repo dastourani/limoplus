@@ -13,6 +13,7 @@ import MarkdownIt from 'markdown-it';
 import { findLabel } from './labels';
 import { faDigits, numbering } from './numbering';
 import { PLOT_CSS, renderPlot } from './plot';
+import { DEFAULT_LABEL_ICON, labelIconSvg } from './labelIcons';
 import { cells, jumpTarget, parseSummary } from './reviewCard';
 
 const md = new MarkdownIt({ html: false, linkify: false, typographer: false });
@@ -50,7 +51,7 @@ export function renderSummary(source: string, opts: { hasCards?: boolean } = {})
   for (const { label, items } of parsed.parts) {
     if (!items.length) continue;
     const role = label.role ? ` rc-${label.role}` : '';
-    html += `<section class="rc-part rc-s-${label.style}${role}"><h4>${esc(label.name)}</h4>`;
+    html += `<section class="rc-part rc-s-${label.style}${role}"><h4>${iconFor(label)}${esc(label.name)}</h4>`;
     if (label.role === 'terms') {
       for (const item of items) {
         const [fa, en = '', ...rest] = cells(item);
@@ -73,6 +74,11 @@ export function renderSummary(source: string, opts: { hasCards?: boolean } = {})
     html += '</section>';
   }
   return html + '</div>';
+}
+
+/** The label's icon before its title: its own (chosen in the panel), or the starting one for its name. */
+function iconFor(label: { name: string; icon?: string }): string {
+  return labelIconSvg(label.icon ?? DEFAULT_LABEL_ICON[label.name], 18);
 }
 
 /** A box's text; a «نمودار» box with «تابع:» lines is drawn as a plot (lib/plot.ts). */
@@ -137,7 +143,7 @@ export function renderMarkdown(source: string): string {
         }
         const id = open![2] ? ` id="box-${esc(open![2])}"` : '';
         parts.push(
-          `<div class="box box-${label.style}${label.name === 'نمودار' ? ' box-plot' : ''}"${id}><div class="box-title">${title}</div>${boxBody(label.name, lines.slice(i + 1, end).join('\n'))}</div>`,
+          `<div class="box box-${label.style}${label.name === 'نمودار' ? ' box-plot' : ''}"${id}><div class="box-title">${iconFor(label)}<span>${title}</span></div>${boxBody(label.name, lines.slice(i + 1, end).join('\n'))}</div>`,
         );
         i = end;
         continue;
@@ -172,7 +178,9 @@ math { font-family: "STIX Two Math", "Cambria Math", "Latin Modern Math", serif;
 .table-wrap th { background: #F6F7F2; color: #56655B; font-weight: 700; }
 .table-wrap tr:last-child td { border-bottom: 0; }
 .box { border-radius: 16px; padding: 12px 14px 2px; margin: 0 0 16px; }
-.box-title { font-weight: 800; margin-bottom: 4px; }
+.box-title { font-weight: 800; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.lb-icon { flex: none; }
+.rc-part h4 { display: flex; align-items: center; gap: 6px; }
 /* The four looks of a label (lib/labels.ts): formal, note, warn, table. */
 .box-note { background: #E3F3E9; } .box-note .box-title { color: #1F5E3A; }
 .box-warn { background: #FFF6D6; } .box-warn .box-title { color: #7A4F00; }

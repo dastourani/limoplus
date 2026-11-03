@@ -319,6 +319,15 @@ class ShareSettings(models.Model):
         return row.default_link if row else ""
 
 
+# Icons a label can have by its title (the app draws them: app/src/lib/labelIcons.ts).
+ICON_CHOICES = [
+    ("", "بدون آیکون"), ("book-open", "کتاب باز (تعریف)"), ("sigma", "سیگما (قضیه، فرمول)"), ("list-checks", "فهرست تیک‌دار (نتیجه، قاعده)"),
+    ("lightbulb", "لامپ (نکته)"), ("triangle-alert", "مثلث هشدار (تله)"), ("pin", "سنجاق (مهم)"), ("pen-line", "قلم (مثال)"),
+    ("repeat", "تکرار (یادآوری)"), ("brain", "مغز (حفظی)"), ("target", "هدف (در یک نگاه)"), ("circle-x", "ضربدر (مثال نقض)"),
+    ("chart-spline", "نمودار"), ("languages", "زبان (واژه)"), ("info", "اطلاعات"), ("star", "ستاره"),
+]
+
+
 class Label(models.Model):
     """A label of the lesson text («برچسب»): a box «:::تعریف … :::» in the notes and a part «تعریف:» in the summary.
     The same list drives the app's renderer and the panel's buttons (see app/src/lib/labels.ts). Never deleted: a label
@@ -347,6 +356,8 @@ class Label(models.Model):
     order = models.PositiveIntegerField("ترتیب", default=0)
     is_hidden = models.BooleanField("پنهان", default=False, help_text="در دکمه‌های پنل نمی‌آید؛ متن‌هایی که از آن استفاده کرده‌اند مثل قبل نشان داده می‌شوند.")
     numbered = models.BooleanField("شماره‌دار", default=False, help_text="کادرهای این برچسب در درسنامه در کل فصل شماره می‌خورند («مثال ۳-۵»)، و با «[[#نام]]» می‌شود به آن‌ها ارجاع داد.")
+    icon = models.CharField("آیکون", max_length=20, blank=True, default="", choices=ICON_CHOICES,
+                            help_text="کنار عنوان کادر در درسنامه و بخش چکیده. خالی: بدون آیکون.")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -361,4 +372,4 @@ class Label(models.Model):
         split = lambda text, sep: [x.strip() for x in re.split(sep, text or "") if x.strip()]  # noqa: E731
         return {"name": self.name, "group": self.group, "style": self.style, "role": self.role,
                 "aliases": split(self.aliases, r"[،,]"), "columns": split(self.columns, r"\|"), "hidden": self.is_hidden,
-                "numbered": self.numbered}
+                "numbered": self.numbered, "icon": self.icon}

@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 
 import type { CoverTheme } from './cover';
 
-/** The learner's choice of cover look (profile › «جلد کتاب‌ها»); dark by default. Shared by every screen. */
+/** The learner's choice of look (profile › «ظاهر اپ»): the covers, the home page's cards and the top of the book page,
+ * all together; dark by default. Shared by every screen (useAppearance is the same thing by another name). */
 const KEY = 'limo.coverTheme';
 let current: CoverTheme = 'dark';
 let loaded = false;
@@ -45,3 +46,6 @@ export function useCoverTheme(): CoverTheme {
   }, []);
   return theme;
 }
+
+/** «ظاهر اپ»: the same choice as the covers'. */
+export const useAppearance = useCoverTheme;
