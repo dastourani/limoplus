@@ -4,7 +4,8 @@
  *   قاعده: - …            حفظی: - …                               تله: - …
  * Without labels the summary is plain Markdown, as before.
  */
-export type PartKey = 'glance' | 'important' | 'terms' | 'rules' | 'memorize' | 'traps';
+/** lead: lines written before the first label; kept and shown at the top of the card as they are (never dropped). */
+export type PartKey = 'lead' | 'glance' | 'important' | 'terms' | 'rules' | 'memorize' | 'traps';
 export type Term = { fa: string; en: string; meaning: string };
 
 const NAMES: Record<string, PartKey> = {
@@ -30,6 +31,7 @@ export function parseParts(text: string): Partial<Record<PartKey, string[]>> | n
   const parts: Partial<Record<PartKey, string[]>> = {};
   let current: PartKey | null = null;
   let found = false;
+  const lead: string[] = [];
   for (const raw of (text ?? '').split('\n')) {
     const m = raw.match(LABEL);
     if (m) {
@@ -39,7 +41,10 @@ export function parseParts(text: string): Partial<Record<PartKey, string[]>> | n
       if (m[2].trim()) parts[current]!.push(m[2].trim());
       continue;
     }
-    if (!current) continue;
+    if (!current) {
+      lead.push(raw);
+      continue;
+    }
     const line = raw.trim();
     if (!line) continue;
     const list = parts[current]!;
@@ -47,6 +52,8 @@ export function parseParts(text: string): Partial<Record<PartKey, string[]>> | n
     else if (list.length) list[list.length - 1] += ' ' + line;
     else list.push(line);
   }
+  const leadText = lead.join('\n').trim();
+  if (found && leadText) parts.lead = [leadText];
   return found ? parts : null;
 }
 

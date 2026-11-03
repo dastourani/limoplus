@@ -41,6 +41,8 @@ export function renderSummary(source: string, opts: { hasCards?: boolean } = {})
   const parts = parseParts(source);
   if (!parts) return renderMarkdown(source);
   let html = '<div class="rc">';
+  // Text written before the first label is part of the card too (shown as written, above the rest).
+  if (parts.lead?.length) html += `<div class="rc-lead">${renderMarkdown(parts.lead[0])}</div>`;
   if (parts.glance?.length) html += `<div class="rc-glance">${renderInline(parts.glance.join(' '))}</div>`;
   for (const [key, title, cls] of PART_TITLES) {
     const items = parts[key as keyof typeof parts];
@@ -156,6 +158,7 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
 .lesson.dark .box-3 { background: #23264A; } .lesson.dark .box-3 .box-title { color: #AEB4F5; }
 .lesson.dark mark.hl { color: #17201A; }
 .rc { display: grid; gap: 14px; }
+.rc-lead { margin-bottom: 4px; }
 .rc-glance { font-size: 1.08em; font-weight: 700; background: #FFF6CF; border-radius: 16px; padding: 12px 14px; }
 .rc-part { background: #fff; border: 1px solid #E3E8DE; border-radius: 16px; padding: 10px 14px 12px; }
 .rc-part h4 { margin: 0 0 6px; font-size: .82em; letter-spacing: .02em; color: #56655B; }

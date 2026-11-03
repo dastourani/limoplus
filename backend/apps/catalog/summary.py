@@ -33,6 +33,7 @@ _PART = re.compile(r"^\s*(" + "|".join(sorted(map(re.escape, PART_NAMES), key=le
 def parse_parts(text: str) -> dict[str, list[str]]:
     """Map part key → list of lines (list items without the dash; the glance part as one line)."""
     parts: dict[str, list[str]] = {}
+    lead: list[str] = []  # lines before the first label: kept, shown at the top of the card
     current = None
     for raw in (text or "").splitlines():
         m = _PART.match(raw)
@@ -43,6 +44,7 @@ def parse_parts(text: str) -> dict[str, list[str]]:
                 parts[current].append(m.group(2).strip())
             continue
         if current is None:
+            lead.append(raw)
             continue
         line = raw.strip()
         if not line:
@@ -53,6 +55,8 @@ def parse_parts(text: str) -> dict[str, list[str]]:
             parts[current][-1] += " " + line
         else:
             parts[current].append(line)
+    if parts and "\n".join(lead).strip():
+        parts["lead"] = ["\n".join(lead).strip()]
     return parts
 
 

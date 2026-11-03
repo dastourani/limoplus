@@ -479,6 +479,7 @@
   function summaryToForm(text) {
     var parts = P.parseParts(text || '') || {};
     return {
+      lead: (parts.lead || []).join('\n'),
       glance: (parts.glance || []).join(' '),
       important: (parts.important || []).map(splitImportant),
       terms: (parts.terms || []).map(function (t) { var c = t.split('|').map(function (x) { return x.trim(); }); return { fa: c[0] || '', en: c[1] || '', meaning: c.slice(2).join(' | ') }; }),
@@ -487,6 +488,8 @@
   }
   function formToSummary(f) {
     var out = [];
+    // Lines written before the first label are kept, word for word (switching to the form must never drop text).
+    if ((f.lead || '').trim()) { out.push(f.lead.trim()); out.push(''); }
     if (f.glance.trim()) out.push('در یک نگاه: ' + f.glance.trim().replace(/\s*\n\s*/g, ' '));
     PARTS.forEach(function (p) {
       var key = p[0], items = f[key].filter(function (x) { return key === 'important' ? x.text.trim() : key === 'terms' ? x.fa.trim() : String(x).trim(); });
@@ -540,13 +543,19 @@
       switcher.querySelectorAll('button').forEach(function (b, i) { b.classList.toggle('primary', (i === 0) === (mode === 'form')); });
       if (mode === 'raw') {
         left.appendChild(rawTa);
-        left.appendChild(h('p', { class: 'hint' }, 'برچسب‌ها: «در یک نگاه:»، «مهم:»، «واژه:»، «قاعده:»، «حفظی:»، «تله:» و هر مورد با «- ». خلاصه‌ی بدون برچسب هم مثل متن معمولی نشان داده می‌شود.'));
+        left.appendChild(h('p', { class: 'hint' }, 'برچسب‌ها: «در یک نگاه:»، «مهم:»، «واژه:»، «قاعده:»، «حفظی:»، «تله:» و هر مورد با «- ». خلاصه‌ی بدون برچسب مثل متن معمولی نشان داده می‌شود؛ متنی که پیش از اولین برچسب بیاید، بالای کارت می‌آید.'));
         refresh();
         return;
       }
       var f = h('div', { class: 'rc-form' });
       var glance = h('textarea', { rows: 2, oninput: function () { form.glance = glance.value; changed(); } });
       glance.value = form.glance;
+      // Text before the first label (shown at the top of the card): only when there is some, so nothing is ever lost.
+      if ((form.lead || '').trim()) {
+        var lead = h('textarea', { rows: 3, oninput: function () { form.lead = lead.value; changed(); } });
+        lead.value = form.lead;
+        f.appendChild(h('div', { class: 'part' }, h('h4', null, 'متن بدون برچسب ', h('span', { class: 'hint' }, '(بالای کارت، همان‌طور که نوشته شده)')), lead));
+      }
       f.appendChild(h('div', { class: 'part' }, h('h4', null, 'در یک نگاه ', h('span', { class: 'hint' }, '(یک یا دو جمله: این بخش درباره‌ی چیست)')), glance));
       PARTS.forEach(function (p) {
         var key = p[0];
