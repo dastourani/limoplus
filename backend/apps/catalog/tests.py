@@ -395,3 +395,36 @@ class NumberingTests(TestCase):
     def test_box_names_are_unique_in_a_chapter(self):
         text = GOOD.replace("متن دوم.", "متن دوم.\n\n:::مثال {#a}\nیک\n:::\n\n:::مثال {#a}\nدو\n:::")
         self.assertTrue(any("«a» دو بار" in str(e) for e in parse_chapter(text).errors))
+
+
+class BookSourceAndChapterTests(TestCase):
+    def setUp(self):
+        Major.objects.create(slug="economics", name="اقتصاد")
+        Major.objects.create(slug="biomedical-engineering", name="مهندسی پزشکی")
+
+    def test_textbook_source_without_a_year_round_trips(self):
+        from .exporter import export_chapter
+
+        text = GOOD.replace("منبع: کنکور ارشد اقتصاد ۱۴۰۱، سؤال ۲۳\nمنبع: کنکور دکتری اقتصاد 1399", "منبع: کتاب ایساک مارون")
+        chapter, _ = import_file("c.md", text.encode(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        q = Question.objects.get(slug="q1")
+        self.assertEqual([str(s.source) for s in q.questionsource_set.all()], ["کتاب ایساک مارون"])
+        self.assertFalse(q.is_original)
+        self.assertIn("منبع: کتاب ایساک مارون\n", export_chapter(ContentNode.objects.get(slug="ch1")))
+
+    def test_the_limits_chapter_file_imports_cleanly(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        path = Path(settings.BASE_DIR).parent / "content" / "books" / "math-1" / "01-limits" / "chapter.md"
+        chapter, _ = import_file("chapter.md", path.read_bytes(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        self.assertEqual(Question.objects.filter(node__path__startswith=ContentNode.objects.get(slug="limits").path).count(), 48)
+        self.assertEqual(Question.objects.filter(is_extra=True).count(), 24)
+        client = APIClient()
+        node = ContentNode.objects.get(slug="rafe-sefr-sefr")
+        refs = client.get(f"/api/v1/nodes/{node.id}/").json()["numbering"]["refs"]
+        self.assertEqual(refs["hopital"]["text"], "قضیه", "a box that is not numbered is linked by its label")
+        self.assertEqual(refs["telescopi"]["text"], "مثال ۱-۱")

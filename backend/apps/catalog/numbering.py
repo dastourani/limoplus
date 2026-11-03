@@ -1,7 +1,7 @@
 """
 Numbered boxes («مثال ۳-۵»), counted over a whole chapter like LaTeX, and references to them.
 
-A label marked «شماره‌دار» in the panel (models.Label.numbered; «مثال» and «نمودار» to start) is numbered in the
+Any named box can be linked; a box of a label marked «شماره‌دار» in the panel (models.Label.numbered; «مثال» and «نمودار» to start) is numbered in the
 notes («درسنامه») of a chapter in order: the chapter's intro first, then its sections. The number is never written in
 the text, so moving or deleting a box renumbers the rest. A box may carry a name, «:::مثال {#sin-hamarz}», and the text
 anywhere in the book (notes, test explanations) can point to it with «[[#sin-hamarz]]», shown as «مثال ۳-۵» and a tap
@@ -50,6 +50,9 @@ def count(position, parts) -> tuple[dict, dict[str, dict]]:
         starts[key] = dict(counts)
         for label, name in boxes(text):
             if label["name"] not in wanted:
+                # Not numbered: a link to it shows the label's name («قضیه»).
+                if name:
+                    refs.setdefault(name, {"text": label["name"], "node": key})
                 continue
             counts[label["name"]] = counts.get(label["name"], 0) + 1
             if name:

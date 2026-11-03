@@ -518,8 +518,13 @@ def _parse_question(body, slug, line_no, chapter) -> ParsedQuestion:
             q.is_original = True
             continue
         m = _SOURCE.match(value)
+        if not m and value.startswith("کتاب"):
+            # A textbook («کتاب ایساک مارون»): no year; stored as 0 and never shown.
+            book_source = re.match(r"^(.*?)\s*(?:[،,]\s*(?:سؤال|سوال|شماره|تمرین)\s*(\d+))?\s*$", value)
+            q.sources.append((book_source.group(1).strip(" ،,"), 0, int(book_source.group(2)) if book_source.group(2) else None))
+            continue
         if not m or not m.group(1).strip():
-            chapter.error(f"تست {slug}: منبع «{value}» قابل خواندن نیست. مثال: «کنکور ارشد ریاضی ۱۴۰۱، سؤال ۲۳» یا «تألیفی».", line_no)
+            chapter.error(f"تست {slug}: منبع «{value}» قابل خواندن نیست. مثال: «کنکور ارشد ریاضی ۱۴۰۱، سؤال ۲۳»، «کتاب ایساک مارون» یا «تألیفی».", line_no)
             continue
         q.sources.append((m.group(1).strip(" ،,"), int(m.group(2)), int(m.group(3)) if m.group(3) else None))
     if not q.sources and not q.is_original:

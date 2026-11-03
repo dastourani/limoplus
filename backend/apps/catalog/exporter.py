@@ -66,7 +66,7 @@ def question_block(q: ParsedQuestion) -> list[str]:
     if q.is_original:
         lines.append("منبع: تألیفی")
     for name, year, number in q.sources:
-        lines.append(f"منبع: {name} {year}" + (f"، سؤال {number}" if number else ""))
+        lines.append(f"منبع: {name}" + (f" {year}" if year else "") + (f"، سؤال {number}" if number else ""))
     lines.append(f"سطح: {DIFFICULTY_FA.get(q.difficulty, q.difficulty)}")
     if q.domain:
         lines.append(f"حوزه: {DOMAIN_FA.get(q.domain, q.domain)}")

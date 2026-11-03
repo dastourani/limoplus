@@ -851,7 +851,7 @@
           h('span', { class: 'pill' }, label(DIFF, item.difficulty)),
           item.kind ? h('span', { class: 'pill' }, label(KINDS, item.kind)) : null,
           item.is_extra ? h('span', { class: 'pill', title: 'در پیشرفت بخش حساب نمی‌شود' }, 'تکمیلی') : null,
-          h('span', { class: 'pill' }, item.sources.length ? item.sources.map(function (x) { return x.name + ' ' + fa(x.year); }).join('، ') : 'تألیفی'),
+          h('span', { class: 'pill' }, item.sources.length ? item.sources.map(function (x) { return x.name + (x.year ? ' ' + fa(x.year) : ''); }).join('، ') : 'تألیفی'),
           item.flashcards.length ? h('span', { class: 'pill' }, fa(item.flashcards.length) + ' فلش‌کارت') : null,
           item.answers ? h('span', { class: 'pill' }, fa(item.answers) + ' پاسخ' + (item.correct_rate != null ? '، ' + fa(item.correct_rate) + '٪ درست' : '')) : null,
           item.reports ? h('span', { class: 'pill err' }, fa(item.reports) + ' گزارش خطا') : null,
@@ -995,7 +995,7 @@
           var orig = h('input', { type: 'checkbox', checked: data.is_original, onchange: function () { data.is_original = orig.checked; } });
           src.appendChild(h('label', { class: 'btn small', style: 'margin-bottom:6px' }, orig, ' تألیفی (از کنکور واقعی نیست)'));
           data.sources.forEach(function (x, i) {
-            var n = h('input', { type: 'text', value: x.name, placeholder: 'نام کنکور، مثلاً «کنکور ارشد مهندسی پزشکی»', oninput: function () { x.name = n.value; } });
+            var n = h('input', { type: 'text', value: x.name, placeholder: 'نام کنکور، مثلاً «کنکور ارشد مهندسی پزشکی»، یا «کتاب ایساک مارون» (بی‌سال)', oninput: function () { x.name = n.value; } });
             var y = h('input', { type: 'text', value: x.year || '', placeholder: 'سال', oninput: function () { x.year = y.value; } });
             var q = h('input', { type: 'text', value: x.number || '', placeholder: 'سؤال', oninput: function () { x.number = q.value; } });
             src.appendChild(h('div', { class: 'src-row' }, n, y, q, h('button', { class: 'btn icon danger', type: 'button', onclick: function () { data.sources.splice(i, 1); drawSrc(); } }, '✕')));

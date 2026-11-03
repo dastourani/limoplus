@@ -42,7 +42,7 @@ export type QuizQuestion = Pick<Question, 'id' | 'stem' | 'choices'> & Partial<P
 export function questionHtml(q: QuizQuestion, mode: 'practice' | 'exam' = 'practice'): string {
   const tags: string[] = [];
   for (const s of mode === 'exam' ? [] : (q.sources ?? [])) {
-    tags.push(`<span class="tag t-konkur">${svg(CapIcon as IconData)}${esc(s.name)} ${toPersianDigits(s.year)}${s.number ? `، سؤال ${toPersianDigits(s.number)}` : ''}</span>`);
+    tags.push(`<span class="tag t-konkur">${svg(CapIcon as IconData)}${esc(s.name)}${s.year ? ' ' + toPersianDigits(s.year) : ''}${s.number ? `، سؤال ${toPersianDigits(s.number)}` : ''}</span>`);
   }
   if (q.is_original) tags.push(`<span class="tag t-orig">${svg(PenIcon as IconData)}تألیفی</span>`);
   const d = mode === 'exam' ? null : DIFF[q.difficulty ?? ''];

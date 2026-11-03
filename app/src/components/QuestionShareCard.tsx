@@ -18,7 +18,7 @@ function placeLine(q: Question): string {
   const source = q.sources[0];
   return [
     place?.chapter ? `فصل ${place.chapter_number ? toPersianDigits(place.chapter_number) + ' ' : ''}«${place.chapter}»` : '',
-    source ? `${source.name} ${toPersianDigits(source.year)}` : q.is_original ? 'تألیفی' : '',
+    source ? `${source.name}${source.year ? ' ' + toPersianDigits(source.year) : ''}` : q.is_original ? 'تألیفی' : '',
   ]
     .filter(Boolean)
     .join('، ');

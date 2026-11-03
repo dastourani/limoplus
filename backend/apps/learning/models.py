@@ -19,7 +19,7 @@ class ExamSource(models.Model):
         unique_together = [("name", "year", "group", "booklet")]
 
     def __str__(self):
-        return f"{self.name} {self.year}"
+        return f"{self.name} {self.year}" if self.year else self.name
 
 
 class Flashcard(models.Model):

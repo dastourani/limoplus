@@ -268,6 +268,8 @@ def question_from_form(data: dict, slug: str) -> ParsedQuestion:
         sources = []
         for src in data.get("sources") or []:
             name, year = (src.get("name") or "").strip(), str(src.get("year") or "").strip()
+            if name.startswith("کتاب") and not year:
+                year = "0"  # a textbook: no year
             if name or year:
                 if not year.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")).isdigit():
                     raise EditError("سال منبع کنکور باید عدد باشد (مثلاً ۱۴۰۲).")
