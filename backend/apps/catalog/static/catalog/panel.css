@@ -171,3 +171,23 @@ html[data-theme="dark"] .rc-form .lbl-part.lbl-formal h4 { color: #AEB4F5; }
 html[data-theme="dark"] .rc-form .lbl-part.lbl-note h4 { color: #9BE3B4; }
 html[data-theme="dark"] .rc-form .lbl-part.lbl-warn h4 { color: #F5D96B; }
 html[data-theme="dark"] .rc-form .lbl-part.lbl-table h4 { color: #B9C4BC; }
+
+/* Dark theme, more: the versions' comparison, the «بررسی» plan of a whole-file edit, and the «نمودار» menu. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .diff .a { background: #173826; color: #CDEFD9; }
+  :root:not([data-theme="light"]) .diff .d { background: #3F1D1B; color: #F6C9C5; }
+  :root:not([data-theme="light"]) .plan .new { color: #7FD6A5; }
+  :root:not([data-theme="light"]) .plan .changed { color: #9FB0FF; }
+  :root:not([data-theme="light"]) .plan .archived { color: #F5C96B; }
+  :root:not([data-theme="light"]) .plot-menu { background: #2A2614; border-color: #5E5124; }
+  :root:not([data-theme="light"]) .plot-menu button { background: #1E1E1E; color: #EEEEEE; border-color: #3A3A3A; }
+  :root:not([data-theme="light"]) .plot-menu button:hover { background: #F5C518; color: #17201A; }
+}
+html[data-theme="dark"] .diff .a { background: #173826; color: #CDEFD9; }
+html[data-theme="dark"] .diff .d { background: #3F1D1B; color: #F6C9C5; }
+html[data-theme="dark"] .plan .new { color: #7FD6A5; }
+html[data-theme="dark"] .plan .changed { color: #9FB0FF; }
+html[data-theme="dark"] .plan .archived { color: #F5C96B; }
+html[data-theme="dark"] .plot-menu { background: #2A2614; border-color: #5E5124; }
+html[data-theme="dark"] .plot-menu button { background: #1E1E1E; color: #EEEEEE; border-color: #3A3A3A; }
+html[data-theme="dark"] .plot-menu button:hover { background: #F5C518; color: #17201A; }
