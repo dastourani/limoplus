@@ -6,7 +6,7 @@
 import * as Crypto from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
 import { router } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, Easing, PanResponder, Platform, Pressable, StyleSheet, View, type HostInstance } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
@@ -59,6 +59,7 @@ export function FlashcardDeck({
   puzzle = true,
   next,
   onTests,
+  toolbar,
 }: {
   title: string;
   cards: Flashcard[];
@@ -71,6 +72,8 @@ export function FlashcardDeck({
   next?: { label: string; onPress: () => void };
   /** «تست‌های این نکته»: practise the tests linked to a card. */
   onTests?: (card: Flashcard) => void;
+  /** Controls above the cards (the order of a section's or book's deck). */
+  toolbar?: ReactNode;
 }) {
   const { user } = useAuth();
   const celebrate = useCelebrate();
@@ -230,6 +233,7 @@ export function FlashcardDeck({
           {puzzle && user && masteredIdx.size ? `، ${toPersianDigits(masteredIdx.size)} کارت کاملاً بلدی` : ''}
         </Text>
       </View>
+      {toolbar}
       <View style={styles.stage}>
         <View style={[styles.stack, { top: 34, left: 34, right: 34 }]} />
         <View style={[styles.stack, { top: 26, left: 26, right: 26, backgroundColor: '#ECEFE7' }]} />

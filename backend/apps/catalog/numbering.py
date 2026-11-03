@@ -124,3 +124,19 @@ def resolve(request, node, text: str) -> str:
         return f"[[#{m.group(1)}|{r['text']}|{r['node']}]]" if r else m.group(0)
 
     return REF.sub(link, text)
+
+
+def section_boxes(text: str) -> list[dict]:
+    """The boxes of a section's notes: label, name and body, in order."""
+    out, lines, i = [], (text or "").split("\n"), 0
+    while i < len(lines):
+        m = BOX.match(lines[i])
+        label = find(m.group(1)) if m else None
+        if label:
+            end = next((j for j in range(i + 1, len(lines)) if lines[j].strip() == ":::"), None)
+            if end is not None:
+                out.append({"label": label, "name": (m.group(2) or "").strip(), "body": "\n".join(lines[i + 1 : end])})
+                i = end + 1
+                continue
+        i += 1
+    return out

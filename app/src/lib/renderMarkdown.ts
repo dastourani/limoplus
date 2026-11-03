@@ -118,8 +118,9 @@ export function renderMarkdown(source: string): string {
     buffer = [];
   };
   // Numbered labels («مثال ۳-۵») go on from the earlier sections of the chapter.
-  const { chapter, start } = numbering();
+  const { chapter, start, titles } = numbering();
   const counts: Record<string, number> = { ...(start ?? {}) };
+  let boxIndex = 0;
   for (let i = 0; i < lines.length; i++) {
     const open = lines[i].match(/^:::\s*(\S.*?)\s*(?:\{#([^}\s]+)\})?\s*$/);
     const label = open ? findLabel(open[1]) : undefined;
@@ -128,7 +129,9 @@ export function renderMarkdown(source: string): string {
       if (end > i) {
         flush();
         let title = esc(label.name);
-        if (label.numbered) {
+        const given = titles?.[boxIndex++];
+        if (given) title = esc(given);
+        else if (label.numbered) {
           counts[label.name] = (counts[label.name] ?? 0) + 1;
           title += ' ' + (chapter ? `${faDigits(chapter)}-${faDigits(counts[label.name])}` : faDigits(counts[label.name]));
         }

@@ -432,3 +432,20 @@ class BookSourceAndChapterTests(TestCase):
         refs = client.get(f"/api/v1/nodes/{node.id}/").json()["numbering"]["refs"]
         self.assertEqual(refs["hopital"]["text"], "قضیه", "a box that is not numbered is linked by its label")
         self.assertEqual(refs["telescopi"]["text"], "مثال ۱-۱")
+
+
+class BoxesTests(TestCase):
+    def test_all_boxes_of_a_label_in_reading_order(self):
+        Major.objects.create(slug="economics", name="اقتصاد")
+        text = GOOD.replace("عنوان: فصل یک", "عنوان: فصل یک\nفصل: 2").replace(
+            "متن جزوه با فرمول $x^2$.", "متن.\n\n:::مثال {#a}\nیک\n:::\n\n:::نکته\nن\n:::"
+        ).replace("متن دوم.", "متن دوم.\n\n:::مثال\nدو\n:::")
+        chapter, _ = import_file("c.md", text.encode(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        book = ContentNode.objects.get(slug="test-book")
+        client = APIClient()
+        data = client.get(f"/api/v1/nodes/{book.id}/boxes/").json()
+        self.assertEqual({l["name"]: l["count"] for l in data["labels"]}, {"مثال": 2, "نکته": 1})
+        data = client.get(f"/api/v1/nodes/{book.id}/boxes/?label=مثال").json()
+        self.assertEqual([(b["title"], b["body"], b["name"]) for b in data["boxes"]], [("مثال ۲-۱", "یک", "a"), ("مثال ۲-۲", "دو", "")])
+        self.assertEqual(data["boxes"][1]["section_id"], ContentNode.objects.get(slug="two").id)

@@ -30,6 +30,7 @@ api = [
     path("books/<str:slug>/notify/", catalog.book_notify),
     path("nodes/<int:node_id>/", catalog.node_detail),
     path("nodes/<int:node_id>/questions/", learning.node_questions),
+    path("nodes/<int:node_id>/boxes/", catalog.node_boxes),
     path("nodes/<int:node_id>/flashcards/", learning.node_flashcards),
     path("questions/<int:question_id>/answer/", learning.answer),
     path("app/version/", releases.app_version),

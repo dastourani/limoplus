@@ -11,7 +11,7 @@ from .access import AccessMap
 from .drawing import loads as loads_drawing
 from .importer import MEDIA_PREFIX
 from .labels import all_labels
-from .numbering import numbering_for
+from .numbering import fa, numbering_for
 from .models import Banner, ContentNode, Major, ShareSettings
 
 NOT_FOUND = {"code": "not_found", "message": "پیدا نشد."}
@@ -477,3 +477,46 @@ def book_notify(request, slug):
             wait.cancel_count += 1
         wait.save(update_fields=["is_active", "cancel_count", "updated_at"])
     return Response({"notify": wait.is_active, "can_cancel": wait.can_cancel})
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def node_boxes(request, node_id):
+    """«کادرهای کتاب»: every box of one label (all definitions, all traps…) in a book or chapter, in reading order,
+    with its number («مثال ۳-۵») and section. Without ?label: the labels used, with counts."""
+    from .numbering import numbered_names, section_boxes
+
+    node = get_object_or_404(ContentNode, pk=node_id)
+    access = AccessMap(request.user, node)
+    if not access.visible(node.id):
+        return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    wanted = request.query_params.get("label", "")
+    numbered = numbered_names()
+    chapters = [node] if node.kind == ContentNode.Kind.CHAPTER else access.children(node) if node.kind == ContentNode.Kind.BOOK else []
+    counts, boxes, locked = {}, [], 0
+    for chapter in chapters:
+        seen: dict[str, int] = {}
+        for part in [chapter, *access.children(chapter)]:
+            items = section_boxes(part.full_body)
+            readable = access.readable(part.id)
+            for b in items:
+                label = b["label"]
+                seen[label["name"]] = seen.get(label["name"], 0) + 1
+                if not readable:
+                    locked += label["name"] == wanted
+                    continue
+                if label.get("role") == "glance":
+                    continue
+                counts[label["name"]] = counts.get(label["name"], 0) + 1
+                if label["name"] != wanted:
+                    continue
+                n = seen[label["name"]]
+                number = (f"{fa(chapter.position)}-{fa(n)}" if chapter.position else fa(n)) if label["name"] in numbered else ""
+                boxes.append({"label": label["name"], "title": f"{label['name']} {number}".strip(), "name": b["name"],
+                              "body": media_urls(request, b["body"]), "section_id": part.id, "section_title": part.title if part.kind == ContentNode.Kind.SECTION else chapter.title,
+                              "chapter_number": chapter.position})
+    labels = [{"name": l["name"], "style": l["style"], "count": counts[l["name"]]} for l in all_labels() if l["name"] in counts]
+    # all_labels and refs: what the app's renderer needs to draw the boxes and their [[#name]] links.
+    from .numbering import book_refs
+    return Response({"labels": labels, "boxes": boxes, "locked_count": locked, "title": node.title,
+                     "all_labels": all_labels(), "refs": book_refs(access) if wanted else {}})

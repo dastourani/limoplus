@@ -268,6 +268,10 @@ export default function Book() {
                   </Text>
                 </Pressable>
               )}
+              <Pressable onPress={() => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(book.id) } })} style={styles.shortcut} accessibilityRole="button">
+                <Icon name="clipboard-list" size={18} color={colors.ink} />
+                <Text style={styles.shortcutText}>کادرهای کتاب</Text>
+              </Pressable>
               <Pressable onPress={() => router.push(`/glossary/${book.slug}`)} style={styles.shortcut} accessibilityRole="button">
                 <Icon name="languages" size={18} color={colors.ink} />
                 <Text style={styles.shortcutText}>واژه‌نامه‌ی کتاب</Text>

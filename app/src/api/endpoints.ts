@@ -1,5 +1,5 @@
 import type { Label } from '../lib/labels';
-import type { Numbering } from '../lib/numbering';
+import type { Numbering, RefTarget } from '../lib/numbering';
 import { api } from './client';
 import type { ReadingNext } from '../components/home/ReadingCards';
 import type { ChapterEnd, SectionStatus } from '../lib/renderMarkdown';
@@ -122,6 +122,8 @@ export type Question = {
   corrected?: Correction | null;
 };
 export type Correction = { at: string; note: string };
+/** One box of «کادرهای کتاب»: all boxes of one label, in reading order. */
+export type BoxItem = { label: string; title: string; name: string; body: string; section_id: number; section_title: string; chapter_number: number | null };
 export type AnswerResult = {
   is_correct: boolean;
   correct_choice_id: number;
@@ -392,6 +394,10 @@ export const endpoints = {
   glossary: (slug: string, chapter?: string) =>
     api<{ book: string; chapter?: string | null; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(
       `books/${encodeURIComponent(slug)}/glossary/${chapter ? `?chapter=${encodeURIComponent(chapter)}` : ''}`,
+    ),
+  boxes: (nodeId: number, label?: string) =>
+    api<{ labels: { name: string; style: string; count: number }[]; boxes: BoxItem[]; locked_count: number; title: string; all_labels: Label[]; refs: Record<string, RefTarget> }>(
+      `nodes/${nodeId}/boxes/${label ? `?label=${encodeURIComponent(label)}` : ''}`,
     ),
   questions: (nodeId: number, ids?: string) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/${ids ? `?ids=${ids}` : ''}`),
   today: () => api<Today>('me/today/'),

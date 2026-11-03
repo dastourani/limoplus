@@ -4,7 +4,8 @@
  * book's names; renderMarkdown numbers the boxes as it draws them, so a moved box renumbers the rest.
  */
 export type RefTarget = { text: string; node: number | string };
-export type Numbering = { chapter?: number | null; start?: Record<string, number>; refs?: Record<string, RefTarget> };
+/** titles: given titles for the boxes in order (a page of boxes gathered from many sections, «مثال ۳-۵» each). */
+export type Numbering = { chapter?: number | null; start?: Record<string, number>; refs?: Record<string, RefTarget>; titles?: string[] };
 
 let current: Numbering = {};
 
