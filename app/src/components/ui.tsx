@@ -10,11 +10,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radius, rtl } from '../theme';
 
-export function Screen({ children, background = colors.ground, tab = false }: { children: ReactNode; background?: string; tab?: boolean }) {
-  // Tab screens leave the bottom edge to the tab bar.
+export function Screen({ children, background = colors.ground, tab = false, wide = false }: { children: ReactNode; background?: string; tab?: boolean; wide?: boolean }) {
+  // Tab screens leave the bottom edge to the tab bar. «wide»: a screen with its own columns on a computer.
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: background }]} edges={tab ? ['top', 'left', 'right'] : ['top', 'bottom', 'left', 'right']}>
-      <View style={styles.inner}>{children}</View>
+      <View style={[styles.inner, wide && { maxWidth: 1320 }]}>{children}</View>
     </SafeAreaView>
   );
 }

@@ -18,6 +18,8 @@ import { useStudyTimer } from '../../lib/studyTime';
 import { sendOrQueue } from '../../lib/network';
 import { setLabels } from '../../lib/labels';
 import { setNumbering } from '../../lib/numbering';
+import { useWide } from '../../lib/layout';
+import { ChapterSide } from '../../components/ChapterSide';
 import { parseTerms, type Term } from '../../lib/reviewCard';
 import { offlineBooks, offlineSection } from '../../lib/offline';
 import { storage, type ReaderTheme } from '../../lib/storage';
@@ -71,6 +73,7 @@ export default function Section() {
   const leaving = useRef(false);
   const nodeId = Number(id);
   const { user } = useAuth();
+  const wide = useWide();
   const reader = useRef<MarkdownViewHandle>(null);
 
   const [node, setNode] = useState<NodeDetail | null>(null);
@@ -469,7 +472,12 @@ export default function Section() {
   const missingNotes = notes.filter((n) => missing.includes(n.id) && n.mode === mode);
 
   return (
-    <Screen background={paper}>
+    <Screen background={paper} wide={wide}>
+      {/* A computer: the chapter's sections beside the text. */}
+      <View style={{ flex: 1, flexDirection: 'row-reverse' }}>
+      {wide && !!bookSlug && !offline && <ChapterSide bookSlug={bookSlug} nodeId={node.id} dark={dark} />}
+      <View style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
+      <View style={{ flex: 1, width: '100%', maxWidth: wide ? 880 : undefined }}>
       <View style={styles.header}>
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={styles.icon} accessibilityLabel="بازگشت">
           <Icon name="arrow-right" size={24} color={ink} />
@@ -656,6 +664,9 @@ export default function Section() {
           flash('گزارش داده شد. ممنون!');
         }}
       />
+      </View>
+      </View>
+      </View>
     </Screen>
   );
 }

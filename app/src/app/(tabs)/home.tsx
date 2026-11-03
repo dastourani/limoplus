@@ -1,8 +1,9 @@
 import { shelfLabel } from '../../lib/access';
 import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { FlatList, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { FlatList, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useWide } from '../../lib/layout';
 
 import { endpoints, type Library, type Today, type BookListItem } from '../../api/endpoints';
 import { BannerCarousel } from '../../components/BannerCarousel';
@@ -25,6 +26,7 @@ import { colors, radius, rtl, toPersianDigits } from '../../theme';
 
 export default function Home() {
   const { user } = useAuth();
+  const wide = useWide();
   const { width } = useWindowDimensions();
   const asLearner = useViewAsLearner();
   const { toast } = useFeedback();
@@ -298,6 +300,26 @@ export default function Home() {
     ),
   });
 
+  // A computer: today's jobs and «نیاز به مرور» in a column beside the books.
+  if (wide) {
+    const side = new Set(['today', 'needs-review']);
+    return (
+      <Screen tab wide>
+        <ScrollView contentContainerStyle={styles.wide} refreshControl={refresh}>
+          <View style={styles.wideMain}>
+            {blocks.filter((b) => !side.has(b.key)).map((b) => (
+              <Fragment key={b.key}>{b.el}</Fragment>
+            ))}
+          </View>
+          <View style={styles.wideSide}>
+            {blocks.filter((b) => side.has(b.key)).map((b) => (
+              <Fragment key={b.key}>{b.el}</Fragment>
+            ))}
+          </View>
+        </ScrollView>
+      </Screen>
+    );
+  }
   return (
     <Screen tab>
       <FlatList
@@ -332,6 +354,9 @@ const RIBBON: Record<'soon' | 'access' | 'free' | 'locked', { box: object; color
 
 
 const styles = StyleSheet.create({
+  wide: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 28, padding: 24 },
+  wideMain: { flex: 1, minWidth: 0, gap: 16 },
+  wideSide: { width: 380, gap: 16 },
   needsList: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
   needsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
   needsRowLine: { borderTopWidth: 1, borderTopColor: colors.line },

@@ -27,6 +27,27 @@ export function ListRow({
   chevron?: boolean;
   accessibilityLabel?: string;
 }) {
+  // A button on the left (e.g. «ادامه») goes beside the row's own button, not inside it (no button within a button).
+  if (onPress && value != null && typeof value !== 'string') {
+    return (
+      <View style={styles.row}>
+        <Pressable
+          onPress={onPress}
+          style={({ pressed }) => [styles.main, pressed && { opacity: 0.8 }]}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+        >
+          {!!icon && <IconBadge name={icon} size={38} />}
+          <View style={styles.text}>
+            <Text style={[styles.title, rtl]} numberOfLines={2}>{title}</Text>
+            {!!subtitle && <Text style={[styles.subtitle, rtl]} numberOfLines={2}>{subtitle}</Text>}
+          </View>
+        </Pressable>
+        {value}
+        {chevron && <Icon name="chevron-left" size={20} color={colors.muted} />}
+      </View>
+    );
+  }
   return (
     <Pressable
       onPress={onPress}
@@ -52,6 +73,7 @@ export function RowCount({ n, label }: { n: string; label?: string }) {
 }
 
 const styles = StyleSheet.create({
+  main: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 12, alignSelf: 'stretch' },
   row: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
