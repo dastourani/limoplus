@@ -144,6 +144,12 @@
     if (opts.labels && !opts.inline && labelList().length) {
       wrap.appendChild(labelRow(function (l) {
         if (self.variant === 'summary') { insertSummaryLabel(self.ta, l); return; }
+        // «نمودار»: a plot drawn from a description (app/src/lib/plot.ts); edit the lines and watch the preview.
+        if (l.name === 'نمودار') {
+          self.block(':::نمودار\n', '\n:::', 'تابع: sin(x)\nنام: $\\sin x$\nبازه: -2pi تا 2pi\nمحور: pi');
+          self.ta.focus();
+          return;
+        }
         var sample = l.style === 'table' && l.columns && l.columns.length
           ? '| ' + l.columns.join(' | ') + ' |\n|' + l.columns.map(function () { return ' --- '; }).join('|') + '|\n|' + l.columns.map(function () { return ' … '; }).join('|') + '|'
           : 'متن ' + l.name;

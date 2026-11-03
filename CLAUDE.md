@@ -64,6 +64,8 @@ Code, identifiers and commit messages are in English.
 - Numbered boxes (`Label.numbered`; «مثال», «نمودار»): counted over the chapter («مثال ۳-۵»), never written in the text;
   `:::مثال {#name}` + `[[#name]]` links. Server: `apps/catalog/numbering.py` (section's start counts and book refs sent with
   each section; explanations get `[[#name|text|node]]` filled in). App: `src/lib/numbering.ts`, renderer.
+- Plots: a «:::نمودار» box with «تابع:» lines is drawn as SVG by `src/lib/plot.ts` (formulas: `src/lib/expr.ts`, a small
+  numeric parser; mathjs was ~1 MB). Checks: `app/scripts/plot-check.ts` (run with esbuild + node; must pass).
 - «صندوق تست» (`apps/catalog/inbox.py`): a hidden book (`ContentNode.is_inbox`, never visible, never published) whose one
   section holds pasted tests until the panel moves them (`question.relocate`: one or many, to any section of any book; ids
   stay, a clashing slug in the target book gets «-2», flashcard links outside the target chapter are dropped).

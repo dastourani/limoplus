@@ -12,6 +12,7 @@ import MarkdownIt from 'markdown-it';
 
 import { findLabel } from './labels';
 import { faDigits, numbering } from './numbering';
+import { PLOT_CSS, renderPlot } from './plot';
 import { cells, jumpTarget, parseSummary } from './reviewCard';
 
 const md = new MarkdownIt({ html: false, linkify: false, typographer: false });
@@ -74,6 +75,15 @@ export function renderSummary(source: string, opts: { hasCards?: boolean } = {})
   return html + '</div>';
 }
 
+/** A box's text; a «نمودار» box with «تابع:» lines is drawn as a plot (lib/plot.ts). */
+function boxBody(name: string, body: string): string {
+  if (name === 'نمودار') {
+    const plot = renderPlot(body, renderInline);
+    if (plot !== null) return plot;
+  }
+  return renderPlain(body);
+}
+
 function renderPlain(source: string): string {
   const formulas: string[] = [];
   const keep = (html: string) => `@@MATH${formulas.push(html) - 1}@@`;
@@ -124,7 +134,7 @@ export function renderMarkdown(source: string): string {
         }
         const id = open![2] ? ` id="box-${esc(open![2])}"` : '';
         parts.push(
-          `<div class="box box-${label.style}"${id}><div class="box-title">${title}</div>${renderPlain(lines.slice(i + 1, end).join('\n'))}</div>`,
+          `<div class="box box-${label.style}${label.name === 'نمودار' ? ' box-plot' : ''}"${id}><div class="box-title">${title}</div>${boxBody(label.name, lines.slice(i + 1, end).join('\n'))}</div>`,
         );
         i = end;
         continue;
@@ -239,7 +249,8 @@ mark.flash.fade { background: transparent; box-shadow: 0 0 0 0 rgba(255,212,59,0
 .lesson.dark .rc-s-formal { background: #20233A; border-color: #363B66; } .lesson.dark .rc-s-formal h4 { color: #AEB4F5; } .lesson.dark .rc-s-note h4 { color: #9BE3B4; }
 .lesson.dark .term .en { color: #AEB4F5; } .lesson.dark mark.flash { color: #17201A; }
 .lesson.sepia .rc-part { background: #FBF5E6; border-color: #E6D8B8; } .lesson.sepia .rc-part a.jump { background: #F1E6CC; }
-`;
+.box-plot { padding: 10px 8px 8px; } .box-plot .box-title { padding: 0 6px; }
+${PLOT_CSS}`;
 
 /** Longest text a learner may copy at once; longer copies are blocked (the book is protected). */
 export const MAX_COPY_CHARS = 200;
