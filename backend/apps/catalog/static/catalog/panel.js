@@ -454,7 +454,7 @@
   Manager.prototype.saveBar = function (onSave, label) {
     var dirty = h('span', { class: 'dirty' });
     var btn = h('button', { class: 'btn primary', type: 'button', onclick: onSave }, label || 'ذخیره');
-    return { el: h('div', { class: 'cm-save' }, btn, dirty), mark: function (on, what) { dirty.textContent = on ? '● ذخیره نشده' : ''; } };
+    return { el: h('div', { class: 'cm-save' }, btn, dirty), mark: function (on, what) { var t = on ? '● ذخیره نشده' : ''; if (dirty.textContent !== t) dirty.textContent = t; } };
   };
 
   Manager.prototype.renderNotes = function (body, s) {
