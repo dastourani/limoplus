@@ -37,7 +37,20 @@ export default function Glossary() {
           data={list}
           keyExtractor={(t) => t.fa}
           contentContainerStyle={styles.list}
-          ListHeaderComponent={<Text style={[styles.count, rtl]}>{toPersianDigits(list.length)} واژه</Text>}
+          ListHeaderComponent={
+            <View style={styles.listHead}>
+              <Text style={[styles.count, rtl]}>{toPersianDigits(list.length)} واژه</Text>
+              {/* For those who want it: the words as cards. */}
+              <Pressable
+                onPress={() => router.push({ pathname: '/words/[slug]', params: chapter ? { slug: String(slug), chapter } : { slug: String(slug) } })}
+                style={styles.cardsButton}
+                accessibilityRole="button"
+              >
+                <Icon name="layers" size={16} color={colors.ink} />
+                <Text style={styles.cardsText}>مرور واژه‌ها با کارت</Text>
+              </Pressable>
+            </View>
+          }
           renderItem={({ item }) => (
             <Pressable onPress={() => router.push(`/section/${item.section_id}`)} style={styles.item} accessibilityRole="button">
               <View style={styles.head}>
@@ -58,7 +71,10 @@ const styles = StyleSheet.create({
   search: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 12, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
   input: { flex: 1, paddingVertical: 10, fontSize: 15, color: colors.ink },
   list: { padding: 16, paddingTop: 4, gap: 8 },
-  count: { fontSize: 12, color: colors.muted, marginBottom: 4 },
+  count: { fontSize: 12, color: colors.muted },
+  listHead: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  cardsButton: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.lemon },
+  cardsText: { fontSize: 13, fontWeight: '800', color: colors.ink },
   item: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 4 },
   head: { flexDirection: 'row-reverse', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' },
   fa: { fontSize: 15, fontWeight: '800', color: colors.ink },
