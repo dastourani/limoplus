@@ -139,8 +139,9 @@
     body.appendChild(textarea);
     body.appendChild(h('div', { class: 'md-prev' }, this.frame));
     wrap.appendChild(bar);
-    // Label buttons: in the notes each one puts the selected text (or a sample) in a box «:::تعریف … :::».
-    if (!opts.inline && labelList().length) {
+    // Label buttons, only in the notes («درسنامه»): each one puts the selected text (or a sample) in a box
+    // «:::تعریف … :::». Not in tests or flashcards: they are blocks themselves, and blocks cannot go inside blocks.
+    if (opts.labels && !opts.inline && labelList().length) {
       wrap.appendChild(labelRow(function (l) {
         if (self.variant === 'summary') { insertSummaryLabel(self.ta, l); return; }
         var sample = l.style === 'table' && l.columns && l.columns.length
@@ -513,7 +514,7 @@
     var bar = this.saveBar(function () {
       self.call({ op: 'section.update', slug: s.slug, full_body: ta.value }).then(function () { self.dirty = null; self.render(); toast('درسنامه ذخیره شد.'); }).catch(function () {});
     }, 'ذخیره‌ی درسنامه');
-    new MdEditor(ta, { variant: 'notes', uploadUrl: this.api, onChange: function () { self.dirty = 'درسنامه'; bar.mark(true); } });
+    new MdEditor(ta, { variant: 'notes', labels: true, uploadUrl: this.api, onChange: function () { self.dirty = 'درسنامه'; bar.mark(true); } });
     body.appendChild(bar.el);
     if (s.missing_phrases.length) body.appendChild(h('div', { class: 'msg warn' }, 'این عبارت‌های پرش چکیده در درسنامه پیدا نمی‌شوند: ' + s.missing_phrases.join('، ')));
   };
