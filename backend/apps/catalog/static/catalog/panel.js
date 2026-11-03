@@ -522,11 +522,25 @@
     var bar = this.saveBar(function () {
       self.call({ op: 'section.update', slug: s.slug, summary_body: current() }).then(function () { self.dirty = null; self.render(); toast('خلاصه ذخیره شد.'); }).catch(function () {});
     }, 'ذخیره‌ی خلاصه');
-    function changed() { self.dirty = 'خلاصه'; bar.mark(true); clearTimeout(changed.t); changed.t = setTimeout(refresh, 250); }
+    var formEdited = false;
+    function changed() { if (mode === 'form') formEdited = true; self.dirty = 'خلاصه'; bar.mark(true); clearTimeout(changed.t); changed.t = setTimeout(refresh, 250); }
+    // Back to the raw text: untouched if nothing was changed in the form (so Ctrl+Z keeps its history); otherwise the
+    // new text goes in as one edit, which Ctrl+Z can take back too (setting .value would wipe the history).
+    function backToRaw() {
+      if (!formEdited) return;
+      var text = formToSummary(form);
+      if (text === rawTa.value) return;
+      rawTa.focus();
+      rawTa.select();
+      var ok = false;
+      try { ok = document.execCommand('insertText', false, text); } catch (e) { ok = false; }
+      if (!ok) rawTa.value = text;
+      rawTa.setSelectionRange(0, 0);
+    }
 
     var switcher = h('div', { class: 'row', style: 'margin-bottom:10px' },
-      h('button', { class: 'btn small' + (mode === 'form' ? ' primary' : ''), type: 'button', onclick: function () { if (mode !== 'form') { form = summaryToForm(rawTa.value); self.summaryMode = 'form'; mode = 'form'; draw(); } } }, 'فرم کارت مرور'),
-      h('button', { class: 'btn small' + (mode === 'raw' ? ' primary' : ''), type: 'button', onclick: function () { if (mode !== 'raw') { rawTa.value = formToSummary(form); self.summaryMode = 'raw'; mode = 'raw'; draw(); } } }, 'متن خام'),
+      h('button', { class: 'btn small' + (mode === 'form' ? ' primary' : ''), type: 'button', onclick: function () { if (mode !== 'form') { form = summaryToForm(rawTa.value); formEdited = false; self.summaryMode = 'form'; mode = 'form'; draw(); } } }, 'فرم کارت مرور'),
+      h('button', { class: 'btn small' + (mode === 'raw' ? ' primary' : ''), type: 'button', onclick: function () { if (mode !== 'raw') { self.summaryMode = 'raw'; mode = 'raw'; draw(); backToRaw(); } } }, 'متن خام'),
       h('span', { class: 'hint' }, 'هر دو یکی‌اند؛ فرم همان متن خام را می‌سازد.'));
     var rawTa = h('textarea', { rows: 16, oninput: changed });
     rawTa.value = raw;
@@ -538,12 +552,18 @@
     var phrases = boldPhrases(s.full_body);
     var notesPlain = plain(s.full_body);
 
+    // The raw text box stays in the page the whole time (only hidden while the form is shown): taking it out of the
+    // page would wipe its Ctrl+Z history.
+    var rawBox = h('div', null, rawTa, h('p', { class: 'hint' }, 'برچسب‌ها: «در یک نگاه:»، «مهم:»، «واژه:»، «قاعده:»، «حفظی:»، «تله:» و هر مورد با «- ». خلاصه‌ی بدون برچسب مثل متن معمولی نشان داده می‌شود؛ متنی که پیش از اولین برچسب بیاید، بالای کارت می‌آید.'));
+    var formBox = h('div');
+    left.appendChild(rawBox);
+    left.appendChild(formBox);
     function draw() {
-      left.innerHTML = '';
       switcher.querySelectorAll('button').forEach(function (b, i) { b.classList.toggle('primary', (i === 0) === (mode === 'form')); });
+      rawBox.style.display = mode === 'raw' ? '' : 'none';
+      formBox.style.display = mode === 'raw' ? 'none' : '';
+      formBox.innerHTML = '';
       if (mode === 'raw') {
-        left.appendChild(rawTa);
-        left.appendChild(h('p', { class: 'hint' }, 'برچسب‌ها: «در یک نگاه:»، «مهم:»، «واژه:»، «قاعده:»، «حفظی:»، «تله:» و هر مورد با «- ». خلاصه‌ی بدون برچسب مثل متن معمولی نشان داده می‌شود؛ متنی که پیش از اولین برچسب بیاید، بالای کارت می‌آید.'));
         refresh();
         return;
       }
@@ -599,7 +619,7 @@
         f.appendChild(part);
       });
       f.appendChild(h('datalist', { id: 'cm-bold' }, phrases.map(function (x) { return h('option', { value: x }); })));
-      left.appendChild(f);
+      formBox.appendChild(f);
       refresh();
     }
     draw();
