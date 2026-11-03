@@ -103,9 +103,10 @@ const theme = EditorView.theme({
   '.cm-scroller': { fontFamily: 'inherit' },
   '.cm-line': { padding: '0 8px' },
   '.cm-math, .cm-ltr': { unicodeBidi: 'isolate' },
-  '.cm-math': { color: '#3B44B8', backgroundColor: 'rgba(59,68,184,.06)', borderRadius: '3px' },
-  '.cm-ltr': { color: '#1f5e3a' },
-  '.cm-key': { color: '#7A4F00', fontWeight: '700' },
+  // Colours are CSS variables (panel.css), so the admin's dark theme can give lighter ones.
+  '.cm-math': { color: 'var(--cm-math, #3B44B8)', backgroundColor: 'var(--cm-math-bg, rgba(59,68,184,.06))', borderRadius: '3px' },
+  '.cm-ltr': { color: 'var(--cm-ltr, #1f5e3a)' },
+  '.cm-key': { color: 'var(--cm-key, #7A4F00)', fontWeight: '700' },
   '.cm-box-line': { backgroundColor: 'rgba(232,185,35,.12)' },
 });
 

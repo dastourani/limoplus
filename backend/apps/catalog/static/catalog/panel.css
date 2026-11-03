@@ -148,3 +148,26 @@ table.lp-table { width: 100%; border-collapse: collapse; } table.lp-table td, ta
 .plot-menu { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; background: #FFF9E3; border: 1px solid #F1DE94; border-radius: 10px; margin: 4px 0; }
 .plot-menu button { border: 1px solid #E3E8DE; background: #fff; border-radius: 999px; padding: 4px 12px; cursor: pointer; font: inherit; font-size: 13px; }
 .plot-menu button:hover { background: #F5C518; }
+
+/* The admin's dark theme («تیره» in the admin's own switch, or the browser's when it is on «خودکار»): lighter colours for
+   what is drawn in colour on the card background. Same selectors as Django's dark_mode.css. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .limo-cm { --cm-ltr: #7FD6A5; --cm-math: #9FB0FF; --cm-math-bg: rgba(159,176,255,.10); --cm-key: #F5C96B; }
+  :root:not([data-theme="light"]) .rc-form .lbl-part.lbl-formal { background: #22264A; border-color: #3A3F73; }
+  :root:not([data-theme="light"]) .rc-form .lbl-part.lbl-note { background: #1C3326; border-color: #2F5440; }
+  :root:not([data-theme="light"]) .rc-form .lbl-part.lbl-warn { background: #3A3216; border-color: #5E5124; }
+  :root:not([data-theme="light"]) .rc-form .lbl-part.lbl-table { background: #1E2621; border-color: #33403A; }
+  :root:not([data-theme="light"]) .rc-form .lbl-part.lbl-formal h4 { color: #AEB4F5; }
+  :root:not([data-theme="light"]) .rc-form .lbl-part.lbl-note h4 { color: #9BE3B4; }
+  :root:not([data-theme="light"]) .rc-form .lbl-part.lbl-warn h4 { color: #F5D96B; }
+  :root:not([data-theme="light"]) .rc-form .lbl-part.lbl-table h4 { color: #B9C4BC; }
+}
+html[data-theme="dark"] .limo-cm { --cm-ltr: #7FD6A5; --cm-math: #9FB0FF; --cm-math-bg: rgba(159,176,255,.10); --cm-key: #F5C96B; }
+html[data-theme="dark"] .rc-form .lbl-part.lbl-formal { background: #22264A; border-color: #3A3F73; }
+html[data-theme="dark"] .rc-form .lbl-part.lbl-note { background: #1C3326; border-color: #2F5440; }
+html[data-theme="dark"] .rc-form .lbl-part.lbl-warn { background: #3A3216; border-color: #5E5124; }
+html[data-theme="dark"] .rc-form .lbl-part.lbl-table { background: #1E2621; border-color: #33403A; }
+html[data-theme="dark"] .rc-form .lbl-part.lbl-formal h4 { color: #AEB4F5; }
+html[data-theme="dark"] .rc-form .lbl-part.lbl-note h4 { color: #9BE3B4; }
+html[data-theme="dark"] .rc-form .lbl-part.lbl-warn h4 { color: #F5D96B; }
+html[data-theme="dark"] .rc-form .lbl-part.lbl-table h4 { color: #B9C4BC; }
