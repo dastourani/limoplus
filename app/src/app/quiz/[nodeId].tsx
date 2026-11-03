@@ -87,16 +87,23 @@ export default function Quiz() {
       .catch(() => setOrder({ order: 'book', seed: 0 }));
   }, [orderKey]);
 
+  // «تست تکمیلی»: a section's extra tests come after its own, once the learner asks for «تمرین بیشتر».
+  const [withExtra, setWithExtra] = useState(false);
+  const sectionQuiz = !review && !notebook && !quick;
+  const extraCount = sectionQuiz ? (data?.questions ?? []).filter((q) => q.extra).length : 0;
   const questions = useMemo(() => {
-    const base = reviewQs ?? data?.questions ?? [];
-    if (review || !order || order.order === 'book') return base;
-    if (order.order === 'wrong') {
+    const all = reviewQs ?? data?.questions ?? [];
+    const base = sectionQuiz && !withExtra ? all.filter((q) => !q.extra) : all;
+    let list = base;
+    if (!review && order && order.order === 'wrong') {
       const keep = new Set(order.ids ?? []);
-      return base.filter((q) => keep.has(q.id));
+      list = base.filter((q) => keep.has(q.id));
+    } else if (!review && order && order.order === 'shuffle') {
+      // Choices like «گزینه‌های ۱ و ۳» keep their place (fixed_order).
+      list = seeded(base, order.seed).map((q) => (q.fixed_order ? q : { ...q, choices: seeded(q.choices, order.seed + q.id) }));
     }
-    // Choices like «گزینه‌های ۱ و ۳» keep their place (fixed_order).
-    return seeded(base, order.seed).map((q) => (q.fixed_order ? q : { ...q, choices: seeded(q.choices, order.seed + q.id) }));
-  }, [data, order, reviewQs, review]);
+    return sectionQuiz && withExtra ? [...list.filter((q) => !q.extra), ...list.filter((q) => q.extra)] : list;
+  }, [data, order, reviewQs, review, sectionQuiz, withExtra]);
 
   // Signed-in learners continue at the first question they have not answered yet.
   useEffect(() => {
@@ -141,11 +148,15 @@ export default function Quiz() {
 
   // From search: open at that question.
   useEffect(() => {
+    if (openQuestion && !withExtra && data?.questions.some((x) => String(x.id) === openQuestion && x.extra)) {
+      setWithExtra(true);
+      return;
+    }
     if (!openQuestion || !questions.length || resumed.current) return;
     resumed.current = true;
     const at = questions.findIndex((x) => String(x.id) === openQuestion);
     if (at > 0) setIndex(at);
-  }, [openQuestion, questions]);
+  }, [openQuestion, questions, withExtra, data]);
 
   const go = useCallback(
     (target: number, alreadyOut = false) => {
@@ -346,6 +357,19 @@ export default function Quiz() {
               onPress={() => {
                 setShowSummary(false);
                 setIndex(firstOpen);
+              }}
+              style={{ alignSelf: 'stretch' }}
+            />
+          )}
+          {sectionQuiz && extraCount > 0 && !withExtra && (
+            <Button
+              label={`تمرین بیشتر: ${toPersianDigits(extraCount)} تست تکمیلی`}
+              variant={firstOpen >= 0 ? 'outline' : 'primary'}
+              onPress={() => {
+                const before = questions.length;
+                setWithExtra(true);
+                setShowSummary(false);
+                setIndex(before);
               }}
               style={{ alignSelf: 'stretch' }}
             />

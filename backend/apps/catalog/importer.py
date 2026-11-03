@@ -96,6 +96,7 @@ QUESTION_KEYS = {
         "منبع": "source", "سطح": "difficulty", "حوزه": "domain", "نوع": "kind",
         "زمان": "seconds", "فلش‌کارت": "flashcards", "رایگان": "free",
         "ترتیب گزینه‌ها": "fixed_order", "ترتیب گزینه ها": "fixed_order", "ترتیب": "fixed_order",
+        "نقش": "role",
     }.items()
 }
 
@@ -143,6 +144,7 @@ class ParsedQuestion:
     is_free: bool = False
     is_original: bool = False
     fixed_order: bool = False
+    is_extra: bool = False
     sources: list[tuple[str, int, int | None]] = field(default_factory=list)
     flashcard_slugs: list[str] = field(default_factory=list)
     choices: list[tuple[str, bool]] = field(default_factory=list)
@@ -421,7 +423,7 @@ def _parse_front_matter(lines, chapter, book: ContentNode | None = None) -> int:
     return i + 1
 
 
-SINGLE_LINE_FIELDS = {"source", "difficulty", "domain", "kind", "seconds", "free", "flashcards", "title", "formula", "fixed_order"}
+SINGLE_LINE_FIELDS = {"source", "difficulty", "domain", "kind", "seconds", "free", "flashcards", "title", "formula", "fixed_order", "role"}
 FIXED = YES | {"ثابت"}
 
 
@@ -500,6 +502,10 @@ def _parse_question(body, slug, line_no, chapter) -> ParsedQuestion:
         digits = re.sub(r"\D", "", seconds)
         q.seconds = int(digits) if digits else None
     q.is_free = _join(fields.get("free", [[""]])[-1]).lower() in YES
+    role = _join(fields.get("role", [[""]])[-1]).strip()
+    q.is_extra = role in {"تکمیلی", "مازاد", "بانک", "extra"}
+    if role and not q.is_extra and role not in {"پایه", "اصلی", "core"}:
+        chapter.error(f"تست {slug}: «نقش» فقط «پایه» یا «تکمیلی» است.", line_no)
     order = _join(fields.get("fixed_order", [[""]])[-1]).lower()
     q.fixed_order = order in FIXED
     if order and not q.fixed_order and order not in {"تصادفی", "خیر", "نه", "no", "false", "0"}:
@@ -752,6 +758,7 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
             obj.difficulty, obj.domain, obj.kind = q.difficulty, q.domain, q.kind
             obj.estimated_seconds, obj.is_original, obj.is_free, obj.is_archived = q.seconds, q.is_original, q.is_free, False
             obj.fixed_order = q.fixed_order
+            obj.is_extra = q.is_extra
             obj.order = order
             obj.save()
             (result.created if created else result.updated)["question"] += 1

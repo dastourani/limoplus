@@ -93,6 +93,7 @@ def _question_json(q, obj, reports):
         "seconds": q.seconds,
         "is_free": q.is_free,
         "fixed_order": q.fixed_order,
+        "is_extra": q.is_extra,
         "is_original": q.is_original,
         "sources": [{"name": n, "year": y, "number": num} for n, y, num in q.sources],
         "flashcards": q.flashcard_slugs,

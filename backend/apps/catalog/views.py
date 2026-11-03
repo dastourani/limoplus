@@ -335,8 +335,12 @@ def _section_status(user, access, node):
     from apps.learning.models import Flashcard, Question, QuizAnswer
     from apps.study.models import FlashcardReview, SectionProgress
 
-    questions = [q for q in Question.objects.filter(node=node, is_archived=False).only("id", "node_id", "is_free")
-                 if access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))]
+    from apps.study.progress import core
+
+    usable = [q for q in Question.objects.filter(node=node, is_archived=False).only("id", "node_id", "is_free", "is_extra")
+              if access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))]
+    kept = set(core((q.id, q.is_extra) for q in usable))
+    questions = [q for q in usable if q.id in kept]
     answered = set(QuizAnswer.objects.filter(user=user, question_id__in=[q.id for q in questions], is_archived=False).values_list("question_id", flat=True))
     cards = list(Flashcard.objects.filter(node=node, is_archived=False).values_list("id", flat=True))
     reviews = dict(FlashcardReview.objects.filter(user=user, flashcard_id__in=cards).values_list("flashcard_id", "due_at"))

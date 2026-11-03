@@ -77,6 +77,9 @@ class Question(models.Model):
     is_sample = models.BooleanField("نمونه‌ی قابل اشتراک", default=False)
     # «ترتیب گزینه‌ها: ثابت» in the file: the app never shuffles these choices (e.g. «گزینه‌های ۱ و ۳»).
     fixed_order = models.BooleanField("ترتیب گزینه‌ها ثابت", default=False)
+    # «تست تکمیلی»: in the chapter's question bank (more practice, exams, reviews), not among the section's own tests,
+    # so it never counts toward the section's progress circle.
+    is_extra = models.BooleanField("تست تکمیلی", default=False, help_text="در بانک تست؛ در دایره‌ی پیشرفت بخش حساب نمی‌شود.")
     # Set by the importer when the right choice moves to another choice: the app shows «اصلاح‌شده».
     key_changed_at = models.DateTimeField("تاریخ اصلاح پاسخ‌نامه", null=True, blank=True, editable=False)
     key_change_note = models.CharField("شرح اصلاح پاسخ‌نامه", max_length=400, blank=True, editable=False)

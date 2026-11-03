@@ -41,10 +41,19 @@ def node_questions(request, node_id):
         .order_by("node__path", "order", "id")
     )
     items, locked = [], 0
+    usable = []
     for q in questions:
         if not _usable(access, q):
             locked += 1
             continue
+        usable.append(q)
+    from apps.study.progress import core
+
+    by_section: dict[int, list] = {}
+    for q in usable:
+        by_section.setdefault(q.node_id, []).append((q.id, q.is_extra))
+    counted = {qid for rows in by_section.values() for qid in core(rows)}
+    for q in usable:
         items.append(
             {
                 "id": q.id,
@@ -67,6 +76,8 @@ def node_questions(request, node_id):
                 "sources": [{"name": qs.source.name, "year": qs.source.year, "number": qs.number} for qs in q.questionsource_set.all()],
                 "fixed_order": q.keeps_order,
                 "corrected": q.correction(),
+                # «تست تکمیلی»: extra practice, shown after the section's own tests and not counted in its progress.
+                "extra": q.id not in counted,
             }
         )
     return Response({"questions": items, "locked_count": locked})

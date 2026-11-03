@@ -677,6 +677,42 @@ class SectionStateTests(TestCase):
         self.assertNotIn(s.id, data["done_ids"])
 
 
+    def test_extra_tests_do_not_count_toward_progress(self):
+        from .progress import core, needed
+
+        self.assertEqual(core([(1, False), (2, True)]), [1])
+        self.assertEqual(core([(1, True), (2, True)]), [1, 2], "all marked extra: they all count")
+        s = self.section
+        questions = list(Question.objects.filter(node=s, is_archived=False).order_by("id"))
+        self.assertGreaterEqual(len(questions), 2)
+        core_q, extras = questions[:1], questions[1:]
+        Question.objects.filter(id__in=[q.id for q in extras]).update(is_extra=True)
+        listed = self.client.get(f"/api/v1/nodes/{s.id}/questions/").data["questions"]
+        self.assertEqual({q["id"] for q in listed if q["extra"]}, {q.id for q in extras}, "extras are still sent, marked")
+        for q in extras:
+            self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.first().id}, format="json")
+        data = self.client.get("/api/v1/books/math-1/").data
+        self.assertNotIn(s.id, data["read_ids"], "only extra tests answered: nothing yet")
+        self.client.post(f"/api/v1/questions/{core_q[0].id}/answer/", {"choice_id": core_q[0].choices.first().id}, format="json")
+        data = self.client.get("/api/v1/books/math-1/").data
+        self.assertIn(s.id, data["read_ids"], "the core test counts")
+        self.assertEqual(needed(1), 1)
+
+    def test_role_round_trips_through_the_chapter_file(self):
+        from apps.catalog.exporter import export_chapter
+        from apps.catalog.importer import parse_chapter
+
+        q = Question.objects.filter(node=self.section, is_archived=False).first()
+        Question.objects.filter(id=q.id).update(is_extra=True)
+        text = export_chapter(self.chapter)
+        self.assertIn("نقش: تکمیلی", text)
+        parsed = parse_chapter(text)
+        self.assertFalse(parsed.errors, parsed.errors)
+        flags = {pq.slug: pq.is_extra for sec in parsed.sections for pq in sec.questions}
+        self.assertTrue(flags[q.slug])
+        self.assertEqual(sum(flags.values()), 1)
+
+
 class StudyTimeTests(TestCase):
     setUp = StudyTests.setUp
     tearDown = StudyTests.tearDown

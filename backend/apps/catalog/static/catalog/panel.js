@@ -703,7 +703,7 @@
   Manager.prototype.itemEditor = function (s, kind, item) {
     var self = this, isNew = !item;
     var data = item ? JSON.parse(JSON.stringify(item)) : (kind === 'question'
-      ? { stem: '', choices: [{ text: '', correct: true }, { text: '', correct: false }, { text: '', correct: false }, { text: '', correct: false }], explanation: '', quick_solution: '', alternative_view: '', difficulty: 'medium', kind: '', domain: '', seconds: '', is_free: false, fixed_order: false, is_original: true, sources: [], flashcards: [] }
+      ? { stem: '', choices: [{ text: '', correct: true }, { text: '', correct: false }, { text: '', correct: false }, { text: '', correct: false }], explanation: '', quick_solution: '', alternative_view: '', difficulty: 'medium', kind: '', domain: '', seconds: '', is_free: false, fixed_order: false, is_extra: false, is_original: true, sources: [], flashcards: [] }
       : { title: '', point: '', formula: '', is_free: false });
     var box = h('div', { class: 'item open', id: 'item-' + (item ? item.slug : 'new') });
     var mode = 'form';
@@ -792,6 +792,9 @@
         var fixed = h('input', { type: 'checkbox', checked: data.fixed_order, onchange: function () { data.fixed_order = fixed.checked; } });
         left.appendChild(h('label', { class: 'btn small', style: 'margin:4px 0', title: 'برای گزینه‌هایی مثل «۱ و ۳» یا «همه‌ی موارد» خودکار ثابت می‌ماند' },
           fixed, ' ترتیب گزینه‌ها ثابت بماند (اپ جابه‌جایشان نکند)'));
+        var extra = h('input', { type: 'checkbox', checked: data.is_extra, onchange: function () { data.is_extra = extra.checked; changed(); } });
+        left.appendChild(h('label', { class: 'btn small', style: 'margin:4px 0 4px 6px', title: 'تست پایه در دایره‌ی پیشرفت بخش حساب می‌شود؛ تست تکمیلی فقط در «تمرین بیشتر»، آزمون و مرورها می‌آید' },
+          extra, ' تست تکمیلی (بانک تست)'));
         left.appendChild(h('div', { class: 'row' },
           h('div', { class: 'grow' }, field('سطح', sel(DIFF, 'difficulty'))),
           h('div', { class: 'grow' }, field('نوع', sel(KINDS, 'kind'))),

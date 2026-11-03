@@ -68,7 +68,7 @@ def _usable(access, q) -> bool:
 
 def chapter_pool(access, chapter) -> list[Question]:
     ids = access.visible_ids_under(chapter)
-    return [q for q in Question.objects.filter(node_id__in=ids, is_archived=False).only("id", "node_id", "is_free", "estimated_seconds") if _usable(access, q)]
+    return [q for q in Question.objects.filter(node_id__in=ids, is_archived=False).only("id", "node_id", "is_free", "is_extra", "estimated_seconds") if _usable(access, q)]
 
 
 def _sections(access, chapter) -> list[ContentNode]:
@@ -91,11 +91,14 @@ def is_finished(user, access, chapter) -> bool:
     read = SectionProgress.objects.filter(user=user, node_id__in=[s.id for s in sections], is_done=True).count()
     if read < len(sections):
         return False
-    pool = chapter_pool(access, chapter)
-    from .progress import needed
+    from .progress import core, needed
 
-    # The same rule as a section's green tick: 70% answered, rounded down, at least one.
-    return not pool or len(_answered_ids(user, [q.id for q in pool])) >= needed(len(pool))
+    # The same rule as a section's green tick: 70% of the core questions answered, rounded up, at least one.
+    by_section: dict[int, list] = {}
+    for q in chapter_pool(access, chapter):
+        by_section.setdefault(q.node_id, []).append((q.id, q.is_extra))
+    pool = [qid for rows in by_section.values() for qid in core(rows)]
+    return not pool or len(_answered_ids(user, pool)) >= needed(len(pool))
 
 
 def start_cycle(user, access, chapter, by="auto") -> ChapterReview:

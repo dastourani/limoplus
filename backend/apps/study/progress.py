@@ -7,6 +7,9 @@ How far a learner is with each section (the circle beside it in the book page, a
 
 70% is rounded up, and at least one: of 2 questions both, of 3 three, of 4 three, of 10 seven. Answers count right or
 wrong. A section without questions is done when it is read. The same count finishes a chapter (reviews.is_finished).
+
+Only a section's core questions count. Questions marked «نقش: تکمیلی» are extra practice (more tests, exams, reviews);
+if every question of a section is marked extra, they all count, so marking never turns tests off by accident.
 """
 
 from __future__ import annotations
@@ -23,6 +26,13 @@ SHARE = 0.7
 def needed(total: int) -> int:
     """How many of `total` questions must be answered."""
     return 0 if total <= 0 else max(1, math.ceil(SHARE * total - 1e-9))
+
+
+def core(rows):
+    """The questions that count toward a section's progress, from (question, is_extra) pairs of one section."""
+    rows = list(rows)
+    kept = [q for q, extra in rows if not extra]
+    return kept if kept else [q for q, _ in rows]
 
 
 def answered_ids(user, request=None) -> set[int]:
@@ -54,7 +64,7 @@ def read_ids(user, book, request=None) -> set[int]:
     return set(SectionProgress.objects.filter(user=user, book=book, is_done=True).values_list("node_id", flat=True))
 
 
-def _questions_of(sections: set[int], request=None) -> dict[int, list[tuple[int, bool]]]:
+def _questions_of(sections: set[int], request=None) -> dict[int, list[tuple[int, bool, bool]]]:
     """Questions of these sections. On a page with many books (the shelves) one query loads them for every section the
     learner has read or answered in, and later books are answered from the request."""
     cache = getattr(request, "_limo_questions", None) if request is not None else None
@@ -66,9 +76,11 @@ def _questions_of(sections: set[int], request=None) -> dict[int, list[tuple[int,
                 wanted.update(ids)
         if request is not None and getattr(request, "_limo_answered2", None) is not None:
             wanted |= request._limo_answered2[1]
-        found: dict[int, list[tuple[int, bool]]] = {}
-        for qid, node_id, is_free in Question.objects.filter(node_id__in=list(wanted), is_archived=False).values_list("id", "node_id", "is_free"):
-            found.setdefault(node_id, []).append((qid, is_free))
+        found: dict[int, list[tuple[int, bool, bool]]] = {}
+        for qid, node_id, is_free, is_extra in Question.objects.filter(node_id__in=list(wanted), is_archived=False).values_list(
+            "id", "node_id", "is_free", "is_extra"
+        ):
+            found.setdefault(node_id, []).append((qid, is_free, is_extra))
         cache = (wanted, found)
         if request is not None:
             request._limo_questions = cache
@@ -86,9 +98,10 @@ def section_states(user, access, request=None) -> tuple[set[int], set[int]]:
         return set(), set()
     per_section: dict[int, list[int]] = {}
     for node_id, rows in _questions_of(read | in_book, request).items():
-        for qid, is_free in rows:
-            if access.visible(node_id) and (is_free or access.readable(node_id)):
-                per_section.setdefault(node_id, []).append(qid)
+        if access.visible(node_id):
+            usable = [(qid, is_extra) for qid, is_free, is_extra in rows if is_free or access.readable(node_id)]
+            if usable:
+                per_section[node_id] = core(usable)
     tested = {
         sid for sid, qs in per_section.items() if qs and sum(1 for q in qs if q in answered) >= needed(len(qs))
     }
@@ -110,9 +123,10 @@ def chapter_state(user, access, chapter, reading=None, request=None) -> dict | N
     answered, _ = _answered(user, request)
     per_section: dict[int, list[int]] = {}
     for node_id, rows in _questions_of({s.id for s in sections}, request).items():
-        for qid, is_free in rows:
-            if access.visible(node_id) and (is_free or access.readable(node_id)):
-                per_section.setdefault(node_id, []).append(qid)
+        if access.visible(node_id):
+            usable = [(qid, is_extra) for qid, is_free, is_extra in rows if is_free or access.readable(node_id)]
+            if usable:
+                per_section[node_id] = core(usable)
     tests_left = sum(max(0, needed(len(qs)) - sum(1 for q in qs if q in answered)) for qs in per_section.values())
     notes_left = sum(1 for s in sections if s.id not in read)
     state = "complete" if not tests_left and not notes_left else "tests" if tests_left else "notes"

@@ -107,6 +107,8 @@ export type Question = {
   sources: { name: string; year: number; number: number | null }[];
   /** Shown as written: shuffling would change what a choice like «گزینه‌های ۱ و ۳» means. */
   fixed_order?: boolean;
+  /** «تست تکمیلی»: extra practice after the section's own tests; not counted in its progress. */
+  extra?: boolean;
   /** The answer key was corrected («اصلاح‌شده»). */
   corrected?: Correction | null;
 };
