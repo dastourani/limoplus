@@ -272,12 +272,6 @@ export default function Book() {
                   <Text style={styles.shortcutText}>آزمون‌هایم ({toPersianDigits(book.mine.exams)})</Text>
                 </Pressable>
               )}
-              {!!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
-                <View style={styles.shortcut} accessibilityLabel={`تا الان ${studyDuration(book.mine.time_seconds)} روی این کتاب وقت گذاشتی`}>
-                  <Icon name="time-spent" size={18} color={colors.ink} />
-                  <Text style={styles.shortcutText}>تا الان {studyDuration(book.mine.time_seconds)} وقت گذاشتی</Text>
-                </View>
-              )}
               {offlineSupported && (
                 <Pressable onPress={download} disabled={downloading} style={styles.shortcut} accessibilityRole="button">
                   <Icon name={offline ? 'circle-check' : 'download'} size={18} color={offline ? colors.greenDark : colors.ink} />
@@ -286,6 +280,13 @@ export default function Book() {
                   </Text>
                 </Pressable>
               )}
+            </View>
+          )}
+          {/* Information, not a button: last, the full width (long times such as «۱۲ ساعت» never wrap), quiet. */}
+          {!book.is_coming_soon && !!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
+            <View style={styles.timeRow} accessible accessibilityLabel={`تا الان ${studyDuration(book.mine.time_seconds)} روی این کتاب وقت گذاشتی`}>
+              <Icon name="time-spent" size={16} color={colors.muted} />
+              <Text style={styles.timeText}>تا الان {studyDuration(book.mine.time_seconds)} وقت گذاشتی</Text>
             </View>
           )}
           {!!offline && offlineSupported && (
@@ -544,6 +545,8 @@ const styles = StyleSheet.create({
   resumeLineText: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.greenDark },
   shortcuts: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
   shortcut: { flexGrow: 1, flexBasis: '45%', minHeight: 46, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
+  timeRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 4 },
+  timeText: { fontSize: 13, color: colors.muted },
   shortcutText: { fontSize: 13, fontWeight: '700', color: colors.ink },
   smallLink: { fontSize: 12, color: colors.muted, textDecorationLine: 'underline' },
   note: { fontSize: 13, color: colors.muted },

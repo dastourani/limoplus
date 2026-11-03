@@ -9,7 +9,7 @@ import { Text } from '../components/Text';
 import { Button, Empty, ErrorState, Header, Loading, Screen, usePullRefresh } from '../components/ui';
 import { ListRow } from '../components/ListRow';
 import { Pill } from '../components/Pill';
-import { jalaliDateTime } from '../lib/jalali';
+import { whenShort } from '../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../theme';
 
 const pct = (n: number | null | undefined) => `${toPersianDigits(Math.round(n ?? 0))}٪`;
@@ -70,8 +70,8 @@ export default function Exams() {
             <ListRow
               key={e.id}
               icon="trophy"
-              title={e.node_title}
-              subtitle={`${e.book_title ? `${e.book_title}، ` : ''}${jalaliDateTime(e.started_at)}، ${toPersianDigits(e.question_count)} سؤال`}
+              title={e.number ? `${e.node_title}، آزمون ${toPersianDigits(e.number)}` : e.node_title}
+              subtitle={examLine(e)}
               value={<Text style={[styles.score, !e.submitted_at && { color: colors.muted, fontSize: 15 }]}>{e.submitted_at ? pct(e.score_percent) : 'ناتمام'}</Text>}
               onPress={() => router.push(`/exam-result/${e.id}`)}
             />
@@ -90,6 +90,19 @@ function Stat({ label, value }: { label: string; value: string }) {
       <Text style={styles.muted}>{label}</Text>
     </View>
   );
+}
+
+/** «امروز، ۱۹:۵۸، ۶ سؤال، نمره‌ی منفی، تمرکز روی اشتباه‌ها» (and the book, when the list mixes books). */
+function examLine(e: ExamPage['results'][number]) {
+  return [
+    e.book_title,
+    whenShort(e.started_at),
+    `${toPersianDigits(e.question_count)} سؤال`,
+    e.negative_marking ? 'نمره‌ی منفی' : 'بدون نمره‌ی منفی',
+    e.focused ? 'تمرکز روی اشتباه‌ها' : '',
+  ]
+    .filter(Boolean)
+    .join('، ');
 }
 
 const styles = StyleSheet.create({

@@ -576,11 +576,20 @@ def my_exams(request):
     except ValueError:
         page = 1
     done = attempts.filter(submitted_at__isnull=False)
+    # «آزمون ۳»: each exam's place among the learner's exams on the same chapter (oldest = 1), so equal titles differ.
+    numbers: dict[int, int] = {}
+    seen: dict[int, int] = {}
+    for pk, node_id in ExamAttempt.objects.filter(user=request.user, is_archived=False).order_by("started_at", "id").values_list("pk", "node_id"):
+        seen[node_id] = seen.get(node_id, 0) + 1
+        numbers[pk] = seen[node_id]
     stats = done.aggregate(count=Count("id"), average=Avg("score_percent"), best=Max("score_percent"))
     rows = list(attempts[(page - 1) * EXAM_PAGE : page * EXAM_PAGE + 1])
     return Response(
         {
-            "results": [_exam_summary(a) | {"book_title": books.get(a.node.path[:steplen]).title if a.node.path[:steplen] in books else ""} for a in rows[:EXAM_PAGE]],
+            "results": [
+                _exam_summary(a) | {"book_title": books.get(a.node.path[:steplen]).title if a.node.path[:steplen] in books else "", "number": numbers.get(a.pk)}
+                for a in rows[:EXAM_PAGE]
+            ],
             "has_more": len(rows) > EXAM_PAGE,
             "summary": {
                 "count": stats["count"],

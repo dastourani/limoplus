@@ -163,6 +163,8 @@ class StudyTests(TestCase):
         self.assertEqual(first["books"], [{"slug": "math-1", "title": first["results"][0]["book_title"]}])
         second = self.client.get("/api/v1/me/exams/?page=2&book=math-1").data
         self.assertEqual((len(second["results"]), second["has_more"]), (3, False))
+        self.assertEqual(first["results"][0]["number"], 13, "the newest is the 13th exam on this chapter")
+        self.assertEqual(second["results"][-1]["number"], 1)
         self.assertEqual(self.client.get("/api/v1/me/exams/?page=1&book=nope").data["summary"]["count"], 12)
 
     def test_exam_keeps_its_questions_when_content_is_edited(self):

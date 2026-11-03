@@ -7,6 +7,7 @@ import { colors, rtl, toPersianDigits } from '../theme';
 import { Icon } from './Icon';
 import { ScoreTrend } from './ScoreTrend';
 import { Text } from './Text';
+import { whenShort } from '../lib/jalali';
 
 export function ExamsCard({ exams, book }: { exams: ExamPage; book?: { slug: string; title: string } }) {
   const s = exams.summary;
@@ -23,9 +24,12 @@ export function ExamsCard({ exams, book }: { exams: ExamPage; book?: { slug: str
       {s.trend.length > 1 && <ScoreTrend scores={s.trend} height={34} />}
       {exams.results.slice(0, 3).map((e) => (
         <View key={e.id} style={styles.row}>
-          <Text style={[styles.examTitle, rtl]} numberOfLines={1}>
-            {e.node_title}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.examTitle, rtl]} numberOfLines={1}>
+              {e.number ? `${e.node_title}، آزمون ${toPersianDigits(e.number)}` : e.node_title}
+            </Text>
+            <Text style={[styles.when, rtl]}>{whenShort(e.started_at)}</Text>
+          </View>
           <Text style={styles.score}>{e.submitted_at ? `${toPersianDigits(Math.round(e.score_percent ?? 0))}٪` : 'ناتمام'}</Text>
         </View>
       ))}
@@ -37,10 +41,11 @@ export function ExamsCard({ exams, book }: { exams: ExamPage; book?: { slug: str
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.ink, borderRadius: 18, padding: 16, gap: 10 },
   head: { flexDirection: 'row-reverse', alignItems: 'center' },
+  when: { fontSize: 12, color: '#9FB0A5' },
   title: { flex: 1, fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
   line: { fontSize: 13, color: '#C9D2C6' },
   row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: '#2B3830', paddingTop: 8 },
-  examTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: '#EDEFE6' },
+  examTitle: { fontSize: 15, fontWeight: '700', color: '#EDEFE6' },
   score: { fontSize: 15, fontWeight: '800', color: colors.lemon },
   more: { fontSize: 13, fontWeight: '800', color: colors.lemon },
 });

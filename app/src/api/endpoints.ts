@@ -294,7 +294,8 @@ export type ExamSummary = {
   previous_score?: number | null;
 };
 export type ExamPage = {
-  results: (ExamSummary & { book_title: string })[];
+  /** number: the exam's place among the learner's exams on the same chapter («آزمون ۳»). */
+  results: (ExamSummary & { book_title: string; number?: number | null })[];
   has_more: boolean;
   summary: { count: number; average: number | null; best: number | null; trend: number[] };
   books: { slug: string; title: string }[];

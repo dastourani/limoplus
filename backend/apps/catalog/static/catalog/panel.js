@@ -712,8 +712,27 @@
     autoHeight(frame, 260);
     var left = h('div');
     var rawTa = h('textarea', { rows: 18, dir: 'rtl' });
-    function changed() { self.dirty = kind === 'question' ? 'تست' : 'فلش‌کارت'; clearTimeout(changed.t); changed.t = setTimeout(preview, 250); }
+    // Form and raw text both stay in the page (one hidden at a time), so switching keeps each one's Ctrl+Z history.
+    var formBox = h('div');
+    var rawBox = h('div', { style: 'display:none' }, rawTa, h('p', { class: 'hint' }, 'همان قالب فایل. خط اول و آخر (:::) لازم نیست.'));
+    left.appendChild(formBox);
+    left.appendChild(rawBox);
+    var formTouched = true, rawTouched = false; // what changed since the other view was last filled
+    function changed() {
+      if (mode === 'form') formTouched = true; else rawTouched = true;
+      self.dirty = kind === 'question' ? 'تست' : 'فلش‌کارت'; clearTimeout(changed.t); changed.t = setTimeout(preview, 250);
+    }
     rawTa.oninput = changed;
+    function intoRaw(text) {
+      // As one edit, so Ctrl+Z can take back the change made in the form too (setting .value would wipe the history).
+      if (text === rawTa.value) return;
+      if (!rawTa.value) { rawTa.value = text; return; }
+      rawTa.focus(); rawTa.select();
+      var ok = false;
+      try { ok = document.execCommand('insertText', false, text); } catch (e) { ok = false; }
+      if (!ok) rawTa.value = text;
+      rawTa.setSelectionRange(0, 0);
+    }
 
     function preview() {
       var html = '';
@@ -742,7 +761,8 @@
     }
 
     function drawForm() {
-      left.innerHTML = '';
+      formBox.innerHTML = '';
+      var left = formBox; // the fields below are added to the form box
       if (kind === 'question') {
         left.appendChild(mdField('صورت سؤال', 'stem', 4));
         var choices = h('div');
@@ -821,9 +841,14 @@
       return copy;
     }
     var modeBtn = h('button', { class: 'btn small', type: 'button', onclick: function () {
+      function showRaw() { mode = 'raw'; formBox.style.display = 'none'; rawBox.style.display = ''; modeBtn.textContent = 'برگشت به فرم'; preview(); }
+      function showForm() { mode = 'form'; rawBox.style.display = 'none'; formBox.style.display = ''; modeBtn.textContent = 'متن خام'; preview(); }
+      // Nothing changed on this side since the other view was filled: just switch, both views keep their history.
+      if (mode === 'form' && !formTouched) return showRaw();
+      if (mode === 'raw' && !rawTouched) return showForm();
       self.call({ op: kind + '.convert', slug: slugInput.value, data: payload() }).then(function (res) {
-        if (mode === 'form') { rawTa.value = res.item.raw; mode = 'raw'; left.innerHTML = ''; left.appendChild(rawTa); left.appendChild(h('p', { class: 'hint' }, 'همان قالب فایل. خط اول و آخر (:::) لازم نیست.')); modeBtn.textContent = 'برگشت به فرم'; preview(); }
-        else { var it = res.item; for (var k in it) data[k] = it[k]; mode = 'form'; modeBtn.textContent = 'متن خام'; drawForm(); }
+        if (mode === 'form') { showRaw(); intoRaw(res.item.raw); formTouched = false; rawTouched = false; }
+        else { var it = res.item; for (var k in it) data[k] = it[k]; drawForm(); showForm(); formTouched = false; rawTouched = false; }
       }).catch(function () {});
     } }, 'متن خام');
 

@@ -57,3 +57,12 @@ export function relativeDay(value: string | Date): string {
   if (diff > 1 && diff < 7) return `${toPersianDigits(diff)} روز پیش`;
   return jalaliDate(d);
 }
+
+/** When something happened, for lists: «امروز، ۱۹:۵۸»، «دیروز، ۱۰:۲۰»، «۳ روز پیش» or the date. */
+export function whenShort(value: string | Date): string {
+  const d = parse(value);
+  if (isNaN(d.getTime())) return '';
+  const day = relativeDay(d);
+  const time = toPersianDigits(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+  return day === 'امروز' || day === 'دیروز' ? `${day}، ${time}` : day;
+}
