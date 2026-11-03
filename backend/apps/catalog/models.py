@@ -43,6 +43,9 @@ class ContentNode(MP_Node):
     full_body = models.TextField("متن جزوه (Markdown)", blank=True)
     is_free = models.BooleanField("رایگان", default=False, help_text="برای نمونه‌ی رایگان از کتاب پولی")
     position = models.PositiveSmallIntegerField("شماره‌ی فصل", null=True, blank=True)
+    # «صندوق تست»: one hidden book where new tests wait before they are moved to their sections (apps/catalog/inbox.py).
+    # Never shown in the app, whatever its other fields say.
+    is_inbox = models.BooleanField("صندوق تست", default=False, editable=False)
     # Sent with «معرفی به دوست» on the book page (a channel, a download page, later the book's page on the site).
     share_link = models.URLField("لینک اشتراک", blank=True, help_text="با دکمه‌ی اشتراک صفحه‌ی کتاب فرستاده می‌شود. خالی: لینک پیش‌فرض (تنظیمات اشتراک).")
     group = models.CharField("گروه", max_length=120, blank=True, help_text="سرتیتر گروه بخش‌ها در فهرست کتاب (از خط «# ...» در فایل فصل)")

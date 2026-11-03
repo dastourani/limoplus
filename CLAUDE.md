@@ -61,6 +61,9 @@ Code, identifiers and commit messages are in English.
   Server: `apps/catalog/labels.py` + `summary.py`; app: `src/lib/labels.ts` + `reviewCard.ts` (the list comes with
   every section). Never deleted, only hidden. Tests marked «نقش: تکمیلی» (`Question.is_extra`) don't count for progress
   (`apps/study/progress.py` `core()`).
+- «صندوق تست» (`apps/catalog/inbox.py`): a hidden book (`ContentNode.is_inbox`, never visible, never published) whose one
+  section holds pasted tests until the panel moves them (`question.relocate`: one or many, to any section of any book; ids
+  stay, a clashing slug in the target book gets «-2», flashcard links outside the target chapter are dropped).
 - Access rules live only in `apps/catalog/access.py` (`AccessMap`): visible = node and all ancestors published and
   not archived; readable = visible and (staff, or free node/ancestor, or owned / covered by an active subscription — `owns_book`).
   Every content endpoint must use it.

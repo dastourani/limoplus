@@ -159,6 +159,7 @@ def chapter_state(chapter: ContentNode) -> dict:
         "media_url": settings.MEDIA_URL if settings.MEDIA_URL.startswith("/") else "/" + settings.MEDIA_URL,
         "revisions": chapter.revisions.count(),
         "labels": all_labels(),
+        "inbox": chapter.is_inbox,
     }
 
 
@@ -209,7 +210,18 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
     book = chapter.book()
     note = ""
 
-    # Visibility lives only in the panel (not in the file).
+    if op == "question.relocate":
+        from .inbox import relocate
+
+        return relocate(chapter, data.get("slugs") or [], data.get("to"), user)
+    if op == "destinations":
+        from .inbox import destinations
+
+        return {"ok": True, "destinations": destinations()}
+
+    # Visibility lives only in the panel (not in the file). The «صندوق تست» is never published.
+    if op in ("chapter.publish", "section.publish") and data.get("value") and chapter.is_inbox:
+        raise EditError("صندوق تست منتشر نمی‌شود؛ تست‌ها را به بخش‌هایشان منتقل کنید.")
     if op == "chapter.publish":
         drafts = set_chapter_published(chapter, bool(data.get("value")))
         return {"ok": True, "note": f"{drafts} بخش پیش‌نویس هم منتشر شد." if drafts else ""}
@@ -430,6 +442,14 @@ def _file_apply(request, chapter, data):
     except editing.Conflict as e:
         return JsonResponse({"errors": e.messages, "conflict": True}, status=409)
     return JsonResponse({"ok": True, "state": chapter_state(chapter)})
+
+
+def open_inbox(request):
+    """«صندوق تست»: made on first use, then opened in the chapter manager."""
+    _can_edit(request)
+    from .inbox import inbox_chapter
+
+    return redirect(reverse("admin:catalog_chapter_manager", args=[inbox_chapter().pk]))
 
 
 def chapter_manager(admin_site, request, chapter_id):

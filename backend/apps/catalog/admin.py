@@ -96,7 +96,8 @@ class BookAdmin(admin.ModelAdmin):
     )
 
     def get_queryset(self, request):
-        return super().get_queryset(request).filter(kind=ContentNode.Kind.BOOK, depth=1)
+        # The «صندوق تست» has its own button above the list.
+        return super().get_queryset(request).filter(kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False)
 
     def get_readonly_fields(self, request, obj=None):
         return ("slug",) if obj else ()
@@ -204,6 +205,7 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/export/", site(panel.book_export), name="catalog_book_export"),
             path("orphan/<int:node_id>/archive/", site(panel.archive_orphan), name="catalog_archive_orphan"),
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
+            path("inbox/", site(panel.open_inbox), name="catalog_inbox"),
             path("<int:book_id>/gift/", site(bookpanel.book_gift), name="catalog_book_gift"),
             path("chapter/<int:chapter_id>/", site(lambda r, chapter_id: panel.chapter_manager(self.admin_site, r, chapter_id)), name="catalog_chapter_manager"),
             path("chapter/<int:chapter_id>/api/", site(panel.chapter_api), name="catalog_chapter_api"),

@@ -907,3 +907,69 @@ class WebAppTests(_Base):
                 self.assertEqual(self.client.get("/../settings.py").status_code in (200, 404), True)
                 self.assertNotIn(b"app", self.client.get("/api/v1/shelves/").content)
                 self.assertNotEqual(self.client.get("/admin").status_code, 200, "the panel still redirects to /admin/")
+
+
+
+class InboxTests(TestCase):
+    """«صندوق تست»: tests wait in a hidden book, then move to any section of any book, keeping their ids."""
+
+    BLOCK = "\n:::تست {#%s}\nمنبع: تألیفی\nسطح: آسان\nصورت:\nیک به‌علاوه‌ی یک؟\n- [ ] سه\n- [x] دو\nتوضیح: ساده.\n:::\n"
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        from .importer import import_file
+        from .models import Major
+        from .tests import GOOD
+
+        Major.objects.create(slug="economics", name="اقتصاد")
+        import_file("c.md", GOOD.encode(), publish=True)
+        self.admin = get_user_model().objects.create_superuser("09120000009", "pw-123456")
+        self.client.force_login(self.admin)
+
+    def api(self, chapter, **data):
+        return self.client.post(f"/admin/catalog/book/chapter/{chapter.pk}/api/", data, content_type="application/json")
+
+    def test_paste_into_inbox_then_move_in_bulk_to_another_book(self):
+        from apps.learning.models import Question, QuizAnswer
+
+        from .exporter import export_chapter
+        from .inbox import inbox_chapter
+        from .models import ContentNode
+
+        self.assertEqual(self.client.get("/admin/catalog/book/inbox/").status_code, 302)
+        chapter = inbox_chapter()
+        self.assertEqual(inbox_chapter().pk, chapter.pk, "made once")
+        self.assertTrue(chapter.book().is_inbox and not chapter.book().is_published)
+        # Pasting through «ویرایش کل فایل»: one test with the id «q1», which the real book already uses.
+        text = export_chapter(chapter) + self.BLOCK % "q1" + self.BLOCK % "inb-2"
+        r = self.api(chapter, op="file.apply", text=text)
+        self.assertEqual(r.status_code, 200, r.content.decode())
+        waiting = list(Question.objects.filter(node__path__startswith=chapter.path, is_archived=False).order_by("order"))
+        self.assertEqual([q.slug for q in waiting], ["q1", "inb-2"])
+        book = ContentNode.objects.get(slug="test-book")
+        real = Question.objects.get(slug="q1", node__path__startswith=book.path)
+        QuizAnswer.objects.create(user=self.admin, question=waiting[1], choice_order=1, was_correct=True)
+        self.assertEqual(self.client.get(f"/api/v1/nodes/{chapter.pk}/questions/").status_code, 404, "the app never sees the inbox")
+
+        target = ContentNode.objects.get(slug="two")
+        r = self.api(chapter, op="question.relocate", slugs=["q1", "inb-2"], to=target.pk).json()
+        self.assertTrue(r.get("ok"), r)
+        self.assertTrue(any("q1 ← q1-2" in w for w in r["warnings"]), r)
+        moved = {q.pk: q for q in Question.objects.filter(pk__in=[q.pk for q in waiting])}
+        self.assertTrue(all(q.node_id == target.pk for q in moved.values()), "same ids, now in the section")
+        self.assertEqual(moved[waiting[0].pk].slug, "q1-2")
+        self.assertEqual(Question.objects.get(pk=real.pk).slug, "q1", "the real book's q1 is untouched")
+        self.assertEqual(QuizAnswer.objects.get(question=waiting[1]).question.node_id, target.pk, "answers go with the test")
+        self.assertFalse(Question.objects.filter(node__path__startswith=chapter.path, is_archived=False).exists())
+        self.assertIn("{#q1-2}", export_chapter(target.get_parent()), "the chapter file has the moved tests")
+
+        # Back to the inbox; publishing the inbox is refused; the book list still works.
+        r = self.api(target.get_parent(), op="question.relocate", slugs=["inb-2"], to=chapter.get_children().first().pk).json()
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(Question.objects.get(pk=waiting[1].pk).node.get_parent().pk, chapter.pk)
+        self.assertEqual(self.api(chapter, op="chapter.publish", value=True).status_code, 400)
+        dest = self.api(chapter, op="destinations").json()["destinations"]
+        self.assertTrue(dest[0]["inbox"])
+        self.assertEqual(self.client.get("/admin/catalog/book/").status_code, 200)
+        self.assertEqual(self.client.get(f"/admin/catalog/book/chapter/{chapter.pk}/").status_code, 200)

@@ -5,7 +5,7 @@
 <div class="breadcrumbs">
   <a href="{% url 'admin:index' %}">مدیریت</a> ›
   <a href="{% url 'admin:catalog_book_changelist' %}">کتاب‌ها</a> ›
-  <a href="{% url 'admin:catalog_book_change' book.pk %}">{{ book.title }}</a> ›
+  {% if book.is_inbox %}<a href="{% url 'admin:catalog_inbox' %}">{{ book.title }}</a>{% else %}<a href="{% url 'admin:catalog_book_change' book.pk %}">{{ book.title }}</a>{% endif %} ›
   <a href="{% url 'admin:catalog_chapter_manager' chapter.pk %}">{{ chapter.title }}</a> ›
   {% if restore %}بازگرداندن نسخه{% else %}ویرایش کل فایل{% endif %}
 </div>

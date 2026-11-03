@@ -370,6 +370,16 @@
   Manager.prototype.renderHead = function () {
     var self = this, st = this.state, c = st.chapter;
     var base = this.api.replace(/api\/$/, '');
+    if (st.inbox) {
+      // «صندوق تست»: no publishing, no chapter details; tests wait here until they are moved.
+      return h('div', null, h('div', { class: 'cm-head' },
+        h('h2', null, '📥 صندوق تست'),
+        h('a', { class: 'btn primary', href: base + 'file/', title: 'تست‌ها را با قالب :::تست … ::: پشت سر هم بچسبانید' }, 'افزودن یکجای تست‌ها (ویرایش کل فایل)'),
+        h('a', { class: 'btn', href: base + 'history/' }, 'نسخه‌ها (' + fa(st.revisions) + ')'),
+        h('a', { class: 'btn', href: '../../' }, 'کتاب‌ها')),
+        h('p', { class: 'hint' }, 'اینجا در اپ دیده نمی‌شود. تست‌ها را یکجا وارد کنید، بعد تیک بزنید و به هر بخشِ هر کتاب منتقل کنید. ' +
+          'جواب‌ها و آمار هر تست همراهش می‌رود.'));
+    }
     return h('div', { class: 'cm-head' },
       h('h2', null, (c.number ? 'فصل ' + fa(c.number) + ': ' : '') + c.title),
       h('label', { class: 'btn', title: 'فصل منتشرنشده در اپ دیده نمی‌شود' },
@@ -380,7 +390,45 @@
       h('a', { class: 'btn', href: base + 'file/' }, 'ویرایش کل فایل'),
       h('a', { class: 'btn', href: base + 'export/' }, 'دریافت فایل فصل'),
       h('a', { class: 'btn', href: base + 'history/' }, 'نسخه‌ها (' + fa(st.revisions) + ')'),
-      h('a', { class: 'btn', href: '../../' + st.book.id + '/change/#chapters' }, 'کتاب «' + st.book.title + '»'));
+      h('a', { class: 'btn', href: '../../' + st.book.id + '/change/#chapters' }, 'کتاب «' + st.book.title + '»'),
+      h('a', { class: 'btn', href: '../../inbox/', title: 'تست‌هایی که هنوز جایشان معلوم نیست' }, '📥 صندوق تست'));
+  };
+
+  // ----- moving tests anywhere (any section of any book, and the «صندوق تست») -----
+  Manager.prototype.destSelect = function (current, onPick, placeholder) {
+    var self = this;
+    var sel = h('select', { class: 'btn small', onchange: function () { if (sel.value) onPick(sel.value); } },
+      h('option', { value: '', selected: true, disabled: true }, placeholder || 'انتقال به…'));
+    if (!this.dest) {
+      sel.appendChild(h('option', { value: '', disabled: true }, 'در حال گرفتن فهرست…'));
+      if (!this.destLoading) {
+        this.destLoading = true;
+        this.call({ op: 'destinations' }).then(function (d) { self.dest = d.destinations; self.destLoading = false; self.render(); })
+          .catch(function () { self.destLoading = false; });
+      }
+      return sel;
+    }
+    this.dest.forEach(function (b) {
+      var g = h('optgroup', { label: b.inbox ? '📥 صندوق تست' : '📘 ' + b.title });
+      b.chapters.forEach(function (c) {
+        var ch = (b.inbox ? '' : (c.number ? 'فصل ' + fa(c.number) + ': ' : '') + c.title);
+        if (!b.inbox) g.appendChild(h('option', { value: c.id, disabled: c.id === current }, ch + ' › مقدمه‌ی فصل'));
+        c.sections.forEach(function (s) {
+          g.appendChild(h('option', { value: s.id, disabled: s.id === current }, (ch ? ch + ' › ' : '') + s.title));
+        });
+      });
+      sel.appendChild(g);
+    });
+    return sel;
+  };
+  Manager.prototype.relocate = function (slugs, to) {
+    var self = this;
+    this.call({ op: 'question.relocate', slugs: slugs, to: Number(to) }).then(function (d) {
+      self.picked = {};
+      self.dest = null;  // counts and new sections
+      self.render();
+      toast(d.note || 'منتقل شد.');
+    }).catch(function () { self.render(); });
   };
 
   Manager.prototype.editChapter = function () {
@@ -725,11 +773,24 @@
         kind === 'question' ? '+ تست تازه' : '+ فلش‌کارت تازه'),
       h('span', { class: 'hint' }, kind === 'question' ? 'ترتیب این فهرست، ترتیب تست‌ها در اپ است.' : 'فلش‌کارت نکته است، نه سؤال: رو = عنوان، پشت = نکته.'));
     body.appendChild(top);
+    var picked = this.picked = this.picked || {};
+    var current = s.id;
+    if (kind === 'question' && list.length) {
+      var chosen = list.filter(function (x) { return picked[x.slug]; });
+      var all = h('input', { type: 'checkbox', checked: chosen.length === list.length, onchange: function () {
+        list.forEach(function (x) { if (all.checked) picked[x.slug] = true; else delete picked[x.slug]; });
+        self.render();
+      } });
+      body.appendChild(h('div', { class: 'cm-bulk' + (chosen.length ? ' on' : '') },
+        h('label', null, all, ' همه'),
+        h('span', null, chosen.length ? fa(chosen.length) + ' تست انتخاب شده' : 'برای انتقال گروهی، کنار تست‌ها تیک بزنید.'),
+        chosen.length ? this.destSelect(current, function (to) { self.relocate(chosen.map(function (x) { return x.slug; }), to); }, 'انتقال همه به…') : null));
+    }
     if (this.open && this.open.kind === kind && this.open.slug === null) body.appendChild(this.itemEditor(s, kind, null));
     if (!list.length && !(this.open && this.open.slug === null)) body.appendChild(h('p', { class: 'hint' }, 'هنوز چیزی در این بخش نیست.'));
     list.forEach(function (item, i) {
       if (self.open && self.open.kind === kind && self.open.slug === item.slug) { body.appendChild(self.itemEditor(s, kind, item)); return; }
-      var move = h('select', { class: 'btn small', onchange: function () {
+      var move = kind === 'question' ? self.destSelect(current, function (to) { self.relocate([item.slug], to); }) : h('select', { class: 'btn small', onchange: function () {
         if (!move.value && move.value !== '') return;
         var to = move.value === '__intro' ? '' : move.value;
         self.call({ op: kind + '.move', slug: item.slug, to: to }).then(function () { self.render(); toast('منتقل شد.'); }).catch(function () {});
@@ -757,6 +818,7 @@
         var meta = h('div', { class: 'meta' },
           h('span', { class: 'pill' }, label(DIFF, item.difficulty)),
           item.kind ? h('span', { class: 'pill' }, label(KINDS, item.kind)) : null,
+          item.is_extra ? h('span', { class: 'pill', title: 'در پیشرفت بخش حساب نمی‌شود' }, 'تکمیلی') : null,
           h('span', { class: 'pill' }, item.sources.length ? item.sources.map(function (x) { return x.name + ' ' + fa(x.year); }).join('، ') : 'تألیفی'),
           item.flashcards.length ? h('span', { class: 'pill' }, fa(item.flashcards.length) + ' فلش‌کارت') : null,
           item.answers ? h('span', { class: 'pill' }, fa(item.answers) + ' پاسخ' + (item.correct_rate != null ? '، ' + fa(item.correct_rate) + '٪ درست' : '')) : null,
@@ -771,7 +833,10 @@
           item.formula ? h('div', { html: P.renderMarkdown('$$' + item.formula + '$$') }) : null,
           h('div', { class: 'meta' }, h('span', { class: 'pill' }, item.slug)));
       }
-      body.appendChild(h('div', { class: 'item', id: 'item-' + item.slug }, h('div', { class: 'head' }, h('span', { class: 'num' }, fa(i + 1)), content, acts)));
+      var tick = kind === 'question' ? h('input', { type: 'checkbox', class: 'pick', checked: !!picked[item.slug], title: 'انتخاب برای انتقال گروهی',
+        onchange: function () { if (tick.checked) picked[item.slug] = true; else delete picked[item.slug]; self.render(); } }) : null;
+      body.appendChild(h('div', { class: 'item' + (picked[item.slug] ? ' picked' : ''), id: 'item-' + item.slug },
+        h('div', { class: 'head' }, h('span', { class: 'num' }, tick, fa(i + 1)), content, acts)));
     });
   };
 

@@ -101,7 +101,7 @@ class AccessMap:
         if light:
             nodes = nodes.defer("full_body", "summary_body", "about", "cover_drawing")
         self.nodes = {n.id: n for n in nodes}
-        hidden = [n.path for n in self.nodes.values() if not n.is_published or n.is_archived]
+        hidden = [n.path for n in self.nodes.values() if not n.is_published or n.is_archived or n.is_inbox]
         free = [n.path for n in self.nodes.values() if n.is_free]
         self.access = access_kind(user, self.book) if kind is _UNSET else kind
         self.owned = self.access is not None
