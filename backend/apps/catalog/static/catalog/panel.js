@@ -89,6 +89,17 @@
     insertText(ta, text + (v[ta.selectionEnd] && v[ta.selectionEnd] !== '\n' ? '\n' : ''), from, from + sample.length);
   }
 
+  // ---------- left-to-right view of the text boxes ----------
+  var dirButtons = [];
+  function ltrOn() { try { return localStorage.getItem('limo.panel.ltr') === '1'; } catch (e) { return false; } }
+  function setLtr(on) {
+    try { localStorage.setItem('limo.panel.ltr', on ? '1' : '0'); } catch (e) { /* ignore */ }
+    document.body.classList.toggle('lp-ltr', on);
+    dirButtons.forEach(function (b) { b.classList.toggle('dir-on', on); });
+  }
+  if (document.body) document.body.classList.toggle('lp-ltr', ltrOn());
+  document.addEventListener('DOMContentLoaded', function () { document.body.classList.toggle('lp-ltr', ltrOn()); });
+
   // ---------- Markdown editor ----------
 
   function MdEditor(textarea, opts) {
@@ -119,6 +130,11 @@
       }
       if (opts.uploadUrl) bar.appendChild(btn('🖼 عکس', 'افزودن عکس', function () { self.pickImage(opts.uploadUrl); }));
     }
+    // «چپ‌چین»: all text boxes of the panel left to right (for formulas); the choice stays in this browser.
+    var dirBtn = btn('⇆ چپ‌چین', 'نمایش متن از چپ به راست، برای کار با فرمول‌ها (فقط نمایش؛ متن تغییری نمی‌کند)', function () { setLtr(!ltrOn()); });
+    dirBtn.classList.toggle('dir-on', ltrOn());
+    dirButtons.push(dirBtn);
+    bar.appendChild(dirBtn);
     var modes = h('span', { class: 'modes' });
     var modeBtns = {};
     [['split', 'هر دو'], ['text', 'فقط متن'], ['preview', 'فقط پیش‌نمایش']].forEach(function (m) {
@@ -671,7 +687,10 @@
 
     // The raw text box stays in the page the whole time (only hidden while the form is shown): taking it out of the
     // page would wipe its Ctrl+Z history.
+    var sumDir = h('button', { class: 'btn small' + (ltrOn() ? ' primary' : ''), type: 'button', title: 'نمایش متن از چپ به راست (فقط نمایش)',
+      onclick: function () { setLtr(!ltrOn()); sumDir.classList.toggle('primary', ltrOn()); } }, '⇆ چپ‌چین');
     var rawBox = h('div', null,
+      h('div', { class: 'row', style: 'justify-content:flex-end;margin-bottom:6px' }, sumDir),
       labelRow(function (l) { insertSummaryLabel(rawTa, l); }, null, 'برچسب:'),
       rawTa,
       h('p', { class: 'hint' }, 'هر برچسب در خطی جدا با «:» (مثلاً «تعریف:») و هر مورد با «- ». با «[[عبارتی از درسنامه]]» در آخر هر مورد، لمسش اپ را به همان‌جای درسنامه می‌برد. ' +

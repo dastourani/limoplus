@@ -9,6 +9,11 @@
 .lp textarea, .lp input[type=text], .lp input[type=number], .lp select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px;
   background: var(--card); color: var(--body-fg, #333); }
 .lp textarea { line-height: 1.9; resize: vertical; }
+/* Each line takes its direction from its first letter (a line of formula reads left to right), and «چپ‌چین»
+   (remembered in this browser) shows every line left to right, so $…$ and brackets never look jumbled. */
+.lp textarea { unicode-bidi: plaintext; }
+body.lp-ltr .lp textarea { direction: ltr; text-align: left; unicode-bidi: isolate; }
+.md-ed .md-bar button.dir-on { background: var(--ink); color: var(--lemon); }
 .lp label.f { display: block; font-weight: 700; margin: 12px 0 4px; font-size: 13px; }
 .lp .hint { color: var(--body-quiet-color, #666); font-size: 12px; font-weight: 400; }
 .lp .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
