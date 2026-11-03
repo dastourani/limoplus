@@ -175,7 +175,10 @@ export type Today = {
   reviews_waiting?: number;
   /** «کارهای امروز» tiles, in order; a job done today is gone. */
   tasks?: TodayTask[];
+  /** «نیاز به مرور»: sections with wrong answers still open, or finished long ago (at most three). */
+  needs_review?: { items: NeedsReviewItem[]; total: number };
 };
+export type NeedsReviewItem = { id: number; title: string; book_title: string; book_slug: string; reason: 'mistakes' | 'old'; mistakes: number; days: number };
 export type TodayTask =
   | (Omit<ReviewItem, 'kind'> & { kind: 'review'; review_kind: 'chapter' | 'book' })
   | { kind: 'cards'; count: number; total: number; comeback: boolean; minutes: number }

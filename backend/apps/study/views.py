@@ -83,6 +83,10 @@ def save_progress(request, node_id):
     done = bool(request.data.get("done")) or percent >= 90
     progress, created = SectionProgress.objects.get_or_create(user=request.user, node=node, defaults={"book": book_of(node)})
     became_done = done and not progress.is_done
+    # A section finished long ago and opened again leaves «نیاز به مرور» (apps/study/needs.py) at once.
+    from .needs import OLD_DAYS
+
+    reopened = not created and progress.is_done and progress.updated_at < timezone.now() - timedelta(days=OLD_DAYS)
     progress.percent = max(progress.percent, percent)
     # The reader's current place and mode (optional; older app versions don't send them).
     if "position" in request.data:
@@ -96,7 +100,7 @@ def save_progress(request, node_id):
     progress.save()
     if created or became_done:
         StudyDay.touch(request.user, "sections")
-    if became_done:
+    if became_done or reopened:
         from .reviews import recheck
 
         recheck(request.user)

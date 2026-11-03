@@ -325,6 +325,7 @@ def today(request):
 
 
 def _today_data(request) -> dict:
+    from .needs import needs_review
     from .reviews import DAILY_CAP, due_reviews
 
     away = _away_days(request.user)
@@ -358,6 +359,8 @@ def _today_data(request) -> dict:
             "reviews_waiting": max(0, len(reviews_due) - len(todays)),
             "tasks": tasks,
             "minutes": minutes,
+            # «نیاز به مرور»: sections with wrong answers still open, or finished long ago (apps/study/needs.py).
+            "needs_review": needs_review(request),
         }
     )
 

@@ -20,7 +20,7 @@ import { SectionHeader } from '../../components/home/SectionHeader';
 import { TodayTiles } from '../../components/home/TodayTiles';
 import { storage, type ReadingSpot } from '../../lib/storage';
 import { keepIfSame, useApi } from '../../lib/useApi';
-import { colors, formatToman, rtl, toPersianDigits } from '../../theme';
+import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
 
 
 /** Read sections as lemon wedges, from a book's share read (0–1) and its number of sections. */
@@ -253,6 +253,37 @@ export default function Home() {
           </View>
       ),
     });
+  if (user && today?.needs_review?.items.length)
+    blocks.push({
+      key: 'needs-review',
+      el: (
+        <View style={styles.section}>
+          <SectionHeader title="نیاز به مرور" sub="بخش‌هایی که یک نگاه دوباره می‌خواهند" />
+          <View style={styles.needsList}>
+            {today.needs_review.items.map((item, i) => (
+              <Pressable
+                key={item.id}
+                onPress={() => router.push(`/section/${item.id}`)}
+                style={[styles.needsRow, i > 0 && styles.needsRowLine]}
+                accessibilityRole="button"
+              >
+                <Icon name={item.reason === 'mistakes' ? 'notebook-pen' : 'rotate-ccw'} size={18} color={item.reason === 'mistakes' ? colors.red : colors.muted} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[styles.needsTitle, rtl]} numberOfLines={1}>{item.title}</Text>
+                  <Text style={[styles.needsSub, rtl]} numberOfLines={1}>
+                    {item.reason === 'mistakes'
+                      ? `${toPersianDigits(item.mistakes)} تست غلط مانده`
+                      : `${toPersianDigits(item.days)} روز پیش خواندی`}
+                    {`، ${item.book_title}`}
+                  </Text>
+                </View>
+                <Icon name="chevron-left" size={18} color={colors.muted} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ),
+    });
   if (banners.data?.length)
     blocks.push({
       key: 'banners',
@@ -324,6 +355,11 @@ const RIBBON: Record<'soon' | 'access' | 'free' | 'locked', { box: object; color
 
 
 const styles = StyleSheet.create({
+  needsList: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
+  needsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
+  needsRowLine: { borderTopWidth: 1, borderTopColor: colors.line },
+  needsTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
+  needsSub: { fontSize: 12, color: colors.muted },
   section: { gap: 10, marginTop: 8 },
   note: { fontSize: 12, color: colors.muted, lineHeight: 20 },
   quick: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, backgroundColor: colors.lemon, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 },

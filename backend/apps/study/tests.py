@@ -812,3 +812,60 @@ class StudyTimeTests(TestCase):
         self.assertContains(c.get(url), self.user.phone)
         self.assertContains(c.get(url, {"user": self.user.id}), "۱ دقیقه و ۱۵ ثانیه")
         self.assertContains(c.get(url, {"book": "math-1"}), self.section.title)
+
+
+class NeedsReviewTests(TestCase):
+    """«نیاز به مرور»: sections with wrong answers still open, then sections finished long ago."""
+
+    setUp = StudyTests.setUp
+    tearDown = StudyTests.tearDown
+
+    def _needs(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        return self.client.get("/api/v1/me/today/").data["needs_review"]
+
+    def test_wrong_answer_then_right(self):
+        q = Question.objects.filter(node=self.section, is_archived=False).first()
+        wrong = q.choices.filter(is_correct=False).first()
+        self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": wrong.id}, format="json")
+        needs = self._needs()
+        self.assertEqual(needs["items"][0]["id"], self.section.id)
+        self.assertEqual(needs["items"][0]["reason"], "mistakes")
+        self.assertEqual(needs["items"][0]["mistakes"], 1)
+        right = q.choices.filter(is_correct=True).first()
+        self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": right.id}, format="json")
+        self.assertEqual(self._needs()["items"], [])
+
+    def test_old_section_until_opened_again(self):
+        from datetime import timedelta
+
+        from .models import ChapterReview, SectionProgress
+
+        self.client.post(f"/api/v1/nodes/{self.section.id}/progress/", {"percent": 100, "done": True}, format="json")
+        self.assertEqual(self._needs()["items"], [])  # just read
+        SectionProgress.objects.filter(node=self.section).update(updated_at=timezone.now() - timedelta(days=40))
+        self.assertFalse(ChapterReview.objects.filter(is_archived=False).exists())
+        item = self._needs()["items"][0]
+        self.assertEqual((item["id"], item["reason"]), (self.section.id, "old"))
+        self.assertGreaterEqual(item["days"], 40)
+        # In a chapter review cycle: asked for there, not here.
+        cycle = ChapterReview.objects.create(user=self.user, chapter=self.chapter, book=self.chapter.get_parent(),
+                                             finished_at=timezone.now(), due_on=timezone.localdate() + timedelta(days=5))
+        self.assertEqual(self._needs()["items"], [])
+        cycle.is_archived = True
+        cycle.save()
+        # Opened again: off the list at once (no waiting for the cache).
+        self.client.get("/api/v1/me/today/")
+        self.client.post(f"/api/v1/nodes/{self.section.id}/progress/", {"percent": 10, "position": 10, "mode": "full"}, format="json")
+        self.assertEqual(self.client.get("/api/v1/me/today/").data["needs_review"]["items"], [])
+
+    def test_locked_sections_are_not_suggested(self):
+        from datetime import timedelta
+
+        from .models import SectionProgress
+
+        SectionProgress.objects.create(user=self.user, node=self.paid_section, book=self.chapter.get_parent(), percent=100, is_done=True)
+        SectionProgress.objects.filter(node=self.paid_section).update(updated_at=timezone.now() - timedelta(days=60))
+        self.assertEqual(self._needs()["items"], [])
