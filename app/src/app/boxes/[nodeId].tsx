@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { endpoints } from '../../api/endpoints';
 import { MarkdownView, type ReaderEvent } from '../../components/MarkdownView';
@@ -23,9 +23,9 @@ export default function Boxes() {
   // The titles are for this page only (a quiz or flashcard opened next must number its own boxes).
   useEffect(() => () => setNumbering(null), []);
 
-  // No label asked for: the most used one.
+  // No label asked for: the first one (the panel's order: definitions first).
   useEffect(() => {
-    if (!label && data?.labels.length) setLabel([...data.labels].sort((a, b) => b.count - a.count)[0].name);
+    if (!label && data?.labels.length) setLabel(data.labels[0].name);
   }, [data, label]);
 
   const markdown = useMemo(() => {
@@ -63,8 +63,7 @@ export default function Boxes() {
         <Empty icon="clipboard-list" title="هنوز کادری نیست" text="تعریف‌ها، قضیه‌ها، مثال‌ها و نکته‌های درسنامه اینجا دسته‌بندی می‌شوند." />
       ) : (
         <>
-          <View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={styles.chipRow}>
+          <View style={styles.chips}>
               {data.labels.map((l) => {
                 const on = l.name === label;
                 return (
@@ -81,7 +80,6 @@ export default function Boxes() {
                   </Pressable>
                 );
               })}
-            </ScrollView>
           </View>
           {!!data.locked_count && (
             <Text style={styles.locked}>{toPersianDigits(data.locked_count)} کادر دیگر در بخش‌هایی است که هنوز باز نشده‌اند.</Text>
@@ -94,8 +92,7 @@ export default function Boxes() {
 }
 
 const styles = StyleSheet.create({
-  chipRow: { flexGrow: 0 },
-  chips: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  chips: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
   chipOn: { backgroundColor: colors.ink, borderColor: colors.ink },
   chipText: { fontSize: 14, color: colors.ink },
