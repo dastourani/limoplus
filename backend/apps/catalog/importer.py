@@ -178,6 +178,8 @@ class ParsedChapter:
     sections: list[ParsedSection] = field(default_factory=list)
     images: dict[str, bytes] = field(default_factory=dict)
     issues: list[Issue] = field(default_factory=list)
+    # Links from tests to flashcards that are not in this file: (test, flashcard, line); checked against the book.
+    outside_cards: list = field(default_factory=list)
 
     def error(self, message, line=None):
         self.issues.append(Issue("error", message, line))
@@ -608,7 +610,8 @@ def _validate(chapter: ParsedChapter):
     for q in questions:
         for ref in q.flashcard_slugs:
             if ref not in flashcards:
-                chapter.error(f"تست {q.slug}: فلش‌کارت «{ref}» در این فایل پیدا نشد.", q.line)
+                # Another chapter of the same book may hold it (check_against_db).
+                chapter.outside_cards.append((q.slug, ref, q.line))
 
     stems = Counter(re.sub(r"\s+", " ", q.stem) for q in questions)
     for stem, n in stems.items():
@@ -653,6 +656,22 @@ def check_against_db(chapter: ParsedChapter):
     book = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, slug=chapter.meta["book_slug"], depth=1).first()
     if book is None and not majors:
         chapter.warn("کتاب جدید است ولی هیچ رشته‌ای برایش تعیین نشده؛ در اپ نمایش داده نمی‌شود.", 1)
+    if chapter.outside_cards:
+        found = set(outside_flashcards(book, chapter, {ref for _, ref, _ in chapter.outside_cards}))
+        for test, ref, line in chapter.outside_cards:
+            if ref not in found:
+                chapter.error(f"تست {test}: فلش‌کارت «{ref}» نه در این فایل هست نه در فصل‌های دیگر این کتاب.", line)
+
+
+def outside_flashcards(book, chapter: ParsedChapter, slugs) -> dict:
+    """Flashcards of the book's other chapters (not archived) with these ids: a test may link to any card of its book."""
+    if book is None or not slugs:
+        return {}
+    own = ContentNode.objects.filter(path__startswith=book.path, depth=2, slug=chapter.meta.get("chapter_slug")).first()
+    cards = Flashcard.objects.filter(node__path__startswith=book.path, is_archived=False, slug__in=list(slugs))
+    if own is not None:
+        cards = cards.exclude(node__path__startswith=own.path)
+    return {f.slug: f for f in cards}
 
 
 # --- Applying -----------------------------------------------------------------------------------------------
@@ -806,6 +825,9 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
             for name, year, number in q.sources:
                 source, _ = ExamSource.objects.get_or_create(name=name, year=year, group="", booklet="")
                 QuestionSource.objects.create(question=obj, source=source, number=number)
+            missing = [s for s in q.flashcard_slugs if s not in flashcard_by_slug]
+            if missing:
+                flashcard_by_slug.update(outside_flashcards(book, chapter, missing))
             obj.flashcards.set([flashcard_by_slug[s] for s in q.flashcard_slugs if s in flashcard_by_slug])
     result.archived["question"] += (
         Question.objects.filter(node_id__in=scope_nodes, is_archived=False).exclude(pk__in=kept_questions).update(is_archived=True)

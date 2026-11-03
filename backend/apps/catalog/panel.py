@@ -28,6 +28,7 @@ from apps.learning.models import Flashcard, Question, Report
 from . import editing
 from .editing import EditError
 from .exporter import book_bundle, chapter_bundle, export_chapter, flashcard_block, question_block, write_chapter
+from .importer import outside_flashcards
 from .importer import IMAGE_EXTENSIONS, MAX_IMAGE_BYTES, _SVG_DANGER, apply_chapter, parse_chapter, read_upload, check_against_db
 from .jalali import jalali_datetime
 from .models import ChapterRevision, ContentNode
@@ -166,7 +167,17 @@ def chapter_state(chapter: ContentNode) -> dict:
         "labels": all_labels(),
         "inbox": chapter.is_inbox,
         "refs": panel_refs(book),
+        # Flashcards of the book's other chapters, for linking tests to them.
+        "book_cards": _book_cards(book, chapter),
     }
+
+
+def _book_cards(book, chapter) -> list[dict]:
+    step = ContentNode.steplen
+    chapters = dict(ContentNode.objects.filter(path__startswith=book.path, depth=2).values_list("path", "title"))
+    cards = Flashcard.objects.filter(node__path__startswith=book.path, is_archived=False).exclude(node__path__startswith=chapter.path)
+    return [{"slug": slug, "title": title, "chapter": chapters.get(path[: 2 * step], "")}
+            for slug, title, path in cards.values_list("slug", "title", "node__path")[:2000]]
 
 
 def editing_missing(s):
@@ -216,10 +227,14 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
     book = chapter.book()
     note = ""
 
-    if op == "question.relocate":
+    if op in ("question.relocate", "flashcard.relocate"):
         from .inbox import relocate
 
-        return relocate(chapter, data.get("slugs") or [], data.get("to"), user)
+        return relocate(chapter, data.get("slugs") or [], data.get("to"), user, kind=op.split(".")[0])
+    if op == "section.relocate":
+        from .inbox import relocate_section
+
+        return relocate_section(chapter, data.get("slug", ""), data.get("to"), user, dry=bool(data.get("dry")))
     if op == "destinations":
         from .inbox import destinations
 
@@ -320,8 +335,9 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
         if kind == "question":
             known = {f.slug for s in parsed.all_sections() for f in s.flashcards}
             missing = [s for s in item.flashcard_slugs if s not in known]
+            missing = [s for s in missing if s not in outside_flashcards(book, parsed, missing)]
             if missing:
-                raise EditError(f"فلش‌کارت «{'، '.join(missing)}» در این فصل نیست.")
+                raise EditError(f"فلش‌کارت «{'، '.join(missing)}» نه در این فصل هست نه در فصل‌های دیگر این کتاب.")
     elif op in ("question.reorder", "flashcard.reorder"):
         kind = op.split(".")[0]
         target = editing.section(parsed, data.get("section", ""))
@@ -356,6 +372,7 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
                 to = ""
         if kind == "question":
             known = {f.slug for s in parsed.all_sections() for f in s.flashcards}
+            known |= set(outside_flashcards(book, parsed, item.flashcard_slugs))
             item.flashcard_slugs = [s for s in item.flashcard_slugs if s in known]
         getattr(editing.section(parsed, to), "questions" if kind == "question" else "flashcards").append(item)
         note = f"بازگرداندن {item.slug}"

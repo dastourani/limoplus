@@ -69,9 +69,12 @@ Code, identifiers and commit messages are in English.
   each section; explanations get `[[#name|text|node]]` filled in). App: `src/lib/numbering.ts`, renderer.
 - Plots: a «:::نمودار» box with «تابع:» lines is drawn as SVG by `src/lib/plot.ts` (formulas: `src/lib/expr.ts`, a small
   numeric parser; mathjs was ~1 MB). Checks: `app/scripts/plot-check.ts` (run with esbuild + node; must pass).
-- «صندوق تست» (`apps/catalog/inbox.py`): a hidden book (`ContentNode.is_inbox`, never visible, never published) whose one
-  section holds pasted tests until the panel moves them (`question.relocate`: one or many, to any section of any book; ids
-  stay, a clashing slug in the target book gets «-2», flashcard links outside the target chapter are dropped).
+- «صندوق» (`apps/catalog/inbox.py`): a hidden book (`ContentNode.is_inbox`, never visible, never published) whose one
+  section holds pasted tests and flashcards until the panel moves them. `question.relocate` / `flashcard.relocate` (one or
+  many, to any section of any book) and `section.relocate` (a whole section to the end of any chapter; `dry` lists what
+  would break) keep ids, so learners' data goes along; a clashing slug in the target book gets «-2».
+  A test may link to any flashcard of its book (`importer.outside_flashcards`), never across books: moving to another book
+  drops such links. Broken `[[#name]]` links are listed in the book's health box (`bookpanel._broken_refs`).
 - Access rules live only in `apps/catalog/access.py` (`AccessMap`): visible = node and all ancestors published and
   not archived; readable = visible and (staff, or free node/ancestor, or owned / covered by an active subscription — `owns_book`).
   Every content endpoint must use it.

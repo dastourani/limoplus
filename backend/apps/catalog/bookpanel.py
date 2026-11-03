@@ -51,7 +51,30 @@ def book_health(book: ContentNode) -> list[dict]:
         elif not sections.exists() and not (c.full_body or c.summary_body):
             out.append({"level": "warn", "text": f"{name} هیچ بخشی ندارد؛ در اپ خالی است."})
     out.extend(_numbered_explanations(book))
+    out.extend(_broken_refs(book))
     return out
+
+
+def _broken_refs(book: ContentNode) -> list[dict]:
+    """«[[#name]]» links whose box is nowhere in the book (learners see a red «#name»)."""
+    from apps.learning.models import Question
+
+    from .numbering import REF, panel_refs
+
+    known = set(panel_refs(book))
+    where: dict[str, set[str]] = {}
+    nodes = ContentNode.objects.filter(path__startswith=book.path, depth__gt=1, is_archived=False).only("title", "full_body", "summary_body", "path")
+    titles = {n.pk: n.title for n in nodes}
+    for n in nodes:
+        for name in REF.findall((n.full_body or "") + "\n" + (n.summary_body or "")):
+            if name not in known:
+                where.setdefault(name, set()).add(n.title)
+    for q in Question.objects.filter(node__path__startswith=book.path, is_archived=False).only("node_id", "slug", "explanation", "quick_solution", "alternative_view", "stem"):
+        for name in REF.findall(" ".join([q.stem, q.explanation, q.quick_solution, q.alternative_view])):
+            if name not in known:
+                where.setdefault(name, set()).add(f"تست {q.slug} ({titles.get(q.node_id, '')})")
+    return [{"level": "warn", "text": f"ارجاع «[[#{name}]]» کادری در این کتاب پیدا نمی‌کند (در {'، '.join(sorted(places))}); در اپ به رنگ قرمز دیده می‌شود."}
+            for name, places in sorted(where.items())]
 
 
 def _numbered_explanations(book: ContentNode) -> list[dict]:

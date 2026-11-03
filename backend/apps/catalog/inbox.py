@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from django.db import transaction
 
-from apps.learning.models import Question
+from apps.learning.models import Flashcard, Question
 
 from . import editing
 from .models import ContentNode
@@ -52,10 +52,22 @@ def destinations() -> list[dict]:
     return out
 
 
-def relocate(source: ContentNode, slugs: list[str], target_id, user) -> dict:
-    """Move tests of the chapter `source` to the section (or chapter intro) `target_id`, in any book.
-    The ids stay the same. A test whose id («شناسه») is already used in the target book gets a new one there;
-    links to flashcards that are not in the target chapter are dropped (the file allows links only inside a chapter)."""
+def _free_slug(slug: str, taken: set[str]) -> str:
+    if slug not in taken:
+        return slug
+    n = 2
+    while f"{slug}-{n}" in taken:
+        n += 1
+    return f"{slug}-{n}"
+
+
+def relocate(source: ContentNode, slugs: list[str], target_id, user, kind: str = "question") -> dict:
+    """Move tests or flashcards of the chapter `source` to the section (or chapter intro) `target_id`, in any book.
+    The ids stay the same, so answers, stats and Leitner boxes go along. An item id («شناسه») already used in the
+    target book gets «-2». Links between tests and flashcards stay inside a book: crossing to another book drops
+    the links that would point outside it."""
+    model = Question if kind == "question" else Flashcard
+    word = "تست" if kind == "question" else "فلش‌کارت"
     target = ContentNode.objects.filter(pk=target_id, is_archived=False, kind__in=[ContentNode.Kind.CHAPTER, ContentNode.Kind.SECTION]).first()
     if target is None:
         raise editing.EditError("مقصد پیدا نشد؛ صفحه را تازه کنید.")
@@ -63,45 +75,136 @@ def relocate(source: ContentNode, slugs: list[str], target_id, user) -> dict:
     target_book = target_chapter.book()
     slugs = [s for s in dict.fromkeys(slugs or []) if s]
     if not slugs:
-        raise editing.EditError("هیچ تستی انتخاب نشده.")
+        raise editing.EditError(f"هیچ {word}ی انتخاب نشده.")
     with transaction.atomic():
-        questions = list(Question.objects.select_for_update().filter(node__path__startswith=source.path, slug__in=slugs, is_archived=False))
-        if len(questions) != len(slugs):
-            found = {q.slug for q in questions}
-            raise editing.EditError(f"تست «{'، '.join(s for s in slugs if s not in found)}» در این فصل نیست؛ صفحه را تازه کنید.")
+        items = list(model.objects.select_for_update().filter(node__path__startswith=source.path, slug__in=slugs, is_archived=False))
+        if len(items) != len(slugs):
+            found = {q.slug for q in items}
+            raise editing.EditError(f"{word} «{'، '.join(s for s in slugs if s not in found)}» در این فصل نیست؛ صفحه را تازه کنید.")
         order = {s: i for i, s in enumerate(slugs)}
-        questions.sort(key=lambda q: order[q.slug])
-        nxt = (Question.objects.filter(node=target).order_by("-order").values_list("order", flat=True).first() or 0) + 1
+        items.sort(key=lambda q: order[q.slug])
+        nxt = (model.objects.filter(node=target).order_by("-order").values_list("order", flat=True).first() or 0) + 1
         renamed, unlinked, moved = [], 0, 0
-        for q in questions:
-            if q.node_id == target.pk:
+        for item in items:
+            if item.node_id == target.pk:
                 continue
-            if not q.node.path.startswith(target_book.path):
-                taken = set(Question.objects.filter(node__path__startswith=target_book.path).values_list("slug", flat=True))
-                if q.slug in taken:
-                    old, n = q.slug, 2
-                    while f"{old}-{n}" in taken:
-                        n += 1
-                    q.slug = f"{old}-{n}"
-                    renamed.append(f"{old} ← {q.slug}")
-            outside = [f for f in q.flashcards.all() if not f.node.path.startswith(target_chapter.path)]
-            if outside:
-                q.flashcards.remove(*outside)
+            if not item.node.path.startswith(target_book.path):
+                taken = set(model.objects.filter(node__path__startswith=target_book.path).values_list("slug", flat=True))
+                new = _free_slug(item.slug, taken)
+                if new != item.slug:
+                    renamed.append(f"{item.slug} ← {new}")
+                    item.slug = new
+                # Links may not cross books.
+                if kind == "question":
+                    outside = [f for f in item.flashcards.all() if not f.node.path.startswith(target_book.path)]
+                    item.flashcards.remove(*outside)
+                else:
+                    outside = [q for q in item.questions.all() if not q.node.path.startswith(target_book.path)]
+                    item.questions.remove(*outside)
                 unlinked += len(outside)
-            q.node = target
-            q.order = nxt
+            item.node = target
+            item.order = nxt
             nxt += 1
-            q.save(update_fields=["node", "order", "slug"])
+            item.save(update_fields=["node", "order", "slug"])
             moved += 1
         where = f"«{target.title}»" + (f" در «{target_book.title}»" if target_book.pk != source.book().pk else "")
-        note = f"انتقال {moved} تست به {where}"
+        note = f"انتقال {moved} {word} به {where}"
         # Both chapters go through the editor (all file rules) and keep a version.
         editing.save(target_chapter, editing.load(target_chapter), user=user, note=note)
         if source.pk != target_chapter.pk:
             editing.save(source, editing.load(source), user=user, note=note)
     warnings = []
     if renamed:
-        warnings.append("شناسه‌ی این تست‌ها در کتاب مقصد تکراری بود و عوض شد: " + "، ".join(renamed))
+        warnings.append(f"شناسه‌ی این {word}‌ها در کتاب مقصد تکراری بود و عوض شد: " + "، ".join(renamed))
     if unlinked:
-        warnings.append(f"{unlinked} پیوند به فلش‌کارت‌هایی که در فصل مقصد نیستند برداشته شد.")
-    return {"ok": True, "note": f"{moved} تست به {where} منتقل شد.", "warnings": warnings}
+        warnings.append(f"{unlinked} پیوند تست و فلش‌کارت برداشته شد، چون پیوند بین دو کتاب مجاز نیست.")
+    return {"ok": True, "note": f"{moved} {word} به {where} منتقل شد.", "warnings": warnings}
+
+
+def _texts(node: ContentNode) -> str:
+    """Everything of a section that may hold a [[#name]] link: notes, summary and its tests' explanations."""
+    parts = [node.full_body or "", node.summary_body or ""]
+    for q in Question.objects.filter(node=node, is_archived=False).only("explanation", "quick_solution", "alternative_view", "stem"):
+        parts += [q.stem, q.explanation, q.quick_solution, q.alternative_view]
+    return "\n".join(p for p in parts if p)
+
+
+def relocate_section(source: ContentNode, slug: str, target_id, user, dry: bool = False) -> dict:
+    """Move a whole section (notes, summary, tests, flashcards; learners' progress, notes and answers stay with it,
+    as they attach to its id) to the end of another chapter, in any book. `dry`: only say what would break."""
+    from .numbering import BOX, REF
+
+    section = source.get_children().filter(kind=ContentNode.Kind.SECTION, slug=slug, is_archived=False).first()
+    target = ContentNode.objects.filter(pk=target_id, kind=ContentNode.Kind.CHAPTER, is_archived=False).first()
+    if section is None or target is None:
+        raise editing.EditError("بخش یا فصل مقصد پیدا نشد؛ صفحه را تازه کنید.")
+    if target.pk == source.pk:
+        raise editing.EditError("این بخش همین حالا در همین فصل است.")
+    if source.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False).count() == 1:
+        raise editing.EditError("این تنها بخش فصل است؛ فصل باید دست‌کم یک بخش داشته باشد. اول بخش دیگری بسازید.")
+    source_book, target_book = source.book(), target.book()
+    cross = source_book.pk != target_book.pk
+
+    # Box names are unique in a chapter.
+    names = {m.group(2) for m in BOX.finditer(section.full_body or "") if m.group(2)}
+    there = set()
+    for node in [target, *target.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False)]:
+        there |= {m.group(2) for m in BOX.finditer(node.full_body or "") if m.group(2)}
+    clash = sorted(names & there)
+    if clash:
+        raise editing.EditError(f"نام کادر «{'، '.join(clash)}» در فصل مقصد هم هست؛ اول یکی را عوض کنید.")
+
+    warnings = []
+    if cross:
+        # [[#name]] links that will point to another book.
+        others = [n for n in ContentNode.objects.filter(path__startswith=source_book.path, kind__in=[ContentNode.Kind.CHAPTER, ContentNode.Kind.SECTION], is_archived=False).exclude(pk=section.pk)]
+        broken_in = [n.title for n in others if names & set(REF.findall(_texts(n)))]
+        here = set(REF.findall(_texts(section)))
+        elsewhere = set()
+        for n in others:
+            elsewhere |= {m.group(2) for m in BOX.finditer(n.full_body or "") if m.group(2)}
+        broken_out = sorted(here & elsewhere - names)
+        if broken_in:
+            warnings.append("ارجاع به کادرهای این بخش در این بخش‌ها می‌شکند: " + "، ".join(broken_in))
+        if broken_out:
+            warnings.append("ارجاع‌های این بخش به کادرهای کتاب فعلی می‌شکند: " + "، ".join(broken_out))
+        q_ids = list(Question.objects.filter(node=section).values_list("pk", flat=True))
+        f_ids = list(Flashcard.objects.filter(node=section).values_list("pk", flat=True))
+        links_out = Question.flashcards.through.objects.filter(question_id__in=q_ids).exclude(flashcard_id__in=f_ids).count()
+        links_in = Question.flashcards.through.objects.filter(flashcard_id__in=f_ids).exclude(question_id__in=q_ids).count()
+        if links_out + links_in:
+            warnings.append(f"{links_out + links_in} پیوند تست و فلش‌کارت با بقیه‌ی کتاب برداشته می‌شود.")
+    if dry:
+        return {"ok": True, "warnings": warnings, "cross": cross}
+
+    with transaction.atomic():
+        section = ContentNode.objects.select_for_update().get(pk=section.pk)
+        renamed = []
+        if cross:
+            taken = set(ContentNode.objects.filter(path__startswith=target_book.path, kind=ContentNode.Kind.SECTION).values_list("slug", flat=True))
+            new = _free_slug(section.slug, taken)
+            if new != section.slug:
+                renamed.append(f"{section.slug} ← {new}")
+                ContentNode.objects.filter(pk=section.pk).update(slug=new)
+            for model in (Question, Flashcard):
+                taken = set(model.objects.filter(node__path__startswith=target_book.path).values_list("slug", flat=True))
+                for item in model.objects.filter(node=section):
+                    new = _free_slug(item.slug, taken)
+                    if new != item.slug:
+                        renamed.append(f"{item.slug} ← {new}")
+                        item.slug = new
+                        item.save(update_fields=["slug"])
+                    taken.add(new)
+            q_ids = list(Question.objects.filter(node=section).values_list("pk", flat=True))
+            f_ids = list(Flashcard.objects.filter(node=section).values_list("pk", flat=True))
+            through = Question.flashcards.through.objects
+            through.filter(question_id__in=q_ids).exclude(flashcard_id__in=f_ids).delete()
+            through.filter(flashcard_id__in=f_ids).exclude(question_id__in=q_ids).delete()
+        ContentNode.objects.get(pk=section.pk).move(ContentNode.objects.get(pk=target.pk), "last-child")
+        ContentNode.objects.filter(pk=section.pk).update(is_published=target.is_published)
+        note = f"انتقال بخش «{section.title}» به «{target.title}»" + (f" در «{target_book.title}»" if cross else "")
+        editing.save(ContentNode.objects.get(pk=target.pk), editing.load(ContentNode.objects.get(pk=target.pk)), user=user, note=note)
+        editing.save(ContentNode.objects.get(pk=source.pk), editing.load(ContentNode.objects.get(pk=source.pk)), user=user, note=note)
+    if renamed:
+        warnings.append("این شناسه‌ها در کتاب مقصد تکراری بودند و عوض شدند: " + "، ".join(renamed))
+    return {"ok": True, "note": note + " انجام شد.", "warnings": warnings}

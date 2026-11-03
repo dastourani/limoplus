@@ -973,3 +973,106 @@ class InboxTests(TestCase):
         self.assertTrue(dest[0]["inbox"])
         self.assertEqual(self.client.get("/admin/catalog/book/").status_code, 200)
         self.assertEqual(self.client.get(f"/admin/catalog/book/chapter/{chapter.pk}/").status_code, 200)
+
+
+class MovingContentTests(TestCase):
+    """Flashcards and whole sections move like tests; test–flashcard links may cross chapters, never books."""
+
+    CH2 = """---
+شناسه-کتاب: test-book
+کتاب: کتاب آزمایشی
+شناسه-فصل: ch2
+عنوان: فصل دو
+---
+
+## بخش سوم {#three}
+متن سوم با ارجاع به [[#ex-a]].
+
+:::تست {#q-ch2}
+منبع: تألیفی
+سطح: آسان
+صورت:
+یک به‌علاوه‌ی یک؟
+- [ ] سه
+- [x] دو
+توضیح: ساده.
+فلش‌کارت: card1
+:::
+
+## بخش چهارم {#four}
+متن چهارم.
+"""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        from .importer import import_file
+        from .models import Major
+        from .tests import GOOD
+
+        Major.objects.create(slug="economics", name="اقتصاد")
+        good = GOOD.replace("متن جزوه با فرمول $x^2$.", "متن.\n\n:::مثال {#ex-a}\nیک\n:::")
+        c, _ = import_file("c.md", good.encode(), publish=True)
+        assert not c.errors, c.errors
+        c, _ = import_file("c2.md", self.CH2.encode(), publish=True)
+        assert not c.errors, c.errors  # a link to card1 of chapter 1 is allowed now
+        self.admin = get_user_model().objects.create_superuser("09120000008", "pw-123456")
+        self.client.force_login(self.admin)
+
+    def api(self, chapter, **data):
+        return self.client.post(f"/admin/catalog/book/chapter/{chapter.pk}/api/", data, content_type="application/json")
+
+    def test_links_across_chapters_and_moving_a_section(self):
+        from apps.learning.models import Flashcard, Question
+
+        from .exporter import export_chapter
+        from .models import ContentNode
+
+        q2 = Question.objects.get(slug="q-ch2")
+        self.assertEqual([f.slug for f in q2.flashcards.all()], ["card1"], "link to another chapter of the book")
+        ch1, ch2 = ContentNode.objects.get(slug="ch1"), ContentNode.objects.get(slug="ch2")
+        self.assertIn("فلش‌کارت: card1", export_chapter(ch2))
+
+        # Moving section «one» (q1, card1, box ex-a) to chapter 2 of the same book: nothing breaks.
+        dry = self.api(ch1, op="section.relocate", slug="one", to=ch2.pk, dry=True).json()
+        self.assertEqual(dry["warnings"], [], dry)
+        r = self.api(ch1, op="section.relocate", slug="one", to=ch2.pk).json()
+        self.assertTrue(r.get("ok"), r)
+        one = ContentNode.objects.get(slug="one")
+        self.assertEqual(one.get_parent().pk, ch2.pk)
+        self.assertEqual(Flashcard.objects.get(slug="card1").node_id, one.pk)
+        self.assertEqual(sorted(f.slug for f in Question.objects.get(slug="q1").flashcards.all()), ["card1"])
+        self.assertEqual(self.api(ch2, op="section.relocate", slug="three", to=ch1.pk).status_code, 200)
+        self.assertEqual(self.api(ch1, op="section.relocate", slug="two", to=ch2.pk).status_code, 200)
+        # The last section of a chapter cannot leave it.
+        self.assertEqual(self.api(ch1, op="section.relocate", slug="three", to=ch2.pk).status_code, 400)
+
+    def test_moving_to_another_book_warns_and_drops_links(self):
+        from apps.learning.models import Flashcard, Question
+
+        from .bookpanel import book_health
+        from .importer import import_file
+        from .models import ContentNode
+
+        other = self.CH2.replace("test-book", "other-book").replace("کتاب آزمایشی", "کتاب دیگر").replace("ch2", "o1").replace(
+            "{#three}", "{#o-three}").replace("{#four}", "{#o-four}").replace("{#q-ch2}", "{#q-o}").replace("فلش‌کارت: card1\n", "").replace(" با ارجاع به [[#ex-a]]", "")
+        c, _ = import_file("o.md", other.encode(), publish=True)
+        self.assertFalse(c.errors, c.errors)
+        ch1, o1 = ContentNode.objects.get(slug="ch1"), ContentNode.objects.get(slug="o1")
+        dry = self.api(ch1, op="section.relocate", slug="one", to=o1.pk, dry=True).json()
+        text = " ".join(dry["warnings"])
+        self.assertIn("بخش سوم", text, "chapter 2 links to the box ex-a, which leaves the book")
+        self.assertIn("پیوند", text)
+        r = self.api(ch1, op="section.relocate", slug="one", to=o1.pk).json()
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(Question.objects.get(slug="q-ch2").flashcards.count(), 0, "link to a card now in another book dropped")
+        health = " ".join(h["text"] for h in book_health(ContentNode.objects.get(slug="test-book")))
+        self.assertIn("[[#ex-a]]", health, "the broken link is listed on the book page")
+
+        # A flashcard moved back to the first book, alone.
+        two = ContentNode.objects.get(slug="two")
+        r = self.api(o1, op="flashcard.relocate", slugs=["card1"], to=two.pk).json()
+        self.assertTrue(r.get("ok"), r)
+        card = Flashcard.objects.get(slug="card1")
+        self.assertEqual(card.node_id, two.pk)
+        self.assertEqual(card.questions.count(), 0, "q1 stayed in the other book: no link across books")

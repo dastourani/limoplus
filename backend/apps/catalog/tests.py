@@ -76,8 +76,12 @@ class ParserTests(TestCase):
         messages = " | ".join(str(e) for e in chapter.errors)
         self.assertIn("دقیقاً یک گزینه", messages)
         self.assertIn("سطح «خیلی سخت»", messages)
-        self.assertIn("«missing»", messages)
         self.assertTrue(all(e.line for e in chapter.errors))
+        # A flashcard not in the file may be in another chapter of the book; only the database can tell.
+        Major.objects.create(slug="economics", name="اقتصاد")
+        chapter, _ = import_file("x.md", GOOD.replace("فلش‌کارت: card1", "فلش‌کارت: missing").encode(), dry_run=True)
+        missing = [e for e in chapter.errors if "«missing»" in str(e)]
+        self.assertTrue(missing and missing[0].line, chapter.errors)
 
     def test_missing_front_matter_and_unclosed_block(self):
         self.assertTrue(parse_chapter("## no front matter").errors)

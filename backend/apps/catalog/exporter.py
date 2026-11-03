@@ -49,7 +49,8 @@ def question_to_parsed(q: Question) -> ParsedQuestion:
         is_extra=q.is_extra,
         is_original=q.is_original or not sources,
         sources=sources,
-        flashcard_slugs=list(q.flashcards.order_by("order", "id").values_list("slug", flat=True)),
+        # Links to archived cards are left out (a card archived in another chapter must not break this one).
+        flashcard_slugs=list(q.flashcards.filter(is_archived=False).order_by("order", "id").values_list("slug", flat=True)),
         choices=[(c.text, c.is_correct) for c in q.choices.all()],
     )
 

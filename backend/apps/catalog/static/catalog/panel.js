@@ -432,13 +432,54 @@
     });
     return sel;
   };
-  Manager.prototype.relocate = function (slugs, to) {
+  // A whole section to another chapter of any book (with its tests, flashcards and learners' data).
+  Manager.prototype.chapterSelect = function (onPick) {
+    var self = this, here = this.state.chapter.id;
+    var sel = h('select', { class: 'btn small', title: 'بخش با تست‌ها، فلش‌کارت‌ها و پیشرفت کاربران به آخر فصل دیگری می‌رود',
+      onchange: function () { if (sel.value) onPick(sel.value, sel.options[sel.selectedIndex].text); sel.value = ''; } },
+      h('option', { value: '', selected: true, disabled: true }, 'انتقال بخش به فصل…'));
+    if (!this.dest) {
+      sel.appendChild(h('option', { value: '', disabled: true }, 'در حال گرفتن فهرست…'));
+      if (!this.destLoading) {
+        this.destLoading = true;
+        this.call({ op: 'destinations' }).then(function (d) { self.dest = d.destinations; self.destLoading = false; self.render(); })
+          .catch(function () { self.destLoading = false; });
+      }
+      return sel;
+    }
+    this.dest.forEach(function (b) {
+      var g = h('optgroup', { label: b.inbox ? '📥 صندوق' : '📘 ' + b.title });
+      b.chapters.forEach(function (c) {
+        if (c.id === here) return;
+        g.appendChild(h('option', { value: c.id }, (c.number ? 'فصل ' + fa(c.number) + ': ' : '') + c.title));
+      });
+      if (g.children.length) sel.appendChild(g);
+    });
+    return sel;
+  };
+  Manager.prototype.moveSectionTo = function (s, to, label) {
+    if (!this.guard()) return;
     var self = this;
-    this.call({ op: 'question.relocate', slugs: slugs, to: Number(to) }).then(function (d) {
-      self.picked = {};
+    this.call({ op: 'section.relocate', slug: s.slug, to: Number(to), dry: true }).then(function (d) {
+      var lines = ['بخش «' + s.title + '» با تست‌ها، فلش‌کارت‌ها و پیشرفت کاربرانش به آخر «' + label + '» برود؟'];
+      if (d.warnings.length) lines = lines.concat(['', 'توجه:'], d.warnings.map(function (w) { return '• ' + w; }));
+      if (!confirm(lines.join('\n'))) return;
+      return self.call({ op: 'section.relocate', slug: s.slug, to: Number(to) }).then(function (r) {
+        self.sel = self.state.sections.length ? self.state.sections[0].slug : '';
+        self.dest = null;
+        self.render();
+        if (!(r.warnings && r.warnings.length)) toast(r.note || 'منتقل شد.');
+      });
+    }).catch(function () {});
+  };
+
+  Manager.prototype.relocate = function (slugs, to, kind) {
+    var self = this;
+    this.call({ op: (kind || 'question') + '.relocate', slugs: slugs, to: Number(to) }).then(function (d) {
+      self.pickedBy = {};
       self.dest = null;  // counts and new sections
       self.render();
-      toast(d.note || 'منتقل شد.');
+      if (!(d.warnings && d.warnings.length)) toast(d.note || 'منتقل شد.');
     }).catch(function () { self.render(); });
   };
 
@@ -535,6 +576,7 @@
           self.call({ op: 'section.publish', slug: s.slug, value: e.target.checked }).then(function () { self.load(); }).catch(function () {});
         } }), ' منتشر شده'),
         h('span', { class: 'grow' }),
+        this.chapterSelect(function (to, label) { self.moveSectionTo(s, to, label); }),
         h('button', { class: 'btn', type: 'button', onclick: function () {
           self.call({ op: 'section.update', slug: s.slug, title: title.value, group: group.value }).then(function () { self.render(); toast('ذخیره شد.'); }).catch(function () {});
         } }, 'ذخیره‌ی عنوان و گروه'),
@@ -786,15 +828,16 @@
   Manager.prototype.renderItems = function (body, s, kind) {
     var self = this;
     var list = kind === 'question' ? s.questions : s.flashcards;
-    var others = [{ slug: '', title: 'مقدمه‌ی فصل' }].concat(this.state.sections).filter(function (x) { return x.slug !== s.slug; });
     var top = h('div', { class: 'row', style: 'margin-bottom:10px' },
       h('button', { class: 'btn primary', type: 'button', onclick: function () { if (self.guard()) { self.open = { kind: kind, slug: null }; self.render(); } } },
         kind === 'question' ? '+ تست تازه' : '+ فلش‌کارت تازه'),
       h('span', { class: 'hint' }, kind === 'question' ? 'ترتیب این فهرست، ترتیب تست‌ها در اپ است.' : 'فلش‌کارت نکته است، نه سؤال: رو = عنوان، پشت = نکته.'));
     body.appendChild(top);
-    var picked = this.picked = this.picked || {};
+    this.pickedBy = this.pickedBy || {};
+    var picked = this.pickedBy[kind] = this.pickedBy[kind] || {};
     var current = s.id;
-    if (kind === 'question' && list.length) {
+    var noun = kind === 'question' ? 'تست' : 'فلش‌کارت';
+    if (list.length) {
       var chosen = list.filter(function (x) { return picked[x.slug]; });
       var all = h('input', { type: 'checkbox', checked: chosen.length === list.length, onchange: function () {
         list.forEach(function (x) { if (all.checked) picked[x.slug] = true; else delete picked[x.slug]; });
@@ -802,18 +845,14 @@
       } });
       body.appendChild(h('div', { class: 'cm-bulk' + (chosen.length ? ' on' : '') },
         h('label', null, all, ' همه'),
-        h('span', null, chosen.length ? fa(chosen.length) + ' تست انتخاب شده' : 'برای انتقال گروهی، کنار تست‌ها تیک بزنید.'),
-        chosen.length ? this.destSelect(current, function (to) { self.relocate(chosen.map(function (x) { return x.slug; }), to); }, 'انتقال همه به…') : null));
+        h('span', null, chosen.length ? fa(chosen.length) + ' ' + noun + ' انتخاب شده' : 'برای انتقال گروهی، کنار ' + noun + '‌ها تیک بزنید.'),
+        chosen.length ? this.destSelect(current, function (to) { self.relocate(chosen.map(function (x) { return x.slug; }), to, kind); }, 'انتقال همه به…') : null));
     }
     if (this.open && this.open.kind === kind && this.open.slug === null) body.appendChild(this.itemEditor(s, kind, null));
     if (!list.length && !(this.open && this.open.slug === null)) body.appendChild(h('p', { class: 'hint' }, 'هنوز چیزی در این بخش نیست.'));
     list.forEach(function (item, i) {
       if (self.open && self.open.kind === kind && self.open.slug === item.slug) { body.appendChild(self.itemEditor(s, kind, item)); return; }
-      var move = kind === 'question' ? self.destSelect(current, function (to) { self.relocate([item.slug], to); }) : h('select', { class: 'btn small', onchange: function () {
-        if (!move.value && move.value !== '') return;
-        var to = move.value === '__intro' ? '' : move.value;
-        self.call({ op: kind + '.move', slug: item.slug, to: to }).then(function () { self.render(); toast('منتقل شد.'); }).catch(function () {});
-      } }, h('option', { value: '', selected: true, disabled: true }, 'انتقال به…'), others.map(function (o) { return h('option', { value: o.slug || '__intro' }, o.title); }));
+      var move = self.destSelect(current, function (to) { self.relocate([item.slug], to, kind); });
       var acts = h('div', { class: 'acts' },
         h('button', { class: 'btn small', type: 'button', onclick: function () { if (self.guard()) { self.open = { kind: kind, slug: item.slug }; self.render(); } } }, 'ویرایش'),
         h('button', { class: 'btn small icon', type: 'button', title: 'بالا', onclick: function () { self.reorder(s, kind, i, -1); } }, '▲'),
@@ -852,8 +891,8 @@
           item.formula ? h('div', { html: P.renderMarkdown('$$' + item.formula + '$$') }) : null,
           h('div', { class: 'meta' }, h('span', { class: 'pill' }, item.slug)));
       }
-      var tick = kind === 'question' ? h('input', { type: 'checkbox', class: 'pick', checked: !!picked[item.slug], title: 'انتخاب برای انتقال گروهی',
-        onchange: function () { if (tick.checked) picked[item.slug] = true; else delete picked[item.slug]; self.render(); } }) : null;
+      var tick = h('input', { type: 'checkbox', class: 'pick', checked: !!picked[item.slug], title: 'انتخاب برای انتقال گروهی',
+        onchange: function () { if (tick.checked) picked[item.slug] = true; else delete picked[item.slug]; self.render(); } });
       body.appendChild(h('div', { class: 'item' + (picked[item.slug] ? ' picked' : ''), id: 'item-' + item.slug },
         h('div', { class: 'head' }, h('span', { class: 'num' }, tick, fa(i + 1)), content, acts)));
     });
@@ -999,6 +1038,32 @@
             } });
             return h('label', { style: 'display:block;margin:3px 0' }, cb, ' ', c.title, h('span', { class: 'hint' }, ' — ' + c.section));
           }) : h('span', { class: 'hint' }, 'این فصل هنوز فلش‌کارت ندارد.'));
+        // Cards of the book's other chapters: a test may link to any card of its book.
+        var mine = cards.map(function (c) { return c.slug; });
+        var others = self.state.book_cards || [];
+        var ext = h('div', { style: 'margin-top:6px' });
+        (function drawExt() {
+          ext.innerHTML = '';
+          data.flashcards.filter(function (x) { return mine.indexOf(x) < 0; }).forEach(function (slug) {
+            var c = others.filter(function (o) { return o.slug === slug; })[0];
+            ext.appendChild(h('span', { class: 'pill', style: 'margin:2px' }, (c ? c.title + ' — ' + c.chapter : slug) + ' ',
+              h('button', { class: 'btn icon danger', type: 'button', title: 'برداشتن پیوند', onclick: function () {
+                data.flashcards = data.flashcards.filter(function (x) { return x !== slug; }); drawExt();
+              } }, '✕')));
+          });
+          if (others.length) {
+            var pick = h('input', { type: 'text', list: 'cm-book-cards', placeholder: 'افزودن فلش‌کارت از فصل‌های دیگر کتاب (نام یا شناسه)…' });
+            var addBtn = h('button', { class: 'btn small', type: 'button', onclick: function () {
+              var v = pick.value.trim(), hit = others.filter(function (o) { return o.slug === v || o.title + ' — ' + o.chapter === v; })[0];
+              if (!hit) { toast(['این فلش‌کارت در کتاب پیدا نشد.'], 'err'); return; }
+              if (data.flashcards.indexOf(hit.slug) < 0) data.flashcards.push(hit.slug);
+              drawExt();
+            } }, '+ پیوند');
+            ext.appendChild(h('div', { class: 'row', style: 'margin-top:4px;flex-wrap:nowrap' }, pick, addBtn,
+              h('datalist', { id: 'cm-book-cards' }, others.map(function (o) { return h('option', { value: o.title + ' — ' + o.chapter }); }))));
+          }
+        })();
+        fc.appendChild(ext);
         left.appendChild(field('فلش‌کارت‌های مرتبط', fc));
       } else {
         var title = h('input', { type: 'text', value: data.title, placeholder: 'عنوان کوتاه (روی کارت)', oninput: function () { data.title = title.value; changed(); } });
