@@ -56,6 +56,11 @@ Code, identifiers and commit messages are in English.
   The live preview uses the app's own renderer bundled into `static/catalog/limo-preview.js`; after changing
   `renderMarkdown.ts` or `reviewCard.ts`, run `cd app && npm run build:admin-preview` and commit the bundle.
   Question/flashcard/section admin lists are for filtering; their «ویرایش» opens the chapter manager.
+- Labels («برچسب‌های متن», `catalog.Label`, admin): one list for boxes in the notes («درسنامه», `:::تعریف … :::`) and parts
+  of the summary («چکیده», `تعریف:` + `- ` items), each with a group and one of four looks (formal/note/warn/table).
+  Server: `apps/catalog/labels.py` + `summary.py`; app: `src/lib/labels.ts` + `reviewCard.ts` (the list comes with
+  every section). Never deleted, only hidden. Tests marked «نقش: تکمیلی» (`Question.is_extra`) don't count for progress
+  (`apps/study/progress.py` `core()`).
 - Access rules live only in `apps/catalog/access.py` (`AccessMap`): visible = node and all ancestors published and
   not archived; readable = visible and (staff, or free node/ancestor, or owned / covered by an active subscription — `owns_book`).
   Every content endpoint must use it.

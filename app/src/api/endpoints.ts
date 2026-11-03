@@ -1,3 +1,4 @@
+import type { Label } from '../lib/labels';
 import { api } from './client';
 import type { ReadingNext } from '../components/home/ReadingCards';
 import type { ChapterEnd, SectionStatus } from '../lib/renderMarkdown';
@@ -71,6 +72,8 @@ export type BookDetail = BookListItem & {
 };
 export type NodeDetail = {
   id: number;
+  /** The panel's labels («برچسب‌ها»): boxes in the notes and parts of the summary. */
+  labels?: Label[];
   kind: NodeSummary['kind'];
   title: string;
   breadcrumb: { id: number; kind: NodeSummary['kind']; slug: string; title: string; number?: number | null }[];

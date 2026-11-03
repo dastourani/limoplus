@@ -312,3 +312,51 @@ class GroupsAndGlossaryTests(TestCase):
         for target, value, link in cases:
             self.assertEqual(Banner(title="b", target=target, target_value=value).resolved_link(), link)
         self.assertEqual(Banner(title="b", link="book/x").resolved_link(), "book/x")
+
+
+class LabelTests(TestCase):
+    """«برچسب‌های متن»: boxes in the notes and parts of the summary, managed in admin."""
+
+    def setUp(self):
+        Major.objects.create(slug="economics", name="اقتصاد")
+        from .labels import forget
+
+        forget()
+
+    def tearDown(self):
+        from .labels import forget
+
+        forget()
+
+    def test_starting_list_and_summary_parts_in_written_order(self):
+        from .labels import find
+        from .models import Label
+        from .summary import parse_summary, parse_terms
+
+        self.assertGreaterEqual(Label.objects.count(), 20, "the migration creates the starting list")
+        self.assertEqual(find("مثال‌نقض")["name"], "مثال نقض", "half-space and space are the same name")
+        self.assertEqual(find("تله‌ها")["name"], "تله")
+        parsed = parse_summary("پیش‌متن\nدر یک نگاه: کوتاه\nقضیه:\n- اول [[x]]\nتعریف: - دوم\nقضیه:\n- سوم\nواژه:\n- حد | Limit | نزدیکی")
+        self.assertEqual(parsed["lead"], "پیش‌متن")
+        self.assertEqual(parsed["glance"], "کوتاه")
+        self.assertEqual([(l["name"], items) for l, items in parsed["parts"]],
+                         [("قضیه", ["اول [[x]]", "سوم"]), ("تعریف", ["دوم"]), ("واژه", ["حد | Limit | نزدیکی"])])
+        self.assertEqual(parse_terms("واژه‌نامه:\n- حد | Limit"), [{"fa": "حد", "en": "Limit", "meaning": ""}])
+        self.assertIsNone(parse_summary("فقط متن: بدون برچسب شناخته‌شده"))
+
+    def test_any_label_is_a_box_in_the_notes_and_new_labels_come_from_admin(self):
+        from .labels import forget
+        from .models import Label
+
+        text = GOOD.replace("متن دوم.", "متن دوم.\n\n:::مثال نقض\nتابع علامت.\n:::\n\n:::برهان\nچون…\n:::")
+        chapter = parse_chapter(text)
+        self.assertTrue(any("«برهان» شناخته نشد" in e for e in [str(x) for x in chapter.errors]), chapter.errors)
+        Label.objects.create(name="برهان", group="ریاضی و علوم", style="formal")
+        forget()
+        chapter, _ = import_file("c.md", text.encode(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        two = ContentNode.objects.get(slug="two")
+        self.assertIn(":::مثال نقض", two.full_body)
+        data = APIClient().get(f"/api/v1/nodes/{two.id}/").json()
+        self.assertIn("برهان", [l["name"] for l in data["labels"]], "the app gets the panel's list with the section")
+        self.assertEqual(next(l for l in data["labels"] if l["name"] == "واژه")["columns"], ["فارسی", "English", "معنی"])

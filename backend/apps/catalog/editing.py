@@ -50,7 +50,7 @@ from .importer import (
 from .models import ChapterRevision, ContentNode
 
 COALESCE_WINDOW = timedelta(minutes=10)
-_BAD_BODY_LINE = re.compile(r"^(#{1,2}\s|:::\s*(خلاصه|تست|فلش‌کارت)\b)")
+_BAD_BODY_LINE = re.compile(r"^(#{1,2}\s|:::\s*(خلاصه|چکیده|تست|فلش‌کارت)\b)")
 
 
 class EditError(Exception):

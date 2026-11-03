@@ -1,47 +1,40 @@
 """
-The review card: a section's summary written in labelled parts.
+The summary («چکیده») written in labelled parts (labels: apps/catalog/labels.py, the panel's «برچسب‌های متن»):
 
     در یک نگاه: one or two sentences
-    مهم:
-    - a pointer to an important idea [[phrase in the notes]]
+    تعریف:
+    - … [[phrase in the notes]]
     واژه:
     - تضعیف | Attenuation | کم شدن شدت پرتو در عبور از بدن
-    قاعده: / حفظی: / تله:
-    - ...
 
-Summaries without these labels are shown as plain Markdown, as before.
+Summaries without labels are shown as plain Markdown, as before. Same rules as app/src/lib/reviewCard.ts.
 """
 
-import re
-
-PART_NAMES = {
-    "در یک نگاه": "glance",
-    "مهم": "important",
-    "مهم‌ترین‌ها": "important",
-    "واژه": "terms",
-    "واژه‌ها": "terms",
-    "واژه‌نامه": "terms",
-    "قاعده": "rules",
-    "قاعده و فرمول": "rules",
-    "حفظی": "memorize",
-    "تله": "traps",
-    "تله‌ها": "traps",
-}
-_PART = re.compile(r"^\s*(" + "|".join(sorted(map(re.escape, PART_NAMES), key=len, reverse=True)) + r")\s*:\s*(.*)$")
+from .labels import line_label
 
 
-def parse_parts(text: str) -> dict[str, list[str]]:
-    """Map part key → list of lines (list items without the dash; the glance part as one line)."""
-    parts: dict[str, list[str]] = {}
-    lead: list[str] = []  # lines before the first label: kept, shown at the top of the card
-    current = None
+def parse_summary(text: str) -> dict | None:
+    """{"lead": text before the first label, "glance": str, "parts": [(label, [items])]} or None without labels."""
+    parts: list[tuple[dict, list[str]]] = []
+    by_name: dict[str, list[str]] = {}
+    lead: list[str] = []
+    glance: list[str] = []
+    current = None  # a list of items, or "glance"
     for raw in (text or "").splitlines():
-        m = _PART.match(raw)
+        m = line_label(raw)
         if m:
-            current = PART_NAMES[m.group(1)]
-            parts.setdefault(current, [])
-            if m.group(2).strip():
-                parts[current].append(m.group(2).strip())
+            label, rest = m
+            if label["role"] == "glance":
+                current = "glance"
+                if rest.strip():
+                    glance.append(rest.strip())
+                continue
+            if label["name"] not in by_name:
+                by_name[label["name"]] = []
+                parts.append((label, by_name[label["name"]]))
+            current = by_name[label["name"]]
+            if rest.strip():
+                current.append(rest.strip())
             continue
         if current is None:
             lead.append(raw)
@@ -49,22 +42,39 @@ def parse_parts(text: str) -> dict[str, list[str]]:
         line = raw.strip()
         if not line:
             continue
-        if line.startswith(("- ", "* ")):
-            parts[current].append(line[2:].strip())
-        elif parts[current]:
-            parts[current][-1] += " " + line
+        if current == "glance":
+            glance.append(line[2:].strip() if line.startswith(("- ", "* ")) else line)
+        elif line.startswith(("- ", "* ")):
+            current.append(line[2:].strip())
+        elif current:
+            current[-1] += " " + line
         else:
-            parts[current].append(line)
-    if parts and "\n".join(lead).strip():
-        parts["lead"] = ["\n".join(lead).strip()]
-    return parts
+            current.append(line)
+    if not parts and not glance:
+        return None
+    return {"lead": "\n".join(lead).strip(), "glance": " ".join(glance), "parts": parts}
+
+
+def parse_parts(text: str) -> dict[str, list[str]]:
+    """Label name → items (empty without labels). Kept for callers that only ask «is this a review card»."""
+    parsed = parse_summary(text)
+    if not parsed:
+        return {}
+    out = {label["name"]: items for label, items in parsed["parts"]}
+    if parsed["glance"]:
+        out["در یک نگاه"] = [parsed["glance"]]
+    return out
 
 
 def parse_terms(text: str) -> list[dict]:
-    """Glossary items «فارسی | English | معنی» from a summary's «واژه» part."""
+    """Glossary items «فارسی | English | معنی» from the summary's «واژه» part."""
+    parsed = parse_summary(text) or {"parts": []}
     out = []
-    for item in parse_parts(text).get("terms", []):
-        cells = [c.strip() for c in item.split("|")]
-        if cells and cells[0]:
-            out.append({"fa": cells[0], "en": cells[1] if len(cells) > 1 else "", "meaning": cells[2] if len(cells) > 2 else ""})
+    for label, items in parsed["parts"]:
+        if label["role"] != "terms":
+            continue
+        for item in items:
+            cells = [c.strip() for c in item.split("|")]
+            if cells and cells[0]:
+                out.append({"fa": cells[0], "en": cells[1] if len(cells) > 1 else "", "meaning": cells[2] if len(cells) > 2 else ""})
     return out

@@ -6,7 +6,8 @@
  */
 import { coverByline, coverMotifSvg, coverPalette, MOTIFS, type CoverTheme } from '../src/lib/cover';
 import { CONTENT_CSS, renderMarkdown, renderSummary } from '../src/lib/renderMarkdown';
-import { jumpTarget, parseParts } from '../src/lib/reviewCard';
+import { allLabels, findLabel, normalizeName, setLabels } from '../src/lib/labels';
+import { cells, jumpTarget, parseSummary } from '../src/lib/reviewCard';
 
 function esc(s: string) {
   return (s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -147,8 +148,13 @@ function bannerHtml(b: BannerInput, w = 360): string {
   CONTENT_CSS,
   renderMarkdown,
   renderSummary,
-  parseParts,
+  parseSummary,
+  cells,
   jumpTarget,
+  setLabels,
+  allLabels,
+  findLabel,
+  normalizeName,
   coverHtml,
   coverSvg,
   MOTIFS,

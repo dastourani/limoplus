@@ -112,3 +112,17 @@ table.lp-table { width: 100%; border-collapse: collapse; } table.lp-table td, ta
 .lp-health li { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border-radius: 10px; border-right: 4px solid #E0A100; background: rgba(224,161,0,.10); }
 .lp-health li.error { border-right-color: #D9534F; background: rgba(217,83,79,.10); }
 .lp-ok { margin: 6px 0 0; padding: 10px 14px; border-radius: 10px; background: rgba(63,184,169,.12); color: #2E8F83; font-weight: 700; }
+
+/* Label buttons («برچسب‌های متن»): grouped, coloured by the label's look. */
+.lbl-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); background: var(--soft); }
+.rc-form .lbl-row, .lp textarea + .lbl-row, div > .lbl-row:first-child { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; }
+.lbl-title { font-size: 12px; font-weight: 700; color: var(--muted, #667); }
+.lbl-group { display: inline-flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.lbl-group small { color: var(--muted, #889); font-size: 11px; margin-left: 2px; }
+.lbl { border: 1px solid transparent; border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.lbl-formal { background: #EEF0FC; color: #3B44B8; } .lbl-note { background: #E3F3E9; color: #1F5E3A; }
+.lbl-warn { background: #FFF6D6; color: #7A4F00; } .lbl-table { background: #F1F2EE; color: #3C4740; border-color: #DDE2D8; }
+.lbl:hover { filter: brightness(.95); border-color: currentColor; }
+.rc-form .lbl-part.lbl-formal { border-color: #D5D9F5; } .rc-form .lbl-part.lbl-warn { border-color: #F2C7C4; }
+.rc-form .lbl-part h4 { align-items: center; }
+.rc-form .line.cols { display: grid; gap: 6px; margin-bottom: 6px; align-items: center; }

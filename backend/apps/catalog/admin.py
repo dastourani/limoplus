@@ -10,7 +10,7 @@ from .drawing import DrawingError, clean_svg
 from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
 from .filters import BookFilter, ChapterFilter, YesNoFilter
-from .models import Banner, Book, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, Major, Section, ShareSettings, Shelf, ShelfBook
+from .models import Banner, Book, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, Label, Major, Section, ShareSettings, Shelf, ShelfBook
 
 
 class ShelfBookInline(admin.TabularInline):
@@ -461,3 +461,28 @@ class ShareSettingsAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(Label)
+class LabelAdmin(admin.ModelAdmin):
+    """«برچسب‌های متن»: boxes in the notes (:::تعریف) and parts of the summary (تعریف:). Never deleted: hide instead."""
+
+    list_display = ("name", "group", "style", "role", "order", "is_hidden")
+    list_editable = ("group", "style", "order", "is_hidden")
+    list_filter = ("group", "style", "is_hidden")
+    search_fields = ("name", "aliases")
+    fieldsets = (
+        (None, {"fields": ("name", "group", "style", "order", "is_hidden"),
+                "description": "هر برچسب در «درسنامه» یک کادر است (:::تعریف … :::) و در «چکیده» یک بخش (تعریف: و بعد موردها با «- »). "
+                               "برچسبی را که در متن‌ها به کار رفته پاک نکنید؛ «پنهان» کنید تا در دکمه‌های پنل نیاید."}),
+        ("بیشتر", {"fields": ("aliases", "columns", "role"), "classes": ("collapse",)}),
+    )
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        from .labels import forget
+
+        forget()

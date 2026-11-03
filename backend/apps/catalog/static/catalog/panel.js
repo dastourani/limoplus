@@ -52,8 +52,44 @@
     frame.addEventListener('load', function () { fit(); setTimeout(fit, 300); });
   }
 
+  // ---------- labels («برچسب‌های متن», managed in admin) ----------
+  // The same list as the app's renderer. In «درسنامه» a label is a box (:::تعریف … :::); in «چکیده» a part (تعریف: - …).
+  function labelList() { return (P && P.allLabels ? P.allLabels() : []).filter(function (l) { return !l.hidden; }); }
+  function labelRow(pick, filter, title) {
+    var row = h('div', { class: 'lbl-row' });
+    if (title) row.appendChild(h('span', { class: 'lbl-title' }, title));
+    var groups = [], by = {};
+    labelList().filter(filter || function () { return true; }).forEach(function (l) {
+      var g = l.group || 'دیگر';
+      if (!by[g]) { by[g] = h('span', { class: 'lbl-group' }, h('small', null, g)); groups.push(by[g]); }
+      by[g].appendChild(h('button', { type: 'button', class: 'lbl lbl-' + l.style, onmousedown: function (e) { e.preventDefault(); },
+        onclick: function (e) { e.preventDefault(); pick(l); } }, l.name));
+    });
+    groups.forEach(function (g) { row.appendChild(g); });
+    return row;
+  }
+  // Text put into a textarea as one edit, so Ctrl+Z can take it back (setting .value would wipe the history).
+  function insertText(ta, text, selFrom, selTo) {
+    var start = ta.selectionStart, end = ta.selectionEnd;
+    ta.focus();
+    ta.setSelectionRange(start, end);
+    var ok = false;
+    try { ok = document.execCommand('insertText', false, text); } catch (e) { ok = false; }
+    if (!ok) { ta.setRangeText(text, start, end, 'end'); ta.dispatchEvent(new Event('input')); }
+    if (selFrom != null) ta.setSelectionRange(start + selFrom, start + selTo);
+  }
+  // A summary part at the cursor: «تعریف:» on its own line, then «- » ready for the first item.
+  function insertSummaryLabel(ta, l) {
+    var v = ta.value, at = ta.selectionStart;
+    var lead = at > 0 && v[at - 1] !== '\n' ? '\n\n' : (at > 1 && v[at - 2] !== '\n' ? '\n' : '');
+    var sample = l.role === 'glance' ? '' : l.columns && l.columns.length ? l.columns.join(' | ') : '';
+    var text = lead + l.name + ':' + (l.role === 'glance' ? ' ' : '\n- ') + sample;
+    var from = text.length - sample.length;
+    ta.setSelectionRange(at, ta.selectionEnd);
+    insertText(ta, text + (v[ta.selectionEnd] && v[ta.selectionEnd] !== '\n' ? '\n' : ''), from, from + sample.length);
+  }
+
   // ---------- Markdown editor ----------
-  var BOXES = [['نکته', 'نکته'], ['تله', 'تله'], ['هشدار', 'هشدار'], ['مثال', 'مثال']];
 
   function MdEditor(textarea, opts) {
     opts = opts || {};
@@ -79,7 +115,6 @@
       bar.appendChild(btn('∑ فرمول جدا', 'فرمول در خط جدا ($$…$$)', function () { self.block('$$\n', '\n$$', '\\frac{a}{b}'); }));
       bar.appendChild(h('span', { class: 'sep' }));
       if (this.variant !== 'summary') {
-        BOXES.forEach(function (b) { bar.appendChild(btn('▣ ' + b[1], 'کادر ' + b[1], function () { self.block(':::' + b[0] + '\n', '\n:::', 'متن کادر'); })); });
         bar.appendChild(btn('▦ جدول', 'جدول', function () { self.block('', '', '| ستون ۱ | ستون ۲ |\n| --- | --- |\n| … | … |'); }));
       }
       if (opts.uploadUrl) bar.appendChild(btn('🖼 عکس', 'افزودن عکس', function () { self.pickImage(opts.uploadUrl); }));
@@ -104,6 +139,17 @@
     body.appendChild(textarea);
     body.appendChild(h('div', { class: 'md-prev' }, this.frame));
     wrap.appendChild(bar);
+    // Label buttons: in the notes each one puts the selected text (or a sample) in a box «:::تعریف … :::».
+    if (!opts.inline && labelList().length) {
+      wrap.appendChild(labelRow(function (l) {
+        if (self.variant === 'summary') { insertSummaryLabel(self.ta, l); return; }
+        var sample = l.style === 'table' && l.columns && l.columns.length
+          ? '| ' + l.columns.join(' | ') + ' |\n|' + l.columns.map(function () { return ' --- '; }).join('|') + '|\n|' + l.columns.map(function () { return ' … '; }).join('|') + '|'
+          : 'متن ' + l.name;
+        self.block(':::' + l.name + '\n', '\n:::', sample);
+        self.ta.focus();
+      }, function (l) { return self.variant === 'summary' || l.role !== 'glance'; }, self.variant === 'summary' ? 'برچسب:' : 'کادر:'));
+    }
     wrap.appendChild(body);
     this.el = wrap;
     var timer = null;
@@ -253,6 +299,7 @@
         }
         if (res.data.state) {
           self.state = res.data.state;
+          if (P && P.setLabels) P.setLabels(self.state.labels);
           MEDIA = self.state.media_url;
         }
         if (res.data.warnings && res.data.warnings.length) {
@@ -266,6 +313,7 @@
     var self = this;
     fetch(this.api, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
       self.state = d.state;
+      if (P && P.setLabels) P.setLabels(self.state.labels);
       MEDIA = d.state.media_url;
       if (!self.fromHash()) { self.sel = d.state.sections.length ? d.state.sections[0].slug : ''; self.render(); }
     });
@@ -435,7 +483,7 @@
         } }, 'بایگانی بخش')));
     }
     var tabs = h('div', { class: 'cm-tabs' });
-    [['notes', 'جزوه'], ['summary', 'خلاصه (کارت مرور)'], ['questions', 'تست‌ها (' + fa(s.questions.length) + ')'], ['flashcards', 'فلش‌کارت‌ها (' + fa(s.flashcards.length) + ')']].forEach(function (t) {
+    [['notes', 'درسنامه'], ['summary', 'چکیده (کارت مرور)'], ['questions', 'تست‌ها (' + fa(s.questions.length) + ')'], ['flashcards', 'فلش‌کارت‌ها (' + fa(s.flashcards.length) + ')']].forEach(function (t) {
       tabs.appendChild(h('button', { type: 'button', class: self.tab === t[0] ? 'on' : '', onclick: function () {
         if (self.tab === t[0] || !self.guard()) return; self.tab = t[0]; self.open = null; self.render();
       } }, t[1]));
@@ -463,43 +511,52 @@
     ta.value = s.full_body;
     body.appendChild(ta);
     var bar = this.saveBar(function () {
-      self.call({ op: 'section.update', slug: s.slug, full_body: ta.value }).then(function () { self.dirty = null; self.render(); toast('جزوه ذخیره شد.'); }).catch(function () {});
-    }, 'ذخیره‌ی جزوه');
-    new MdEditor(ta, { variant: 'notes', uploadUrl: this.api, onChange: function () { self.dirty = 'جزوه'; bar.mark(true); } });
+      self.call({ op: 'section.update', slug: s.slug, full_body: ta.value }).then(function () { self.dirty = null; self.render(); toast('درسنامه ذخیره شد.'); }).catch(function () {});
+    }, 'ذخیره‌ی درسنامه');
+    new MdEditor(ta, { variant: 'notes', uploadUrl: this.api, onChange: function () { self.dirty = 'درسنامه'; bar.mark(true); } });
     body.appendChild(bar.el);
-    if (s.missing_phrases.length) body.appendChild(h('div', { class: 'msg warn' }, 'این عبارت‌های «مهم» خلاصه در جزوه پیدا نمی‌شوند: ' + s.missing_phrases.join('، ')));
+    if (s.missing_phrases.length) body.appendChild(h('div', { class: 'msg warn' }, 'این عبارت‌های پرش چکیده در درسنامه پیدا نمی‌شوند: ' + s.missing_phrases.join('، ')));
   };
 
-  // ----- review card (summary) -----
-  var PARTS = [['important', 'مهم (هر مورد با عبارتی از جزوه که با لمسش اپ به همان‌جا می‌رود)'], ['terms', 'واژه‌ها (فارسی، انگلیسی، معنی)'],
-    ['rules', 'قاعده و فرمول'], ['memorize', 'حفظی'], ['traps', 'تله']];
-  var PART_LABEL = { important: 'مهم', terms: 'واژه', rules: 'قاعده', memorize: 'حفظی', traps: 'تله' };
-
-  function splitImportant(item) { var j = P.jumpTarget(item); return { text: j.text, phrase: j.phrase }; }
+  // ----- review card (summary, «چکیده») -----
+  // The form and the raw text are the same thing: the form writes the raw text. Parts are labels («برچسب‌های متن»);
+  // a table label has columns («فارسی | English | معنی»), any other item can jump to the notes with «[[phrase]]».
+  function findLabel(name) { return (P.findLabel && P.findLabel(name)) || { name: name, style: 'note', role: '', columns: [] }; }
+  function itemToForm(label, item) {
+    if (label.style === 'table') {
+      var c = P.cells(item), n = Math.max((label.columns || []).length, 2);
+      if (c.length > n) c = c.slice(0, n - 1).concat([c.slice(n - 1).join(' | ')]);
+      while (c.length < n) c.push('');
+      return { cells: c };
+    }
+    var m = item.match(/\[\[([^\]]+)\]\]/);
+    return { text: item.replace(/\s*\[\[[^\]]+\]\]\s*/g, ' ').trim(), phrase: m ? m[1].trim() : '' };
+  }
   function summaryToForm(text) {
-    var parts = P.parseParts(text || '') || {};
+    var parsed = P.parseSummary(text || '');
+    // Plain text without labels stays as it is, at the top (switching to the form never drops text).
+    if (!parsed) return { lead: (text || '').trim(), glance: '', parts: [] };
     return {
-      lead: (parts.lead || []).join('\n'),
-      glance: (parts.glance || []).join(' '),
-      important: (parts.important || []).map(splitImportant),
-      terms: (parts.terms || []).map(function (t) { var c = t.split('|').map(function (x) { return x.trim(); }); return { fa: c[0] || '', en: c[1] || '', meaning: c.slice(2).join(' | ') }; }),
-      rules: parts.rules || [], memorize: parts.memorize || [], traps: parts.traps || [],
+      lead: parsed.lead || '',
+      glance: parsed.glance || '',
+      parts: parsed.parts.map(function (p) { return { label: p.label, items: p.items.map(function (i) { return itemToForm(p.label, i); }) }; }),
     };
+  }
+  function itemText(label, x) {
+    if (label.style === 'table') return x.cells.map(function (c) { return c.trim(); }).join(' | ').replace(/( \| )+$/, '');
+    return x.text.trim() + (x.phrase.trim() ? ' [[' + x.phrase.trim() + ']]' : '');
   }
   function formToSummary(f) {
     var out = [];
-    // Lines written before the first label are kept, word for word (switching to the form must never drop text).
+    // Lines written before the first label are kept, word for word.
     if ((f.lead || '').trim()) { out.push(f.lead.trim()); out.push(''); }
-    if (f.glance.trim()) out.push('در یک نگاه: ' + f.glance.trim().replace(/\s*\n\s*/g, ' '));
-    PARTS.forEach(function (p) {
-      var key = p[0], items = f[key].filter(function (x) { return key === 'important' ? x.text.trim() : key === 'terms' ? x.fa.trim() : String(x).trim(); });
+    var glance = (P.allLabels ? P.allLabels() : []).filter(function (l) { return l.role === 'glance'; })[0];
+    if (f.glance.trim()) out.push((glance ? glance.name : 'در یک نگاه') + ': ' + f.glance.trim().replace(/\s*\n\s*/g, ' '));
+    f.parts.forEach(function (p) {
+      var items = p.items.map(function (x) { return itemText(p.label, x); }).filter(function (t) { return t.trim(); });
       if (!items.length) return;
-      out.push(PART_LABEL[key] + ':');
-      items.forEach(function (x) {
-        if (key === 'important') out.push('- ' + x.text.trim() + (x.phrase.trim() ? ' [[' + x.phrase.trim() + ']]' : ''));
-        else if (key === 'terms') out.push('- ' + [x.fa, x.en, x.meaning].map(function (c) { return c.trim(); }).join(' | ').replace(/( \| )+$/, ''));
-        else out.push('- ' + String(x).trim());
-      });
+      out.push(p.label.name + ':');
+      items.forEach(function (t) { out.push('- ' + t); });
     });
     return out.join('\n');
   }
@@ -520,21 +577,19 @@
     function current() { return mode === 'form' ? formToSummary(form) : rawTa.value; }
     function refresh() { frame.srcdoc = previewDoc(render(current(), 'summary')); }
     var bar = this.saveBar(function () {
-      self.call({ op: 'section.update', slug: s.slug, summary_body: current() }).then(function () { self.dirty = null; self.render(); toast('خلاصه ذخیره شد.'); }).catch(function () {});
-    }, 'ذخیره‌ی خلاصه');
+      self.call({ op: 'section.update', slug: s.slug, summary_body: current() }).then(function () { self.dirty = null; self.render(); toast('چکیده ذخیره شد.'); }).catch(function () {});
+    }, 'ذخیره‌ی چکیده');
     var formEdited = false;
-    function changed() { if (mode === 'form') formEdited = true; self.dirty = 'خلاصه'; bar.mark(true); clearTimeout(changed.t); changed.t = setTimeout(refresh, 250); }
+    function changed() { if (mode === 'form') formEdited = true; self.dirty = 'چکیده'; bar.mark(true); clearTimeout(changed.t); changed.t = setTimeout(refresh, 250); }
     // Back to the raw text: untouched if nothing was changed in the form (so Ctrl+Z keeps its history); otherwise the
-    // new text goes in as one edit, which Ctrl+Z can take back too (setting .value would wipe the history).
+    // new text goes in as one edit, which Ctrl+Z can take back too.
     function backToRaw() {
       if (!formEdited) return;
       var text = formToSummary(form);
       if (text === rawTa.value) return;
       rawTa.focus();
       rawTa.select();
-      var ok = false;
-      try { ok = document.execCommand('insertText', false, text); } catch (e) { ok = false; }
-      if (!ok) rawTa.value = text;
+      insertText(rawTa, text);
       rawTa.setSelectionRange(0, 0);
     }
 
@@ -554,10 +609,25 @@
 
     // The raw text box stays in the page the whole time (only hidden while the form is shown): taking it out of the
     // page would wipe its Ctrl+Z history.
-    var rawBox = h('div', null, rawTa, h('p', { class: 'hint' }, 'برچسب‌ها: «در یک نگاه:»، «مهم:»، «واژه:»، «قاعده:»، «حفظی:»، «تله:» و هر مورد با «- ». خلاصه‌ی بدون برچسب مثل متن معمولی نشان داده می‌شود؛ متنی که پیش از اولین برچسب بیاید، بالای کارت می‌آید.'));
+    var rawBox = h('div', null,
+      labelRow(function (l) { insertSummaryLabel(rawTa, l); }, null, 'برچسب:'),
+      rawTa,
+      h('p', { class: 'hint' }, 'هر برچسب در خطی جدا با «:» (مثلاً «تعریف:») و هر مورد با «- ». با «[[عبارتی از درسنامه]]» در آخر هر مورد، لمسش اپ را به همان‌جای درسنامه می‌برد. ' +
+        'چکیده‌ی بدون برچسب مثل متن معمولی نشان داده می‌شود؛ متنی که پیش از اولین برچسب بیاید، بالای کارت می‌آید. مثال‌های مفصل جایشان در درسنامه است.'));
     var formBox = h('div');
     left.appendChild(rawBox);
     left.appendChild(formBox);
+    var focusLast = null;
+
+    function addPart(l) {
+      var part = form.parts.filter(function (p) { return p.label.name === l.name; })[0];
+      if (!part) { part = { label: l, items: [] }; form.parts.push(part); }
+      part.items.push(l.style === 'table' ? itemToForm(l, '') : { text: '', phrase: '' });
+      focusLast = l.name;
+      changed();
+      draw();
+    }
+
     function draw() {
       switcher.querySelectorAll('button').forEach(function (b, i) { b.classList.toggle('primary', (i === 0) === (mode === 'form')); });
       rawBox.style.display = mode === 'raw' ? '' : 'none';
@@ -577,49 +647,68 @@
         f.appendChild(h('div', { class: 'part' }, h('h4', null, 'متن بدون برچسب ', h('span', { class: 'hint' }, '(بالای کارت، همان‌طور که نوشته شده)')), lead));
       }
       f.appendChild(h('div', { class: 'part' }, h('h4', null, 'در یک نگاه ', h('span', { class: 'hint' }, '(یک یا دو جمله: این بخش درباره‌ی چیست)')), glance));
-      PARTS.forEach(function (p) {
-        var key = p[0];
-        var part = h('div', { class: 'part' }, h('h4', null, p[1]));
+      form.parts.forEach(function (p, pi) {
+        var l = p.label;
+        var tools = h('span', { class: 'row', style: 'gap:2px;flex-wrap:nowrap;margin-right:auto' },
+          pi ? h('button', { class: 'btn small', type: 'button', title: 'این بخش بالاتر از بخش قبلی بیاید', onclick: function () { form.parts.splice(pi - 1, 0, form.parts.splice(pi, 1)[0]); changed(); draw(); } }, '▲ بخش') : null,
+          h('button', { class: 'btn small danger', type: 'button', title: 'حذف این بخش', onclick: function () {
+            if (p.items.some(function (x) { return itemText(l, x).trim(); }) && !confirm('بخش «' + l.name + '» با همه‌ی موردهایش حذف شود؟')) return;
+            form.parts.splice(pi, 1); changed(); draw();
+          } }, 'حذف بخش'));
+        var part = h('div', { class: 'part lbl-part lbl-' + l.style }, h('h4', { class: 'row' }, l.name,
+          l.role === 'important' ? h('span', { class: 'hint' }, ' (هر مورد با لمس به درسنامه می‌رود)') : null, tools));
         var list = h('div');
+        var cols = l.style === 'table' ? (l.columns && l.columns.length ? l.columns : ['ستون ۱', 'ستون ۲']) : null;
         function drawList() {
           list.innerHTML = '';
-          form[key].forEach(function (item, i) {
+          p.items.forEach(function (item, i) {
             var del = h('span', { class: 'row', style: 'gap:2px;flex-wrap:nowrap' },
-              h('button', { class: 'btn icon', type: 'button', title: 'بالا', onclick: function () { if (i) { var t = form[key][i - 1]; form[key][i - 1] = form[key][i]; form[key][i] = t; drawList(); changed(); } } }, '▲'),
-              h('button', { class: 'btn icon danger', type: 'button', title: 'حذف', onclick: function () { form[key].splice(i, 1); drawList(); changed(); } }, '✕'));
-            if (key === 'important') {
-              var t = h('input', { type: 'text', value: item.text, placeholder: 'اشاره‌ی کوتاه به نکته', oninput: function () { item.text = t.value; changed(); } });
+              h('button', { class: 'btn icon', type: 'button', title: 'بالا', onclick: function () { if (i) { var t = p.items[i - 1]; p.items[i - 1] = p.items[i]; p.items[i] = t; drawList(); changed(); } } }, '▲'),
+              h('button', { class: 'btn icon danger', type: 'button', title: 'حذف', onclick: function () { p.items.splice(i, 1); drawList(); changed(); } }, '✕'));
+            if (cols) {
+              var inputs = item.cells.map(function (c, ci) {
+                var inp = h('input', { type: 'text', value: c, placeholder: cols[ci] || '', dir: /English/i.test(cols[ci] || '') ? 'ltr' : null,
+                  oninput: function () { item.cells[ci] = inp.value; changed(); } });
+                return inp;
+              });
+              var line = h('div', { class: 'line cols', style: 'grid-template-columns:repeat(' + inputs.length + ',1fr) auto' }, inputs, del);
+              list.appendChild(line);
+            } else {
+              var t = h('input', { type: 'text', value: item.text, placeholder: l.role === 'important' ? 'اشاره‌ی کوتاه به نکته' : 'متن', oninput: function () { item.text = t.value; changed(); } });
               var ok = h('span', { title: '' });
-              var ph = h('input', { type: 'text', value: item.phrase, list: 'cm-bold', placeholder: 'عبارت دقیق از جزوه', oninput: function () { item.phrase = ph.value; mark(); changed(); } });
+              var ph = h('input', { type: 'text', value: item.phrase, list: 'cm-bold', placeholder: 'پرش: عبارتی از درسنامه (اختیاری)', oninput: function () { item.phrase = ph.value; mark(); changed(); } });
               function mark() {
                 var found = !item.phrase.trim() || notesPlain.indexOf(plain(item.phrase).trim()) >= 0;
                 ok.textContent = item.phrase.trim() ? (found ? '✓' : '⚠') : '';
                 ok.style.color = found ? '#1f7a55' : '#ba2121';
-                ok.title = found ? 'در جزوه پیدا شد' : 'در جزوه پیدا نشد؛ پرش کار نمی‌کند';
+                ok.title = found ? 'در درسنامه پیدا شد' : 'در درسنامه پیدا نشد؛ پرش کار نمی‌کند';
               }
               mark();
               list.appendChild(h('div', { class: 'line imp' }, t, ph, ok, del));
-            } else if (key === 'terms') {
-              var a = h('input', { type: 'text', value: item.fa, placeholder: 'فارسی (همان که در جزوه آمده)', oninput: function () { item.fa = a.value; changed(); } });
-              var b = h('input', { type: 'text', value: item.en, placeholder: 'English', dir: 'ltr', oninput: function () { item.en = b.value; changed(); } });
-              var c = h('input', { type: 'text', value: item.meaning, placeholder: 'معنی کوتاه', oninput: function () { item.meaning = c.value; changed(); } });
-              list.appendChild(h('div', { class: 'line term' }, a, b, c, del));
-            } else {
-              var x = h('input', { type: 'text', value: item, oninput: function () { form[key][i] = x.value; changed(); } });
-              list.appendChild(h('div', { class: 'line' }, x, del));
             }
           });
         }
         drawList();
         part.appendChild(list);
         part.appendChild(h('button', { class: 'btn small', type: 'button', onclick: function () {
-          form[key].push(key === 'important' ? { text: '', phrase: '' } : key === 'terms' ? { fa: '', en: '', meaning: '' } : '');
+          p.items.push(l.style === 'table' ? itemToForm(l, '') : { text: '', phrase: '' });
           drawList();
+          var all = list.querySelectorAll('input');
+          if (all.length) all[all.length - (cols ? cols.length : 2)].focus();
         } }, '+ افزودن'));
         f.appendChild(part);
       });
+      f.appendChild(labelRow(addPart, function (l) { return l.role !== 'glance'; }, 'افزودن بخش:'));
       f.appendChild(h('datalist', { id: 'cm-bold' }, phrases.map(function (x) { return h('option', { value: x }); })));
       formBox.appendChild(f);
+      if (focusLast) {
+        var idx = form.parts.map(function (p) { return p.label.name; }).indexOf(focusLast);
+        var partEl = f.querySelectorAll('.lbl-part')[idx];
+        var inputs = partEl ? partEl.querySelectorAll('input') : [];
+        var lab = form.parts[idx] && form.parts[idx].label;
+        if (inputs.length) inputs[inputs.length - (lab && lab.style === 'table' ? inputs.length / form.parts[idx].items.length : 2)].focus();
+        focusLast = null;
+      }
       refresh();
     }
     draw();

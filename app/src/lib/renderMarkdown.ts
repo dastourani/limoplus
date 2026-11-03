@@ -3,17 +3,17 @@
  *
  * - Formulas: $…$ inline and $$…$$ display, rendered by KaTeX as MathML (no fonts or CSS files needed),
  *   always isolated left-to-right inside the right-to-left text.
- * - Boxes: :::نکته / :::تله / :::هشدار / :::مثال blocks.
+ * - Boxes: «:::تعریف» … «:::» with any label of lib/labels.ts (the panel's «برچسب‌ها»).
+ * - «[[phrase]]» (a jump link in the summary) shows as its plain words in the notes.
  * - Raw HTML in the source is escaped (html: false).
  */
 import katex from 'katex';
 import MarkdownIt from 'markdown-it';
 
-import { jumpTarget, parseParts } from './reviewCard';
+import { findLabel } from './labels';
+import { cells, jumpTarget, parseSummary } from './reviewCard';
 
 const md = new MarkdownIt({ html: false, linkify: false, typographer: false });
-
-const BOX_LABEL: Record<string, string> = { نکته: 'نکته', تله: 'تله‌ی تستی', هشدار: 'هشدار', مثال: 'مثال' };
 
 function renderMath(tex: string, display: boolean): string {
   const html = katex.renderToString(tex, { output: 'mathml', displayMode: display, throwOnError: false, strict: 'ignore' });
@@ -29,41 +29,45 @@ function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }
 
-const PART_TITLES: [string, string, string][] = [
-  ['important', 'مهم‌ترین‌ها', 'rc-important'],
-  ['rules', 'قاعده و فرمول', 'rc-rules'],
-  ['memorize', 'حفظی', 'rc-memorize'],
-  ['traps', 'تله‌ها', 'rc-traps'],
-];
+/** Escaped item text with a jump to the notes when it has «[[phrase]]» (or, for «مهم», its bold words). */
+function itemHtml(item: string, alwaysJump: boolean): string {
+  const { text, phrase } = jumpTarget(item);
+  const linked = /\[\[[^\]]+\]\]/.test(item) || (alwaysJump && phrase);
+  if (!linked) return `<li>${renderInline(item)}</li>`;
+  return `<li class="jl"><a class="jump" data-q="${esc(phrase)}">${renderInline(text)}<span class="go" aria-hidden="true">←</span></a></li>`;
+}
 
 /** A summary written in labelled parts becomes a review card; any other summary stays plain Markdown. */
 export function renderSummary(source: string, opts: { hasCards?: boolean } = {}): string {
-  const parts = parseParts(source);
-  if (!parts) return renderMarkdown(source);
+  const parsed = parseSummary(source);
+  if (!parsed) return renderMarkdown(source);
   let html = '<div class="rc">';
   // Text written before the first label is part of the card too (shown as written, above the rest).
-  if (parts.lead?.length) html += `<div class="rc-lead">${renderMarkdown(parts.lead[0])}</div>`;
-  if (parts.glance?.length) html += `<div class="rc-glance">${renderInline(parts.glance.join(' '))}</div>`;
-  for (const [key, title, cls] of PART_TITLES) {
-    const items = parts[key as keyof typeof parts];
-    if (!items?.length) continue;
-    html += `<section class="rc-part ${cls}"><h4>${title}</h4><ul>`;
-    for (const item of items) {
-      if (key === 'important') {
-        const { text, phrase } = jumpTarget(item);
-        html += `<li><a class="jump" data-q="${esc(phrase)}">${renderInline(text)}<span class="go" aria-hidden="true">←</span></a></li>`;
-      } else html += `<li>${renderInline(item)}</li>`;
+  if (parsed.lead) html += `<div class="rc-lead">${renderMarkdown(parsed.lead)}</div>`;
+  if (parsed.glance) html += `<div class="rc-glance">${renderInline(jumpTarget(parsed.glance).text)}</div>`;
+  for (const { label, items } of parsed.parts) {
+    if (!items.length) continue;
+    const role = label.role ? ` rc-${label.role}` : '';
+    html += `<section class="rc-part rc-s-${label.style}${role}"><h4>${esc(label.name)}</h4>`;
+    if (label.role === 'terms') {
+      for (const item of items) {
+        const [fa, en = '', ...rest] = cells(item);
+        const meaning = rest.join(' | ');
+        html += `<div class="term"><div class="term-head"><b>${esc(fa)}</b>${en ? `<span class="en" dir="ltr">${esc(en)}</span>` : ''}</div>${meaning ? `<div class="mean">${renderInline(meaning)}</div>` : ''}</div>`;
+      }
+    } else if (label.style === 'table') {
+      const cols = label.columns ?? [];
+      html += '<div class="table-wrap"><table>';
+      if (cols.length) html += `<thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>`;
+      html += '<tbody>';
+      for (const item of items) html += `<tr>${cells(item).map((c, i) => `<td${i ? '' : ' class="k"'}>${renderInline(c)}</td>`).join('')}</tr>`;
+      html += '</tbody></table></div>';
+    } else {
+      html += '<ul>';
+      for (const item of items) html += itemHtml(item, label.role === 'important');
+      html += '</ul>';
     }
-    html += '</ul>';
-    if (key === 'memorize' && opts.hasCards) html += '<button class="rc-cards">مرور فلش‌کارت‌های این بخش</button>';
-    html += '</section>';
-  }
-  if (parts.terms?.length) {
-    html += '<section class="rc-part rc-terms"><h4>واژه‌نامه</h4>';
-    for (const item of parts.terms) {
-      const [fa, en = '', meaning = ''] = item.split('|').map((c) => c.trim());
-      html += `<div class="term"><div class="term-head"><b>${esc(fa)}</b>${en ? `<span class="en" dir="ltr">${esc(en)}</span>` : ''}</div>${meaning ? `<div class="mean">${renderInline(meaning)}</div>` : ''}</div>`;
-    }
+    if (label.role === 'memorize' && opts.hasCards) html += '<button class="rc-cards">مرور فلش‌کارت‌های این بخش</button>';
     html += '</section>';
   }
   return html + '</div>';
@@ -72,7 +76,7 @@ export function renderSummary(source: string, opts: { hasCards?: boolean } = {})
 function renderPlain(source: string): string {
   const formulas: string[] = [];
   const keep = (html: string) => `@@MATH${formulas.push(html) - 1}@@`;
-  let text = source.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => `\n\n${keep(renderMath(tex.trim(), true))}\n\n`);
+  let text = source.replace(/\[\[([^\]\n]+)\]\]/g, '$1').replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => `\n\n${keep(renderMath(tex.trim(), true))}\n\n`);
   text = text.replace(/(^|[^\\])\$([^$\n]+?)\$/g, (_, before: string, tex: string) => before + keep(renderMath(tex.trim(), false)));
   let html = md.render(text);
   html = html.replace(/<p>\s*(@@MATH\d+@@)\s*<\/p>/g, '$1');
@@ -90,16 +94,14 @@ export function renderMarkdown(source: string): string {
     buffer = [];
   };
   for (let i = 0; i < lines.length; i++) {
-    const open = lines[i].match(/^:::\s*(\S+)\s*$/);
-    if (open && BOX_LABEL[open[1]]) {
+    const open = lines[i].match(/^:::\s*(\S.*?)\s*$/);
+    const label = open ? findLabel(open[1]) : undefined;
+    if (label) {
       const end = lines.findIndex((line, j) => j > i && line.trim() === ':::');
       if (end > i) {
         flush();
-        const kind = open[1];
         parts.push(
-          `<div class="box box-${['نکته', 'تله', 'هشدار', 'مثال'].indexOf(kind)}"><div class="box-title">${BOX_LABEL[kind]}</div>${renderPlain(
-            lines.slice(i + 1, end).join('\n'),
-          )}</div>`,
+          `<div class="box box-${label.style}"><div class="box-title">${esc(label.name)}</div>${renderPlain(lines.slice(i + 1, end).join('\n'))}</div>`,
         );
         i = end;
         continue;
@@ -135,9 +137,11 @@ math { font-family: "STIX Two Math", "Cambria Math", "Latin Modern Math", serif;
 .table-wrap tr:last-child td { border-bottom: 0; }
 .box { border-radius: 16px; padding: 12px 14px 2px; margin: 0 0 16px; }
 .box-title { font-weight: 800; margin-bottom: 4px; }
-.box-0 { background: #E3F3E9; } .box-0 .box-title { color: #1F5E3A; }
-.box-1, .box-2 { background: #FFF6D6; } .box-1 .box-title, .box-2 .box-title { color: #7A4F00; }
-.box-3 { background: #EEF0FC; } .box-3 .box-title { color: #3B44B8; }
+/* The four looks of a label (lib/labels.ts): formal, note, warn, table. */
+.box-note { background: #E3F3E9; } .box-note .box-title { color: #1F5E3A; }
+.box-warn { background: #FFF6D6; } .box-warn .box-title { color: #7A4F00; }
+.box-formal { background: #EEF0FC; } .box-formal .box-title { color: #3B44B8; }
+.box-table { background: #F6F7F2; border: 1px solid #E3E8DE; } .box-table .box-title { color: #56655B; }
 mark.hl { color: inherit; border-radius: 3px; padding: 0 1px; }
 mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } mark.hl-blue { background: #C9DBFF; } mark.hl-pink { background: #FFD0DF; }
 .lesson.no-select { -webkit-user-select: none; user-select: none; }
@@ -153,9 +157,10 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
 .lesson.dark .math-block, .lesson.dark .table-wrap, .lesson.dark img { background: #1E2621; border-color: #33403A; }
 .lesson.dark .table-wrap th { background: #26302A; color: #B9C4BC; }
 .lesson.dark .table-wrap th, .lesson.dark .table-wrap td { border-color: #33403A; }
-.lesson.dark .box-0 { background: #1D3326; } .lesson.dark .box-0 .box-title { color: #9BE3B4; }
-.lesson.dark .box-1, .lesson.dark .box-2 { background: #3A3216; } .lesson.dark .box-1 .box-title, .lesson.dark .box-2 .box-title { color: #F5D96B; }
-.lesson.dark .box-3 { background: #23264A; } .lesson.dark .box-3 .box-title { color: #AEB4F5; }
+.lesson.dark .box-note { background: #1D3326; } .lesson.dark .box-note .box-title { color: #9BE3B4; }
+.lesson.dark .box-warn { background: #3A3216; } .lesson.dark .box-warn .box-title { color: #F5D96B; }
+.lesson.dark .box-formal { background: #23264A; } .lesson.dark .box-formal .box-title { color: #AEB4F5; }
+.lesson.dark .box-table { background: #1E2621; border-color: #33403A; } .lesson.dark .box-table .box-title { color: #B9C4BC; }
 .lesson.dark mark.hl { color: #17201A; }
 .rc { display: grid; gap: 14px; }
 .rc-lead { margin-bottom: 4px; }
@@ -164,11 +169,14 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
 .rc-part h4 { margin: 0 0 6px; font-size: .82em; letter-spacing: .02em; color: #56655B; }
 .rc-part ul { margin: 0; padding: 0 18px 0 0; }
 .rc-part li { margin: 4px 0; }
-.rc-important li { list-style: none; margin-right: -18px; }
-.rc-important a.jump { display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 12px; background: #F6F7F2; cursor: pointer; }
-.rc-important a.jump .go { margin-right: auto; color: #B9A23A; font-weight: 800; }
-.rc-traps { border-color: #F2C7C4; background: #FFF8F7; } .rc-traps h4 { color: #9E2F2A; }
+.rc-part li.jl { list-style: none; margin-right: -18px; }
+.rc-part a.jump { display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 12px; background: #F6F7F2; cursor: pointer; }
+.rc-part a.jump .go { margin-right: auto; color: #B9A23A; font-weight: 800; }
+.rc-s-formal { border-color: #D5D9F5; background: #F8F9FF; } .rc-s-formal h4 { color: #3B44B8; }
+.rc-s-note h4 { color: #1F5E3A; }
+.rc-s-warn { border-color: #F2C7C4; background: #FFF8F7; } .rc-s-warn h4 { color: #9E2F2A; }
 .rc-memorize h4 { color: #6B5200; }
+.rc-part .table-wrap { margin: 0; } .rc-part td.k { font-weight: 700; }
 .next-card { display: block; margin: 28px 0 8px; padding: 14px 16px; border-radius: 18px; min-height: 48px; box-sizing: border-box; background: #17201A; color: #F3F1E7; text-decoration: none; cursor: pointer; }
 .next-card small { display: block; color: #F5C518; font-weight: 800; font-size: .8em; }
 .next-card b { display: block; font-size: 1em; margin-top: 2px; }
@@ -199,9 +207,10 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
 mark.flash { background: #FFD43B; border-radius: 4px; box-shadow: 0 0 0 5px rgba(255,212,59,.45); transition: background 1.4s, box-shadow 1.4s; }
 mark.flash.fade { background: transparent; box-shadow: 0 0 0 0 rgba(255,212,59,0); }
 .lesson.dark .rc-glance { background: #3A3216; } .lesson.dark .rc-part { background: #1E2621; border-color: #33403A; }
-.lesson.dark .rc-important a.jump { background: #26302A; } .lesson.dark .rc-traps { background: #2E1F1E; border-color: #5A3330; }
+.lesson.dark .rc-part a.jump { background: #26302A; } .lesson.dark .rc-s-warn { background: #2E1F1E; border-color: #5A3330; }
+.lesson.dark .rc-s-formal { background: #20233A; border-color: #363B66; } .lesson.dark .rc-s-formal h4 { color: #AEB4F5; } .lesson.dark .rc-s-note h4 { color: #9BE3B4; }
 .lesson.dark .term .en { color: #AEB4F5; } .lesson.dark mark.flash { color: #17201A; }
-.lesson.sepia .rc-part { background: #FBF5E6; border-color: #E6D8B8; } .lesson.sepia .rc-important a.jump { background: #F1E6CC; }
+.lesson.sepia .rc-part { background: #FBF5E6; border-color: #E6D8B8; } .lesson.sepia .rc-part a.jump { background: #F1E6CC; }
 `;
 
 /** Longest text a learner may copy at once; longer copies are blocked (the book is protected). */

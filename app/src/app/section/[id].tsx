@@ -16,6 +16,7 @@ import { requireLogin, useAuth } from '../../lib/auth';
 import { useGuestNudge } from '../../lib/guestNudge';
 import { useStudyTimer } from '../../lib/studyTime';
 import { sendOrQueue } from '../../lib/network';
+import { setLabels } from '../../lib/labels';
 import { parseTerms, type Term } from '../../lib/reviewCard';
 import { offlineBooks, offlineSection } from '../../lib/offline';
 import { storage, type ReaderTheme } from '../../lib/storage';
@@ -55,7 +56,8 @@ export default function Section() {
   }>();
   // «ادامه بده»: open in the same mode and at the same place as last time.
   const [startAt, setStartAt] = useState<number | undefined>(undefined);
-  const spotPercent = useRef(0);
+  // Where the learner is in each tab: «درسنامه» and «چکیده» keep their own place.
+  const spots = useRef({ full: 0, summary: 0 });
   const lastSpotSent = useRef<{ percent: number; mode: string }>({ percent: 0, mode: 'full' });
   // While the old place is being restored, the page's first scroll reports (0%) must not overwrite it.
   const restoring = useRef(resume === '1');
@@ -149,7 +151,7 @@ export default function Section() {
     storage.setLastSection({ id: node.id, title: node.title, bookTitle: book?.title ?? '', bookSlug: book?.slug ?? '' });
     setMode(find && modeParam === 'summary' && node.summary ? 'summary' : 'full');
     if (find) setFlashTarget({ q: find, n: 1 });
-    spotPercent.current = 0;
+    spots.current = { full: 0, summary: 0 };
     lastSpotSent.current = { percent: 0, mode: 'full' };
     if (restoring.current && book?.slug)
       (async () => {
@@ -163,7 +165,7 @@ export default function Section() {
         }
         if (spot) {
           if (spot.mode === 'summary' && node.summary) setMode('summary');
-          spotPercent.current = spot.percent;
+          spots.current[spot.mode === 'summary' && node.summary ? 'summary' : 'full'] = spot.percent;
           setStartAt(spot.percent / 100);
         }
         setTimeout(() => (restoring.current = false), 1500);
@@ -228,10 +230,22 @@ export default function Section() {
     goTo(dir);
   };
 
+  // Each tab opens where the learner left it; the page's first scroll report (0%) must not overwrite that place.
+  const switchMode = (m: 'full' | 'summary') => {
+    if (m === mode) return;
+    const at = spots.current[m];
+    if (at > 2) {
+      restoring.current = true;
+      setTimeout(() => (restoring.current = false), 1500);
+    }
+    setMode(m);
+    setStartAt(at / 100);
+  };
+
   const rememberSpot = (percent: number) => {
     const book = node?.breadcrumb.find((b) => b.kind === 'book');
     if (!node || !book || restoring.current) return;
-    spotPercent.current = percent;
+    spots.current[mode] = percent;
     storage.setReading({ id: node.id, title: node.title, bookTitle: book.title, bookSlug: book.slug, mode, percent, at: Date.now() });
     // The account keeps the place too (every 10% or on a change of mode), for «ادامه بده» on another device.
     const last = lastSpotSent.current;
@@ -241,7 +255,7 @@ export default function Section() {
     }
   };
   useEffect(() => {
-    if (node) rememberSpot(mode === 'full' ? spotPercent.current : 0);
+    if (node) rememberSpot(spots.current[mode]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node?.id, mode]);
 
@@ -440,6 +454,8 @@ export default function Section() {
   const chapter = node.breadcrumb[node.breadcrumb.length - 1];
   // «فصل ۲: تابش و اتم»: the number comes from the chapter's place in the book.
   const chapterLabel = chapter ? (chapter.kind === 'chapter' && chapter.number ? `فصل ${toPersianDigits(chapter.number)}، ${chapter.title}` : chapter.title) : '';
+  // The panel's labels (boxes in the notes, parts of the summary), before the text is drawn.
+  setLabels(node.labels);
   const body = mode === 'summary' && node.summary ? node.summary : node.full;
   const bookSlug = node.breadcrumb.find((b) => b.kind === 'book')?.slug;
   const missingNotes = notes.filter((n) => missing.includes(n.id) && n.mode === mode);
@@ -468,8 +484,8 @@ export default function Section() {
       {!!node.summary && (
         <View style={[styles.toggle, dark && { backgroundColor: '#26302A' }]}>
           {(['full', 'summary'] as const).map((m) => (
-            <Pressable key={m} onPress={() => setMode(m)} style={[styles.toggleItem, mode === m && styles.toggleOn]} accessibilityRole="tab" accessibilityState={{ selected: mode === m }}>
-              <Text style={[styles.toggleText, mode === m && styles.toggleTextOn]}>{m === 'full' ? 'جزوه' : 'خلاصه'}</Text>
+            <Pressable key={m} onPress={() => switchMode(m)} style={[styles.toggleItem, mode === m && styles.toggleOn]} accessibilityRole="tab" accessibilityState={{ selected: mode === m }}>
+              <Text style={[styles.toggleText, mode === m && styles.toggleTextOn]}>{m === 'full' ? 'درسنامه' : 'چکیده'}</Text>
             </Pressable>
           ))}
         </View>

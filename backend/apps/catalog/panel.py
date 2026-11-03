@@ -31,6 +31,7 @@ from .exporter import book_bundle, chapter_bundle, export_chapter, flashcard_blo
 from .importer import IMAGE_EXTENSIONS, MAX_IMAGE_BYTES, _SVG_DANGER, apply_chapter, parse_chapter, read_upload, check_against_db
 from .jalali import jalali_datetime
 from .models import ChapterRevision, ContentNode
+from .labels import all_labels
 from .summary import parse_parts
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -157,6 +158,7 @@ def chapter_state(chapter: ContentNode) -> dict:
         "suggest": {k: editing.suggest_slug(book, parsed, k) for k in ("section", "question", "flashcard")},
         "media_url": settings.MEDIA_URL if settings.MEDIA_URL.startswith("/") else "/" + settings.MEDIA_URL,
         "revisions": chapter.revisions.count(),
+        "labels": all_labels(),
     }
 
 

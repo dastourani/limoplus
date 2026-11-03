@@ -1,3 +1,5 @@
+import re
+
 from django.conf import settings
 from django.db import models
 from treebeard.mp_tree import MP_Node
@@ -312,3 +314,46 @@ class ShareSettings(models.Model):
             return book.share_link
         row = cls.objects.first()
         return row.default_link if row else ""
+
+
+class Label(models.Model):
+    """A label of the lesson text («برچسب»): a box «:::تعریف … :::» in the notes and a part «تعریف:» in the summary.
+    The same list drives the app's renderer and the panel's buttons (see app/src/lib/labels.ts). Never deleted: a label
+    in use is hidden instead, and text already using it keeps its look."""
+
+    class Style(models.TextChoices):
+        FORMAL = "formal", "رسمی (تعریف، قضیه؛ آبی)"
+        NOTE = "note", "یادداشت (نکته، یادآوری؛ سبز)"
+        WARN = "warn", "هشدار (تله، مثال نقض؛ نارنجی)"
+        TABLE = "table", "جدول (واژه، مترادف؛ ستون‌دار)"
+
+    class Role(models.TextChoices):
+        NONE = "", "معمولی"
+        GLANCE = "glance", "خلاصه‌ی بالای چکیده («در یک نگاه»)"
+        IMPORTANT = "important", "همه‌ی موارد پرش به درسنامه («مهم»)"
+        TERMS = "terms", "واژه‌نامه و زیرخط واژه‌ها در درسنامه («واژه»)"
+        MEMORIZE = "memorize", "دکمه‌ی مرور فلش‌کارت‌ها («حفظی»)"
+
+    name = models.CharField("نام", max_length=40, unique=True, help_text="همان که در متن نوشته می‌شود؛ مثلاً «تعریف».")
+    group = models.CharField("گروه", max_length=40, blank=True, help_text="دکمه‌های پنل به این گروه‌ها دسته می‌شوند؛ مثلاً «ریاضی و علوم» یا «زبان».")
+    style = models.CharField("ظاهر", max_length=10, choices=Style.choices, default=Style.NOTE)
+    role = models.CharField("کار ویژه", max_length=12, choices=Role.choices, blank=True, default="",
+                            help_text="بیشتر برچسب‌ها «معمولی»اند. هر کار ویژه فقط برای یک برچسب.")
+    aliases = models.CharField("نام‌های دیگر", max_length=200, blank=True, help_text="املاهای دیگری که همین برچسب حساب شوند، جدا با «،». مثلاً «تله‌ها، تله‌ی تستی».")
+    columns = models.CharField("ستون‌ها", max_length=200, blank=True, help_text="فقط برای ظاهر جدول: عنوان ستون‌ها جدا با «|»، مثلاً «واژه | مترادف».")
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    is_hidden = models.BooleanField("پنهان", default=False, help_text="در دکمه‌های پنل نمی‌آید؛ متن‌هایی که از آن استفاده کرده‌اند مثل قبل نشان داده می‌شوند.")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name = "برچسب متن"
+        verbose_name_plural = "برچسب‌های متن"
+
+    def __str__(self):
+        return self.name
+
+    def as_json(self) -> dict:
+        split = lambda text, sep: [x.strip() for x in re.split(sep, text or "") if x.strip()]  # noqa: E731
+        return {"name": self.name, "group": self.group, "style": self.style, "role": self.role,
+                "aliases": split(self.aliases, r"[،,]"), "columns": split(self.columns, r"\|"), "hidden": self.is_hidden}

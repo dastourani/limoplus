@@ -1,44 +1,42 @@
 /**
- * The review card: a section's summary written in labelled parts (see backend apps/catalog/summary.py).
- *   در یک نگاه: …        مهم: - … [[phrase in the notes]]        واژه: - فارسی | English | معنی
- *   قاعده: - …            حفظی: - …                               تله: - …
- * Without labels the summary is plain Markdown, as before.
+ * The summary («چکیده») written in labelled parts (see lib/labels.ts and backend apps/catalog/summary.py):
+ *   در یک نگاه: …
+ *   تعریف:
+ *   - … [[phrase in the notes]]
+ *   واژه:
+ *   - فارسی | English | معنی
+ * Parts appear in the order they are first written; the same label twice is one part. Without labels the summary
+ * is plain Markdown, as before.
  */
-/** lead: lines written before the first label; kept and shown at the top of the card as they are (never dropped). */
-export type PartKey = 'lead' | 'glance' | 'important' | 'terms' | 'rules' | 'memorize' | 'traps';
+import { labelLine, type Label } from './labels';
+
 export type Term = { fa: string; en: string; meaning: string };
+export type SummaryPart = { label: Label; items: string[] };
+/** lead: lines written before the first label; kept and shown at the top as they are (never dropped). */
+export type ParsedSummary = { lead: string; glance: string; parts: SummaryPart[] };
 
-const NAMES: Record<string, PartKey> = {
-  'در یک نگاه': 'glance',
-  'مهم': 'important',
-  'مهم‌ترین‌ها': 'important',
-  'واژه': 'terms',
-  'واژه‌ها': 'terms',
-  'واژه‌نامه': 'terms',
-  'قاعده': 'rules',
-  'قاعده و فرمول': 'rules',
-  'حفظی': 'memorize',
-  'تله': 'traps',
-  'تله‌ها': 'traps',
-};
-const LABEL = new RegExp(
-  `^\\s*(${Object.keys(NAMES)
-    .sort((a, b) => b.length - a.length)
-    .join('|')})\\s*:\\s*(.*)$`,
-);
-
-export function parseParts(text: string): Partial<Record<PartKey, string[]>> | null {
-  const parts: Partial<Record<PartKey, string[]>> = {};
-  let current: PartKey | null = null;
-  let found = false;
+export function parseSummary(text: string): ParsedSummary | null {
+  const parts: SummaryPart[] = [];
+  const byName = new Map<string, SummaryPart>();
+  const glance: string[] = [];
   const lead: string[] = [];
-  for (const raw of (text ?? '').split('\n')) {
-    const m = raw.match(LABEL);
+  let current: SummaryPart | 'glance' | null = null;
+  for (const raw of (text ?? '').replace(/\r\n?/g, '\n').split('\n')) {
+    const m = labelLine(raw);
     if (m) {
-      current = NAMES[m[1]];
-      found = true;
-      parts[current] = parts[current] ?? [];
-      if (m[2].trim()) parts[current]!.push(m[2].trim());
+      if (m.label.role === 'glance') {
+        current = 'glance';
+        if (m.rest.trim()) glance.push(m.rest.trim());
+        continue;
+      }
+      let part = byName.get(m.label.name);
+      if (!part) {
+        part = { label: m.label, items: [] };
+        byName.set(m.label.name, part);
+        parts.push(part);
+      }
+      current = part;
+      if (m.rest.trim()) part.items.push(m.rest.trim());
       continue;
     }
     if (!current) {
@@ -47,19 +45,29 @@ export function parseParts(text: string): Partial<Record<PartKey, string[]>> | n
     }
     const line = raw.trim();
     if (!line) continue;
-    const list = parts[current]!;
+    if (current === 'glance') {
+      glance.push(line.replace(/^[-*]\s+/, ''));
+      continue;
+    }
+    const list = current.items;
     if (/^[-*]\s+/.test(line)) list.push(line.replace(/^[-*]\s+/, ''));
     else if (list.length) list[list.length - 1] += ' ' + line;
     else list.push(line);
   }
-  const leadText = lead.join('\n').trim();
-  if (found && leadText) parts.lead = [leadText];
-  return found ? parts : null;
+  if (!parts.length && !glance.length) return null;
+  return { lead: lead.join('\n').trim(), glance: glance.join(' '), parts };
+}
+
+/** Cells of a table item: «a | b | c». */
+export function cells(item: string): string[] {
+  return item.split('|').map((c) => c.trim());
 }
 
 export function parseTerms(text: string): Term[] {
-  return (parseParts(text)?.terms ?? [])
-    .map((item) => item.split('|').map((c) => c.trim()))
+  return (parseSummary(text)?.parts ?? [])
+    .filter((p) => p.label.role === 'terms')
+    .flatMap((p) => p.items)
+    .map(cells)
     .filter((c) => c[0])
     .map((c) => ({ fa: c[0], en: c[1] ?? '', meaning: c[2] ?? '' }));
 }

@@ -46,6 +46,7 @@ from django.utils import timezone
 from apps.learning.models import Choice, ExamSource, Flashcard, Question, QuestionSource
 
 from .models import ContentNode, Major
+from .labels import find as find_label
 
 MEDIA_PREFIX = "media:"
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif"}
@@ -60,12 +61,12 @@ _ARABIC_LETTERS = str.maketrans({"ي": "ی", "ك": "ک", "ى": "ی"})
 _SLUG = re.compile(r"^[\w\-]+$", re.UNICODE)
 _HEADING = re.compile(r"^##\s+(.+?)\s*(?:\{#([^}]+)\})?\s*$")
 _GROUP = re.compile(r"^#\s+(.+?)\s*$")
-_BLOCK_OPEN = re.compile(r"^:::\s*([^\s{]+)\s*(?:\{#([^}]+)\})?\s*$")
+_BLOCK_OPEN = re.compile(r"^:::\s*([^\s{](?:[^{]*[^\s{])?)\s*(?:\{#([^}]+)\})?\s*$")
 _CHOICE = re.compile(r"^\s*-\s*\[( |x|X|✓)\]\s*(.*)$")
 _IMAGE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
 _SOURCE = re.compile(r"^(.*?)\s*(1[34]\d\d)\s*(?:[،,]\s*(?:سؤال|سوال|شماره)\s*(\d+))?\s*$")
 
-CONTENT_BLOCKS = {"نکته", "تله", "هشدار", "مثال"}  # kept in the text; the app renders them as boxes
+# Boxes in the notes («:::تعریف»): any label of the panel's «برچسب‌های متن» (apps/catalog/labels.py); kept in the text.
 
 
 def _key(text: str) -> str:
@@ -340,7 +341,7 @@ def parse_chapter(text: str, book: ContentNode | None = None) -> ParsedChapter:
                     line_no,
                 )
                 return chapter
-            if kind == "خلاصه":
+            if kind in ("خلاصه", "چکیده"):
                 current.summary_lines.extend(body)
             elif kind == "تست":
                 number = sum(len(s.questions) for s in chapter.all_sections()) + 1
@@ -350,10 +351,10 @@ def parse_chapter(text: str, book: ContentNode | None = None) -> ParsedChapter:
             elif kind == "فلش‌کارت":
                 number = sum(len(s.flashcards) for s in chapter.all_sections()) + 1
                 current.flashcards.append(_parse_flashcard(body, slug or f"{chapter.meta.get('chapter_slug', 'ch')}-f{number}", line_no, chapter))
-            elif kind in CONTENT_BLOCKS:
+            elif find_label(kind):
                 current.full_lines.extend(lines[i : end + 1])
             else:
-                chapter.error(f"نوع بلوک «{kind}» شناخته نشد.", line_no)
+                chapter.error(f"برچسب «{kind}» شناخته نشد. برچسب تازه را اول در پنل › «برچسب‌های متن» بسازید.", line_no)
             i = end + 1
             continue
         current.full_lines.append(line)

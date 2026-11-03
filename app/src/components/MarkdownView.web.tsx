@@ -48,19 +48,25 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
   const root = useRef<HTMLDivElement | null>(null);
   const handler = useRef(onEvent);
   const scroller = useRef<ScrollViewInstance>(null);
-  const placed = useRef(false);
+  // Placed once per text (the notes and the summary each get their own place). The place may arrive after the text
+  // is drawn; 0 means the top (switching to a tab not read yet must not keep the other tab's scroll).
+  const placed = useRef('');
+  const textKey = `${variant}:${markdown.length}:${markdown.slice(0, 80)}`;
   useEffect(() => {
-    // The place may arrive after the text is drawn.
-    if (compact || placed.current || !startAt || startAt <= 0.02 || typeof window === 'undefined') return;
+    if (compact || placed.current === textKey || startAt == null || typeof window === 'undefined') return;
     const t = setTimeout(() => {
       const el = (scroller.current as unknown as { getScrollableNode?: () => HTMLElement })?.getScrollableNode?.();
-      if (el && el.scrollHeight > el.clientHeight) {
-        placed.current = true;
+      if (!el) return;
+      if (startAt <= 0.02) {
+        el.scrollTop = 0;
+        placed.current = textKey;
+      } else if (el.scrollHeight > el.clientHeight) {
+        placed.current = textKey;
         el.scrollTop = (el.scrollHeight - el.clientHeight) * Math.min(1, startAt);
       }
     }, 150);
     return () => clearTimeout(t);
-  }, [startAt, compact, html]);
+  }, [startAt, compact, html, textKey]);
   handler.current = onEvent;
 
   useEffect(() => {

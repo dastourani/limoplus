@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from .access import AccessMap
 from .drawing import loads as loads_drawing
 from .importer import MEDIA_PREFIX
+from .labels import all_labels
 from .models import Banner, ContentNode, Major, ShareSettings
 
 NOT_FOUND = {"code": "not_found", "message": "پیدا نشد."}
@@ -286,6 +287,8 @@ def node_detail(request, node_id):
             "breadcrumb": [{"id": a.id, "kind": a.kind, "slug": a.slug, "title": a.title, "number": a.position} for a in ancestors],
             "summary": media_urls(request, node.summary_body),
             "full": media_urls(request, node.full_body),
+            # The panel's labels: boxes in the notes and parts of the summary (app/src/lib/labels.ts).
+            "labels": all_labels(),
             "previous_id": siblings[index - 1] if index > 0 else None,
             "next_id": siblings[index + 1] if index + 1 < len(siblings) else None,
             # Titles of the neighbours, for the page drawn while turning to them.
