@@ -17,6 +17,7 @@ import { useGuestNudge } from '../../lib/guestNudge';
 import { useStudyTimer } from '../../lib/studyTime';
 import { sendOrQueue } from '../../lib/network';
 import { setLabels } from '../../lib/labels';
+import { setNumbering } from '../../lib/numbering';
 import { parseTerms, type Term } from '../../lib/reviewCard';
 import { offlineBooks, offlineSection } from '../../lib/offline';
 import { storage, type ReaderTheme } from '../../lib/storage';
@@ -290,7 +291,13 @@ export default function Section() {
       }
     }
     else if (e.type === 'ready') showPage();
-    else if (e.type === 'jump') {
+    else if (e.type === 'ref') {
+      // A numbered box: this section's notes, or another section (it opens there, lit up).
+      if (node && String(node.id) === e.node) {
+        setMode('full');
+        setFlashTarget((f) => ({ q: '#' + e.name, n: (f?.n ?? 0) + 1 }));
+      } else if (e.node) router.push({ pathname: '/section/[id]', params: { id: e.node, find: '#' + e.name } });
+    } else if (e.type === 'jump') {
       // From an important point in the review card to the same place in the notes.
       setMode('full');
       if (e.q) setFlashTarget((f) => ({ q: e.q, n: (f?.n ?? 0) + 1 }));
@@ -456,6 +463,7 @@ export default function Section() {
   const chapterLabel = chapter ? (chapter.kind === 'chapter' && chapter.number ? `فصل ${toPersianDigits(chapter.number)}، ${chapter.title}` : chapter.title) : '';
   // The panel's labels (boxes in the notes, parts of the summary), before the text is drawn.
   setLabels(node.labels);
+  setNumbering(node.numbering);
   const body = mode === 'summary' && node.summary ? node.summary : node.full;
   const bookSlug = node.breadcrumb.find((b) => b.kind === 'book')?.slug;
   const missingNotes = notes.filter((n) => missing.includes(n.id) && n.mode === mode);

@@ -36,6 +36,8 @@ DEFAULT_LABELS = [
     ("متضاد", "زبان", "table", "", "", "واژه | متضاد", False),
 ]
 
+NUMBERED = {"مثال", "نمودار"}  # numbered from the start (migration 0016)
+
 _ARABIC = str.maketrans({"ي": "ی", "ك": "ک", "ى": "ی"})
 
 
@@ -50,7 +52,8 @@ def _split(text, sep):
 
 def _defaults() -> list[dict]:
     return [
-        {"name": n, "group": g, "style": s, "role": r, "aliases": _split(a, r"[،,]"), "columns": _split(c, r"\|"), "hidden": h}
+        {"name": n, "group": g, "style": s, "role": r, "aliases": _split(a, r"[،,]"), "columns": _split(c, r"\|"), "hidden": h,
+         "numbered": n in NUMBERED}
         for n, g, s, r, a, c, h in DEFAULT_LABELS
     ]
 

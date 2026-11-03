@@ -1,4 +1,5 @@
 import type { Label } from '../lib/labels';
+import type { Numbering } from '../lib/numbering';
 import { api } from './client';
 import type { ReadingNext } from '../components/home/ReadingCards';
 import type { ChapterEnd, SectionStatus } from '../lib/renderMarkdown';
@@ -77,6 +78,8 @@ export type NodeDetail = {
   id: number;
   /** The panel's labels («برچسب‌ها»): boxes in the notes and parts of the summary. */
   labels?: Label[];
+  /** «مثال ۳-۵»: where this section's count starts, and the book's [[#names]]. */
+  numbering?: Numbering | null;
   kind: NodeSummary['kind'];
   title: string;
   breadcrumb: { id: number; kind: NodeSummary['kind']; slug: string; title: string; number?: number | null }[];

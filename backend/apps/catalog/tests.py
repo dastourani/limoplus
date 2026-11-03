@@ -360,3 +360,38 @@ class LabelTests(TestCase):
         data = APIClient().get(f"/api/v1/nodes/{two.id}/").json()
         self.assertIn("برهان", [l["name"] for l in data["labels"]], "the app gets the panel's list with the section")
         self.assertEqual(next(l for l in data["labels"] if l["name"] == "واژه")["columns"], ["فارسی", "English", "معنی"])
+
+
+class NumberingTests(TestCase):
+    """«مثال ۳-۵»: numbered over the chapter, with links «[[#name]]» from the notes and from test explanations."""
+
+    def setUp(self):
+        Major.objects.create(slug="economics", name="اقتصاد")
+        from .labels import forget
+
+        forget()
+
+    def test_examples_are_counted_over_the_chapter_and_links_resolve(self):
+        text = GOOD.replace("عنوان: فصل یک", "عنوان: فصل یک\nفصل: 3").replace(
+            "متن جزوه با فرمول $x^2$.", "متن.\n\n:::مثال\nیک\n:::\n\n:::مثال {#sin-h}\nدو\n:::\n\n:::نکته\nبی‌شماره\n:::"
+        ).replace("متن دوم.", "متن دوم، طبق [[#sin-h]].\n\n:::مثال\nسه\n:::\n\n:::نمودار {#g1}\nشکل\n:::").replace(
+            "توضیح: جمع ساده.", "توضیح: جمع ساده، مثل [[#sin-h]]."
+        )
+        chapter, _ = import_file("c.md", text.encode(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        client = APIClient()
+        one, two = ContentNode.objects.get(slug="one"), ContentNode.objects.get(slug="two")
+        n1 = client.get(f"/api/v1/nodes/{one.id}/").json()["numbering"]
+        n2 = client.get(f"/api/v1/nodes/{two.id}/").json()["numbering"]
+        self.assertEqual(n1["chapter"], 3)
+        self.assertEqual(n1["start"], {})
+        self.assertEqual(n2["start"], {"مثال": 2}, "the second section goes on from the first")
+        self.assertEqual(n2["refs"]["sin-h"], {"text": "مثال ۳-۲", "node": one.id})
+        self.assertEqual(n2["refs"]["g1"], {"text": "نمودار ۳-۱", "node": two.id})
+        q = Question.objects.get(slug="q1")
+        r = client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.first().id}, format="json").json()
+        self.assertIn(f"[[#sin-h|مثال ۳-۲|{one.id}]]", r["explanation"], "explanations come with the place filled in")
+
+    def test_box_names_are_unique_in_a_chapter(self):
+        text = GOOD.replace("متن دوم.", "متن دوم.\n\n:::مثال {#a}\nیک\n:::\n\n:::مثال {#a}\nدو\n:::")
+        self.assertTrue(any("«a» دو بار" in str(e) for e in parse_chapter(text).errors))

@@ -9,6 +9,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from apps.catalog.numbering import resolve as resolve_refs
 from apps.catalog.places import chapter_number
 from apps.catalog.access import AccessMap, access_until, book_of
 from apps.catalog.models import ContentNode
@@ -486,9 +487,9 @@ def _exam_detail(request, attempt):
                     "node_id": nodes.get(qid),
                     "picked_choice_id": picked["id"] if picked else None,
                     "correct_choice_id": correct["id"] if correct else None,
-                    "explanation": media_urls(request, q["explanation"]),
-                    "quick_solution": media_urls(request, q["quick_solution"]),
-                    "alternative_view": media_urls(request, q["alternative_view"]),
+                    "explanation": media_urls(request, resolve_refs(request, nodes.get(qid), q["explanation"])),
+                    "quick_solution": media_urls(request, resolve_refs(request, nodes.get(qid), q["quick_solution"])),
+                    "alternative_view": media_urls(request, resolve_refs(request, nodes.get(qid), q["alternative_view"])),
                     # The answer key was corrected after this exam began; the exam keeps the key it was taken with.
                     "corrected": (
                         {"at": current[qid][1], "note": current[qid][2]}

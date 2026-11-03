@@ -23,6 +23,8 @@ export type Label = {
   columns?: string[];
   /** Hidden labels are not offered in the panel's buttons, but text already using them still shows as before. */
   hidden?: boolean;
+  /** Boxes numbered over the whole chapter («مثال ۳-۵»); see lib/numbering.ts. */
+  numbered?: boolean;
 };
 
 export const DEFAULT_LABELS: Label[] = [
@@ -35,8 +37,8 @@ export const DEFAULT_LABELS: Label[] = [
   { name: 'فرمول', group: 'ریاضی و علوم', style: 'formal' },
   { name: 'قاعده', group: 'ریاضی و علوم', style: 'formal', aliases: ['قاعده و فرمول'] },
   { name: 'شرط کاربرد', group: 'ریاضی و علوم', style: 'note' },
-  { name: 'نمودار', group: 'ریاضی و علوم', style: 'formal' },
-  { name: 'مثال', group: 'عمومی', style: 'formal' },
+  { name: 'نمودار', group: 'ریاضی و علوم', style: 'formal', numbered: true },
+  { name: 'مثال', group: 'عمومی', style: 'formal', numbered: true },
   { name: 'مثال نقض', group: 'ریاضی و علوم', style: 'warn' },
   { name: 'نکته', group: 'عمومی', style: 'note' },
   { name: 'یادآوری', group: 'عمومی', style: 'note' },

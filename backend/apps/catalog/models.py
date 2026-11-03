@@ -346,6 +346,7 @@ class Label(models.Model):
     columns = models.CharField("ستون‌ها", max_length=200, blank=True, help_text="فقط برای ظاهر جدول: عنوان ستون‌ها جدا با «|»، مثلاً «واژه | مترادف».")
     order = models.PositiveIntegerField("ترتیب", default=0)
     is_hidden = models.BooleanField("پنهان", default=False, help_text="در دکمه‌های پنل نمی‌آید؛ متن‌هایی که از آن استفاده کرده‌اند مثل قبل نشان داده می‌شوند.")
+    numbered = models.BooleanField("شماره‌دار", default=False, help_text="کادرهای این برچسب در درسنامه در کل فصل شماره می‌خورند («مثال ۳-۵»)، و با «[[#نام]]» می‌شود به آن‌ها ارجاع داد.")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -359,4 +360,5 @@ class Label(models.Model):
     def as_json(self) -> dict:
         split = lambda text, sep: [x.strip() for x in re.split(sep, text or "") if x.strip()]  # noqa: E731
         return {"name": self.name, "group": self.group, "style": self.style, "role": self.role,
-                "aliases": split(self.aliases, r"[،,]"), "columns": split(self.columns, r"\|"), "hidden": self.is_hidden}
+                "aliases": split(self.aliases, r"[،,]"), "columns": split(self.columns, r"\|"), "hidden": self.is_hidden,
+                "numbered": self.numbered}

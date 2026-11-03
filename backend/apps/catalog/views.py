@@ -11,6 +11,7 @@ from .access import AccessMap
 from .drawing import loads as loads_drawing
 from .importer import MEDIA_PREFIX
 from .labels import all_labels
+from .numbering import numbering_for
 from .models import Banner, ContentNode, Major, ShareSettings
 
 NOT_FOUND = {"code": "not_found", "message": "پیدا نشد."}
@@ -300,6 +301,8 @@ def node_detail(request, node_id):
             "full": media_urls(request, node.full_body),
             # The panel's labels: boxes in the notes and parts of the summary (app/src/lib/labels.ts).
             "labels": all_labels(),
+            # «مثال ۳-۵»: where this section's numbered boxes start, and the book's [[#names]] (apps/catalog/numbering.py).
+            "numbering": numbering_for(access, node),
             "previous_id": siblings[index - 1] if index > 0 else None,
             "next_id": siblings[index + 1] if index + 1 < len(siblings) else None,
             # Titles of the neighbours, for the page drawn while turning to them.

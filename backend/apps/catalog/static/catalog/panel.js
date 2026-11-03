@@ -505,6 +505,7 @@
 
   Manager.prototype.renderSection = function () {
     var self = this, s = this.section(), isIntro = s.slug === '';
+    this.numbering(s);
     var wrap = h('div');
     var card = h('div', { class: 'cm-card' });
     if (isIntro) {
@@ -554,8 +555,14 @@
     return { el: h('div', { class: 'cm-save' }, btn, dirty), mark: function (on, what) { var t = on ? '● ذخیره نشده' : ''; if (dirty.textContent !== t) dirty.textContent = t; } };
   };
 
+  // «مثال ۳-۵»: the previews number this section's boxes from where the chapter's count is, and show [[#names]].
+  Manager.prototype.numbering = function (s) {
+    if (P && P.setNumbering) P.setNumbering({ chapter: this.state.chapter.number, start: (s && s.numbering_start) || {}, refs: this.state.refs || {} });
+  };
+
   Manager.prototype.renderNotes = function (body, s) {
     var self = this;
+    this.numbering(s);
     var ta = h('textarea', { rows: 22 });
     ta.value = s.full_body;
     body.appendChild(ta);

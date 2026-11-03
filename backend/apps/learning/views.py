@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from apps.catalog.numbering import resolve as resolve_refs
 from apps.catalog.places import chapter_number
 from apps.catalog.access import AccessMap
 from apps.catalog.models import ContentNode
@@ -128,9 +129,10 @@ def answer(request, question_id):
         {
             "is_correct": picked.is_correct,
             "correct_choice_id": correct.id,
-            "explanation": media_urls(request, question.explanation),
-            "quick_solution": media_urls(request, question.quick_solution),
-            "alternative_view": media_urls(request, question.alternative_view),
+            # «[[#sin-hamarz]]» → «مثال ۳-۵», a tap opens it in the notes (apps/catalog/numbering.py).
+            "explanation": media_urls(request, resolve_refs(request, question.node, question.explanation)),
+            "quick_solution": media_urls(request, resolve_refs(request, question.node, question.quick_solution)),
+            "alternative_view": media_urls(request, resolve_refs(request, question.node, question.alternative_view)),
             "flashcards": [{"id": f.id, "title": f.title} for f in related],
             "node_id": question.node_id,
             "fixed": fixed,

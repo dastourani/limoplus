@@ -156,6 +156,8 @@ root.addEventListener('click', function (e) {
   if (choice && !choice.disabled) { post({ type: 'choose', id: Number(choice.getAttribute('data-id')) }); return; }
   if (t.closest && t.closest('.report')) { post({ type: 'report' }); return; }
   if (t.closest && t.closest('.to-notes')) { post({ type: 'notes' }); return; }
+  var ref = t.closest && t.closest('a.ref');
+  if (ref) { post({ type: 'ref', name: ref.getAttribute('data-ref'), node: ref.getAttribute('data-node') }); return; }
   var tb = t.closest && t.closest('.tab');
   if (tb) { tab = Number(tb.getAttribute('data-i')); render(); }
 });

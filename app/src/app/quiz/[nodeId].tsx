@@ -258,7 +258,9 @@ export default function Quiz() {
 
   const onEvent = (e: QuizEvent) => {
     if (e.type === 'choose') choose(e.id);
-    else if (e.type === 'notes') {
+    else if (e.type === 'ref') {
+      if (e.node) router.push({ pathname: '/section/[id]', params: { id: e.node, find: '#' + e.name } });
+    } else if (e.type === 'notes') {
       const node = q.node_id;
       if (node) router.push(`/section/${node}`);
     } else if (e.type === 'report') {

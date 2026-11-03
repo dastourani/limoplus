@@ -123,10 +123,15 @@ def chapter_state(chapter: ContentNode) -> dict:
     for row in Report.objects.filter(question_id__in=[q.pk for q in questions.values()], status=Report.Status.OPEN).values_list("question_id", flat=True):
         reports[row] = reports.get(row, 0) + 1
     nodes = {n.slug: n for n in chapter.get_children().filter(kind=ContentNode.Kind.SECTION)}
+    from .numbering import count, panel_refs
+
+    # Where each section's «مثال ۳-۵» count starts, in the order of the file (intro first).
+    starts, _ = count(chapter.position, [(x.slug, x.full_body) for x in [editing.section(parsed, ""), *parsed.sections]])
 
     def section_json(s, node):
         return {
             "slug": s.slug,
+            "numbering_start": starts.get(s.slug, {}),
             "id": node.pk if node else chapter.pk,
             "title": s.title,
             "group": s.group,
@@ -160,6 +165,7 @@ def chapter_state(chapter: ContentNode) -> dict:
         "revisions": chapter.revisions.count(),
         "labels": all_labels(),
         "inbox": chapter.is_inbox,
+        "refs": panel_refs(book),
     }
 
 

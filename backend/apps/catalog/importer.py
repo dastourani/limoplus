@@ -567,6 +567,20 @@ def _parse_flashcard(body, slug, line_no, chapter) -> ParsedFlashcard:
 
 
 def _validate(chapter: ParsedChapter):
+    # Names of boxes («:::مثال {#sin-hamarz}») are unique in the chapter; links «[[#name]]» are checked in the panel.
+    from .numbering import BOX
+
+    names: dict[str, str] = {}
+    for s in chapter.all_sections():
+        for m in BOX.finditer(s.full_body or ""):
+            name = (m.group(2) or "").strip()
+            if not name:
+                continue
+            if not _SLUG.match(name):
+                chapter.error(f"نام کادر «{name}» فقط می‌تواند حرف، عدد، - و _ داشته باشد.", s.line)
+            elif name in names:
+                chapter.error(f"نام کادر «{name}» دو بار آمده (در «{names[name]}» و «{s.title or 'مقدمه'}»).", s.line)
+            names[name] = s.title or "مقدمه"
     seen = {}
     for kind, items in (
         ("بخش", [(s.slug, s.line) for s in chapter.sections]),
@@ -607,7 +621,7 @@ def _validate(chapter: ParsedChapter):
             chapter.warn(f"بخش «{section.title or 'مقدمه'}»: عبارت «{phrase}» در خلاصه هست ولی در جزوه پیدا نشد؛ پرش به جزوه کار نمی‌کند.", section.line)
 
 
-_JUMP = re.compile(r"\[\[(.+?)\]\]")
+_JUMP = re.compile(r"\[\[(?!#)(.+?)\]\]")  # «[[#name]]» is a link to a numbered box, not a phrase
 
 
 def _plain(text: str) -> str:

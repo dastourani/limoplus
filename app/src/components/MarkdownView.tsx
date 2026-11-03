@@ -11,6 +11,8 @@ const FONT_CSS = fontFaceCss((family) => `file:///android_asset/fonts/${family}.
 export type Highlight = { id: number; quote: string; color: string };
 export type ReaderEvent =
   | { type: 'scroll'; percent: number }
+  /** «مثال ۳-۵» whose box is in another section (or in the notes, from the summary). */
+  | { type: 'ref'; name: string; node: string }
   | { type: 'selection'; text: string }
   | { type: 'copy_blocked' }
   | { type: 'note'; id: number }

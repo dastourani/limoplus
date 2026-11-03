@@ -11,6 +11,7 @@ import katex from 'katex';
 import MarkdownIt from 'markdown-it';
 
 import { findLabel } from './labels';
+import { faDigits, numbering } from './numbering';
 import { cells, jumpTarget, parseSummary } from './reviewCard';
 
 const md = new MarkdownIt({ html: false, linkify: false, typographer: false });
@@ -32,7 +33,7 @@ function esc(s: string) {
 /** Escaped item text with a jump to the notes when it has «[[phrase]]» (or, for «مهم», its bold words). */
 function itemHtml(item: string, alwaysJump: boolean): string {
   const { text, phrase } = jumpTarget(item);
-  const linked = /\[\[[^\]]+\]\]/.test(item) || (alwaysJump && phrase);
+  const linked = /\[\[(?!#)[^\]]+\]\]/.test(item) || (alwaysJump && phrase);
   if (!linked) return `<li>${renderInline(item)}</li>`;
   return `<li class="jl"><a class="jump" data-q="${esc(phrase)}">${renderInline(text)}<span class="go" aria-hidden="true">←</span></a></li>`;
 }
@@ -76,7 +77,20 @@ export function renderSummary(source: string, opts: { hasCards?: boolean } = {})
 function renderPlain(source: string): string {
   const formulas: string[] = [];
   const keep = (html: string) => `@@MATH${formulas.push(html) - 1}@@`;
-  let text = source.replace(/\[\[([^\]\n]+)\]\]/g, '$1').replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => `\n\n${keep(renderMath(tex.trim(), true))}\n\n`);
+  // «[[#name]]»: a link to a numbered box («مثال ۳-۵»), anywhere in the book; «[[phrase]]» shows as its words.
+  const refs = numbering().refs ?? {};
+  let text = source
+    // In test explanations the server has already filled in the place: «[[#name|مثال ۳-۵|12]]».
+    .replace(/\[\[#([^\]\s|]+)(?:\|([^|\]]+)\|([^\]|]+))?\]\]/g, (_, name: string, text?: string, node?: string) => {
+      const r = text && node ? { text, node } : refs[name];
+      return keep(
+        r
+          ? `<a class="ref" data-ref="${esc(name)}" data-node="${esc(String(r.node))}">${esc(r.text)}</a>`
+          : `<span class="ref missing" title="کادری با این نام پیدا نشد">#${esc(name)}</span>`,
+      );
+    })
+    .replace(/\[\[([^\]\n]+)\]\]/g, '$1')
+    .replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => `\n\n${keep(renderMath(tex.trim(), true))}\n\n`);
   text = text.replace(/(^|[^\\])\$([^$\n]+?)\$/g, (_, before: string, tex: string) => before + keep(renderMath(tex.trim(), false)));
   let html = md.render(text);
   html = html.replace(/<p>\s*(@@MATH\d+@@)\s*<\/p>/g, '$1');
@@ -93,15 +107,24 @@ export function renderMarkdown(source: string): string {
     if (buffer.length) parts.push(renderPlain(buffer.join('\n')));
     buffer = [];
   };
+  // Numbered labels («مثال ۳-۵») go on from the earlier sections of the chapter.
+  const { chapter, start } = numbering();
+  const counts: Record<string, number> = { ...(start ?? {}) };
   for (let i = 0; i < lines.length; i++) {
-    const open = lines[i].match(/^:::\s*(\S.*?)\s*$/);
+    const open = lines[i].match(/^:::\s*(\S.*?)\s*(?:\{#([^}\s]+)\})?\s*$/);
     const label = open ? findLabel(open[1]) : undefined;
     if (label) {
       const end = lines.findIndex((line, j) => j > i && line.trim() === ':::');
       if (end > i) {
         flush();
+        let title = esc(label.name);
+        if (label.numbered) {
+          counts[label.name] = (counts[label.name] ?? 0) + 1;
+          title += ' ' + (chapter ? `${faDigits(chapter)}-${faDigits(counts[label.name])}` : faDigits(counts[label.name]));
+        }
+        const id = open![2] ? ` id="box-${esc(open![2])}"` : '';
         parts.push(
-          `<div class="box box-${label.style}"><div class="box-title">${esc(label.name)}</div>${renderPlain(lines.slice(i + 1, end).join('\n'))}</div>`,
+          `<div class="box box-${label.style}"${id}><div class="box-title">${title}</div>${renderPlain(lines.slice(i + 1, end).join('\n'))}</div>`,
         );
         i = end;
         continue;
@@ -142,6 +165,11 @@ math { font-family: "STIX Two Math", "Cambria Math", "Latin Modern Math", serif;
 .box-warn { background: #FFF6D6; } .box-warn .box-title { color: #7A4F00; }
 .box-formal { background: #EEF0FC; } .box-formal .box-title { color: #3B44B8; }
 .box-table { background: #F6F7F2; border: 1px solid #E3E8DE; } .box-table .box-title { color: #56655B; }
+/* «مثال ۳-۵»: a link to a numbered box; the box lights up when reached. */
+a.ref { color: #3B44B8; font-weight: 700; text-decoration: none; border-bottom: 1px dashed currentColor; cursor: pointer; white-space: nowrap; }
+.ref.missing { color: #9E2F2A; font-family: system-ui, sans-serif; font-size: .85em; }
+.box.reached { box-shadow: 0 0 0 3px #FFD43B; transition: box-shadow 1.4s; } .box.reached.fade { box-shadow: 0 0 0 0 rgba(255,212,59,0); }
+.lesson.dark a.ref { color: #AEB4F5; }
 mark.hl { color: inherit; border-radius: 3px; padding: 0 1px; }
 mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } mark.hl-blue { background: #C9DBFF; } mark.hl-pink { background: #FFD0DF; }
 .lesson.no-select { -webkit-user-select: none; user-select: none; }
@@ -260,6 +288,12 @@ root.addEventListener('click', function (e) {
   var t = e.target && e.target.closest ? e.target : null;
   if (!t) return;
   var j = t.closest('a.jump'); if (j) { e.preventDefault(); post({ type: 'jump', q: j.getAttribute('data-q') || '' }); return; }
+  var r = t.closest('a.ref'); if (r) {
+    e.preventDefault();
+    var name = r.getAttribute('data-ref');
+    if (!root.__box(name)) post({ type: 'ref', name: name, node: r.getAttribute('data-node') });
+    return;
+  }
   if (t.closest('.rc-cards')) { post({ type: 'cards' }); return; }
   if (t.closest('.next-card')) { post({ type: 'next' }); return; }
   var go = t.closest('[data-go]'); if (go) { post({ type: 'go', to: go.getAttribute('data-go') }); return; }
@@ -268,7 +302,18 @@ root.addEventListener('click', function (e) {
   if (m) post({ type: 'note', id: Number(m.getAttribute('data-note')) });
 });
 // Show where an important point is in the notes: find it, scroll to it, light it up for a moment.
+// A numbered box on this page («[[#name]]»): scroll to it and light it up. False when it is in another section.
+root.__box = function (name) {
+  var box = document.getElementById('box-' + name);
+  if (!box) return false;
+  box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  box.classList.remove('fade'); box.classList.add('reached');
+  setTimeout(function () { box.classList.add('fade'); }, 1800);
+  setTimeout(function () { box.classList.remove('reached', 'fade'); }, 3400);
+  return true;
+};
 root.__flash = function (q) {
+  if (q && q.charAt(0) === '#') { if (!root.__box(q.slice(1))) post({ type: 'flash_missing' }); return; }
   var old = root.querySelectorAll('mark.flash');
   for (var i = 0; i < old.length; i++) { var o = old[i], p = o.parentNode; while (o.firstChild) p.insertBefore(o.firstChild, o); p.removeChild(o); p.normalize(); }
   q = norm(q || '').trim(); if (!q) return;

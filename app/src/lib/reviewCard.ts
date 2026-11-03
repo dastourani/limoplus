@@ -74,8 +74,9 @@ export function parseTerms(text: string): Term[] {
 
 /** «متن [[عبارت]]» → shown text and the phrase to find in the notes (or the first bold words). */
 export function jumpTarget(item: string): { text: string; phrase: string } {
-  const m = item.match(/\[\[([^\]]+)\]\]/);
-  const text = item.replace(/\s*\[\[[^\]]+\]\]\s*/g, ' ').trim();
+  // «[[#name]]» is a link to a numbered box (kept in the text), not a phrase of the notes.
+  const m = item.match(/\[\[(?!#)([^\]]+)\]\]/);
+  const text = item.replace(/\s*\[\[(?!#)[^\]]+\]\]\s*/g, ' ').trim();
   if (m) return { text, phrase: m[1].trim() };
   const bold = text.match(/\*\*([^*]+)\*\*/);
   return { text, phrase: bold ? bold[1].trim() : '' };
