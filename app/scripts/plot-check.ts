@@ -3,7 +3,7 @@
  * Run: npx --yes esbuild@0.28.2 scripts/plot-check.ts --bundle --platform=node --outfile=/tmp/plot-check.js && node /tmp/plot-check.js
  */
 import { compile, ExprError } from '../src/lib/expr';
-import { curveFunction, fourierSums, parsePlot, renderPlot, segments } from '../src/lib/plot';
+import { curveFunction, findHoles, fourierSums, parsePlot, renderPlot, segments } from '../src/lib/plot';
 
 let failed = 0, passed = 0;
 function ok(cond: boolean, what: string) {
@@ -111,13 +111,27 @@ const svg = renderPlot('تابع: x\nبازه: 0 تا 10', (s) => s)!;
 const d = /class="cv[^"]*" d="M([\d.]+),([\d.]+)[^"]*L([\d.]+),([\d.]+)"/.exec(svg)!;
 ok(Number(d[3]) > Number(d[1]) && Number(d[4]) < Number(d[2]), 'not mirrored: x grows to the right, y grows upwards');
 ok(/dir="ltr"/.test(svg), 'plot is left-to-right inside the right-to-left page');
-ok(/π\/۲|۲π/.test(renderPlot('تابع: sin(x)\nمحور: pi', (s) => s)!), 'π axis labels');
+ok(/π\/2|2π/.test(renderPlot('تابع: sin(x)\nمحور: pi', (s) => s)!), 'π axis labels, in English digits');
+const plain = renderPlot('تابع: x^2', (s) => s)!;
+ok(!/class="tk"/.test(plain) && !/class="grid"/.test(plain), 'clean by default: no numbers, no grid');
+const nums = renderPlot('تابع: x^2\nعدد: بله\nشبکه: بله', (s) => s)!;
+ok(/class="tk"/.test(nums) && /class="grid"/.test(nums) && !/[۰-۹]/.test(nums), 'numbers and grid on request, English digits');
+const marks = renderPlot('تابع: x\nعلامت x: 1، pi/2\nعلامت y: 2', (s) => s)!;
+ok((marks.match(/class="tk"/g) ?? []).length === 3 && />π\/2</.test(marks) && />1</.test(marks) && />2</.test(marks), 'only the marked values');
 ok(/plot-error/.test(renderPlot('تابع: sin x', (s) => s)!), 'a wrong formula shows an error, not a wrong picture');
 ok(renderPlot('یک عکس', (s) => s) === null, 'a box without «تابع:» is not a plot');
 ok(/c-red/.test(renderPlot('تابع: x\nرنگ: قرمز', (s) => s)!), 'colour by name');
 const sqLine = renderPlot('تابع: square(x)\nفوریه: 1، 3', (s) => s)!;
 ok(!/plot-error/.test(sqLine) && (sqLine.match(/class="cv /g) ?? []).length >= 3, 'Fourier of square(x) on the whole line: period 2π');
 ok((renderPlot('تابع: sin(x)\nروی: 0 تا pi\nگسترش: زوج\nفوریه: 1، 3', (s) => s)!.match(/class="cv /g) ?? []).length >= 3, 'Fourier sums drawn with the curve');
+
+const holes = (src: string, a: number, b: number) => findHoles(compile(src), a, b, 4);
+ok(JSON.stringify(holes('(x^2-1)/(x-1)', -2, 3).map((h) => [h.x, +h.y.toFixed(6)])) === '[[1,2]]', 'hole of (x²−1)/(x−1) at (1, 2) found');
+ok(holes('sin(x)/x', -5, 5).length === 1 && Math.abs(holes('sin(x)/x', -5, 5)[0].y - 1) < 1e-6, 'hole of sin(x)/x at (0, 1)');
+ok(holes('1/x', -2, 2).length === 0 && holes('tan(x)', -3, 3).length === 0 && holes('sqrt(x)', -2, 2).length === 0, 'no holes at poles or domain edges');
+ok(holes('(x^2-pi^2/4)/(x-pi/2)', -3, 3).length === 1, 'hole at π/2');
+ok(/pt-open/.test(renderPlot('تابع: (x^2-1)/(x-1)\nبازه: -2 تا 3', (s) => s)!), 'hole drawn without a «نقطه:» line');
+ok(!/pt-open/.test(renderPlot('تابع: (x^2-1)/(x-1)\nبازه: -2 تا 3\nحفره: خیر', (s) => s)!), '«حفره: خیر» turns it off');
 
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

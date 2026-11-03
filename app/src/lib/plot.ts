@@ -43,6 +43,12 @@ export type PlotSpec = {
   yLabel?: string;
   jumps: 'break' | 'vertical';
   grid: boolean;
+  /** Numbers on the axes: none by default (a clean textbook look); «عدد: بله» both, «عدد: x» or «عدد: y» one. */
+  numbers: { x: boolean; y: boolean };
+  /** Only these values marked on the axes («علامت x: 1، pi»). */
+  marks: { x: number[]; y: number[] };
+  /** Removable gaps such as (x²−1)/(x−1) at 1 get an open circle by themselves («حفره: خیر» turns it off). */
+  autoHoles: boolean;
   height: number;
   points: Point[];
   asymptotes: { axis: 'x' | 'y'; at: number }[];
@@ -59,8 +65,8 @@ const W = 360;
 const M = { l: 34, r: 14, t: 14, b: 24 };
 const SAMPLES = 1400;
 
-const FA = '۰۱۲۳۴۵۶۷۸۹';
-const fa = (s: string | number) => String(s).replace(/\d/g, (d) => FA[Number(d)]).replace(/-/g, '−').replace(/\./g, '٫');
+/** Numbers on plots are written in English digits, with a true minus sign. */
+const fa = (s: string | number) => String(s).replace(/-/g, '−');
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 export class PlotError extends Error {}
@@ -73,7 +79,8 @@ const KEYS: Record<string, string> = {
   رنگ: 'color', خط: 'line', نام: 'name', معکوس: 'inverse', وارون: 'inverse',
   بازه: 'x', بازهx: 'x', بازهیx: 'x', بازهی: 'x', بازهy: 'y', بازهیy: 'y', محدودهy: 'y', محدودهیy: 'y',
   محور: 'axis', متغیر: 'var', برچسبx: 'xlabel', برچسبy: 'ylabel', پرش: 'jumps', شبکه: 'grid', ارتفاع: 'height',
-  نقطه: 'point', مجانب: 'asym',
+  نقطه: 'point', مجانب: 'asym', عدد: 'numbers', اعداد: 'numbers', عددها: 'numbers', علامتx: 'markx', علامتy: 'marky',
+  حفره: 'holes',
 };
 const CURVE_KEYS = new Set(['on', 'ext', 'period', 'fourier', 'color', 'line', 'name', 'inverse']);
 
@@ -87,7 +94,7 @@ export function parsePlot(body: string): PlotSpec | null {
   });
   if (!keyed.some((x) => x?.k === 'fn')) return null;
   const spec: PlotSpec = {
-    curves: [], piAxis: false, variable: 'x', jumps: 'break', grid: true, height: 225, points: [], asymptotes: [], caption: [],
+    curves: [], piAxis: false, variable: 'x', jumps: 'break', grid: false, numbers: { x: false, y: false }, marks: { x: [], y: [] }, autoHoles: true, height: 225, points: [], asymptotes: [], caption: [],
   };
   const range = (v: string): [number, number] => {
     const parts = v.split(/\s+تا\s+|\s+to\s+|\.\.|…/);
@@ -136,7 +143,17 @@ export function parsePlot(body: string): PlotSpec | null {
         case 'inverse': c.inverse = yes(v); break;
         case 'x': spec.x = range(v); break;
         case 'y': spec.y = range(v); break;
-        case 'axis': spec.piAxis = /pi|π/i.test(v); break;
+        // «محور: pi» asks for π labels, so the horizontal axis gets its numbers.
+        case 'axis': spec.piAxis = /pi|π/i.test(v); if (spec.piAxis) spec.numbers.x = true; break;
+        case 'numbers': {
+          const t = v.trim().toLowerCase();
+          spec.numbers = t === 'x' || t === 't' ? { x: true, y: false } : t === 'y' ? { x: false, y: true } : yes(v) ? { x: true, y: true } : { x: false, y: false };
+          break;
+        }
+        case 'markx': case 'marky':
+          spec.marks[k === 'markx' ? 'x' : 'y'] = v.split(/[,،]|\s+و\s+/).map((x) => x.trim()).filter(Boolean).map(value);
+          break;
+        case 'holes': spec.autoHoles = yes(v); break;
         case 'var': spec.variable = /t/i.test(v) ? 't' : 'x'; break;
         case 'xlabel': spec.xLabel = v; break;
         case 'ylabel': spec.yLabel = v; break;
@@ -283,6 +300,33 @@ export function segments(g: Compiled, x0: number, x1: number, ySpan: number, jum
   return out.filter((s) => s[s.length - 1][0] - s[0][0] > 1.5 * step);
 }
 
+/**
+ * Gaps a formula has at a single point though both sides meet there, like (x²−1)/(x−1) at 1 or sin(x)/x at 0.
+ * The samples almost never land on such a point, so the usual suspects are tried: whole numbers, halves and
+ * multiples of π/12 in the window.
+ */
+export function findHoles(g: Compiled, x0: number, x1: number, ySpan: number): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  const tried = new Set<string>();
+  const candidates: number[] = [];
+  const add = (step: number) => {
+    if ((x1 - x0) / step > 400) return;
+    for (let k = Math.ceil(x0 / step); k * step <= x1; k++) candidates.push(k * step);
+  };
+  add(0.5);
+  add(Math.PI / 12);
+  for (const c of candidates) {
+    const key = c.toFixed(9);
+    if (tried.has(key) || c <= x0 || c >= x1) continue;
+    tried.add(key);
+    if (Number.isFinite(g(c))) continue;
+    const eps = 1e-7 * Math.max(1, Math.abs(c));
+    const l = g(c - eps), r = g(c + eps);
+    if (Number.isFinite(l) && Number.isFinite(r) && Math.abs(l - r) < 1e-4 * Math.max(1, ySpan)) out.push({ x: c, y: (l + r) / 2 });
+  }
+  return out;
+}
+
 function niceStep(span: number, target: number): number {
   const raw = span / target, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
@@ -290,7 +334,7 @@ function niceStep(span: number, target: number): number {
 function gcd(a: number, b: number): number { return b ? gcd(b, a % b) : Math.abs(a); }
 function piLabel(v: number): string {
   const q = Math.round((v / Math.PI) * 12);
-  if (q === 0) return '۰';
+  if (q === 0) return '0';
   const g = gcd(q, 12), n = q / g, d = 12 / g;
   const num = n === 1 ? 'π' : n === -1 ? '−π' : `${fa(n)}π`;
   return d === 1 ? num : `${num}/${fa(d)}`;
@@ -348,7 +392,7 @@ function draw(spec: PlotSpec, inline: (s: string) => string): string {
       const T = period ?? (c.on ? c.on[1] - c.on[0] : 2 * Math.PI);
       const base: Compiled = period || !c.on ? g : curveFunction({ ...c, extension: 'simple' }).g;
       const sums = fourierSums(base, T, start ?? (c.on ? c.on[0] : -T / 2), c.fourier);
-      sums.forEach((s, i) => drawn.push({ g: s, color: nextColor(), line: 'solid', width: 1.6, name: `مجموع تا n = ${fa(c.fourier[i])}`, inverse: false }));
+      sums.forEach((s, i) => drawn.push({ g: s, color: nextColor(), line: 'solid', width: 1.6, name: `مجموع تا $n = ${c.fourier[i]}$`, inverse: false }));
     }
     drawn.push({ g, color, line: c.line, width: 2.4, name: c.name, inverse: c.inverse, on: c.on, period });
   }
@@ -402,12 +446,17 @@ function draw(spec: PlotSpec, inline: (s: string) => string): string {
   parts.push(`<rect class="pbg" x="0" y="0" width="${W}" height="${H}" rx="10"/>`);
 
   // Grid and ticks.
-  const xt = ticks(x0, x1, spec.piAxis, 8), yt = ticks(y0, y1, false, 5);
+  const xNice = ticks(x0, x1, spec.piAxis, 8), yNice = ticks(y0, y1, false, 5);
+  // A mark is written as a multiple of π when it is one (pi/2, 3pi/4), otherwise as a number.
+  const piish = (v: number) => Math.abs(v) > 1e-12 && Math.abs(v / (Math.PI / 12) - Math.round(v / (Math.PI / 12))) < 1e-9;
+  const label = (v: number) => (piish(v) ? piLabel(v) : fa(String(+v.toFixed(3))));
+  const xt = [...(spec.numbers.x ? xNice : []), ...spec.marks.x.filter((v) => v >= x0 && v <= x1).map((at) => ({ at, text: label(at) }))];
+  const yt = [...(spec.numbers.y ? yNice : []), ...spec.marks.y.filter((v) => v >= y0 && v <= y1).map((at) => ({ at, text: label(at) }))];
   const axisY = y0 <= 0 && 0 <= y1 ? sy(0) : sy(y0);
   const axisX = x0 <= 0 && 0 <= x1 ? sx(0) : sx(x0);
   if (spec.grid) {
-    for (const t of xt) parts.push(`<line class="grid" x1="${sx(t.at).toFixed(1)}" y1="${M.t}" x2="${sx(t.at).toFixed(1)}" y2="${M.t + ph}"/>`);
-    for (const t of yt) parts.push(`<line class="grid" x1="${M.l}" y1="${sy(t.at).toFixed(1)}" x2="${M.l + pw}" y2="${sy(t.at).toFixed(1)}"/>`);
+    for (const t of xNice) parts.push(`<line class="grid" x1="${sx(t.at).toFixed(1)}" y1="${M.t}" x2="${sx(t.at).toFixed(1)}" y2="${M.t + ph}"/>`);
+    for (const t of yNice) parts.push(`<line class="grid" x1="${M.l}" y1="${sy(t.at).toFixed(1)}" x2="${M.l + pw}" y2="${sy(t.at).toFixed(1)}"/>`);
   }
   // Axes with arrowheads.
   parts.push(`<line class="ax" x1="${M.l}" y1="${axisY.toFixed(1)}" x2="${M.l + pw + 6}" y2="${axisY.toFixed(1)}"/>`);
@@ -424,7 +473,7 @@ function draw(spec: PlotSpec, inline: (s: string) => string): string {
     parts.push(`<line class="ax" x1="${(axisX - 3).toFixed(1)}" y1="${sy(t.at).toFixed(1)}" x2="${(axisX + 3).toFixed(1)}" y2="${sy(t.at).toFixed(1)}"/>`);
     parts.push(`<text class="tk" x="${Math.max(12, axisX - 6).toFixed(1)}" y="${(sy(t.at) + 4).toFixed(1)}" text-anchor="end">${t.text}</text>`);
   }
-  if (x0 < 0 && y0 < 0 && x1 > 0 && y1 > 0) parts.push(`<text class="tk" x="${(axisX - 5).toFixed(1)}" y="${(axisY + 14).toFixed(1)}" text-anchor="end">۰</text>`);
+  if ((spec.numbers.x || spec.numbers.y) && x0 < 0 && y0 < 0 && x1 > 0 && y1 > 0) parts.push(`<text class="tk" x="${(axisX - 5).toFixed(1)}" y="${(axisY + 14).toFixed(1)}" text-anchor="end">0</text>`);
   parts.push(`<text class="lab" x="${M.l + pw + 4}" y="${(axisY - 8).toFixed(1)}" text-anchor="end">${esc(spec.xLabel ?? spec.variable)}</text>`);
   parts.push(`<text class="lab" x="${(axisX + 8).toFixed(1)}" y="${M.t + 2}">${esc(spec.yLabel ?? (spec.variable === 't' ? 'x(t)' : 'y'))}</text>`);
 
@@ -456,6 +505,11 @@ function draw(spec: PlotSpec, inline: (s: string) => string): string {
     const dash = d.line === 'dash' ? ' stroke-dasharray="7 5"' : d.line === 'dot' ? ' stroke-dasharray="1.5 4" stroke-linecap="round"' : '';
     const w = faint ? 1.4 : d.width;
     return `<path class="cv c-${d.color}${faint ? ' faint' : ''}" d="${pts}" stroke-width="${w}"${dash}/>`;
+  }
+  const holes = spec.autoHoles ? drawn.filter((d) => !d.inverse).flatMap((d) => findHoles(d.g, x0, x1, ySpan)) : [];
+  const given = (h: { x: number }) => spec.points.some((p) => Math.abs(p.x - h.x) < 1e-6 * (x1 - x0));
+  for (const h of holes.filter((h) => !given(h) && h.y >= y0 && h.y <= y1)) {
+    parts.push(`<circle class="pt-open" cx="${sx(h.x).toFixed(1)}" cy="${sy(h.y).toFixed(1)}" r="4"/>`);
   }
   for (const p of spec.points) {
     const cx = sx(p.x).toFixed(1), cy = sy(p.y).toFixed(1);

@@ -146,7 +146,7 @@
         if (self.variant === 'summary') { insertSummaryLabel(self.ta, l); return; }
         // «نمودار»: a plot drawn from a description (app/src/lib/plot.ts); edit the lines and watch the preview.
         if (l.name === 'نمودار') {
-          self.block(':::نمودار\n', '\n:::', 'تابع: sin(x)\nنام: $\\sin x$\nبازه: -2pi تا 2pi\nمحور: pi');
+          self.block(':::نمودار\n', '\n:::', 'تابع: sin(x)\nبازه: -2pi تا 2pi\nعلامت x: pi');
           self.ta.focus();
           return;
         }
