@@ -797,3 +797,27 @@ def offline_bundle(request, slug):
     if ends and ends < valid_until:
         valid_until = ends
     return Response({"book": {"slug": book.slug, "title": book.title}, "sections": sections, "downloaded_at": timezone.now(), "valid_until": valid_until})
+
+
+@api_view(["GET", "POST"])
+def known_words(request, slug):
+    """«مرور واژه‌ها»: GET the words of this book the learner knows; POST {term, known} (or {terms: [...], known}) to
+    mark or unmark. Kept on the account, so the cards continue on another device."""
+    from .models import WordKnown
+
+    book = get_object_or_404(ContentNode, kind=ContentNode.Kind.BOOK, slug=slug, depth=1)
+    if not AccessMap(request.user, book).visible(book.id):
+        return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    if request.method == "POST":
+        terms = request.data.get("terms")
+        if terms is None:
+            terms = [request.data.get("term", "")]
+        if not isinstance(terms, list):
+            return Response({"code": "invalid", "message": "واژه نامعتبر است."}, status=status.HTTP_400_BAD_REQUEST)
+        known = bool(request.data.get("known", True))
+        for term in terms[:500]:
+            term = str(term or "").strip()[:120]
+            if term:
+                WordKnown.objects.update_or_create(user=request.user, book=book, term=term, defaults={"known": known})
+    words = list(WordKnown.objects.filter(user=request.user, book=book, known=True).values_list("term", flat=True))
+    return Response({"known": words})

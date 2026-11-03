@@ -178,7 +178,7 @@ export type Today = {
   /** «نیاز به مرور»: sections with wrong answers still open, or finished long ago (at most three). */
   needs_review?: { items: NeedsReviewItem[]; total: number };
 };
-export type NeedsReviewItem = { id: number; title: string; book_title: string; book_slug: string; reason: 'mistakes' | 'old'; mistakes: number; days: number };
+export type NeedsReviewItem = { id: number; title: string; book_title: string; book_slug: string; reason: 'mistakes' | 'old'; mistakes: number; days: number; question_ids?: number[] };
 export type TodayTask =
   | (Omit<ReviewItem, 'kind'> & { kind: 'review'; review_kind: 'chapter' | 'book'; done?: number })
   | { kind: 'cards'; count: number; total: number; comeback: boolean; minutes: number; done?: number }
@@ -394,6 +394,9 @@ export const endpoints = {
   book: (slug: string) => api<BookDetail>(`books/${encodeURIComponent(slug)}/`),
   node: (id: number) => api<NodeDetail>(`nodes/${id}/`),
   notifyBook: (slug: string, on: boolean) => api<{ notify: boolean; can_cancel: boolean }>(`books/${encodeURIComponent(slug)}/notify/`, { body: { on } }),
+  knownWords: (slug: string) => api<{ known: string[] }>(`books/${encodeURIComponent(slug)}/words/me/`),
+  markWords: (slug: string, terms: string[], known: boolean) =>
+    api<{ known: string[] }>(`books/${encodeURIComponent(slug)}/words/me/`, { body: { terms, known } }),
   glossary: (slug: string, chapter?: string) =>
     api<{ book: string; chapter?: string | null; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(
       `books/${encodeURIComponent(slug)}/glossary/${chapter ? `?chapter=${encodeURIComponent(chapter)}` : ''}`,

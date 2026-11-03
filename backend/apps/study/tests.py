@@ -834,6 +834,7 @@ class NeedsReviewTests(TestCase):
         self.assertEqual(needs["items"][0]["id"], self.section.id)
         self.assertEqual(needs["items"][0]["reason"], "mistakes")
         self.assertEqual(needs["items"][0]["mistakes"], 1)
+        self.assertEqual(needs["items"][0]["question_ids"], [q.id])
         right = q.choices.filter(is_correct=True).first()
         self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": right.id}, format="json")
         self.assertEqual(self._needs()["items"], [])
@@ -869,3 +870,26 @@ class NeedsReviewTests(TestCase):
         SectionProgress.objects.create(user=self.user, node=self.paid_section, book=self.chapter.get_parent(), percent=100, is_done=True)
         SectionProgress.objects.filter(node=self.paid_section).update(updated_at=timezone.now() - timedelta(days=60))
         self.assertEqual(self._needs()["items"], [])
+
+
+class KnownWordsTests(TestCase):
+    setUp = StudyTests.setUp
+    tearDown = StudyTests.tearDown
+
+    def test_mark_unmark_and_private(self):
+        from .models import WordKnown
+
+        url = "/api/v1/books/math-1/words/me/"
+        self.assertEqual(self.client.get(url).data["known"], [])
+        self.assertEqual(self.client.post(url, {"term": "حد", "known": True}, format="json").data["known"], ["حد"])
+        self.client.post(url, {"terms": ["پیوستگی", "مشتق"], "known": True}, format="json")
+        self.assertEqual(sorted(self.client.get(url).data["known"]), ["حد", "مشتق", "پیوستگی"])
+        self.client.post(url, {"term": "حد", "known": False}, format="json")
+        self.assertNotIn("حد", self.client.get(url).data["known"])
+        self.assertTrue(WordKnown.objects.filter(term="حد", known=False).exists())  # kept, not deleted
+        self.assertEqual(APIClient().get(url).status_code, 401)
+        other = User.objects.create_user("09120000009")
+        _, token = DeviceSession.start(other, "x")
+        c = APIClient()
+        c.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(c.get(url).data["known"], [])

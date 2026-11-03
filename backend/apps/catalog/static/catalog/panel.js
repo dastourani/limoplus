@@ -96,6 +96,16 @@
 
   // ---------- Markdown editor ----------
 
+  // Starting plots for the «نمودار» button (the lines are explained in docs/content-format.md).
+  var PLOT_TEMPLATES = [
+    ['تابع', 'تابع: sin(x)\nبازه: -2pi تا 2pi\nعلامت x: pi', 'نمودار یک یا چند تابع'],
+    ['ضربه δ', 'ضربه: 0، (2, -0.5)\nمتغیر: t', 'ضربه‌ها با وزن؛ «قطار ضربه: T» برای قطار ضربه'],
+    ['گسسته x[n]', 'تابع: 0.8^n u(n)\nمتغیر: n\nبازه: -3 تا 10', 'سیگنال گسسته؛ یا «مقادیر: 1، 2، 3 از -1»'],
+    ['صفر و قطب', 'صفر: 0\nقطب: 0.5، 0.8±0.4j\nناحیه: |z| > 0.89', 'صفحه‌ی z با ناحیه‌ی همگرایی؛ برای لاپلاس «ناحیه: Re(s) > -1»'],
+    ['بُد', 'بود: 10/(s+10)', 'نمودار بُد: دامنه (دقیق و مجانبی) و فاز'],
+    ['نایکوئیست', 'نایکوئیست: 10/((s+1)(s+2))', 'نمودار نایکوئیست H(jω)'],
+  ];
+
   function MdEditor(textarea, opts) {
     opts = opts || {};
     var self = this;
@@ -150,9 +160,20 @@
       wrap.appendChild(labelRow(function (l) {
         if (self.variant === 'summary') { insertSummaryLabel(self.ta, l); return; }
         // «نمودار»: a plot drawn from a description (app/src/lib/plot.ts); edit the lines and watch the preview.
+        // A small menu of starting plots: a function, impulses, a discrete signal, poles and zeros, a Bode plot.
         if (l.name === 'نمودار') {
-          self.block(':::نمودار\n', '\n:::', 'تابع: sin(x)\nبازه: -2pi تا 2pi\nعلامت x: pi');
-          self.ta.focus();
+          var old = wrap.querySelector('.plot-menu');
+          if (old) { old.remove(); return; }
+          var menu = h('div', { class: 'plot-menu' });
+          PLOT_TEMPLATES.forEach(function (t) {
+            menu.appendChild(h('button', { type: 'button', title: t[2], onclick: function (e) {
+              e.preventDefault();
+              menu.remove();
+              self.block(':::نمودار\n', '\n:::', t[1]);
+              self.ta.focus();
+            } }, t[0]));
+          });
+          wrap.insertBefore(menu, body);
           return;
         }
         var sample = l.style === 'table' && l.columns && l.columns.length

@@ -338,3 +338,18 @@ class StudyTimeReport(models.Model):
     class Meta:
         unique_together = [("user", "key")]
         indexes = [models.Index(fields=["created_at"])]
+
+
+class WordKnown(models.Model):
+    """«مرور واژه‌ها»: a glossary word the learner said they know («بلدم»), per book; «دوباره» turns it off (never deleted)."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="known_words")
+    book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
+    term = models.CharField("واژه", max_length=120)
+    known = models.BooleanField("بلد است", default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "واژه‌ی بلد"
+        verbose_name_plural = "واژه‌های بلد"
+        unique_together = [("user", "book", "term")]

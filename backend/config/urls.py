@@ -70,6 +70,7 @@ api = [
     path("me/library/", study.library),
     path("me/stats/", study.stats),
     path("books/<str:slug>/offline/", study.offline_bundle),
+    path("books/<str:slug>/words/me/", study.known_words),
     # Sales
     path("offers/", commerce.offers),
     path("plans/", commerce.plans),

@@ -235,7 +235,12 @@ export default function Home() {
             {today.needs_review.items.map((item, i) => (
               <Pressable
                 key={item.id}
-                onPress={() => router.push(`/section/${item.id}`)}
+                onPress={() =>
+                  // Wrong answers: just those tests; a section read long ago: the section itself.
+                  item.reason === 'mistakes' && item.question_ids?.length
+                    ? router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: String(item.id), ids: item.question_ids.join(',') } })
+                    : router.push(`/section/${item.id}`)
+                }
                 style={[styles.needsRow, i > 0 && styles.needsRowLine]}
                 accessibilityRole="button"
               >

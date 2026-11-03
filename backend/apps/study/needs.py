@@ -29,15 +29,17 @@ def needs_review(request, limit: int = LIMIT) -> dict:
     seen: set[int] = set()
 
     open_ids = [qid for qid, e in notebook(user).items() if e["state"] == OPEN]
-    wrong = Counter(
-        Question.objects.filter(id__in=open_ids, is_archived=False).values_list("node_id", flat=True)
-    )
+    by_node: dict[int, list[int]] = {}
+    for qid, node_id in Question.objects.filter(id__in=open_ids, is_archived=False).values_list("id", "node_id"):
+        by_node.setdefault(node_id, []).append(qid)
+    wrong = Counter({n: len(q) for n, q in by_node.items()})
     nodes = ContentNode.objects.in_bulk(list(wrong))
     for node_id, count in wrong.most_common():
         node = nodes.get(node_id)
         if not node or not _map_for(request, node).readable(node_id):
             continue
-        items.append(_item(request, node, "mistakes", mistakes=count))
+        # The tests themselves, so the app opens just those.
+        items.append({**_item(request, node, "mistakes", mistakes=count), "question_ids": sorted(by_node[node_id])})
         seen.add(node_id)
 
     cutoff = timezone.now() - timedelta(days=OLD_DAYS)

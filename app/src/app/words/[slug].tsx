@@ -7,10 +7,12 @@ import { endpoints } from '../../api/endpoints';
 import { Text } from '../../components/Text';
 import { Button, Empty, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { useApi } from '../../lib/useApi';
+import { useAuth } from '../../lib/auth';
+import { sendOrQueue } from '../../lib/network';
 import { colors, radius, rtl, toPersianDigits } from '../../theme';
 
 type Term = { fa: string; en: string; meaning: string; section_id: number; section_title: string };
-/** Per book: the words the learner said they know («بلدم»), kept on this device only. */
+/** Per book: the words the learner said they know («بلدم»): on this device, and on the account when signed in. */
 const KNOWN_KEY = (slug: string) => `limo.words.${slug}`;
 const ROUND = 20;
 
@@ -22,6 +24,7 @@ const ROUND = 20;
 export default function Words() {
   const { slug, chapter } = useLocalSearchParams<{ slug: string; chapter?: string }>();
   const { data, error, loading, retry } = useApi(() => endpoints.glossary(String(slug), chapter), [slug, chapter]);
+  const { user } = useAuth();
   const [known, setKnown] = useState<Set<string> | null>(null);
   const [english, setEnglish] = useState(false);
   const [queue, setQueue] = useState<Term[] | null>(null);
@@ -31,10 +34,33 @@ export default function Words() {
   const flip = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    AsyncStorage.getItem(KNOWN_KEY(String(slug)))
-      .then((v) => setKnown(new Set<string>(v ? JSON.parse(v) : [])))
-      .catch(() => setKnown(new Set()));
-  }, [slug]);
+    let alive = true;
+    (async () => {
+      let local: string[] = [];
+      try {
+        const v = await AsyncStorage.getItem(KNOWN_KEY(String(slug)));
+        local = v ? JSON.parse(v) : [];
+      } catch {
+        // a convenience only
+      }
+      let all = new Set(local);
+      if (user) {
+        try {
+          const server = (await endpoints.knownWords(String(slug))).known;
+          // Words known only on this phone (from before signing in, or offline) go up once.
+          const missing = local.filter((w) => !server.includes(w));
+          all = new Set([...server, ...missing]);
+          if (missing.length) endpoints.markWords(String(slug), missing, true).catch(() => undefined);
+        } catch {
+          // offline: this phone's list
+        }
+      }
+      if (alive) setKnown(all);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [slug, user]);
 
   // A round: the words not yet known, shuffled, then (if there is room) known ones for a refresher.
   const start = () => {
@@ -55,9 +81,10 @@ export default function Words() {
 
   const knownCount = useMemo(() => (data && known ? data.terms.filter((t) => known.has(t.fa)).length : 0), [data, known]);
 
-  const save = (next: Set<string>) => {
+  const save = (next: Set<string>, term: string, ok: boolean) => {
     setKnown(next);
     AsyncStorage.setItem(KNOWN_KEY(String(slug)), JSON.stringify([...next])).catch(() => undefined);
+    if (user) sendOrQueue(`books/${encodeURIComponent(String(slug))}/words/me/`, { term, known: ok });
   };
   const turn = () => {
     setOpen(true);
@@ -78,7 +105,7 @@ export default function Words() {
         return copy;
       });
     }
-    save(next);
+    save(next, term.fa, ok);
     flip.setValue(0);
     setOpen(false);
     setPos((p) => p + 1);

@@ -26,6 +26,7 @@
  * Formulas: lib/expr.ts. Checked by scripts/plot-check.ts.
  */
 import { compile, ExprError, value, type Compiled } from './expr';
+import { evalAt, factor, parseTransfer, TransferError, type Rational } from './transfer';
 
 export type Extension = 'none' | 'simple' | 'even' | 'odd';
 export type Curve = {
@@ -72,6 +73,9 @@ export type PlotSpec = {
   plane?: 'z' | 's';
   roc?: Roc;
   bode: boolean;
+  nyquist: boolean;
+  /** H(s) as written («بود: 10/(s+10)»); its poles and zeros fill zeros, poles and gain. */
+  tf?: Rational;
   gain: number;
   phase: boolean;
   straight: boolean;
@@ -105,9 +109,10 @@ const KEYS: Record<string, string> = {
   حفره: 'holes',
   ضربه: 'impulse', ضربهها: 'impulse', قطارضربه: 'train', مقادیر: 'seq', دنباله: 'seq',
   صفر: 'zero', صفرها: 'zero', قطب: 'pole', قطبها: 'pole', ناحیه: 'roc', ناحیهیهمگرایی: 'roc', roc: 'roc',
-  صفحه: 'plane', بود: 'bode', بد: 'bode', bode: 'bode', بهره: 'gain', فاز: 'phase', مجانبی: 'straight',
+  صفحه: 'plane', بود: 'bode', بد: 'bode', bode: 'bode', نایکوئیست: 'nyquist', نایکویست: 'nyquist', nyquist: 'nyquist',
+  تابعتبدیل: 'tf', بهره: 'gain', فاز: 'phase', مجانبی: 'straight',
 };
-const PLOT_KEYS = ['fn', 'impulse', 'train', 'seq', 'zero', 'pole'];
+const PLOT_KEYS = ['fn', 'impulse', 'train', 'seq', 'zero', 'pole', 'bode', 'nyquist', 'tf'];
 
 /** Splits at commas outside brackets: «(1, 2)، sqrt(2)» → «(1, 2)», «sqrt(2)». */
 function splitTop(v: string): string[] {
@@ -201,7 +206,7 @@ export function parsePlot(body: string): PlotSpec | null {
   if (!keyed.some((x) => x && PLOT_KEYS.includes(x.k))) return null;
   const spec: PlotSpec = {
     curves: [], piAxis: false, variable: 'x', jumps: 'break', grid: false, numbers: { x: false, y: false }, marks: { x: [], y: [] }, autoHoles: true, height: 225, points: [], asymptotes: [], caption: [],
-    impulses: [], trains: [], zeros: [], poles: [], bode: false, gain: 1, phase: true, straight: true,
+    impulses: [], trains: [], zeros: [], poles: [], bode: false, nyquist: false, gain: 1, phase: true, straight: true,
   };
   const range = (v: string): [number, number] => {
     const parts = v.split(/\s+تا\s+|\s+to\s+|\.\.|…/);
@@ -287,8 +292,15 @@ export function parsePlot(body: string): PlotSpec | null {
           for (const item of splitTop(v)) (k === 'zero' ? spec.zeros : spec.poles).push(...parseComplex(item));
           break;
         case 'roc': spec.roc = parseRoc(v); break;
+        case 'tf': spec.tf = parseTransfer(v); break;
         case 'plane': spec.plane = /s/i.test(v) ? 's' : 'z'; break;
-        case 'bode': spec.bode = !/^(خیر|نه|no)$/i.test(v.trim()); break;
+        case 'bode': case 'nyquist': {
+          const off = /^(خیر|نه|no)$/i.test(v.trim());
+          if (k === 'bode') spec.bode = !off; else spec.nyquist = !off;
+          // «بود: 10/(s+10)»: the transfer function itself; «بود: بله» uses the zeros, poles and gain lines.
+          if (!off && !yes(v)) spec.tf = parseTransfer(v);
+          break;
+        }
         case 'gain': spec.gain = value(v); break;
         case 'phase': spec.phase = yes(v); break;
         case 'straight': spec.straight = yes(v); break;
@@ -312,10 +324,16 @@ export function parsePlot(body: string): PlotSpec | null {
         }
       }
     } catch (e) {
-      if (e instanceof PlotError || e instanceof ExprError) throw new PlotError(e.message + where);
+      if (e instanceof PlotError || e instanceof ExprError || e instanceof TransferError) throw new PlotError(e.message + where);
       throw e;
     }
   });
+  if (spec.tf && !spec.zeros.length && !spec.poles.length) {
+    const f = factor(spec.tf);
+    spec.zeros = f.zeros;
+    spec.poles = f.poles;
+    spec.gain = f.gain;
+  }
   for (const c of spec.curves) {
     if ((c.extension !== 'none' || c.period) && !c.on) {
       if (c.period && c.extension !== 'even' && c.extension !== 'odd') c.on = [0, c.period];
@@ -504,7 +522,7 @@ export function renderPlot(body: string, inline: (s: string) => string): string 
   let html: string | null;
   try {
     const spec = parsePlot(body);
-    html = !spec ? null : spec.bode ? drawBode(spec, inline) : !spec.curves.length && !spec.impulses.length && !spec.trains.length && !spec.seq && (spec.zeros.length || spec.poles.length) ? drawPoleZero(spec, inline) : draw(spec, inline);
+    html = !spec ? null : spec.bode ? drawBode(spec, inline) : spec.nyquist ? drawNyquist(spec, inline) : !spec.curves.length && !spec.impulses.length && !spec.trains.length && !spec.seq && (spec.zeros.length || spec.poles.length) ? drawPoleZero(spec, inline) : draw(spec, inline);
   } catch (e) {
     html = `<div class="plot-error">⚠ نمودار کشیده نشد: ${esc((e as Error).message)}</div>`;
   }
@@ -843,7 +861,15 @@ function drawBode(spec: PlotSpec, inline: (s: string) => string): string {
   const sx = (w: number) => L.l + ((Math.log10(w) - lx0) / (lx1 - lx0)) * pw;
   const N = 480;
   const ws = Array.from({ length: N + 1 }, (_, i) => 10 ** (lx0 + ((lx1 - lx0) * i) / N));
-  const vals = ws.map((w) => bodeAt(spec, w));
+  const vals = ws.map((w) => {
+    const v = bodeAt(spec, w);
+    if (!spec.tf) return v;
+    // Written as H(s): the exact curve straight from it (the roots only give the straight lines).
+    const h = evalAt(spec.tf, w);
+    const p = (Math.atan2(h.im, h.re) * 180) / Math.PI;
+    // The same branch as the phase added up from the roots (so 1/s² starts at −180°, not +180°).
+    return { ...v, db: 20 * Math.log10(Math.hypot(h.re, h.im)), phase: p + 360 * Math.round((v.phase - p) / 360) };
+  });
   // Phase without the jumps of ±360° that atan2 makes.
   for (let i = 1; i < vals.length; i++) {
     while (vals[i].phase - vals[i - 1].phase > 180) vals[i].phase -= 360;
@@ -895,6 +921,80 @@ function drawBode(spec: PlotSpec, inline: (s: string) => string): string {
   const legend = spec.straight
     ? `<div class="plot-legend"><span><svg width="22" height="8" viewBox="0 0 22 8"><line class="cv c-blue" x1="1" y1="4" x2="21" y2="4" stroke-width="2.2"/></svg>دقیق</span><span><svg width="22" height="8" viewBox="0 0 22 8"><line class="cv c-red" x1="1" y1="4" x2="21" y2="4" stroke-width="1.6" stroke-dasharray="5 3"/></svg>مجانبی (خط‌های راست)</span></div>`
     : '';
+  const caption = spec.caption.length ? `<div class="plot-caption">${inline(spec.caption.join(' '))}</div>` : '';
+  return `<div class="plot"><div class="plot-svg" dir="ltr">${svg}</div>${legend}${caption}</div>`;
+}
+
+/** Nyquist plot: H(jω) in the complex plane for ω from 0 to ∞ (solid, with arrows) and its mirror for ω < 0 (dashed),
+ * with the point −1 marked. Same scale both ways. */
+function drawNyquist(spec: PlotSpec, inline: (s: string) => string): string {
+  const H = (w: number) => {
+    if (spec.tf) return evalAt(spec.tf, w);
+    const b = bodeAt(spec, w);
+    const m = 10 ** (b.db / 20), a = (b.phase * Math.PI) / 180;
+    return { re: m * Math.cos(a), im: m * Math.sin(a) };
+  };
+  const corners = [...spec.zeros, ...spec.poles].map((c) => Math.hypot(c.re, c.im)).filter((r) => r > 0);
+  const lo = 10 ** (Math.floor(Math.log10(Math.min(...corners, 1))) - 3), hi = 10 ** (Math.ceil(Math.log10(Math.max(...corners, 1))) + 3);
+  const N = 900;
+  const pts = Array.from({ length: N + 1 }, (_, i) => H(10 ** (Math.log10(lo) + ((Math.log10(hi) - Math.log10(lo)) * i) / N))).filter(
+    (p) => Number.isFinite(p.re) && Number.isFinite(p.im),
+  );
+  // The window: the curve around the corners (a decade either side), and −1 and 0. With a pole on the jω axis the curve
+  // runs off to infinity at low ω: then three quarters of it, so −1 and the turn near the origin stay readable.
+  const cmin = Math.min(...corners, 1), cmax = Math.max(...corners, 1);
+  const near = Array.from({ length: 200 }, (_, i) => H(10 ** (Math.log10(cmin / 10) + ((Math.log10(cmax * 10) - Math.log10(cmin / 10)) * i) / 199)))
+    .filter((p) => Number.isFinite(p.re) && Number.isFinite(p.im))
+    .map((p) => Math.max(Math.abs(p.re), Math.abs(p.im)))
+    .sort((a, b) => a - b);
+  const onAxis = spec.poles.some((p) => Math.abs(p.re) < 1e-9);
+  const big = near.length ? (onAxis ? near[Math.floor(0.75 * (near.length - 1))] : near[near.length - 1]) : 1;
+  const reach = Math.max(1.3, 1.15 * big);
+  const Hh = 300, pw = W - M.l - M.r, ph = Hh - M.t - M.b;
+  const k = ph / (2 * reach), xr = pw / (2 * k);
+  const sx = (x: number) => M.l + pw / 2 + x * k, sy = (y: number) => M.t + ph / 2 - y * k;
+  const id = `pc${++uid}`;
+  const clampP = (v: number) => Math.max(-4 * Hh, Math.min(5 * Hh, v));
+  const line = (list: { re: number; im: number }[], mirror: boolean) =>
+    list.map((p, i) => `${i ? 'L' : 'M'}${clampP(sx(p.re)).toFixed(1)},${clampP(sy(mirror ? -p.im : p.im)).toFixed(1)}`).join('');
+  const parts: string[] = [`<rect class="pbg" x="0" y="0" width="${W}" height="${Hh}" rx="10"/>`];
+  if (spec.grid) {
+    for (const t of ticks(-xr, xr, false, 8)) parts.push(`<line class="grid" x1="${sx(t.at).toFixed(1)}" y1="${M.t}" x2="${sx(t.at).toFixed(1)}" y2="${M.t + ph}"/>`);
+    for (const t of ticks(-reach, reach, false, 6)) parts.push(`<line class="grid" x1="${M.l}" y1="${sy(t.at).toFixed(1)}" x2="${M.l + pw}" y2="${sy(t.at).toFixed(1)}"/>`);
+  }
+  parts.push(`<line class="ax" x1="${M.l}" y1="${sy(0).toFixed(1)}" x2="${M.l + pw + 6}" y2="${sy(0).toFixed(1)}"/>`);
+  parts.push(`<path class="axh" d="M${M.l + pw + 10},${sy(0).toFixed(1)} l-7,-3.5 v7 z"/>`);
+  parts.push(`<line class="ax" x1="${sx(0).toFixed(1)}" y1="${M.t + ph}" x2="${sx(0).toFixed(1)}" y2="${M.t - 6}"/>`);
+  parts.push(`<path class="axh" d="M${sx(0).toFixed(1)},${M.t - 10} l-3.5,7 h7 z"/>`);
+  parts.push(`<text class="lab" x="${M.l + pw + 4}" y="${(sy(0) - 8).toFixed(1)}" text-anchor="end">Re</text>`);
+  parts.push(`<text class="lab" x="${(sx(0) + 8).toFixed(1)}" y="${M.t + 2}">Im</text>`);
+  parts.push(`<clipPath id="${id}"><rect x="${M.l}" y="${M.t}" width="${pw}" height="${ph}"/></clipPath><g clip-path="url(#${id})">`);
+  parts.push(`<path class="cv c-blue" d="${line(pts, true)}" stroke-width="1.6" stroke-dasharray="6 4" opacity=".6"/>`);
+  parts.push(`<path class="cv c-blue" d="${line(pts, false)}" stroke-width="2.2"/>`);
+  // Arrows along ω > 0 (and the mirrored way on the dashed half), at a third and two thirds of the visible path.
+  const inView = pts.map((p, i) => ({ p, i })).filter(({ p }) => Math.abs(p.re) <= reach * 1.2 && Math.abs(p.im) <= reach * 1.2);
+  for (const f of [0.33, 0.66]) {
+    const at = inView[Math.floor(f * (inView.length - 1))];
+    if (!at || at.i + 1 >= pts.length) continue;
+    for (const mirror of [false, true]) {
+      const a = pts[at.i], b = pts[Math.min(pts.length - 1, at.i + 3)];
+      const x = sx(a.re), y = sy(mirror ? -a.im : a.im);
+      // On the mirrored half ω runs from −∞ up to 0, so its arrow points back along the drawn path.
+      const dx = (sx(b.re) - x) * (mirror ? -1 : 1), dy = (sy(mirror ? -b.im : b.im) - y) * (mirror ? -1 : 1);
+      const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+      parts.push(`<path class="f-blue" transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${ang.toFixed(1)})" d="M5,0 L-4,-4 L-4,4 Z"${mirror ? ' opacity=".6"' : ''}/>`);
+    }
+  }
+  parts.push('</g>');
+  // −1: what the plot is about (the critical point).
+  if (-1 >= -xr) {
+    parts.push(`<path class="pole" d="M${(sx(-1) - 4.5).toFixed(1)},${(sy(0) - 4.5).toFixed(1)}l9,9M${(sx(-1) + 4.5).toFixed(1)},${(sy(0) - 4.5).toFixed(1)}l-9,9"/>`);
+    parts.push(`<text class="tk" x="${sx(-1).toFixed(1)}" y="${(sy(0) + 16).toFixed(1)}" text-anchor="middle">−1</text>`);
+  }
+  if (spec.numbers.x) for (const t of ticks(-xr, xr, false, 8)) if (Math.abs(t.at) > 1e-12 && Math.abs(t.at + 1) > 1e-9) parts.push(`<text class="tk" x="${sx(t.at).toFixed(1)}" y="${(sy(0) + 15).toFixed(1)}" text-anchor="middle">${t.text}</text>`);
+  if (spec.numbers.y) for (const t of ticks(-reach, reach, false, 6)) if (Math.abs(t.at) > 1e-12) parts.push(`<text class="tk" x="${(sx(0) - 6).toFixed(1)}" y="${(sy(t.at) + 4).toFixed(1)}" text-anchor="end">${t.text}</text>`);
+  const svg = `<svg viewBox="0 0 ${W} ${Hh}" xmlns="http://www.w3.org/2000/svg" role="img">${parts.join('')}</svg>`;
+  const legend = `<div class="plot-legend"><span><svg width="22" height="8" viewBox="0 0 22 8"><line class="cv c-blue" x1="1" y1="4" x2="21" y2="4" stroke-width="2.2"/></svg>ω &gt; 0</span><span><svg width="22" height="8" viewBox="0 0 22 8"><line class="cv c-blue" x1="1" y1="4" x2="21" y2="4" stroke-width="1.6" stroke-dasharray="5 3" opacity=".6"/></svg>ω &lt; 0</span></div>`;
   const caption = spec.caption.length ? `<div class="plot-caption">${inline(spec.caption.join(' '))}</div>` : '';
   return `<div class="plot"><div class="plot-svg" dir="ltr">${svg}</div>${legend}${caption}</div>`;
 }

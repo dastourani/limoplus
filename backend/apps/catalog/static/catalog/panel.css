@@ -143,3 +143,8 @@ table.lp-table { width: 100%; border-collapse: collapse; } table.lp-table td, ta
 .item .num .pick { margin: 0 0 0 6px; vertical-align: middle; }
 .item.picked { outline: 2px solid #E8B923; border-radius: 12px; }
 .cm-bulk select, .item .acts select { max-width: 240px; }
+
+/* «نمودار» starting plots */
+.plot-menu { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; background: #FFF9E3; border: 1px solid #F1DE94; border-radius: 10px; margin: 4px 0; }
+.plot-menu button { border: 1px solid #E3E8DE; background: #fff; border-radius: 999px; padding: 4px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+.plot-menu button:hover { background: #F5C518; }

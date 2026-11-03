@@ -4,7 +4,7 @@
  *   kind="paper": a page of the section just finished (going to the next section)
  * Drawn with transforms only (native driver), so it stays smooth on low-end phones. Tapping skips it.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode, useLayoutEffect } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { FoldLayer, corner, useFold } from './Fold';
@@ -59,7 +59,10 @@ export function PageTurn({
   const { width: W, height: H } = useWindowDimensions();
   const fold = useFold();
   const [done, setDone] = useState(false);
-  fold.setSize(W, H);
+  // Before the first paint, not during render: setting animated values while rendering updates other components.
+  useLayoutEffect(() => {
+    fold.setSize(W, H);
+  }, [fold, W, H]);
 
   useEffect(() => {
     if (hold) return;

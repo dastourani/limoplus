@@ -3,6 +3,7 @@
  * Run: npx --yes esbuild@0.28.2 scripts/plot-check.ts --bundle --platform=node --outfile=/tmp/plot-check.js && node /tmp/plot-check.js
  */
 import { compile, ExprError } from '../src/lib/expr';
+import { evalAt, parseTransfer, roots } from '../src/lib/transfer';
 import { bodeAt, curveFunction, findHoles, fourierSums, parseComplex, parsePlot, renderPlot, segments } from '../src/lib/plot';
 
 let failed = 0, passed = 0;
@@ -174,6 +175,25 @@ ok(seq.seq!.start === -1 && seq.seq!.values.join() === '1,2,3' && seq.variable =
 const stems = renderPlot('تابع: u(n)\nمتغیر: n\nبازه: -3 تا 3', (s) => s)!;
 ok((stems.match(/<circle class="f-/g) ?? []).length === 7, 'stems at every whole n in view');
 ok(f('delta(n)', 0) === 1 && f('δ(n)', 1) === 0, 'δ[n]');
+
+// Transfer functions written as in the book.
+const tf = parseTransfer('10(s+1)/((s+10)(s+100))');
+ok(JSON.stringify(tf.num) === '[10,10]' && JSON.stringify(tf.den) === '[1000,110,1]', `H(s) read into polynomials (got ${JSON.stringify(tf)})`);
+ok(near(Math.hypot(evalAt(tf, 0).re, evalAt(tf, 0).im), 0.01), 'H(0) = 10/1000');
+const rts = roots([1000, 110, 1]).map((z) => z.re).sort((a, b) => a - b);
+ok(near(rts[0], -100, 1e-9) && near(rts[1], -10, 1e-9), 'roots of s² + 110s + 1000: −100 and −10');
+const cr = roots([1, 0, 1]).map((z) => +z.im.toFixed(9)).sort((a, b) => a - b);
+ok(cr[0] === -1 && cr[1] === 1, 'roots of s² + 1: ±j');
+ok(JSON.stringify(parseTransfer('1/s^2').den) === '[0,0,1]' && JSON.stringify(parseTransfer('H(s) = 2s/(s+1)').num) === '[0,2]', 'powers, «H(s) =», 2s');
+ok(/plot-error/.test(renderPlot('بود: 10/(x+1)', (s) => s)!), 'a letter other than s is an error');
+const bodeTf = renderPlot('بود: 10/(s+10)', (s) => s)!;
+ok(!/plot-error/.test(bodeTf) && /class="frame"/.test(bodeTf), 'Bode from H(s)');
+const p2 = parsePlot('بود: 100/(s(s+10))')!;
+ok(p2.poles.length === 2 && near(p2.gain, 100), 'poles and gain from H(s)');
+ok(near(bodeAt(p2, 1).phase, -90 - (Math.atan(0.1) * 180) / PI, 1e-6), 'phase of 100/(s(s+10)) at ω = 1');
+const nyq = renderPlot('نایکوئیست: 10/((s+1)(s+2))', (s) => s)!;
+ok(!/plot-error/.test(nyq) && /−1/.test(nyq) && /stroke-dasharray="6 4"/.test(nyq), 'Nyquist: curve, mirror and −1');
+ok(/class="pole"/.test(renderPlot('تابع تبدیل: (s+1)/(s^2+s+1)', (s) => s)!), 'pole-zero plot from H(s)');
 
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

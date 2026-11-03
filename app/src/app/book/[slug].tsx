@@ -529,6 +529,9 @@ function ChapterCard({
               <Pressable style={styles.action} onPress={() => router.push(`/flashcards/${chapter.id}`)}>
                 <Text style={styles.actionText}>فلش‌کارت</Text>
               </Pressable>
+              <Pressable style={styles.action} onPress={() => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(chapter.id) } })}>
+                <Text style={styles.actionText}>کادرها</Text>
+              </Pressable>
             </View>
           )}
         </>
@@ -638,7 +641,8 @@ const styles = StyleSheet.create({
   sectionTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.ink },
   sectionMeta: { fontSize: 12, color: colors.muted, flexShrink: 0 },
   reviewLine: { fontSize: 12, fontWeight: '700', color: colors.greenDark },
-  actions: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
-  action: { flex: 1, backgroundColor: colors.ground, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  // Two by two, so «تمرین کل فصل» never wraps on a small phone.
+  actions: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
+  action: { flexGrow: 1, flexBasis: '45%', backgroundColor: colors.ground, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   actionText: { fontWeight: '700', color: colors.ink, fontSize: 15 },
 });
