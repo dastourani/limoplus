@@ -48,6 +48,9 @@ export type NodeSummary = {
 export type ChapterSummary = NodeSummary & { sections: NodeSummary[]; has_overview?: boolean; term_count?: number };
 export type Shelf = { id: number | null; title: string; books: BookListItem[] };
 export type BookDetail = BookListItem & {
+  id: number;
+  /** Flashcards of the learner's finished (green) sections: «مرور فلش‌کارت‌های کتاب». */
+  done_card_count: number;
   about: string;
   majors: string[];
   chapters: ChapterSummary[];
@@ -390,7 +393,8 @@ export const endpoints = {
   mistakeQuestions: (book = '') => api<{ questions: Question[]; locked_count: number }>(`me/mistakes/questions/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
   mistakeReason: (questionId: number, reason: string) => api<{ reason: string }>(`me/mistakes/${questionId}/reason/`, { body: { reason } }),
   answer: (questionId: number, choiceId: number) => api<AnswerResult>(`questions/${questionId}/answer/`, { body: { choice_id: choiceId } }),
-  flashcards: (nodeId: number) => api<{ flashcards: Flashcard[]; locked_count: number }>(`nodes/${nodeId}/flashcards/`),
+  flashcards: (nodeId: number, doneOnly = false) =>
+    api<{ flashcards: Flashcard[]; locked_count: number }>(`nodes/${nodeId}/flashcards/${doneOnly ? '?done=1' : ''}`),
   banners: () => api<Banner[]>('banners/'),
   bannerClick: (id: number) => api<{ ok: boolean }>(`banners/${id}/click/`, { method: 'POST' }),
   health: (baseUrl?: string) => api<{ status: string }>('health/', { baseUrl }),

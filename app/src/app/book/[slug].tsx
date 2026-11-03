@@ -42,7 +42,7 @@ export default function Book() {
   const [offline, setOffline] = useState<OfflineBook | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const { confirm } = useFeedback();
+  const { confirm, toast } = useFeedback();
   const { width } = useWindowDimensions();
   const [notify, setNotify] = useState<{ on: boolean; canCancel: boolean } | null>(null);
   const [aboutOpen, setAboutOpen] = useState(true);
@@ -250,6 +250,24 @@ export default function Book() {
 
           {!book.is_coming_soon && (
             <View style={styles.shortcuts}>
+              {/* The book's flashcards, only from finished (green) sections: what was learned gets reviewed. */}
+              {!!user && book.chapters.some((c) => c.flashcard_count || c.sections.some((s) => s.flashcard_count)) && (
+                <Pressable
+                  onPress={() =>
+                    book.done_card_count
+                      ? router.push({ pathname: '/flashcards/[nodeId]', params: { nodeId: String(book.id), done: '1' } })
+                      : toast('هر بخشی را که تمام کنی (تیک سبز)، فلش‌کارت‌هایش اینجا برای مرور می‌آید.')
+                  }
+                  style={[styles.shortcut, !book.done_card_count && { opacity: 0.55 }]}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !book.done_card_count }}
+                >
+                  <Icon name="layers" size={18} color={colors.ink} />
+                  <Text style={styles.shortcutText}>
+                    {book.done_card_count ? `مرور فلش‌کارت‌ها (${toPersianDigits(book.done_card_count)})` : 'مرور فلش‌کارت‌ها'}
+                  </Text>
+                </Pressable>
+              )}
               <Pressable onPress={() => router.push(`/glossary/${book.slug}`)} style={styles.shortcut} accessibilityRole="button">
                 <Icon name="languages" size={18} color={colors.ink} />
                 <Text style={styles.shortcutText}>واژه‌نامه‌ی کتاب</Text>

@@ -217,8 +217,19 @@ def book_detail(request, slug):
             "reviews": _reviews_in_book(request, book),
             "sample_count": _sample_count(access, book),
             "share_link": ShareSettings.link_for(book),
+            "id": book.id,
+            # «مرور فلش‌کارت‌های کتاب»: only cards of finished (green) sections.
+            "done_card_count": _done_cards(access, _states[1]).count() if request.user.is_authenticated else 0,
         }
     )
+
+
+def _done_cards(access, done_ids):
+    """Flashcards of the sections this learner has finished (green tick), that they may read."""
+    from apps.learning.models import Flashcard
+
+    ids = [i for i in done_ids if access.visible(i) and access.readable(i)]
+    return Flashcard.objects.filter(node_id__in=ids, is_archived=False)
 
 
 def _sample_count(access, book) -> int:

@@ -713,6 +713,30 @@ class SectionStateTests(TestCase):
         self.assertEqual(sum(flags.values()), 1)
 
 
+    def test_book_flashcards_come_only_from_finished_sections(self):
+        from apps.learning.models import Flashcard
+
+        from .progress import needed
+
+        book = ContentNode.objects.get(slug="math-1")
+        s = self.section
+        cards = Flashcard.objects.filter(node=s, is_archived=False).count()
+        if not cards:
+            self.skipTest("the sample section has no flashcards")
+        data = self.client.get("/api/v1/books/math-1/").data
+        self.assertEqual(data["done_card_count"], 0)
+        self.assertEqual(self.client.get(f"/api/v1/nodes/{book.id}/flashcards/?done=1").data["flashcards"], [])
+        self.client.post(f"/api/v1/nodes/{s.id}/progress/", {"percent": 100, "done": True}, format="json")
+        qs = list(Question.objects.filter(node=s, is_archived=False))
+        for q in qs[: needed(len(qs))]:
+            self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.first().id}, format="json")
+        data = self.client.get("/api/v1/books/math-1/").data
+        self.assertIn(s.id, data["done_ids"])
+        self.assertEqual(data["done_card_count"], cards)
+        got = self.client.get(f"/api/v1/nodes/{data['id']}/flashcards/?done=1").data["flashcards"]
+        self.assertEqual({c["node_id"] for c in got}, {s.id}, "only the green section's cards")
+
+
 class StudyTimeTests(TestCase):
     setUp = StudyTests.setUp
     tearDown = StudyTests.tearDown

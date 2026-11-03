@@ -147,6 +147,11 @@ def node_flashcards(request, node_id):
     if not access.visible(node.id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
     cards = Flashcard.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False).order_by("node__path", "order", "id")
+    if request.query_params.get("done") == "1":
+        # «مرور فلش‌کارت‌های کتاب»: only sections the learner has finished (green tick); nothing for a guest.
+        from apps.study.progress import section_states
+
+        cards = cards.filter(node_id__in=section_states(request.user, access, request)[1])
     items, locked = [], 0
     for f in cards:
         if not _usable(access, f):

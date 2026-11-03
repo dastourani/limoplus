@@ -9,9 +9,12 @@ import { useApi } from '../../lib/useApi';
 
 /** Flashcards of a section or chapter. Due and new cards first, then the weakest boxes. */
 export default function Flashcards() {
-  const { nodeId } = useLocalSearchParams<{ nodeId: string }>();
+  // ?done=1: a whole book, but only the cards of sections the learner has finished (green tick).
+  const { nodeId, done } = useLocalSearchParams<{ nodeId: string; done?: string }>();
+  const doneOnly = done === '1';
+  const title = doneOnly ? 'فلش‌کارت‌های کتاب' : 'فلش‌کارت';
   const { user } = useAuth();
-  const { data, error, loading, retry } = useApi(() => endpoints.flashcards(Number(nodeId)), [nodeId]);
+  const { data, error, loading, retry } = useApi(() => endpoints.flashcards(Number(nodeId), doneOnly), [nodeId, doneOnly]);
   const [state, setState] = useState<FlashcardState | null>(null);
   const [order, setOrder] = useState<Flashcard[] | null>(null);
 
@@ -34,19 +37,25 @@ export default function Flashcards() {
       .catch(() => setOrder(data.flashcards));
   }, [data, user, nodeId]);
 
-  if (loading || (data && !order)) return <Screen><Header title="فلش‌کارت" /><Loading /></Screen>;
-  if (error) return <Screen><Header title="فلش‌کارت" /><ErrorState message={error.message} onRetry={retry} /></Screen>;
+  if (loading || (data && !order)) return <Screen><Header title={title} /><Loading /></Screen>;
+  if (error) return <Screen><Header title={title} /><ErrorState message={error.message} onRetry={retry} /></Screen>;
   if (order!.length === 0) {
     return (
       <Screen>
-        <Header title="فلش‌کارت" />
-        <ErrorState icon={data!.locked_count ? 'lock' : 'layers'} message={data!.locked_count ? 'فلش‌کارت‌های این بخش در نسخه‌ی کامل کتاب است.' : 'برای این بخش هنوز فلش‌کارتی نیست.'} />
+        <Header title={title} />
+        <ErrorState icon={data!.locked_count ? 'lock' : 'layers'} message={
+            doneOnly
+              ? 'هر بخشی را که تمام کنی (تیک سبز)، فلش‌کارت‌هایش اینجا می‌آید.'
+              : data!.locked_count
+                ? 'فلش‌کارت‌های این بخش در نسخه‌ی کامل کتاب است.'
+                : 'برای این بخش هنوز فلش‌کارتی نیست.'
+          } />
       </Screen>
     );
   }
   return (
     <FlashcardDeck
-      title="فلش‌کارت"
+      title={title}
       cards={order!}
       state={Object.fromEntries(Object.entries(state?.cards ?? {}).map(([id, c]) => [id, { box: c.box, hints: c.hints }]))}
       newHints={state?.new_hints}
