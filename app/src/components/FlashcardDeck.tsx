@@ -58,6 +58,7 @@ export function FlashcardDeck({
   reported: initialReported = [],
   puzzle = true,
   next,
+  onTests,
 }: {
   title: string;
   cards: Flashcard[];
@@ -68,6 +69,8 @@ export function FlashcardDeck({
   puzzle?: boolean;
   /** What comes after the last card (e.g. the questions of «فقط ۵ دقیقه»). */
   next?: { label: string; onPress: () => void };
+  /** «تست‌های این نکته»: practise the tests linked to a card. */
+  onTests?: (card: Flashcard) => void;
 }) {
   const { user } = useAuth();
   const celebrate = useCelebrate();
@@ -267,7 +270,13 @@ export function FlashcardDeck({
         </Animated.View>
         {/* On screen only: the shared image carries just the brand, never the reader's phone number. */}
         <Watermark text={user?.phone || 'لیموخوان'} />
-        <View style={{ alignSelf: 'center', marginTop: 12 }}>
+        <View style={{ alignSelf: 'center', marginTop: 12, flexDirection: 'row-reverse', gap: 10, alignItems: 'center' }}>
+          {!!onTests && flipped && !!card!.question_ids?.length && (
+            <Pressable onPress={() => onTests(card!)} style={styles.testsBtn} accessibilityRole="button">
+              <Icon name="target" size={16} color="#3B44B8" />
+              <Text style={styles.testsText}>تست‌های این نکته ({toPersianDigits(card!.question_ids!.length)})</Text>
+            </Pressable>
+          )}
           <ReportButton
             reported={reported.includes(card!.id)}
             label="گزارش اشکال در این کارت"
@@ -299,6 +308,8 @@ export function FlashcardDeck({
 }
 
 const styles = StyleSheet.create({
+  testsBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: '#EEF0FC' },
+  testsText: { fontSize: 13, fontWeight: '700', color: '#3B44B8' },
   puzzleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 20 },
   puzzleText: { flex: 1, fontSize: 13, color: colors.muted },
   stage: { flex: 1, padding: 22, justifyContent: 'center' },

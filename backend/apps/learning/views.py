@@ -29,6 +29,9 @@ def _share_place(access, q) -> dict:
     return {"book": access.book.title, "chapter": chapter.title if chapter else "", "chapter_number": chapter.position if chapter else None}
 
 
+CARDS_PER_MISTAKE = 3
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def node_questions(request, node_id):
@@ -41,6 +44,9 @@ def node_questions(request, node_id):
         .prefetch_related("choices", "questionsource_set__source")
         .order_by("node__path", "order", "id")
     )
+    if request.query_params.get("ids"):
+        # «تست‌های این نکته»: only these (the tests linked to one flashcard).
+        questions = questions.filter(pk__in=[int(x) for x in request.query_params["ids"].split(",") if x.strip().isdigit()])
     items, locked = [], 0
     usable = []
     for q in questions:
@@ -125,6 +131,20 @@ def answer(request, question_id):
         StudyDay.touch(request.user, "answers")
 
     related = [f for f in question.flashcards.filter(is_archived=False) if _usable(access, f)]
+    # A wrong answer brings its key points back: up to three linked cards join today's review («مرور امروز»).
+    queued = 0
+    if request.user.is_authenticated and not picked.is_correct and related:
+        from django.utils import timezone
+
+        from apps.study.models import FlashcardReview
+
+        now = timezone.now()
+        for card in related[:CARDS_PER_MISTAKE]:
+            review, created = FlashcardReview.objects.get_or_create(user=request.user, flashcard=card, defaults={"box": 1, "due_at": now})
+            if created or review.due_at > now:
+                if not created:
+                    FlashcardReview.objects.filter(pk=review.pk).update(due_at=now)
+                queued += 1
     return Response(
         {
             "is_correct": picked.is_correct,
@@ -133,7 +153,10 @@ def answer(request, question_id):
             "explanation": media_urls(request, resolve_refs(request, question.node, question.explanation)),
             "quick_solution": media_urls(request, resolve_refs(request, question.node, question.quick_solution)),
             "alternative_view": media_urls(request, resolve_refs(request, question.node, question.alternative_view)),
+            # Tapping one opens the book's cards at it (a link never leaves the book).
             "flashcards": [{"id": f.id, "title": f.title} for f in related],
+            "book_id": access.book.id,
+            "cards_queued": queued,
             "node_id": question.node_id,
             "fixed": fixed,
             "corrected": ({**question.correction(), "answered_before": answered_before} if question.key_changed_at else None),
@@ -148,7 +171,14 @@ def node_flashcards(request, node_id):
     access = AccessMap(request.user, node)
     if not access.visible(node.id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-    cards = Flashcard.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False).order_by("node__path", "order", "id")
+    cards = (
+        Flashcard.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False)
+        .prefetch_related("questions")
+        .order_by("node__path", "order", "id")
+    )
+    if request.query_params.get("ids"):
+        # From «فلش‌کارت مرتبط» under a test's answer: these cards only.
+        cards = cards.filter(pk__in=[int(x) for x in request.query_params["ids"].split(",") if x.strip().isdigit()])
     if request.query_params.get("done") == "1":
         # «مرور فلش‌کارت‌های کتاب»: only sections the learner has finished (green tick); nothing for a guest.
         from apps.study.progress import section_states
@@ -161,8 +191,10 @@ def node_flashcards(request, node_id):
             continue
         items.append({"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula,
                       "node_id": f.node_id, "node_title": access.nodes[f.node_id].title if f.node_id in access.nodes else "",
-                      "chapter_number": chapter_number(request, access.nodes.get(f.node_id))})
-    return Response({"flashcards": items, "locked_count": locked})
+                      "chapter_number": chapter_number(request, access.nodes.get(f.node_id)),
+                      # «تست‌های این نکته»: the linked tests the learner may practise.
+                      "question_ids": [q.id for q in f.questions.all() if not q.is_archived and _usable(access, q)]})
+    return Response({"flashcards": items, "locked_count": locked, "book_id": access.book.id})
 
 
 @api_view(["GET"])

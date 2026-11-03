@@ -29,7 +29,8 @@ import { resultForView, type QuizViewState } from '../../lib/quizHtml';
 import { useApi } from '../../lib/useApi';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
-type Answer = { picked: number; result: QuizViewState['result'] };
+/** cards: the answer's linked flashcards (their book, and ids), opened from «فلش‌کارت مرتبط». */
+type Answer = { picked: number; result: QuizViewState['result']; cards?: { book: number; ids: number[] } };
 type Order = 'book' | 'shuffle' | 'wrong';
 const ORDERS: [Order, string][] = [
   ['book', 'ترتیب کتاب'],
@@ -38,7 +39,8 @@ const ORDERS: [Order, string][] = [
 ];
 
 export default function Quiz() {
-  const { nodeId, book: bookParam, q: openQuestion, session } = useLocalSearchParams<{ nodeId: string; book?: string; q?: string; session?: string }>();
+  // ?ids=…: only these tests (from a flashcard's «تست‌های این نکته»).
+  const { nodeId, book: bookParam, q: openQuestion, session, ids } = useLocalSearchParams<{ nodeId: string; book?: string; q?: string; session?: string; ids?: string }>();
   // /quiz/review?session=N: a chapter or book review, five questions at a time («۵ تست دیگر»).
   const review = nodeId === 'review';
   // /quiz/mistakes: the questions of the mistakes notebook (optionally one book), practised like a section's.
@@ -53,8 +55,8 @@ export default function Quiz() {
         ? endpoints.quick().then((r) => ({ questions: r.questions, locked_count: 0 }))
         : notebook
           ? endpoints.mistakeQuestions(bookParam ?? '')
-          : endpoints.questions(Number(nodeId)),
-    [nodeId, bookParam, session],
+          : endpoints.questions(Number(nodeId), ids),
+    [nodeId, bookParam, session, ids],
   );
   // A review grows by five when the learner asks for more; its result comes from the server when it ends.
   const [reviewQs, setReviewQs] = useState<Question[] | null>(null);
@@ -79,7 +81,7 @@ export default function Quiz() {
   const { style: pageStyle, turn } = usePageTurn();
 
   // Order of the questions: as in the book, shuffled (choices too), or only the ones not yet right.
-  const orderKey = `limo.quiz.${nodeId}.order`;
+  const orderKey = `limo.quiz.${nodeId}${ids ? `.${ids}` : ''}.order`;
   const [order, setOrder] = useState<{ order: Order; seed: number; ids?: number[] } | null>(null);
   useEffect(() => {
     AsyncStorage.getItem(orderKey)
@@ -223,7 +225,8 @@ export default function Quiz() {
     setAnswerError(null);
     try {
       const r = await endpoints.answer(q.id, choiceId);
-      setAnswers((a) => ({ ...a, [q.id]: { picked: choiceId, result: { ...resultForView(r), notes: !!(r.node_id ?? q.node_id) } } }));
+      const cards = r.book_id && r.flashcards.length ? { book: r.book_id, ids: r.flashcards.map((f) => f.id) } : undefined;
+      setAnswers((a) => ({ ...a, [q.id]: { picked: choiceId, result: { ...resultForView(r), notes: !!(r.node_id ?? q.node_id) }, cards } }));
       if (r.fixed?.step === 'settled') {
         // «اشتباهی که برطرف شد»: right again on a later day.
         play('pop');
@@ -258,7 +261,14 @@ export default function Quiz() {
 
   const onEvent = (e: QuizEvent) => {
     if (e.type === 'choose') choose(e.id);
-    else if (e.type === 'ref') {
+    else if (e.type === 'card') {
+      // The tapped card first, then the other cards of this answer.
+      const c = answers[q.id]?.cards;
+      if (c) {
+        const ids = [e.id, ...c.ids.filter((x) => x !== e.id)].join(',');
+        router.push({ pathname: '/flashcards/[nodeId]', params: { nodeId: String(c.book), ids, keep: '1' } });
+      }
+    } else if (e.type === 'ref') {
       if (e.node) router.push({ pathname: '/section/[id]', params: { id: e.node, find: '#' + e.name } });
     } else if (e.type === 'notes') {
       const node = q.node_id;

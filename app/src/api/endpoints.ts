@@ -129,6 +129,10 @@ export type AnswerResult = {
   quick_solution: string;
   alternative_view: string;
   flashcards: { id: number; title: string }[];
+  /** The book the linked cards belong to (opened with flashcards(book_id, …, ids)). */
+  book_id?: number;
+  /** Linked cards just added to today's review after a wrong answer. */
+  cards_queued?: number;
   node_id?: number;
   /** A question from the mistakes notebook answered right: what it did («settling»: comes back in due_in days;
    * «settled»: left the notebook; «early»: settling and not its day yet). days = since it went wrong. */
@@ -231,7 +235,17 @@ export type Mistakes = {
   reasons: { key: string; label: string }[];
 };
 /** node_title: the section the card belongs to (shown above «کارت ۲ از ۸»). */
-export type Flashcard = { id: number; title: string; point: string; formula: string; node_id?: number; node_title?: string; chapter_number?: number | null };
+export type Flashcard = {
+  id: number;
+  title: string;
+  point: string;
+  formula: string;
+  node_id?: number;
+  node_title?: string;
+  chapter_number?: number | null;
+  /** «تست‌های این نکته»: tests linked to the card. */
+  question_ids?: number[];
+};
 export type Banner = {
   id: number;
   title: string;
@@ -379,7 +393,7 @@ export const endpoints = {
     api<{ book: string; chapter?: string | null; terms: { fa: string; en: string; meaning: string; section_id: number; section_title: string }[] }>(
       `books/${encodeURIComponent(slug)}/glossary/${chapter ? `?chapter=${encodeURIComponent(chapter)}` : ''}`,
     ),
-  questions: (nodeId: number) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/`),
+  questions: (nodeId: number, ids?: string) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/${ids ? `?ids=${ids}` : ''}`),
   today: () => api<Today>('me/today/'),
   reviews: () => api<{ due: ReviewItem[]; today: ReviewItem[]; daily_cap: number }>('me/reviews/'),
   bookSamples: (slug: string) => api<{ book: string; questions: Question[] }>(`books/${encodeURIComponent(slug)}/samples/`),
@@ -396,8 +410,10 @@ export const endpoints = {
   mistakeQuestions: (book = '') => api<{ questions: Question[]; locked_count: number }>(`me/mistakes/questions/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
   mistakeReason: (questionId: number, reason: string) => api<{ reason: string }>(`me/mistakes/${questionId}/reason/`, { body: { reason } }),
   answer: (questionId: number, choiceId: number) => api<AnswerResult>(`questions/${questionId}/answer/`, { body: { choice_id: choiceId } }),
-  flashcards: (nodeId: number, doneOnly = false) =>
-    api<{ flashcards: Flashcard[]; locked_count: number }>(`nodes/${nodeId}/flashcards/${doneOnly ? '?done=1' : ''}`),
+  flashcards: (nodeId: number, doneOnly = false, ids?: string) =>
+    api<{ flashcards: Flashcard[]; locked_count: number; book_id?: number }>(
+      `nodes/${nodeId}/flashcards/${ids ? `?ids=${ids}` : doneOnly ? '?done=1' : ''}`,
+    ),
   banners: () => api<Banner[]>('banners/'),
   bannerClick: (id: number) => api<{ ok: boolean }>(`banners/${id}/click/`, { method: 'POST' }),
   health: (baseUrl?: string) => api<{ status: string }>('health/', { baseUrl }),

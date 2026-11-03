@@ -95,7 +95,11 @@ export function resultForView(r: AnswerResult): NonNullable<QuizViewState['resul
     correct_choice_id: r.correct_choice_id,
     is_correct: r.is_correct,
     tabs,
-    flashcards: r.flashcards.length ? `فلش‌کارت مرتبط: ${r.flashcards.map((f) => esc(f.title)).join('، ')}` : '',
+    // Each linked card opens (in the book's cards); after a wrong answer they are in today's review too.
+    flashcards: r.flashcards.length
+      ? `<span>فلش‌کارت مرتبط:</span> ${r.flashcards.map((f) => `<button class="fc-link" data-fc="${f.id}">${esc(f.title)}</button>`).join(' ')}` +
+        (r.cards_queued ? `<div class="fc-queued">${r.cards_queued === 1 ? 'به' : toPersianDigits(r.cards_queued) + ' تا به'} «مرور امروز» اضافه شد.</div>` : '')
+      : '',
     corrected: r.corrected ? correctionHtml(r.corrected, r.corrected.answered_before) : '',
   };
 }
@@ -136,7 +140,9 @@ export const QUIZ_CSS = `
 .quiz .tab { border: 0; border-radius: 999px; padding: 5px 12px; background: #FFFFFF88; font: inherit; font-size: 13px; font-weight: 700; color: #56655B; }
 .quiz .tab.on { background: #fff; color: #17201A; }
 .quiz .pane p { margin: 0 0 8px; }
-.quiz .related { font-size: 12px; color: #56655B; margin-top: 6px; }
+.quiz .related { font-size: 12px; color: #56655B; margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.quiz .fc-link { font: inherit; font-size: 12.5px; font-weight: 700; color: #3B44B8; background: #EEF0FC; border: 0; border-radius: 999px; padding: 5px 11px; cursor: pointer; }
+.quiz .fc-queued { flex-basis: 100%; color: #1F5E3A; }
 .quiz .to-notes { margin-top: 10px; border: 0; border-radius: 12px; padding: 8px 14px; background: #17201A; color: #F5C518; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
 .quiz .err { color: #9E2F2A; margin-top: 10px; }
 .quiz .report-row { display: flex; justify-content: flex-start; margin-top: 14px; }
@@ -156,6 +162,8 @@ root.addEventListener('click', function (e) {
   if (choice && !choice.disabled) { post({ type: 'choose', id: Number(choice.getAttribute('data-id')) }); return; }
   if (t.closest && t.closest('.report')) { post({ type: 'report' }); return; }
   if (t.closest && t.closest('.to-notes')) { post({ type: 'notes' }); return; }
+  var fc = t.closest && t.closest('.fc-link');
+  if (fc) { post({ type: 'card', id: Number(fc.getAttribute('data-fc')) }); return; }
   var ref = t.closest && t.closest('a.ref');
   if (ref) { post({ type: 'ref', name: ref.getAttribute('data-ref'), node: ref.getAttribute('data-node') }); return; }
   var tb = t.closest && t.closest('.tab');

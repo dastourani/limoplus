@@ -1,3 +1,4 @@
+from django.utils import timezone
 import io
 import shutil
 import tempfile
@@ -735,6 +736,29 @@ class SectionStateTests(TestCase):
         self.assertEqual(data["done_card_count"], cards)
         got = self.client.get(f"/api/v1/nodes/{data['id']}/flashcards/?done=1").data["flashcards"]
         self.assertEqual({c["node_id"] for c in got}, {s.id}, "only the green section's cards")
+
+
+    def test_linked_cards_open_and_wrong_answers_bring_them_to_today(self):
+        from apps.learning.models import Flashcard
+
+        from .models import FlashcardReview
+
+        q = Question.objects.filter(flashcards__isnull=False, is_archived=False, node__path__startswith=self.chapter.path).first()
+        card = q.flashcards.first()
+        wrong = q.choices.filter(is_correct=False).first()
+        r = self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": wrong.id}, format="json").data
+        self.assertEqual(r["cards_queued"], q.flashcards.count())
+        self.assertTrue(FlashcardReview.objects.filter(flashcard=card, due_at__lte=timezone.now()).exists())
+        self.assertIn(card.id, [c["id"] for c in self.client.get("/api/v1/me/flashcards/due/").data["flashcards"]], "in «مرور امروز»")
+        again = self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": wrong.id}, format="json").data
+        self.assertEqual(again["cards_queued"], 0, "already due: not counted twice")
+        book = r["book_id"]
+        cards = self.client.get(f"/api/v1/nodes/{book}/flashcards/?ids={card.id}").data["flashcards"]
+        self.assertEqual([c["id"] for c in cards], [card.id])
+        self.assertIn(q.id, cards[0]["question_ids"])
+        qs = self.client.get(f"/api/v1/nodes/{book}/questions/?ids={q.id}").data["questions"]
+        self.assertEqual([x["id"] for x in qs], [q.id], "«تست‌های این نکته»")
+        self.assertTrue(Flashcard.objects.filter(pk=card.pk).exists())
 
 
 class StudyTimeTests(TestCase):

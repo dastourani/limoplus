@@ -12,6 +12,8 @@ export type QuizEvent =
   | { type: 'choose'; id: number }
   | { type: 'report' }
   | { type: 'notes' }
+  /** «فلش‌کارت مرتبط» under the answer: open that card. */
+  | { type: 'card'; id: number }
   /** «مثال ۳-۵» in an explanation: open that box in the notes. */
   | { type: 'ref'; name: string; node: string }
   | { type: 'swipe'; dir: 'next' | 'prev'; flung?: boolean };
