@@ -1,0 +1,51 @@
+{% extends "website/base.html" %}{% load static site_icons %}
+{% block title %}لیموخوان، {{ s.tagline }}{% endblock %}
+{% block main %}
+<section class="hero">
+  <div class="wrap heroin">
+    <div class="herotext">
+      <span class="kicker">{{ s.audience }}</span>
+      <h1>{{ s.tagline }}</h1>
+      <p class="lead">{{ s.intro }}</p>
+      <div class="cta">
+        <a class="btn lemon" href="{% url 'website:download' %}">{% icon "download" 18 %}دانلود برای اندروید</a>
+        <a class="btn ghost" href="{{ app_url }}">{% icon "book-open" 18 %}خواندن در مرورگر (آیفون و کامپیوتر)</a>
+      </div>
+      <div class="ticks"><span>{% icon "circle-check" 16 %}فصل اول هر کتاب رایگان</span><span>{% icon "circle-check" 16 %}بدون اینترنت هم کار می‌کند</span></div>
+    </div>
+    {% include "website/_phone.html" %}
+  </div>
+</section>
+
+<section class="sec wrap first">
+  <h2>یک کتاب، چهار راه یاد گرفتن</h2>
+  <p class="sub">همه‌چیز از روی همان کتاب، با شماره‌ی فصل و بخش خودش</p>
+  <div class="grid4">
+    <div class="feat"><div class="ic">{% icon "book-open" 26 %}</div><b>خلاصه و درسنامه</b><p>اول کارت مرور یک‌صفحه‌ای، بعد درسنامه‌ی کامل با تعریف، قضیه، مثال و تله‌ها.</p></div>
+    <div class="feat"><div class="ic">{% icon "list-checks" 26 %}</div><b>تست با پاسخ تشریحی</b><p>تست‌های کنکورهای سال‌های قبل، با راه‌حل سریع و پاسخ کامل؛ تست غلط به دفترچه‌ی اشتباه‌ها می‌رود.</p></div>
+    <div class="feat"><div class="ic">{% icon "layers" 26 %}</div><b>فلش‌کارت هوشمند</b><p>نکته‌های حفظی، با مرور در فاصله‌ی درست (فردا، هفته‌ی بعد، ماه بعد) تا یادت بماند.</p></div>
+    <div class="feat"><div class="ic">{% icon "chart-column" 26 %}</div><b>آمار و مرور منظم</b><p>لیموی پیشرفت هر فصل، کارهای امروز، و آزمون زمان‌دار با نمره‌ی منفی مثل جلسه‌ی کنکور.</p></div>
+  </div>
+</section>
+
+{% if books %}
+<section class="sec wrap">
+  <div class="sechead"><div><h2>کتاب‌ها</h2><p class="sub">بر اساس رشته</p></div>
+    {% if majors|length > 1 %}<div class="chips" data-filter><button class="chip on" data-major="">همه</button>{% for m in majors %}<button class="chip" data-major="{{ m.slug }}">{{ m.name }}</button>{% endfor %}</div>{% endif %}
+  </div>
+  <div class="shelf">{% for c in books %}{% include "website/_book.html" %}{% endfor %}</div>
+  {% if more %}<p class="center"><a class="btn dark" href="{% url 'website:books' %}">همه‌ی کتاب‌ها</a></p>{% endif %}
+</section>
+{% endif %}
+
+<section class="band">
+  <div class="wrap bandin">
+    <div class="bandtext"><h2>هر روز فقط چند دقیقه</h2><p class="sub">لیموخوان می‌داند امروز چه چیزی را باید مرور کنی</p>
+      <ul class="checks"><li>{% icon "circle-check" 22 %}مرور فصل‌ها: فردا، یک هفته بعد، یک ماه بعد</li><li>{% icon "circle-check" 22 %}تست‌هایی که غلط زده‌ای تا درست نزنی برمی‌گردند</li><li>{% icon "circle-check" 22 %}«فقط ۵ دقیقه وقت دارم»: یک مرور کوتاه، هر جا که هستی</li></ul></div>
+    <div class="bigl">{% include "website/_lemon.html" with size=200 %}<div><b>۷ از ۱۰</b><span>بخش این فصل را خوانده‌ای</span></div></div>
+  </div>
+</section>
+
+<section class="sec wrap">{% include "website/_prices.html" %}</section>
+{% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

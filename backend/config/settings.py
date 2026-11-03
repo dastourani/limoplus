@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "apps.study",
     "apps.commerce",
     "apps.releases",
+    "apps.website",
 ]
 
 MIDDLEWARE = [
@@ -71,6 +72,7 @@ MIDDLEWARE = [
     "apps.accounts.middleware.SimpleCorsMiddleware",
     "apps.accounts.middleware.AdminLoginThrottleMiddleware",
     "apps.releases.middleware.MinimumAppVersionMiddleware",
+    "apps.website.middleware.WebsiteHostMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -131,6 +133,10 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
+# The website (apps/website): the hosts where it is served at the root (e.g. limookhan.ir,www.limookhan.ir); elsewhere
+# it is at /site/. APP_URL: the web app's address for the site's «ورود» and «شروع» links (e.g. https://app.limookhan.ir).
+WEBSITE_HOSTS = env.list("WEBSITE_HOSTS", default=[])
+APP_URL = env("APP_URL", default="/")
 # The web version of the app (served at the root by apps.catalog.webapp); update.bat fills it.
 WEBAPP_DIR = Path(env("WEBAPP_DIR", default=str(BASE_DIR / "webapp")))
 

@@ -80,13 +80,17 @@ api = [
     path("payments/zibal/callback/", commerce.zibal_callback),
 ]
 
-urlpatterns = [
+# The same on every host (config/website_urls.py uses them too).
+shared = [
     path(settings.ADMIN_URL, admin.site.urls),
     path("api/v1/", include(api)),
 ]
 
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    shared += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# The website (apps/website): here under /site/; at the root on its own host (WEBSITE_HOSTS).
+urlpatterns = [*shared, path("site/", include("apps.website.urls"))]
 
 # The web version of the app at the root (anything not matched above), when WEBAPP_DIR holds a build.
 from apps.catalog.webapp import webapp  # noqa: E402
@@ -94,5 +98,5 @@ from apps.catalog.webapp import webapp  # noqa: E402
 import re  # noqa: E402
 
 # Not for the API, the panel, static files or media (so «/admin» still gets its slash added, and so on).
-_reserved = "|".join(re.escape(x.strip("/")) for x in ("api", "static", "media", settings.ADMIN_URL) if x.strip("/"))
+_reserved = "|".join(re.escape(x.strip("/")) for x in ("api", "static", "media", "site", settings.ADMIN_URL) if x.strip("/"))
 urlpatterns += [re_path(rf"^(?!(?:{_reserved})(?:/|$))(?P<path>.*)$", webapp)]

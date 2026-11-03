@@ -1,0 +1,46 @@
+{% load static site_icons %}<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}لیموخوان، کتاب درسی تعاملی{% endblock %}</title>
+<meta name="description" content="{% block description %}{{ s.intro|truncatechars:160 }}{% endblock %}">
+<link rel="canonical" href="{{ canonical }}">
+<meta property="og:title" content="{% block og_title %}لیموخوان{% endblock %}">
+<meta property="og:description" content="{% block og_description %}{{ s.tagline }}{% endblock %}">
+<meta property="og:locale" content="fa_IR">
+<meta name="theme-color" content="#1B2620">
+<link rel="icon" href="{% static 'website/icon.svg' %}" type="image/svg+xml">
+<link rel="stylesheet" href="{% static 'website/site.css' %}">
+{% block head %}{% endblock %}
+</head>
+<body>
+<header class="nav">
+  <div class="wrap navin">
+    <a class="logo" href="{% url 'website:home' %}">{% include "website/_lemon.html" with size=34 %}<span>لیموخوان</span></a>
+    <input type="checkbox" id="menu" class="menu-toggle" aria-label="منو">
+    <label for="menu" class="menu-btn" aria-hidden="true"><span></span><span></span><span></span></label>
+    <nav class="links">
+      <a href="{% url 'website:books' %}">کتاب‌ها</a>
+      <a href="{% url 'website:pricing' %}">قیمت‌ها</a>
+      <a href="{% url 'website:download' %}">دانلود</a>
+      <a href="{% url 'website:faq' %}">پرسش‌های پرتکرار</a>
+      <span class="grow"></span>
+      <a class="btn ghost small" href="{{ app_url }}">ورود</a>
+      <a class="btn lemon small" href="{% url 'website:download' %}">{% icon "download" 16 %}دانلود اپ</a>
+    </nav>
+  </div>
+</header>
+<main>{% block main %}{% endblock %}</main>
+<footer class="foot">
+  <div class="wrap footin">
+    <div class="fcol wide"><b>لیموخوان</b><p>کتاب درسی تعاملی برای دانشجوهای ایران: خلاصه، درسنامه، تست با پاسخ تشریحی و فلش‌کارت.</p></div>
+    <div class="fcol"><b>لینک‌ها</b><a href="{% url 'website:books' %}">کتاب‌ها</a><a href="{% url 'website:pricing' %}">قیمت‌ها</a><a href="{% url 'website:download' %}">دانلود</a></div>
+    <div class="fcol"><b>پشتیبانی</b><a href="{% url 'website:faq' %}">پرسش‌های پرتکرار</a>{% for slug, p in pages.items %}<a href="{% url 'website:page' slug %}">{{ p.title }}</a>{% endfor %}</div>
+    <div class="fcol"><b>تماس</b>{% if s.email %}<a href="mailto:{{ s.email }}" dir="ltr">{{ s.email }}</a>{% endif %}{% if s.phone %}<span dir="ltr">{{ s.phone }}</span>{% endif %}{% if s.telegram_url %}<a href="{{ s.telegram_url }}">تلگرام</a>{% endif %}{% if s.instagram_url %}<a href="{{ s.instagram_url }}">اینستاگرام</a>{% endif %}</div>
+    {% if s.enamad_html %}<div class="enamad">{{ s.enamad_html|safe }}</div>{% endif %}
+  </div>
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

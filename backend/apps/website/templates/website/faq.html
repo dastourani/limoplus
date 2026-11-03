@@ -1,0 +1,5 @@
+{% extends "website/base.html" %}
+{% block title %}پرسش‌های پرتکرار، لیموخوان{% endblock %}
+{% block main %}
+<section class="sec wrap narrow"><h1 class="h2">پرسش‌های پرتکرار</h1>{% if faq %}{% include "website/_faq.html" %}{% else %}<p class="sub">به‌زودی.</p>{% endif %}</section>
+{% endblock %}

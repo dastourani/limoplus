@@ -75,6 +75,11 @@ Code, identifiers and commit messages are in English.
   would break) keep ids, so learners' data goes along; a clashing slug in the target book gets «-2».
   A test may link to any flashcard of its book (`importer.outside_flashcards`), never across books: moving to another book
   drops such links. Broken `[[#name]]` links are listed in the book's health box (`bookpanel._broken_refs`).
+- Website (`apps/website`): the public site (home, books, a page per book with sample tests answered through the normal
+  answer API, download, prices, FAQ, about/contact/terms/privacy, sitemap, robots). Django templates + `static/website`;
+  covers and formulas drawn in the browser by `catalog/limo-preview.js`. Editable in the panel: «تنظیمات سایت», «صفحه‌های
+  سایت», «پرسش‌های پرتکرار». On `WEBSITE_HOSTS` the site is at the root (`config/website_urls.py`, chosen by
+  `WebsiteHostMiddleware`); elsewhere at `/site/`. Its links to the app go to `APP_URL`.
 - Access rules live only in `apps/catalog/access.py` (`AccessMap`): visible = node and all ancestors published and
   not archived; readable = visible and (staff, or free node/ancestor, or owned / covered by an active subscription — `owns_book`).
   Every content endpoint must use it.

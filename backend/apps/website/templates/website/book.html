@@ -1,0 +1,52 @@
+{% extends "website/base.html" %}{% load site_icons %}
+{% block title %}{{ b.title }}، لیموخوان{% endblock %}
+{% block description %}{% if b.about %}{{ b.about|striptags|truncatechars:160 }}{% else %}{{ b.title }} در لیموخوان: خلاصه، درسنامه، تست با پاسخ تشریحی و فلش‌کارت؛ فصل اول رایگان.{% endif %}{% endblock %}
+{% block og_title %}{{ b.title }}{% endblock %}
+{% block main %}
+<section class="hero small">
+  <div class="wrap bookhero">
+    <div class="cover" data-cover="{{ cover }}" data-w="200" style="width:200px"><div class="cover-ph"><b>{{ b.title }}</b></div></div>
+    <div class="herotext">
+      {% if majors %}<span class="kicker">{% for m in majors %}{{ m.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</span>{% endif %}
+      <h1>{{ b.title }}</h1>
+      {% if b.title_en %}<div class="en" dir="ltr">{{ b.title_en }}</div>{% endif %}
+      {% if b.author %}<p class="lead">{{ b.author }}{% if b.edition %}، {{ b.edition }}{% endif %}</p>{% endif %}
+      <div class="stats">{% for n, l in stats %}<div><b>{{ n }}</b><span>{{ l }}</span></div>{% endfor %}</div>
+      <div class="cta">
+        {% if b.is_coming_soon %}<a class="btn lemon" href="{{ open_url }}">{% icon "bell" 18 %}به‌زودی؛ در اپ «خبرم کن» را بزن</a>
+        {% else %}
+          {% if first_free %}<a class="btn lemon" href="{{ open_url }}">شروع رایگان از فصل {{ first_free.number }}</a>{% endif %}
+          {% if price %}<a class="btn ghost" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب، {{ price }}</a>{% elif not first_free %}<a class="btn lemon" href="{{ open_url }}">شروع</a>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+<section class="sec wrap twocol">
+  <div>
+    {% if b.about %}<h2>درباره‌ی کتاب</h2><div class="about" data-md="{{ b.about }}"><p>{{ b.about|linebreaksbr }}</p></div>{% endif %}
+    {% if chapters %}<h2>فهرست کتاب</h2>{% if first_free %}<p class="sub">فصل‌های رایگان را همین الان می‌توانی بخوانی</p>{% endif %}
+    {% for ch in chapters %}
+      <div class="feat row"><div class="num">{{ ch.number }}</div><div class="grow"><b>فصل {{ ch.number }}، {{ ch.title }}</b><span class="mut">{{ ch.sections }} بخش، {{ ch.tests }} تست</span></div>
+        {% if ch.free %}<span class="tagbtn free">رایگان</span>{% else %}<span class="mut">{% icon "lock" 18 %}</span>{% endif %}</div>
+    {% endfor %}{% endif %}
+  </div>
+  <div>
+    {% if samples %}
+    <h2>تست نمونه</h2><p class="sub">یک گزینه را بزن تا پاسخ و توضیحش را ببینی</p>
+    <div id="samples">
+      {% for q in samples %}
+      <div class="feat sample" data-id="{{ q.id }}">
+        {% if q.source %}<span class="mut">{{ q.source }}</span>{% endif %}
+        <div class="stem" data-md="{{ q.stem }}">{{ q.stem }}</div>
+        <div class="choices">{% for c in q.choices %}<button class="choice" data-choice="{{ c.id }}"><b>{{ forloop.counter }}.</b><span data-md="{{ c.text }}">{{ c.text }}</span></button>{% endfor %}</div>
+        <div class="explain" hidden></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <a class="btn dark wide" href="{{ open_url }}">{% icon "book-open" 18 %}باز کردن کتاب در لیموخوان</a>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}
