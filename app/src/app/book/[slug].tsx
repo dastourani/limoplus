@@ -46,6 +46,10 @@ export default function Book() {
   const { width } = useWindowDimensions();
   const [notify, setNotify] = useState<{ on: boolean; canCancel: boolean } | null>(null);
   const [aboutOpen, setAboutOpen] = useState(true);
+  // The green part with the cover stays put; the page slides up over it. A bar with the buttons stays on top, and the
+  // book's name shows in it once the cover is covered.
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [heroH, setHeroH] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -135,32 +139,17 @@ export default function Book() {
       .catch(() => setNotify(now));
   };
 
+  // Measured once laid out; until then a close guess, so the page doesn't jump.
+  const heroHeight = heroH || coverW * 1.5 + 110;
+  const barShade = scrollY.interpolate({ inputRange: [heroHeight - 90, heroHeight - 30], outputRange: [0, 1], extrapolate: 'clamp' });
+  const barTitle = scrollY.interpolate({ inputRange: [heroHeight - 60, heroHeight - 10], outputRange: [0, 1], extrapolate: 'clamp' });
+  // The cover fades back a little as the page comes over it (it doesn't move).
+  const heroFade = scrollY.interpolate({ inputRange: [0, heroHeight], outputRange: [1, 0.35], extrapolate: 'clamp' });
+
   return (
     <Screen background={colors.ground}>
-      <ScrollView contentContainerStyle={styles.scroll} refreshControl={refresh}>
-        <View style={styles.hero}>
-          <View style={styles.heroTop}>
-            <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={styles.heroButton} accessibilityRole="button" accessibilityLabel="بازگشت">
-              <Icon name="arrow-right" size={22} color="#FFFFFF" />
-            </Pressable>
-            <View style={{ flex: 1 }} />
-            <Pressable
-              onPress={() => router.push({ pathname: '/search', params: { book: book.slug, bookTitle: book.title } })}
-              style={styles.heroButton}
-              accessibilityRole="button"
-              accessibilityLabel="جست‌وجو در این کتاب"
-            >
-              <Icon name="search" size={20} color="#FFFFFF" />
-            </Pressable>
-            <Pressable
-              onPress={() => Share.share({ message: `«${book.title}» را در لیموخوان بخوان: خلاصه، جزوه، تست و فلش‌کارت.${book.share_link ? `\n${book.share_link}` : ''}` }).catch(() => undefined)}
-              style={styles.heroButton}
-              accessibilityRole="button"
-              accessibilityLabel="معرفی به دوست"
-            >
-              <Icon name="share-2" size={20} color="#FFFFFF" />
-            </Pressable>
-          </View>
+      <View style={[styles.inkBack, { height: BAR_H + heroHeight + 40 }]} />
+      <Animated.View style={[styles.hero, { top: BAR_H, opacity: heroFade }]} onLayout={(e) => setHeroH(Math.round(e.nativeEvent.layout.height))}>
           <View style={{ alignItems: 'center' }}>
             {/* The cover carries the title (and author), so it is not written again under it; screen readers hear it here. */}
             <View accessible accessibilityRole="header" accessibilityLabel={[book.title, coverByline(book.author, book.edition)].filter(Boolean).join('، ')}>
@@ -194,8 +183,18 @@ export default function Book() {
                 ))}
             </View>
           )}
-        </View>
-
+      </Animated.View>
+      {/* The margin is on a wrapper: on the web a refresh control gives the scroll view's style to two elements. */}
+      <View style={{ flex: 1, marginTop: BAR_H }}>
+      <Animated.ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={refresh}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: Platform.OS !== 'web' })}
+      >
+        {/* Room for the cover: dragging here scrolls the page up over it. */}
+        <View style={{ height: heroHeight - 12 }} />
+        <View style={styles.sheet}>
         <View style={styles.page}>
           {book.is_coming_soon ? (
             <View style={styles.cta}>
@@ -365,7 +364,32 @@ export default function Book() {
             />
           ))}
         </View>
-      </ScrollView>
+        </View>
+      </Animated.ScrollView>
+      </View>
+      <View style={styles.bar}>
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.barShade, { opacity: barShade }]} />
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={styles.heroButton} accessibilityRole="button" accessibilityLabel="بازگشت">
+          <Icon name="arrow-right" size={22} color="#FFFFFF" />
+        </Pressable>
+        <Animated.Text numberOfLines={1} style={[styles.barTitle, { opacity: barTitle }]}>{book.title}</Animated.Text>
+        <Pressable
+          onPress={() => router.push({ pathname: '/search', params: { book: book.slug, bookTitle: book.title } })}
+          style={styles.heroButton}
+          accessibilityRole="button"
+          accessibilityLabel="جست‌وجو در این کتاب"
+        >
+          <Icon name="search" size={20} color="#FFFFFF" />
+        </Pressable>
+        <Pressable
+          onPress={() => Share.share({ message: `«${book.title}» را در لیموخوان بخوان: خلاصه، جزوه، تست و فلش‌کارت.${book.share_link ? `\n${book.share_link}` : ''}` }).catch(() => undefined)}
+          style={styles.heroButton}
+          accessibilityRole="button"
+          accessibilityLabel="معرفی به دوست"
+        >
+          <Icon name="share-2" size={20} color="#FFFFFF" />
+        </Pressable>
+      </View>
       {cover && <View style={StyleSheet.absoluteFill}>{cover}</View>}
     </Screen>
   );
@@ -538,11 +562,18 @@ function SectionRow({ section, state }: { section: NodeSummary; state: 'none' | 
   );
 }
 
+/** The top bar with the back, search and share buttons. */
+const BAR_H = 58;
+
 const styles = StyleSheet.create({
-  scroll: { paddingBottom: 28 },
+  scroll: { flexGrow: 1 },
+  inkBack: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: colors.ink },
+  sheet: { flexGrow: 1, backgroundColor: colors.ground, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingBottom: 28 },
+  bar: { position: 'absolute', top: 0, left: 0, right: 0, height: BAR_H, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 16, zIndex: 2 },
+  barShade: { backgroundColor: colors.ink, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  barTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
   page: { padding: 16, gap: 14, maxWidth: 760, width: '100%', alignSelf: 'center' },
-  hero: { backgroundColor: colors.ink, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 36, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, gap: 6 },
-  heroTop: { flexDirection: 'row-reverse', justifyContent: 'space-between', gap: 10, marginBottom: 4 },
+  hero: { position: 'absolute', left: 0, right: 0, backgroundColor: colors.ink, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 36, gap: 6 },
   heroButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   heroTitle: { marginTop: 10, textAlign: 'center', fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
   // Equal boxes across the width of the cards below them, so their edges line up.

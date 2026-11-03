@@ -15,6 +15,14 @@
  * Per curve (after its «تابع:»): روی، گسترش (ساده، زوج، فرد)، تناوب، فوریه، رنگ، خط (پیوسته، خط‌چین، نقطه‌چین)، نام،
  * معکوس (بله: the inverse, mirrored in y = x). For the whole plot: بازه، بازه‌ی y، محور (pi یا عدد)، متغیر (x یا t)،
  * برچسب x، برچسب y، پرش (شکسته یا عمودی)، شبکه، ارتفاع (کوتاه، معمولی، بلند)، نقطه، مجانب. Other lines are the caption.
+ *
+ * Signals and systems (the box may have no «تابع:» then):
+ *   ضربه: 0، (2, -0.5)        impulses δ, weight 1 or (place, weight); «قطار ضربه: T» or «قطار ضربه: T، وزن» repeats one
+ *   متغیر: n                   a discrete signal: every «تابع:» drawn as stems at whole n; «مقادیر: 1، 2، 3 از -1» a list
+ *   صفر: -1، 0.5±0.5j          zeros and poles (j or i; «±» gives the pair; «0.9∠pi/4» polar) drawn ○ and × in the z
+ *   قطب: 0.8، -0.5             plane (unit circle) or «صفحه: s»; «ناحیه: |z| > 0.8» or «-1 < Re(s) < 2» shades the ROC
+ *   بود: بله                   Bode plot of H(s) = بهره × ∏(s − صفر) / ∏(s − قطب): exact and straight-line magnitude
+ *                              (dB) over log ω, and phase («فاز: خیر» hides it, «مجانبی: خیر» the straight lines)
  * Formulas: lib/expr.ts. Checked by scripts/plot-check.ts.
  */
 import { compile, ExprError, value, type Compiled } from './expr';
@@ -33,12 +41,15 @@ export type Curve = {
   inverse: boolean;
 };
 export type Point = { x: number; y: number; open: boolean; label?: string };
+export type Cx = { re: number; im: number };
+/** Region of convergence: lo < |z| < hi, or lo < Re(s) < hi. */
+export type Roc = { plane: 'z' | 's'; lo: number; hi: number };
 export type PlotSpec = {
   curves: Curve[];
   x?: [number, number];
   y?: [number, number];
   piAxis: boolean;
-  variable: 'x' | 't';
+  variable: 'x' | 't' | 'n';
   xLabel?: string;
   yLabel?: string;
   jumps: 'break' | 'vertical';
@@ -53,6 +64,17 @@ export type PlotSpec = {
   points: Point[];
   asymptotes: { axis: 'x' | 'y'; at: number }[];
   caption: string[];
+  impulses: { x: number; w: number }[];
+  trains: { T: number; w: number }[];
+  seq?: { start: number; values: number[] };
+  zeros: Cx[];
+  poles: Cx[];
+  plane?: 'z' | 's';
+  roc?: Roc;
+  bode: boolean;
+  gain: number;
+  phase: boolean;
+  straight: boolean;
 };
 
 export const COLORS: Record<string, string> = {
@@ -72,7 +94,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 export class PlotError extends Error {}
 
 function key(raw: string): string {
-  return raw.replace(/[‌\s]/g, '').replace(/ي/g, 'ی').replace(/ك/g, 'ک').toLowerCase();
+  return raw.replace(/[‌\s\u064B-\u065Fـ]/g, '').replace(/ي/g, 'ی').replace(/ك/g, 'ک').toLowerCase();
 }
 const KEYS: Record<string, string> = {
   تابع: 'fn', روی: 'on', دامنه: 'on', گسترش: 'ext', تناوب: 'period', دوره: 'period', فوریه: 'fourier', سریفوریه: 'fourier',
@@ -81,7 +103,91 @@ const KEYS: Record<string, string> = {
   محور: 'axis', متغیر: 'var', برچسبx: 'xlabel', برچسبy: 'ylabel', پرش: 'jumps', شبکه: 'grid', ارتفاع: 'height',
   نقطه: 'point', مجانب: 'asym', عدد: 'numbers', اعداد: 'numbers', عددها: 'numbers', علامتx: 'markx', علامتy: 'marky',
   حفره: 'holes',
+  ضربه: 'impulse', ضربهها: 'impulse', قطارضربه: 'train', مقادیر: 'seq', دنباله: 'seq',
+  صفر: 'zero', صفرها: 'zero', قطب: 'pole', قطبها: 'pole', ناحیه: 'roc', ناحیهیهمگرایی: 'roc', roc: 'roc',
+  صفحه: 'plane', بود: 'bode', بد: 'bode', bode: 'bode', بهره: 'gain', فاز: 'phase', مجانبی: 'straight',
 };
+const PLOT_KEYS = ['fn', 'impulse', 'train', 'seq', 'zero', 'pole'];
+
+/** Splits at commas outside brackets: «(1, 2)، sqrt(2)» → «(1, 2)», «sqrt(2)». */
+function splitTop(v: string): string[] {
+  const out: string[] = [];
+  let depth = 0, cur = '';
+  for (const ch of v) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth--;
+    if ((ch === ',' || ch === '،') && depth === 0) { out.push(cur); cur = ''; } else cur += ch;
+  }
+  out.push(cur);
+  return out.map((x) => x.trim()).filter(Boolean);
+}
+
+/** «0.5+0.3j», «-2j», «j», «0.9∠pi/4»; «a±bj» is the pair a+bj and a−bj. */
+export function parseComplex(src: string): Cx[] {
+  const s = src.replace(/\s/g, '').replace(/[−–]/g, '-').replace(/\+-|-\+/g, '±');
+  // «j0.3», «0.3j», «j», and the same with i (unless it is the end of «pi»). No look-behind: older engines lack it.
+  const endsI = (t: string) => /i$/.test(t) && !/pi$/.test(t);
+  const isImag = (t: string) => /^[ij]/.test(t) || /j$/.test(t) || endsI(t);
+  const imag = (t: string) => {
+    let body = t;
+    if (/^[ij]/.test(body)) body = body.slice(1);
+    else if (/j$/.test(body) || endsI(body)) body = body.slice(0, -1);
+    body = body.replace(/^\*|\*$/g, '');
+    return body === '' ? 1 : value(body);
+  };
+  if (s.includes('∠')) {
+    const [r, th] = s.split('∠');
+    const R = value(r), T = value(th);
+    return [{ re: R * Math.cos(T), im: R * Math.sin(T) }];
+  }
+  const pm = s.indexOf('±');
+  if (pm >= 0) {
+    const re = pm ? value(s.slice(0, pm)) : 0;
+    const im = imag(s.slice(pm + 1));
+    return [{ re, im }, { re, im: -im }];
+  }
+  // The last + or − outside brackets that is not a sign of an exponent splits the real and imaginary parts.
+  let depth = 0, at = -1;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if ((ch === '+' || ch === '-') && depth === 0 && i > 0 && !/[eE(^*/]/.test(s[i - 1])) at = i;
+  }
+  if (at > 0 && isImag(s.slice(at + 1))) {
+    const im = imag(s.slice(at + 1));
+    return [{ re: value(s.slice(0, at)), im: s[at] === '-' ? -im : im }];
+  }
+  if (isImag(s)) {
+    const neg = s.startsWith('-');
+    const im = imag(s.replace(/^[+-]/, ''));
+    return [{ re: 0, im: neg ? -im : im }];
+  }
+  return [{ re: value(s), im: 0 }];
+}
+
+function parseRoc(v: string): Roc {
+  const t = v.replace(/\s/g, '').replace(/[≤]/g, '<').replace(/[≥]/g, '>').replace(/[−–]/g, '-').replace(/\{/g, '(').replace(/\}/g, ')').toLowerCase();
+  if (/^(همه|کل|کلصفحه|همهجا|all)/.test(t)) return { plane: 'z', lo: 0, hi: Infinity };
+  const zm = /\|z\|/.test(t), sm = /re\(s\)|σ/.test(t);
+  if (!zm && !sm) throw new PlotError(`ناحیه را به شکل «|z| > 0.8» یا «Re(s) > -1» بنویسید: «${v}»`);
+  const plane = zm ? 'z' : 's';
+  const name = zm ? /\|z\|/ : /re\(s\)|σ/;
+  const [left, right] = t.split(name);
+  const roc: Roc = { plane, lo: plane === 'z' ? 0 : -Infinity, hi: Infinity };
+  const num = (x: string) => value(x.replace(/=/g, ''));
+  // «a < |z|», «a > |z|», «|z| > a», «|z| < a», and «a < |z| < b».
+  if (left) {
+    if (left.endsWith('<') || left.endsWith('<=')) roc.lo = num(left.replace(/<=?$/, ''));
+    else if (left.endsWith('>') || left.endsWith('>=')) roc.hi = num(left.replace(/>=?$/, ''));
+  }
+  if (right) {
+    if (right.startsWith('>')) roc.lo = num(right.replace(/^>=?/, ''));
+    else if (right.startsWith('<')) roc.hi = num(right.replace(/^<=?/, ''));
+  }
+  if (!(roc.hi > roc.lo)) throw new PlotError(`ناحیه‌ی همگرایی خالی است: «${v}»`);
+  return roc;
+}
 const CURVE_KEYS = new Set(['on', 'ext', 'period', 'fourier', 'color', 'line', 'name', 'inverse']);
 
 /** A box's lines → a plot description, or null when the box has no «تابع:» line (an ordinary box, e.g. a picture). */
@@ -92,9 +198,10 @@ export function parsePlot(body: string): PlotSpec | null {
     const k = m ? KEYS[key(m[1])] : undefined;
     return k ? { k, v: m![2].trim() } : null;
   });
-  if (!keyed.some((x) => x?.k === 'fn')) return null;
+  if (!keyed.some((x) => x && PLOT_KEYS.includes(x.k))) return null;
   const spec: PlotSpec = {
     curves: [], piAxis: false, variable: 'x', jumps: 'break', grid: false, numbers: { x: false, y: false }, marks: { x: [], y: [] }, autoHoles: true, height: 225, points: [], asymptotes: [], caption: [],
+    impulses: [], trains: [], zeros: [], poles: [], bode: false, gain: 1, phase: true, straight: true,
   };
   const range = (v: string): [number, number] => {
     const parts = v.split(/\s+تا\s+|\s+to\s+|\.\.|…/);
@@ -154,7 +261,37 @@ export function parsePlot(body: string): PlotSpec | null {
           spec.marks[k === 'markx' ? 'x' : 'y'] = v.split(/[,،]|\s+و\s+/).map((x) => x.trim()).filter(Boolean).map(value);
           break;
         case 'holes': spec.autoHoles = yes(v); break;
-        case 'var': spec.variable = /t/i.test(v) ? 't' : 'x'; break;
+        case 'var': spec.variable = /^\s*n\s*$/i.test(v) || /گسسته/.test(v) ? 'n' : /t/i.test(v) ? 't' : 'x'; break;
+        case 'impulse':
+          for (const item of splitTop(v)) {
+            const pair = /^\((.+)\)$/.exec(item);
+            const parts = pair ? splitTop(pair[1]) : [item];
+            if (parts.length > 2) throw new PlotError(`ضربه را به شکل «0» یا «(2, -0.5)» بنویسید: «${item}»`);
+            spec.impulses.push({ x: value(parts[0]), w: parts[1] !== undefined ? value(parts[1]) : 1 });
+          }
+          break;
+        case 'train': {
+          const [T, w] = splitTop(v);
+          const period = value(T ?? '');
+          if (!(period > 0)) throw new PlotError('تناوب قطار ضربه باید مثبت باشد');
+          spec.trains.push({ T: period, w: w !== undefined ? value(w) : 1 });
+          break;
+        }
+        case 'seq': {
+          const [vals, from] = v.split(/\s+از\s+|\s+from\s+/);
+          spec.seq = { start: from ? Math.round(value(from)) : 0, values: splitTop(vals).map(value) };
+          spec.variable = 'n';
+          break;
+        }
+        case 'zero': case 'pole':
+          for (const item of splitTop(v)) (k === 'zero' ? spec.zeros : spec.poles).push(...parseComplex(item));
+          break;
+        case 'roc': spec.roc = parseRoc(v); break;
+        case 'plane': spec.plane = /s/i.test(v) ? 's' : 'z'; break;
+        case 'bode': spec.bode = !/^(خیر|نه|no)$/i.test(v.trim()); break;
+        case 'gain': spec.gain = value(v); break;
+        case 'phase': spec.phase = yes(v); break;
+        case 'straight': spec.straight = yes(v); break;
         case 'xlabel': spec.xLabel = v; break;
         case 'ylabel': spec.yLabel = v; break;
         case 'jumps': spec.jumps = /عمود/.test(v) ? 'vertical' : 'break'; break;
@@ -367,7 +504,7 @@ export function renderPlot(body: string, inline: (s: string) => string): string 
   let html: string | null;
   try {
     const spec = parsePlot(body);
-    html = spec ? draw(spec, inline) : null;
+    html = !spec ? null : spec.bode ? drawBode(spec, inline) : !spec.curves.length && !spec.impulses.length && !spec.trains.length && !spec.seq && (spec.zeros.length || spec.poles.length) ? drawPoleZero(spec, inline) : draw(spec, inline);
   } catch (e) {
     html = `<div class="plot-error">⚠ نمودار کشیده نشد: ${esc((e as Error).message)}</div>`;
   }
@@ -397,32 +534,61 @@ function draw(spec: PlotSpec, inline: (s: string) => string): string {
     drawn.push({ g, color, line: c.line, width: 2.4, name: c.name, inverse: c.inverse, on: c.on, period });
   }
 
+  const discrete = spec.variable === 'n';
+  const seqColor = spec.seq ? nextColor() : '';
+  const pulseColor = spec.impulses.length || spec.trains.length ? (spec.curves.length || spec.seq ? nextColor() : 'ink') : '';
+  // Places that must be in view: impulses and the listed values of a sequence (with the origin).
+  const extraX = [...spec.impulses.map((i) => i.x), ...(spec.seq ? [spec.seq.start, spec.seq.start + spec.seq.values.length - 1] : [])];
+
   // x window: given, or the definition intervals, or −10…10 (−2π…2π on a π axis).
   let [x0, x1] = spec.x ?? (() => {
     // A periodic curve: two periods each side; curves only on an interval: that interval; otherwise a usual window.
     const T = Math.max(0, ...drawn.map((d) => d.period ?? 0));
     if (T) return [-2 * T, 2 * T] as [number, number];
+    if (!spec.curves.length && !extraX.length && spec.trains.length) {
+      const Tt = Math.max(...spec.trains.map((t) => t.T));
+      return [-2.5 * Tt, 2.5 * Tt] as [number, number];
+    }
     const ons = spec.curves.filter((c) => c.on).map((c) => c.on!);
-    if (ons.length === spec.curves.length && ons.length) {
-      const lo = Math.min(...ons.map((o) => o[0])), hi = Math.max(...ons.map((o) => o[1])), pad = 0.05 * (hi - lo);
+    if (ons.length === spec.curves.length && (ons.length || extraX.length)) {
+      const all = [...ons.flat(), ...extraX, ...(extraX.length ? [0] : [])];
+      const lo = Math.min(...all), hi = Math.max(...all);
+      const pad = discrete ? 1.5 : extraX.length ? Math.max(0.15 * (hi - lo), 1) : 0.05 * (hi - lo);
       return [lo - pad, hi + pad] as [number, number];
     }
     return spec.piAxis ? [-2 * Math.PI, 2 * Math.PI] : [-10, 10];
   })();
+  // A given window for n: its ends are drawn too.
+  if (discrete && spec.x) { x0 -= 0.5; x1 += 0.5; }
   if (x1 <= x0) x1 = x0 + 1;
+  const whole = () => {
+    const out: number[] = [];
+    for (let n = Math.ceil(x0 - 1e-9); n <= x1 + 1e-9; n++) out.push(n);
+    return out;
+  };
+  const trainAt = (t: { T: number }) => {
+    const out: number[] = [];
+    for (let k = Math.ceil(x0 / t.T - 1e-9); k * t.T <= x1 + 1e-9; k++) out.push(k * t.T);
+    return out;
+  };
 
   // y window: given, or from the values (ignoring the far ends near asymptotes).
   let y0: number, y1: number;
   const sample = (d: Drawn) => {
     const ys: number[] = [];
-    for (let i = 0; i <= 400; i++) { const y = d.g(x0 + ((x1 - x0) * i) / 400); if (Number.isFinite(y)) ys.push(y); }
+    if (discrete) for (const n of whole()) { const y = d.g(n); if (Number.isFinite(y)) ys.push(y); }
+    else for (let i = 0; i <= 400; i++) { const y = d.g(x0 + ((x1 - x0) * i) / 400); if (Number.isFinite(y)) ys.push(y); }
     // An inverse's values are the curve's x: its definition interval must fit too.
     if (d.inverse) ys.push(...(d.on ?? [x0, x1]));
     return ys;
   };
   if (spec.y) [y0, y1] = spec.y;
   else {
-    const vals = drawn.flatMap(sample).concat(spec.points.map((p) => p.y)).sort((a, b) => a - b);
+    const stemsOrPulses = discrete || extraX.length || spec.trains.length;
+    const vals = drawn
+      .flatMap(sample)
+      .concat(spec.points.map((p) => p.y), spec.impulses.map((i) => i.w), spec.trains.map((t) => t.w), spec.seq?.values ?? [], stemsOrPulses ? [0] : [])
+      .sort((a, b) => a - b);
     if (!vals.length) { y0 = -1; y1 = 1; } else {
       const q = (p: number) => vals[Math.min(vals.length - 1, Math.max(0, Math.round(p * (vals.length - 1))))];
       let lo = vals[0], hi = vals[vals.length - 1];
@@ -432,7 +598,8 @@ function draw(spec: PlotSpec, inline: (s: string) => string): string {
       // Keep 0 in view when it is close, so the x axis shows.
       if (lo > 0 && lo < 0.35 * (hi - lo)) lo = 0;
       if (hi < 0 && -hi < 0.35 * (hi - lo)) hi = 0;
-      const pad = 0.08 * (hi - lo);
+      // Impulses: room above the arrows for their weights.
+      const pad = (spec.impulses.length || spec.trains.length ? 0.16 : 0.08) * (hi - lo);
       y0 = lo - pad; y1 = hi + pad;
     }
   }
@@ -446,7 +613,7 @@ function draw(spec: PlotSpec, inline: (s: string) => string): string {
   parts.push(`<rect class="pbg" x="0" y="0" width="${W}" height="${H}" rx="10"/>`);
 
   // Grid and ticks.
-  const xNice = ticks(x0, x1, spec.piAxis, 8), yNice = ticks(y0, y1, false, 5);
+  const xNice = ticks(x0, x1, spec.piAxis, 8).filter((t) => !discrete || Math.abs(t.at - Math.round(t.at)) < 1e-9), yNice = ticks(y0, y1, false, 5);
   // A mark is written as a multiple of π when it is one (pi/2, 3pi/4), otherwise as a number.
   const piish = (v: number) => Math.abs(v) > 1e-12 && Math.abs(v / (Math.PI / 12) - Math.round(v / (Math.PI / 12))) < 1e-9;
   const label = (v: number) => (piish(v) ? piLabel(v) : fa(String(+v.toFixed(3))));
@@ -475,7 +642,7 @@ function draw(spec: PlotSpec, inline: (s: string) => string): string {
   }
   if ((spec.numbers.x || spec.numbers.y) && x0 < 0 && y0 < 0 && x1 > 0 && y1 > 0) parts.push(`<text class="tk" x="${(axisX - 5).toFixed(1)}" y="${(axisY + 14).toFixed(1)}" text-anchor="end">0</text>`);
   parts.push(`<text class="lab" x="${M.l + pw + 4}" y="${(axisY - 8).toFixed(1)}" text-anchor="end">${esc(spec.xLabel ?? spec.variable)}</text>`);
-  parts.push(`<text class="lab" x="${(axisX + 8).toFixed(1)}" y="${M.t + 2}">${esc(spec.yLabel ?? (spec.variable === 't' ? 'x(t)' : 'y'))}</text>`);
+  parts.push(`<text class="lab" x="${(axisX + 8).toFixed(1)}" y="${M.t + 2}">${esc(spec.yLabel ?? (spec.variable === 't' ? 'x(t)' : spec.variable === 'n' ? 'x[n]' : 'y'))}</text>`);
 
   // Curves, clipped to the plot area.
   parts.push(`<clipPath id="${id}"><rect x="${M.l}" y="${M.t}" width="${pw}" height="${ph}"/></clipPath><g clip-path="url(#${id})">`);
@@ -497,9 +664,31 @@ function draw(spec: PlotSpec, inline: (s: string) => string): string {
       const orig = segments(d.g, a, b, ySpan, spec.jumps, [y0, y1]);
       parts.push(...orig.map((s) => path(s, d, true)));
       parts.push(...orig.map((s) => path(s.map(([x, y]) => [y, x] as [number, number]), d, false)));
-    } else parts.push(...segments(d.g, x0, x1, ySpan, spec.jumps, [y0, y1]).map((s) => path(s, d, false)));
+    } else if (discrete) parts.push(...whole().map((n) => stem(n, d.g(n), d.color)));
+    else parts.push(...segments(d.g, x0, x1, ySpan, spec.jumps, [y0, y1]).map((s) => path(s, d, false)));
+  }
+  if (spec.seq) spec.seq.values.forEach((v, i) => parts.push(stem(spec.seq!.start + i, v, seqColor)));
+  // Impulses: arrows from the axis, as tall as their weight; the weight written by the tip unless it is 1.
+  const pulses = [...spec.impulses, ...spec.trains.flatMap((t) => trainAt(t).map((x) => ({ x, w: t.w })))];
+  const weighted = pulses.some((p) => Math.abs(p.w - 1) > 1e-12);
+  for (const p of pulses) {
+    if (p.x < x0 || p.x > x1 || Math.abs(p.w) < 1e-12) continue;
+    const X = sx(p.x).toFixed(1), base = sy(0), tip = sy(p.w), dir = p.w > 0 ? 1 : -1;
+    parts.push(`<line class="cv c-${pulseColor}" x1="${X}" y1="${base.toFixed(1)}" x2="${X}" y2="${(tip + dir * 6).toFixed(1)}" stroke-width="2"/>`);
+    parts.push(`<path class="f-${pulseColor}" d="M${X},${tip.toFixed(1)} l-4.5,${dir * 9} h9 z"/>`);
+    if (weighted) parts.push(`<text class="ptl" x="${(sx(p.x) + 6).toFixed(1)}" y="${(tip + (dir > 0 ? 4 : 10)).toFixed(1)}">(${label(p.w) || '0'})</text>`);
   }
   parts.push('</g>');
+  // Discrete signals: a small tick at every whole n (numbers only when asked).
+  if (discrete && !spec.numbers.x && whole().length <= 41) {
+    for (const n of whole()) parts.push(`<line class="ax" x1="${sx(n).toFixed(1)}" y1="${(axisY - 2.5).toFixed(1)}" x2="${sx(n).toFixed(1)}" y2="${(axisY + 2.5).toFixed(1)}"/>`);
+  }
+  function stem(n: number, v: number, color: string) {
+    if (!Number.isFinite(v)) return '';
+    const X = sx(n).toFixed(1), Y = sy(v).toFixed(1);
+    const line = Math.abs(v) > 1e-12 ? `<line class="cv c-${color}" x1="${X}" y1="${sy(0).toFixed(1)}" x2="${X}" y2="${Y}" stroke-width="1.8"/>` : '';
+    return `${line}<circle class="f-${color}" cx="${X}" cy="${Y}" r="3.3"/>`;
+  }
   function path(s: Seg, d: Drawn, faint: boolean) {
     const pts = s.map(([x, y], i) => `${i ? 'L' : 'M'}${sx(x).toFixed(1)},${clampY(sy(y)).toFixed(1)}`).join('');
     const dash = d.line === 'dash' ? ' stroke-dasharray="7 5"' : d.line === 'dot' ? ' stroke-dasharray="1.5 4" stroke-linecap="round"' : '';
@@ -527,6 +716,194 @@ function draw(spec: PlotSpec, inline: (s: string) => string): string {
   const caption = spec.caption.length ? `<div class="plot-caption">${inline(spec.caption.join(' '))}</div>` : '';
   return `<div class="plot"><div class="plot-svg" dir="ltr">${svg}</div>${legendHtml}${caption}</div>`;
 }
+
+const circlePath = (cx: number, cy: number, r: number) =>
+  `M${(cx + r).toFixed(1)},${cy.toFixed(1)}A${r.toFixed(1)},${r.toFixed(1)} 0 1 0 ${(cx - r).toFixed(1)},${cy.toFixed(1)}A${r.toFixed(1)},${r.toFixed(1)} 0 1 0 ${(cx + r).toFixed(1)},${cy.toFixed(1)}Z`;
+
+/** Poles and zeros (× and ○) in the z plane with its unit circle, or in the s plane; the ROC shaded. */
+function drawPoleZero(spec: PlotSpec, inline: (s: string) => string): string {
+  const plane = spec.plane ?? spec.roc?.plane ?? 'z';
+  const roc = spec.roc && { ...spec.roc, plane };
+  const pts = [...spec.zeros, ...spec.poles];
+  const finite = (v: number) => Number.isFinite(v) && v !== 0;
+  const reach = Math.max(
+    plane === 'z' ? 1.3 : 1,
+    ...pts.map((p) => 1.25 * Math.max(Math.abs(p.re), Math.abs(p.im))),
+    ...(roc ? [roc.lo, roc.hi].filter(finite).map((v) => 1.2 * Math.abs(v)) : []),
+  );
+  const H = 300, pw = W - M.l - M.r, ph = H - M.t - M.b;
+  // The same scale both ways, so a circle is round.
+  const k = ph / (2 * reach), xr = pw / (2 * k);
+  const sx = (x: number) => M.l + pw / 2 + x * k, sy = (y: number) => M.t + ph / 2 - y * k;
+  const id = `pc${++uid}`;
+  const parts: string[] = [`<rect class="pbg" x="0" y="0" width="${W}" height="${H}" rx="10"/>`];
+  parts.push(`<clipPath id="${id}"><rect x="${M.l}" y="${M.t}" width="${pw}" height="${ph}"/></clipPath><g clip-path="url(#${id})">`);
+  if (roc) {
+    // The region, then its edges dashed.
+    if (plane === 'z') {
+      const outer = Number.isFinite(roc.hi) ? circlePath(sx(0), sy(0), roc.hi * k) : `M0,0H${W}V${H}H0Z`;
+      const inner = roc.lo > 0 ? circlePath(sx(0), sy(0), roc.lo * k) : '';
+      parts.push(`<path class="roc" fill-rule="evenodd" d="${outer}${inner}"/>`);
+      for (const r of [roc.lo, roc.hi]) if (finite(r) && Number.isFinite(r)) parts.push(`<circle class="roc-edge" cx="${sx(0).toFixed(1)}" cy="${sy(0).toFixed(1)}" r="${(r * k).toFixed(1)}"/>`);
+    } else {
+      const a = Math.max(roc.lo, -xr - 1), b = Math.min(roc.hi, xr + 1);
+      parts.push(`<rect class="roc" x="${sx(a).toFixed(1)}" y="${M.t}" width="${(sx(b) - sx(a)).toFixed(1)}" height="${ph}"/>`);
+      for (const r of [roc.lo, roc.hi]) if (Number.isFinite(r)) parts.push(`<line class="roc-edge" x1="${sx(r).toFixed(1)}" y1="${M.t}" x2="${sx(r).toFixed(1)}" y2="${M.t + ph}"/>`);
+    }
+  }
+  if (spec.grid) {
+    for (const t of ticks(-xr, xr, false, 8)) parts.push(`<line class="grid" x1="${sx(t.at).toFixed(1)}" y1="${M.t}" x2="${sx(t.at).toFixed(1)}" y2="${M.t + ph}"/>`);
+    for (const t of ticks(-reach, reach, false, 6)) parts.push(`<line class="grid" x1="${M.l}" y1="${sy(t.at).toFixed(1)}" x2="${M.l + pw}" y2="${sy(t.at).toFixed(1)}"/>`);
+  }
+  if (plane === 'z') parts.push(`<circle class="unit" cx="${sx(0).toFixed(1)}" cy="${sy(0).toFixed(1)}" r="${k.toFixed(1)}"/>`);
+  parts.push('</g>');
+  // Axes through the origin.
+  parts.push(`<line class="ax" x1="${M.l}" y1="${sy(0).toFixed(1)}" x2="${M.l + pw + 6}" y2="${sy(0).toFixed(1)}"/>`);
+  parts.push(`<path class="axh" d="M${M.l + pw + 10},${sy(0).toFixed(1)} l-7,-3.5 v7 z"/>`);
+  parts.push(`<line class="ax" x1="${sx(0).toFixed(1)}" y1="${M.t + ph}" x2="${sx(0).toFixed(1)}" y2="${M.t - 6}"/>`);
+  parts.push(`<path class="axh" d="M${sx(0).toFixed(1)},${M.t - 10} l-3.5,7 h7 z"/>`);
+  parts.push(`<text class="lab" x="${M.l + pw + 4}" y="${(sy(0) - 8).toFixed(1)}" text-anchor="end">${plane === 'z' ? 'Re{z}' : 'σ'}</text>`);
+  parts.push(`<text class="lab" x="${(sx(0) + 8).toFixed(1)}" y="${M.t + 2}">${plane === 'z' ? 'Im{z}' : 'jω'}</text>`);
+  const tick = (x: number, text: string, onY = false) =>
+    onY
+      ? `<line class="ax" x1="${(sx(0) - 3).toFixed(1)}" y1="${sy(x).toFixed(1)}" x2="${(sx(0) + 3).toFixed(1)}" y2="${sy(x).toFixed(1)}"/><text class="tk" x="${(sx(0) - 6).toFixed(1)}" y="${(sy(x) + 4).toFixed(1)}" text-anchor="end">${text}</text>`
+      : `<line class="ax" x1="${sx(x).toFixed(1)}" y1="${(sy(0) - 3).toFixed(1)}" x2="${sx(x).toFixed(1)}" y2="${(sy(0) + 3).toFixed(1)}"/><text class="tk" x="${(sx(x) + (x === 1 ? 7 : 0)).toFixed(1)}" y="${(sy(0) + 15).toFixed(1)}" text-anchor="middle">${text}</text>`;
+  // Numbers on the real axis, never two on top of each other (the first one asked for wins).
+  const placed: number[] = [];
+  const mark = (x: number, text: string) => {
+    if (placed.some((p) => Math.abs(sx(p) - sx(x)) < 20)) return;
+    placed.push(x);
+    parts.push(tick(x, text));
+  };
+  for (const x of spec.marks.x) mark(x, fa(+x.toFixed(3)));
+  // The edges of the ROC and the unit circle's 1 are always marked.
+  if (roc) for (const r of [roc.lo, roc.hi]) if (finite(r) && Number.isFinite(r)) mark(r, fa(+r.toFixed(3)));
+  if (plane === 'z') mark(1, '1');
+  if (spec.numbers.x) for (const t of ticks(-xr, xr, false, 8)) if (Math.abs(t.at) > 1e-12) mark(t.at, t.text);
+  if (spec.numbers.y) for (const t of ticks(-reach, reach, false, 6)) if (Math.abs(t.at) > 1e-12) parts.push(tick(t.at, t.text, true));
+  // Zeros ○ and poles ×; a repeated one is drawn once with its count.
+  const draw = (list: Cx[], pole: boolean) => {
+    const seen = new Map<string, { p: Cx; n: number }>();
+    for (const p of list) {
+      const key = `${p.re.toFixed(6)},${p.im.toFixed(6)}`;
+      const hit = seen.get(key);
+      if (hit) hit.n++;
+      else seen.set(key, { p, n: 1 });
+    }
+    for (const { p, n } of seen.values()) {
+      const X = sx(p.re), Y = sy(p.im);
+      parts.push(
+        pole
+          ? `<path class="pole" d="M${(X - 5).toFixed(1)},${(Y - 5).toFixed(1)}l10,10M${(X + 5).toFixed(1)},${(Y - 5).toFixed(1)}l-10,10"/>`
+          : `<circle class="zero" cx="${X.toFixed(1)}" cy="${Y.toFixed(1)}" r="5"/>`,
+      );
+      if (n > 1) parts.push(`<text class="ptl" x="${(X + 7).toFixed(1)}" y="${(Y - 6).toFixed(1)}">(${n})</text>`);
+    }
+  };
+  draw(spec.zeros, false);
+  draw(spec.poles, true);
+  const svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">${parts.join('')}</svg>`;
+  const legend: string[] = [];
+  if (spec.zeros.length) legend.push(`<span><svg width="14" height="14" viewBox="0 0 14 14"><circle class="zero" cx="7" cy="7" r="5"/></svg>صفر</span>`);
+  if (spec.poles.length) legend.push(`<span><svg width="14" height="14" viewBox="0 0 14 14"><path class="pole" d="M2,2l10,10M12,2l-10,10"/></svg>قطب</span>`);
+  if (roc) legend.push(`<span><svg width="16" height="12" viewBox="0 0 16 12"><rect class="roc" x="1" y="1" width="14" height="10" rx="2"/></svg>ناحیه‌ی همگرایی</span>`);
+  const caption = spec.caption.length ? `<div class="plot-caption">${inline(spec.caption.join(' '))}</div>` : '';
+  return `<div class="plot"><div class="plot-svg" dir="ltr">${svg}</div><div class="plot-legend">${legend.join('')}</div>${caption}</div>`;
+}
+
+/** H(jω) of H(s) = K ∏(s − z) / ∏(s − p): magnitude in dB, its straight-line (asymptotic) form, and phase in degrees. */
+export function bodeAt(spec: Pick<PlotSpec, 'zeros' | 'poles' | 'gain'>, w: number): { db: number; straight: number; phase: number } {
+  let mag = Math.abs(spec.gain), straight = Math.abs(spec.gain), phase = spec.gain < 0 ? 180 : 0;
+  const factor = (c: Cx, sign: 1 | -1) => {
+    const re = -c.re, im = w - c.im;
+    mag *= Math.hypot(re, im) ** sign;
+    const r = Math.hypot(c.re, c.im);
+    straight *= (r > 0 ? Math.max(w, r) : w) ** sign;
+    phase += sign * (Math.atan2(im, re) * 180) / Math.PI;
+  };
+  spec.zeros.forEach((z) => factor(z, 1));
+  spec.poles.forEach((p) => factor(p, -1));
+  return { db: 20 * Math.log10(mag), straight: 20 * Math.log10(straight), phase };
+}
+
+function decadeLabel(k: number): string {
+  if (k >= -3 && k <= 3) return fa(String(10 ** k >= 1 ? 10 ** k : (10 ** k).toFixed(-k)));
+  return `10<tspan dy="-5" font-size="8">${fa(k)}</tspan>`;
+}
+
+/** Bode plot: magnitude (exact, and the straight lines) and phase over a logarithmic ω axis. */
+function drawBode(spec: PlotSpec, inline: (s: string) => string): string {
+  const corners = [...spec.zeros, ...spec.poles].map((c) => Math.hypot(c.re, c.im)).filter((r) => r > 0);
+  const [w0, w1] = spec.x && spec.x[0] > 0
+    ? spec.x
+    : [10 ** (Math.floor(Math.log10(Math.min(...corners, 1))) - 1), 10 ** (Math.ceil(Math.log10(Math.max(...corners, 1))) + 1)];
+  const L = { l: 46, r: 14 };
+  const pw = W - L.l - L.r;
+  const lx0 = Math.log10(w0), lx1 = Math.log10(w1);
+  const sx = (w: number) => L.l + ((Math.log10(w) - lx0) / (lx1 - lx0)) * pw;
+  const N = 480;
+  const ws = Array.from({ length: N + 1 }, (_, i) => 10 ** (lx0 + ((lx1 - lx0) * i) / N));
+  const vals = ws.map((w) => bodeAt(spec, w));
+  // Phase without the jumps of ±360° that atan2 makes.
+  for (let i = 1; i < vals.length; i++) {
+    while (vals[i].phase - vals[i - 1].phase > 180) vals[i].phase -= 360;
+    while (vals[i].phase - vals[i - 1].phase < -180) vals[i].phase += 360;
+  }
+  const panels: { title: string; ys: number[][]; step: (span: number) => number; h: number }[] = [
+    { title: '|H| (dB)', ys: [vals.map((v) => v.db), ...(spec.straight ? [vals.map((v) => v.straight)] : [])], h: 190, step: (span) => (span > 120 ? 40 : span > 60 ? 20 : span > 24 ? 10 : niceStep(span, 5)) },
+  ];
+  if (spec.phase) panels.push({ title: '∠H (°)', ys: [vals.map((v) => v.phase)], h: 160, step: (span) => [15, 30, 45, 90, 180].find((s) => span / s <= 6) ?? 360 });
+  const gap = 26, top = 18;
+  const H = top + panels.reduce((n, p) => n + p.h, 0) + gap * (panels.length - 1) + 30;
+  const id = `pc${++uid}`;
+  const parts: string[] = [`<rect class="pbg" x="0" y="0" width="${W}" height="${H}" rx="10"/>`];
+  let y = top;
+  panels.forEach((panel, pi) => {
+    const finite = panel.ys.flat().filter(Number.isFinite);
+    let lo = Math.min(...finite), hi = Math.max(...finite);
+    if (hi - lo < 1e-6) { lo -= 10; hi += 10; }
+    const step = panel.step(hi - lo);
+    lo = Math.floor(lo / step - 0.15) * step; hi = Math.ceil(hi / step + 0.15) * step;
+    const sy = (v: number) => y + ((hi - v) / (hi - lo)) * panel.h;
+    // Decades: solid lines; 2…9 in between: faint.
+    for (let k = Math.ceil(lx0 - 1e-9); k <= lx1 + 1e-9; k++) {
+      parts.push(`<line class="grid strong" x1="${sx(10 ** k).toFixed(1)}" y1="${y}" x2="${sx(10 ** k).toFixed(1)}" y2="${y + panel.h}"/>`);
+      if (pi === panels.length - 1) parts.push(`<text class="tk" x="${sx(10 ** k).toFixed(1)}" y="${y + panel.h + 14}" text-anchor="middle">${decadeLabel(k)}</text>`);
+      for (let m = 2; m <= 9; m++) {
+        const w = m * 10 ** k;
+        if (w > w0 && w < w1) parts.push(`<line class="grid" x1="${sx(w).toFixed(1)}" y1="${y}" x2="${sx(w).toFixed(1)}" y2="${y + panel.h}"/>`);
+      }
+    }
+    for (let v = lo; v <= hi + 1e-9; v += step) {
+      parts.push(`<line class="grid${Math.abs(v) < 1e-9 ? ' strong' : ''}" x1="${L.l}" y1="${sy(v).toFixed(1)}" x2="${L.l + pw}" y2="${sy(v).toFixed(1)}"/>`);
+      parts.push(`<text class="tk" x="${L.l - 5}" y="${(sy(v) + 3.5).toFixed(1)}" text-anchor="end">${fa(+v.toFixed(1))}</text>`);
+    }
+    parts.push(`<rect class="frame" x="${L.l}" y="${y}" width="${pw}" height="${panel.h}"/>`);
+    parts.push(`<text class="tk" x="${L.l + 4}" y="${y - 5}">${panel.title}</text>`);
+    parts.push(`<clipPath id="${id}-${pi}"><rect x="${L.l}" y="${y}" width="${pw}" height="${panel.h}"/></clipPath><g clip-path="url(#${id}-${pi})">`);
+    panel.ys.forEach((ys, j) => {
+      // A zero on the jω axis sends the magnitude to −∞ there: held just below the panel instead.
+      const clamp = (v: number) => (Number.isFinite(v) ? Math.max(lo - (hi - lo), Math.min(hi + (hi - lo), v)) : lo - (hi - lo));
+      const d = ys.map((v, i) => `${i ? 'L' : 'M'}${sx(ws[i]).toFixed(1)},${sy(clamp(v)).toFixed(1)}`).join('');
+      parts.push(j === 0 ? `<path class="cv c-blue" d="${d}" stroke-width="2.2"/>` : `<path class="cv c-red" d="${d}" stroke-width="1.6" stroke-dasharray="6 4"/>`);
+    });
+    parts.push('</g>');
+    y += panel.h + gap;
+  });
+  parts.push(`<text class="lab" x="${L.l + pw}" y="${H - 4}" text-anchor="end">ω (rad/s)</text>`);
+  const svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">${parts.join('')}</svg>`;
+  const legend = spec.straight
+    ? `<div class="plot-legend"><span><svg width="22" height="8" viewBox="0 0 22 8"><line class="cv c-blue" x1="1" y1="4" x2="21" y2="4" stroke-width="2.2"/></svg>دقیق</span><span><svg width="22" height="8" viewBox="0 0 22 8"><line class="cv c-red" x1="1" y1="4" x2="21" y2="4" stroke-width="1.6" stroke-dasharray="5 3"/></svg>مجانبی (خط‌های راست)</span></div>`
+    : '';
+  const caption = spec.caption.length ? `<div class="plot-caption">${inline(spec.caption.join(' '))}</div>` : '';
+  return `<div class="plot"><div class="plot-svg" dir="ltr">${svg}</div>${legend}${caption}</div>`;
+}
+
+const FILLS: Record<string, [string, string]> = {
+  blue: ['#2F6BD8', '#7FA8F5'], red: ['#D6453A', '#F28A80'], green: ['#23945A', '#6FD39B'], orange: ['#E07B1F', '#F5B26B'],
+  purple: ['#7E4FD0', '#B79AF0'], pink: ['#C93F8E', '#EE8CC3'], gray: ['#6B7A70', '#A9B4AD'], yellow: ['#B89400', '#F5C518'], ink: ['#17201A', '#E4E9E2'],
+};
+const FILL_CSS = Object.entries(FILLS).map(([k, [light, dark]]) => `.f-${k} { fill: ${light}; } .lesson.dark .f-${k} { fill: ${dark}; }`).join('\n');
 
 export const PLOT_CSS = `
 .plot { margin: 4px 0 6px; }
@@ -557,4 +934,14 @@ export const PLOT_CSS = `
 .lesson.dark .c-gray { stroke: #A9B4AD; } .lesson.dark .c-yellow { stroke: #F5C518; } .lesson.dark .c-ink { stroke: #E4E9E2; }
 .lesson.dark .plot-error { background: #2E1F1E; color: #F28A80; }
 .lesson.sepia .plot .pbg { fill: #FFFBF0; } .lesson.sepia .plot .pt-open { fill: #FFFBF0; }
+.plot .grid.strong { stroke: #D3D9E4; } .plot .frame { fill: none; stroke: #9AA59E; stroke-width: 1; }
+.plot .unit { fill: none; stroke: #6B7A70; stroke-width: 1.2; stroke-dasharray: 4 3; }
+.plot .roc { fill: rgba(47, 107, 216, .13); stroke: none; } .plot .roc-edge { fill: none; stroke: #2F6BD8; stroke-width: 1.2; stroke-dasharray: 5 4; }
+.plot .pole { stroke: #D6453A; stroke-width: 2.2; stroke-linecap: round; fill: none; }
+.plot .zero { fill: #FFFFFF; stroke: #2F6BD8; stroke-width: 2; }
+.lesson.dark .plot .grid.strong { stroke: #34403A; } .lesson.dark .plot .frame { stroke: #5D6B62; } .lesson.dark .plot .unit { stroke: #8C9A90; }
+.lesson.dark .plot .roc { fill: rgba(127, 168, 245, .16); } .lesson.dark .plot .roc-edge { stroke: #7FA8F5; }
+.lesson.dark .plot .pole { stroke: #F28A80; } .lesson.dark .plot .zero { fill: #161E19; stroke: #7FA8F5; }
+.lesson.sepia .plot .zero { fill: #FFFBF0; }
+${FILL_CSS}
 `;

@@ -49,6 +49,8 @@ const FUNCS: Record<string, (...a: number[]) => number> = {
   min: Math.min, max: Math.max,
   /** Unit step u(x) (1 from 0 on), ramp r(x), rect (1 for |x| < ½), normalized sinc. */
   u: (v) => (v >= 0 ? 1 : 0),
+  /** δ[n] of discrete signals: 1 at 0, else 0 (an impulse δ(t) is drawn with «ضربه:», not as a formula). */
+  delta: (v) => (Math.abs(v) < 1e-9 ? 1 : 0),
   r: (v) => (v > 0 ? v : 0),
   rect: (v) => (Math.abs(v) < 0.5 ? 1 : Math.abs(v) === 0.5 ? 0.5 : 0),
   sinc: (v) => (v === 0 ? 1 : Math.sin(Math.PI * v) / (Math.PI * v)),
@@ -62,7 +64,7 @@ const ALIASES: Record<string, string> = {
 };
 const CONSTS: Record<string, number> = { pi: Math.PI, e: Math.E };
 /** Names that stand for the variable. */
-const VARS = new Set(['x', 't']);
+const VARS = new Set(['x', 't', 'n']);
 
 export const FUNCTION_NAMES = Object.keys(FUNCS);
 
@@ -74,6 +76,7 @@ export function normalizeExpr(src: string): string {
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .replace(/π/g, 'pi')
+    .replace(/δ/g, 'delta')
     .replace(/[×·∙]/g, '*')
     .replace(/÷/g, '/')
     .replace(/[−–—]/g, '-')
@@ -127,7 +130,7 @@ export function compile(source: string): Compiled {
   for (const t of tokenize(normalizeExpr(source))) {
     if (t.k !== 'id') { toks.push(t); continue; }
     const parts = splitName(t.v);
-    if (!parts) throw new ExprError(`«${t.v}» شناخته نشد. متغیر x یا t است و تابع‌ها مثل sin(x) با پرانتز نوشته می‌شوند.`);
+    if (!parts) throw new ExprError(`«${t.v}» شناخته نشد. متغیر x، t یا n است و تابع‌ها مثل sin(x) با پرانتز نوشته می‌شوند.`);
     parts.forEach((p) => toks.push({ k: 'id', v: p }));
   }
   let i = 0;

@@ -3,7 +3,7 @@
  * Run: npx --yes esbuild@0.28.2 scripts/plot-check.ts --bundle --platform=node --outfile=/tmp/plot-check.js && node /tmp/plot-check.js
  */
 import { compile, ExprError } from '../src/lib/expr';
-import { curveFunction, findHoles, fourierSums, parsePlot, renderPlot, segments } from '../src/lib/plot';
+import { bodeAt, curveFunction, findHoles, fourierSums, parseComplex, parsePlot, renderPlot, segments } from '../src/lib/plot';
 
 let failed = 0, passed = 0;
 function ok(cond: boolean, what: string) {
@@ -132,6 +132,48 @@ ok(holes('1/x', -2, 2).length === 0 && holes('tan(x)', -3, 3).length === 0 && ho
 ok(holes('(x^2-pi^2/4)/(x-pi/2)', -3, 3).length === 1, 'hole at π/2');
 ok(/pt-open/.test(renderPlot('تابع: (x^2-1)/(x-1)\nبازه: -2 تا 3', (s) => s)!), 'hole drawn without a «نقطه:» line');
 ok(!/pt-open/.test(renderPlot('تابع: (x^2-1)/(x-1)\nبازه: -2 تا 3\nحفره: خیر', (s) => s)!), '«حفره: خیر» turns it off');
+
+// --- signals and systems ---
+const cx = (s: string) => parseComplex(s).map((c) => [+c.re.toFixed(6), +c.im.toFixed(6)]);
+ok(JSON.stringify(cx('0.5+0.3j')) === '[[0.5,0.3]]', 'complex a+bj');
+ok(JSON.stringify(cx('0.8±0.4j')) === '[[0.8,0.4],[0.8,-0.4]]', '± gives the conjugate pair');
+ok(JSON.stringify(cx('-2j')) === '[[0,-2]]' && JSON.stringify(cx('j')) === '[[0,1]]' && JSON.stringify(cx('-1')) === '[[-1,0]]', 'pure imaginary and real');
+ok(JSON.stringify(cx('1-i')) === '[[1,-1]]' && JSON.stringify(cx('pi')) === `[[${+PI.toFixed(6)},0]]`, 'i, but not the i of pi');
+ok(near(parseComplex('1∠pi/2')[0].im, 1) && Math.abs(parseComplex('1∠pi/2')[0].re) < 1e-12, 'polar form');
+ok(near(parseComplex('1e-3+2j')[0].re, 0.001), 'exponent sign is not the split');
+const pz = parsePlot('صفر: 0\nقطب: 0.5، 0.8±0.4j\nناحیه: |z| > 0.9')!;
+ok(pz.zeros.length === 1 && pz.poles.length === 3 && pz.roc!.lo === 0.9 && pz.roc!.hi === Infinity, 'pole-zero description');
+const ring = parsePlot('قطب: 0.5، 2\nناحیه: 0.5 < |z| < 2')!.roc!;
+ok(ring.lo === 0.5 && ring.hi === 2 && ring.plane === 'z', 'ring ROC');
+const half = parsePlot('قطب: -1\nناحیه: Re(s) < -1')!.roc!;
+ok(half.plane === 's' && half.hi === -1 && half.lo === -Infinity, 'left half-plane ROC');
+const pzSvg = renderPlot('صفر: 0\nقطب: 0.5\nناحیه: |z| > 0.5', (s) => s)!;
+ok(/class="unit"/.test(pzSvg) && /class="pole"/.test(pzSvg) && /class="zero"/.test(pzSvg) && /class="roc"/.test(pzSvg), 'z plane: unit circle, ×, ○ and ROC');
+ok(!/class="unit"/.test(renderPlot('قطب: -1\nصفحه: s', (s) => s)!), 's plane: no unit circle');
+ok(/>\(2\)</.test(renderPlot('قطب: 0.5، 0.5', (s) => s)!), 'a double pole shows (2)');
+ok(/plot-error/.test(renderPlot('قطب: 1\nناحیه: بزرگ', (s) => s)!) && /plot-error/.test(renderPlot('قطب: 1\nناحیه: |z| > 2 و |z| < 1', (s) => s)!), 'a wrong ROC shows an error');
+// Bode: H(s) = 10/(s+10): 0 dB at low ω, −3 dB and −45° at the corner, −20 dB/decade after.
+const lp = { zeros: [], poles: [{ re: -10, im: 0 }], gain: 10 };
+ok(near(bodeAt(lp, 0.01).db, 0, 1e-4) && near(bodeAt(lp, 10).db, -3.0103, 1e-3) && near(bodeAt(lp, 10).phase, -45, 1e-9), 'Bode first order: −3 dB, −45° at the corner');
+ok(near(bodeAt(lp, 1000).db - bodeAt(lp, 10000).db, 20, 1e-3), '−20 dB per decade');
+ok(near(bodeAt(lp, 10).straight, 0, 1e-9) && near(bodeAt(lp, 100).straight, -20, 1e-9), 'straight lines meet at the corner');
+const integ = { zeros: [], poles: [{ re: 0, im: 0 }], gain: 1 };
+ok(near(bodeAt(integ, 1).db, 0) && near(bodeAt(integ, 10).db, -20) && near(bodeAt(integ, 3).phase, -90), 'integrator 1/s');
+const res = bodeAt({ zeros: [], poles: parseComplex('-0.2±3j'), gain: 9 }, 3);
+ok(res.db > 15 && res.db < 18, `resonance peak of a lightly damped pair (got ${res.db.toFixed(2)} dB)`);
+ok(/class="frame"/.test(renderPlot('بود: بله\nقطب: -10\nبهره: 10', (s) => s)!), 'Bode drawn');
+ok(((renderPlot('بود: بله\nقطب: -10\nفاز: خیر', (s) => s)!).match(/class="frame"/g) ?? []).length === 1, '«فاز: خیر» leaves the magnitude only');
+// Impulses and discrete signals.
+const imp = parsePlot('ضربه: 0، (2, -0.5)')!;
+ok(imp.impulses.length === 2 && imp.impulses[1].x === 2 && imp.impulses[1].w === -0.5, 'impulses with weights');
+const impSvg = renderPlot('ضربه: 0، (2, -0.5)', (s) => s)!;
+ok((impSvg.match(/class="f-/g) ?? []).length === 2 && /\(−0.5\)/.test(impSvg), 'two arrows, weight written');
+ok((renderPlot('قطار ضربه: 1\nبازه: -2.5 تا 2.5', (s) => s)!.match(/class="f-/g) ?? []).length === 5, 'impulse train: one arrow per period in view');
+const seq = parsePlot('مقادیر: 1، 2، 3 از -1')!;
+ok(seq.seq!.start === -1 && seq.seq!.values.join() === '1,2,3' && seq.variable === 'n', 'listed sequence');
+const stems = renderPlot('تابع: u(n)\nمتغیر: n\nبازه: -3 تا 3', (s) => s)!;
+ok((stems.match(/<circle class="f-/g) ?? []).length === 7, 'stems at every whole n in view');
+ok(f('delta(n)', 0) === 1 && f('δ(n)', 1) === 0, 'δ[n]');
 
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
