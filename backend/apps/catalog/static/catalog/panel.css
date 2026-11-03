@@ -11,9 +11,14 @@
 .lp textarea { line-height: 1.9; resize: vertical; }
 /* Each line takes its direction from its first letter (a line of formula reads left to right), and «چپ‌چین»
    (remembered in this browser) shows every line left to right, so $…$ and brackets never look jumbled. */
-.lp textarea { unicode-bidi: plaintext; }
-body.lp-ltr .lp textarea { direction: ltr; text-align: left; unicode-bidi: isolate; }
-.md-ed .md-bar button.dir-on { background: var(--ink); color: var(--lemon); }
+.lp textarea, .lp input[type=text] { unicode-bidi: plaintext; }
+/* CodeMirror (limo-editor.js) in place of the text boxes. */
+.limo-cm { width: 100%; }
+.md-ed .limo-cm { border: 0 !important; border-radius: 0 !important; min-height: 260px; height: 100%; }
+.md-ed.compact .limo-cm { min-height: 110px; }
+.md-ed.mode-preview .limo-cm { display: none; }
+.md-ed .limo-cm .cm-scroller { max-height: 70vh; }
+.file-ed + .limo-cm .cm-scroller { max-height: 75vh; }
 .lp label.f { display: block; font-weight: 700; margin: 12px 0 4px; font-size: 13px; }
 .lp .hint { color: var(--body-quiet-color, #666); font-size: 12px; font-weight: 400; }
 .lp .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

@@ -55,6 +55,9 @@ Code, identifiers and commit messages are in English.
   the panel. Pages: books (proxy `Book`), «مدیریت فصل» (JS in `static/catalog/panel.js`), whole-file edit, versions.
   The live preview uses the app's own renderer bundled into `static/catalog/limo-preview.js`; after changing
   `renderMarkdown.ts` or `reviewCard.ts`, run `cd app && npm run build:admin-preview` and commit the bundle.
+  The panel's text boxes are CodeMirror (`static/catalog/limo-editor.js`, source `app/admin-preview/editor.ts`, rebuild
+  with `npm run build:admin-editor`): formulas and Latin runs are isolated left to right inside Persian lines; the hidden
+  textarea keeps a textarea API (value, selection, 'input' events) so panel.js works on it unchanged.
   Question/flashcard/section admin lists are for filtering; their «ویرایش» opens the chapter manager.
 - Labels («برچسب‌های متن», `catalog.Label`, admin): one list for boxes in the notes («درسنامه», `:::تعریف … :::`) and parts
   of the summary («چکیده», `تعریف:` + `- ` items), each with a group and one of four looks (formal/note/warn/table).

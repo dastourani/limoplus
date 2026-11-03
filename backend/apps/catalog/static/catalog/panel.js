@@ -68,13 +68,18 @@
     groups.forEach(function (g) { row.appendChild(g); });
     return row;
   }
-  // Text put into a textarea as one edit, so Ctrl+Z can take it back (setting .value would wipe the history).
+  // The panel's text boxes are CodeMirror editors (limo-editor.js): Persian lines right to left, formulas left to right.
+  function cmUpgrade(ta, lines) { if (window.LimoCM) window.LimoCM.upgrade(ta, lines ? { minLines: lines } : {}); return ta; }
+  // Text put in as one edit, so Ctrl+Z can take it back (setting .value would wipe the history).
+  function typeIn(ta, text) {
+    if (window.LimoCM && window.LimoCM.insert(ta, text)) return true;
+    try { return document.execCommand('insertText', false, text); } catch (e) { return false; }
+  }
   function insertText(ta, text, selFrom, selTo) {
     var start = ta.selectionStart, end = ta.selectionEnd;
     ta.focus();
     ta.setSelectionRange(start, end);
-    var ok = false;
-    try { ok = document.execCommand('insertText', false, text); } catch (e) { ok = false; }
+    var ok = typeIn(ta, text);
     if (!ok) { ta.setRangeText(text, start, end, 'end'); ta.dispatchEvent(new Event('input')); }
     if (selFrom != null) ta.setSelectionRange(start + selFrom, start + selTo);
   }
@@ -88,17 +93,6 @@
     ta.setSelectionRange(at, ta.selectionEnd);
     insertText(ta, text + (v[ta.selectionEnd] && v[ta.selectionEnd] !== '\n' ? '\n' : ''), from, from + sample.length);
   }
-
-  // ---------- left-to-right view of the text boxes ----------
-  var dirButtons = [];
-  function ltrOn() { try { return localStorage.getItem('limo.panel.ltr') === '1'; } catch (e) { return false; } }
-  function setLtr(on) {
-    try { localStorage.setItem('limo.panel.ltr', on ? '1' : '0'); } catch (e) { /* ignore */ }
-    document.body.classList.toggle('lp-ltr', on);
-    dirButtons.forEach(function (b) { b.classList.toggle('dir-on', on); });
-  }
-  if (document.body) document.body.classList.toggle('lp-ltr', ltrOn());
-  document.addEventListener('DOMContentLoaded', function () { document.body.classList.toggle('lp-ltr', ltrOn()); });
 
   // ---------- Markdown editor ----------
 
@@ -130,11 +124,6 @@
       }
       if (opts.uploadUrl) bar.appendChild(btn('🖼 عکس', 'افزودن عکس', function () { self.pickImage(opts.uploadUrl); }));
     }
-    // «چپ‌چین»: all text boxes of the panel left to right (for formulas); the choice stays in this browser.
-    var dirBtn = btn('⇆ چپ‌چین', 'نمایش متن از چپ به راست، برای کار با فرمول‌ها (فقط نمایش؛ متن تغییری نمی‌کند)', function () { setLtr(!ltrOn()); });
-    dirBtn.classList.toggle('dir-on', ltrOn());
-    dirButtons.push(dirBtn);
-    bar.appendChild(dirBtn);
     var modes = h('span', { class: 'modes' });
     var modeBtns = {};
     [['split', 'هر دو'], ['text', 'فقط متن'], ['preview', 'فقط پیش‌نمایش']].forEach(function (m) {
@@ -184,6 +173,7 @@
     textarea.addEventListener('keydown', function (e) {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'ذ')) { e.preventDefault(); self.wrap('**', '**', 'متن پررنگ'); }
     });
+    cmUpgrade(textarea, opts.inline ? 1 : opts.compact ? 3 : 14);
     var saved = 'split';
     try { saved = localStorage.getItem('limo.panel.mode') || 'split'; } catch (e) { /* ignore */ }
     this.setMode(opts.mode || saved);
@@ -201,8 +191,7 @@
     var ta = this.ta, start = ta.selectionStart, end = ta.selectionEnd;
     ta.focus();
     ta.setSelectionRange(start, end);
-    var ok = false;
-    try { ok = document.execCommand('insertText', false, text); } catch (e) { ok = false; }
+    var ok = typeIn(ta, text);
     if (!ok) { ta.setRangeText(text, start, end, 'end'); ta.dispatchEvent(new Event('input')); }
     if (selectFrom != null) ta.setSelectionRange(start + selectFrom, start + selectTo);
   };
@@ -687,16 +676,14 @@
 
     // The raw text box stays in the page the whole time (only hidden while the form is shown): taking it out of the
     // page would wipe its Ctrl+Z history.
-    var sumDir = h('button', { class: 'btn small' + (ltrOn() ? ' primary' : ''), type: 'button', title: 'نمایش متن از چپ به راست (فقط نمایش)',
-      onclick: function () { setLtr(!ltrOn()); sumDir.classList.toggle('primary', ltrOn()); } }, '⇆ چپ‌چین');
     var rawBox = h('div', null,
-      h('div', { class: 'row', style: 'justify-content:flex-end;margin-bottom:6px' }, sumDir),
       labelRow(function (l) { insertSummaryLabel(rawTa, l); }, null, 'برچسب:'),
       rawTa,
       h('p', { class: 'hint' }, 'هر برچسب در خطی جدا با «:» (مثلاً «تعریف:») و هر مورد با «- ». با «[[عبارتی از درسنامه]]» در آخر هر مورد، لمسش اپ را به همان‌جای درسنامه می‌برد. ' +
         'چکیده‌ی بدون برچسب مثل متن معمولی نشان داده می‌شود؛ متنی که پیش از اولین برچسب بیاید، بالای کارت می‌آید. مثال‌های مفصل جایشان در درسنامه است.'));
     var formBox = h('div');
     left.appendChild(rawBox);
+    cmUpgrade(rawTa, 14);
     left.appendChild(formBox);
     var focusLast = null;
 
@@ -904,6 +891,7 @@
     var rawBox = h('div', { style: 'display:none' }, rawTa, h('p', { class: 'hint' }, 'همان قالب فایل. خط اول و آخر (:::) لازم نیست.'));
     left.appendChild(formBox);
     left.appendChild(rawBox);
+    cmUpgrade(rawTa, 14);
     var formTouched = true, rawTouched = false; // what changed since the other view was last filled
     function changed() {
       if (mode === 'form') formTouched = true; else rawTouched = true;
@@ -915,8 +903,7 @@
       if (text === rawTa.value) return;
       if (!rawTa.value) { rawTa.value = text; return; }
       rawTa.focus(); rawTa.select();
-      var ok = false;
-      try { ok = document.execCommand('insertText', false, text); } catch (e) { ok = false; }
+      var ok = typeIn(rawTa, text);
       if (!ok) rawTa.value = text;
       rawTa.setSelectionRange(0, 0);
     }
@@ -1063,6 +1050,7 @@
   // ---------- Whole-file editor ----------
   window.LimoFileEditor = function (opts) {
     var ta = document.getElementById('file-text'), out = document.getElementById('file-result');
+    cmUpgrade(ta, 24);
     var checkBtn = document.getElementById('file-check'), saveBtn = document.getElementById('file-save');
     var checked = null;
     function post(body) {
