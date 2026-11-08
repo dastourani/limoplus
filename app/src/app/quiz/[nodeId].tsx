@@ -14,6 +14,7 @@ import { endpoints, type Question, type ReviewSessionData } from '../../api/endp
 import { useFeedback } from '../../components/Feedback';
 import { LemonProgress, type PartState } from '../../components/LemonProgress';
 import { PageHeader } from '../../components/PageHeader';
+import { setMacros } from '../../lib/macros';
 import { QuestionPicker } from '../../components/QuestionPicker';
 import { QuizView, type QuizEvent } from '../../components/QuizView';
 import { ReportSheet } from '../../components/ReportSheet';
@@ -93,6 +94,8 @@ export default function Quiz() {
   // «تست تکمیلی»: a section's extra tests come after its own, once the learner asks for «تمرین بیشتر».
   const [withExtra, setWithExtra] = useState(false);
   const sectionQuiz = !review && !notebook && !quick;
+  // «دستورهای فرمول» before any formula is drawn.
+  setMacros((data as { macros?: Record<string, string> } | undefined)?.macros);
   const extraCount = sectionQuiz ? (data?.questions ?? []).filter((q) => q.extra).length : 0;
   const questions = useMemo(() => {
     const all = reviewQs ?? data?.questions ?? [];

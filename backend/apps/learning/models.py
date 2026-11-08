@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from apps.catalog.models import ContentNode
 
@@ -33,6 +34,9 @@ class Flashcard(models.Model):
     order = models.PositiveIntegerField("ترتیب در بخش", default=0)
     is_free = models.BooleanField("رایگان", default=False)
     is_archived = models.BooleanField("بایگانی", default=False)
+    # «تازه»: when it was added (empty for cards older than this field); «به‌روز شده»: the panel's «مطلب تازه».
+    added_at = models.DateTimeField("زمان افزوده شدن", null=True, blank=True, default=timezone.now, editable=False)
+    refreshed_at = models.DateTimeField("به‌روزرسانی مهم", null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = "فلش‌کارت"
@@ -82,6 +86,8 @@ class Question(models.Model):
     is_extra = models.BooleanField("تست تکمیلی", default=False, help_text="در بانک تست؛ در دایره‌ی پیشرفت بخش حساب نمی‌شود.")
     # Set by the importer when the right choice moves to another choice: the app shows «اصلاح‌شده».
     key_changed_at = models.DateTimeField("تاریخ اصلاح پاسخ‌نامه", null=True, blank=True, editable=False)
+    added_at = models.DateTimeField("زمان افزوده شدن", null=True, blank=True, default=timezone.now, editable=False)
+    refreshed_at = models.DateTimeField("به‌روزرسانی مهم", null=True, blank=True, editable=False)
     key_change_note = models.CharField("شرح اصلاح پاسخ‌نامه", max_length=400, blank=True, editable=False)
     is_free = models.BooleanField("رایگان", default=False)
     is_archived = models.BooleanField("بایگانی", default=False)

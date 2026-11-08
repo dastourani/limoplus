@@ -17,6 +17,9 @@ from .labels import all_labels, find
 
 BOX = re.compile(r"^:::[ \t]*([^\s{](?:[^{\n]*[^\s{])?)[ \t]*(?:\{#([^}\s]+)\})?[ \t]*$", re.MULTILINE)
 REF = re.compile(r"\[\[#([^\]\s]+)\]\]")
+# A named display formula «$$…$$ {#name}»: numbered over the chapter («(۳-۲)») and linked as «رابطه‌ی (۳-۲)».
+EQUATION = re.compile(r"\$\$[\s\S]+?\$\$[ \t]*(?:\{#([^}\s]+)\})?")
+EQ = "رابطه"  # its key in the counts (the app reads start["رابطه"])
 
 _DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
@@ -48,6 +51,11 @@ def count(position, parts) -> tuple[dict, dict[str, dict]]:
     refs: dict[str, dict] = {}
     for key, text in parts:
         starts[key] = dict(counts)
+        for m in EQUATION.finditer(text or ""):
+            if m.group(1):
+                counts[EQ] = counts.get(EQ, 0) + 1
+                number = f"{fa(position)}-{fa(counts[EQ])}" if position else fa(counts[EQ])
+                refs.setdefault(m.group(1), {"text": f"رابطه‌ی ({number})", "node": key})
         for label, name in boxes(text):
             if label["name"] not in wanted:
                 # Not numbered: a link to it shows the label's name («قضیه»).

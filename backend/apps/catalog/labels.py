@@ -25,6 +25,8 @@ DEFAULT_LABELS = [
     ("شرط کاربرد", "ریاضی و علوم", "note", "", "", "", False),
     ("نمودار", "ریاضی و علوم", "formal", "", "", "", False),
     ("مثال", "عمومی", "formal", "", "", "", False),
+    ("تمرین", "عمومی", "note", "", "تمرین‌ها", "", False),
+    ("پرسش و پاسخ", "عمومی", "formal", "", "پرسش‌وپاسخ، سؤال و جواب، سوال و جواب", "", False),
     ("مثال نقض", "ریاضی و علوم", "warn", "", "", "", False),
     ("نکته", "عمومی", "note", "", "", "", False),
     ("یادآوری", "عمومی", "note", "", "", "", False),
@@ -36,11 +38,11 @@ DEFAULT_LABELS = [
     ("متضاد", "زبان", "table", "", "", "واژه | متضاد", False),
 ]
 
-NUMBERED = {"مثال", "نمودار"}  # numbered from the start (migration 0016)
+NUMBERED = {"مثال", "نمودار", "تمرین"}  # numbered from the start (migrations 0016, 0018)
 # The starting icon of each label (migration 0017; app/src/lib/labelIcons.ts draws them).
 DEFAULT_ICONS = {
     "تعریف": "book-open", "قضیه": "sigma", "فرمول": "sigma", "قاعده": "list-checks", "نتیجه": "list-checks", "گزاره": "list-checks",
-    "شرط کاربرد": "triangle-alert", "نمودار": "chart-spline", "مثال": "pen-line", "مثال نقض": "circle-x", "نکته": "lightbulb",
+    "شرط کاربرد": "triangle-alert", "نمودار": "chart-spline", "مثال": "pen-line", "تمرین": "pen-line", "پرسش و پاسخ": "info", "مثال نقض": "circle-x", "نکته": "lightbulb",
     "یادآوری": "repeat", "حفظی": "brain", "تله": "triangle-alert", "هشدار": "triangle-alert", "مهم": "pin", "در یک نگاه": "target",
     "واژه": "languages", "مترادف": "languages", "متضاد": "languages",
 }

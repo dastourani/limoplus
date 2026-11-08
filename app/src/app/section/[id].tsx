@@ -18,6 +18,7 @@ import { useStudyTimer } from '../../lib/studyTime';
 import { sendOrQueue } from '../../lib/network';
 import { setLabels } from '../../lib/labels';
 import { setNumbering } from '../../lib/numbering';
+import { setMacros } from '../../lib/macros';
 import { useWide } from '../../lib/layout';
 import { ChapterSide } from '../../components/ChapterSide';
 import { parseTerms, type Term } from '../../lib/reviewCard';
@@ -506,6 +507,7 @@ export default function Section() {
   // The panel's labels (boxes in the notes, parts of the summary), before the text is drawn.
   setLabels(node.labels);
   setNumbering(node.numbering);
+  setMacros(node.macros);
   const body = mode === 'summary' && node.summary ? node.summary : node.full;
   const bookSlug = node.breadcrumb.find((b) => b.kind === 'book')?.slug;
   const missingNotes = notes.filter((n) => missing.includes(n.id) && n.mode === mode);
@@ -523,7 +525,10 @@ export default function Section() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین، ${chapterLabel}` : chapterLabel}</Text>
-          <Text style={[styles.title, rtl, { color: ink }]} numberOfLines={1}>{pageTitle}</Text>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+            <Text style={[styles.title, rtl, { color: ink, flexShrink: 1 }]} numberOfLines={1}>{pageTitle}</Text>
+            {node.badge === 'updated' && <Text style={styles.updated}>به‌روز شده</Text>}
+          </View>
         </View>
         <Pressable onPress={toggleBookmark} disabled={bookmarkBusy} style={[styles.icon, bookmarkBusy && { opacity: 0.35 }]} accessibilityLabel="نشان کردن">
           <Icon name={bookmarked ? 'bookmark-check' : 'bookmark'} size={22} color={bookmarked ? colors.lemon : ink} />
@@ -744,6 +749,7 @@ const styles = StyleSheet.create({
   count: { position: 'absolute', top: 4, left: 2, minWidth: 18, height: 18, borderRadius: 8, backgroundColor: colors.lemon, color: colors.ink, fontSize: 12, textAlign: 'center', overflow: 'hidden' },
   iconText: { fontSize: 22, fontWeight: '800' },
   sub: { fontSize: 12, color: colors.muted },
+  updated: { fontSize: 11, fontWeight: '800', color: '#4A3A9E', backgroundColor: '#E8E4FA', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 1, overflow: 'hidden' },
   title: { fontSize: 15, fontWeight: '800' },
   toggle: { flexDirection: 'row-reverse', alignSelf: 'center', backgroundColor: colors.disabled, borderRadius: 999, padding: 3, marginBottom: 6 },
   toggleItem: { paddingHorizontal: 22, paddingVertical: 7, borderRadius: 999 },

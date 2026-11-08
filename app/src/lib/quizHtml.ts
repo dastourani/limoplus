@@ -37,7 +37,20 @@ const KIND: Record<string, [string, IconData]> = {
 };
 
 /** Practice questions carry tags; exam questions only stem and choices. */
-export type QuizQuestion = Pick<Question, 'id' | 'stem' | 'choices'> & Partial<Pick<Question, 'sources' | 'is_original' | 'kind' | 'corrected'>> & { difficulty?: string };
+export type QuizQuestion = Pick<Question, 'id' | 'stem' | 'choices'> & Partial<Pick<Question, 'sources' | 'is_original' | 'kind' | 'corrected' | 'badge'>> & { difficulty?: string };
+
+/**
+ * How a choice sits in its box: Persian text and short formulas or numbers to the right (as now); a choice that is one
+ * long formula in the middle; an English choice from the left, written left to right.
+ */
+export function choiceAlign(text: string): 'right' | 'center' | 'en' {
+  const t = (text ?? '').trim();
+  const formula = t.match(/^\$\$?([^$]+)\$\$?$/);
+  if (formula) return formula[1].trim().length > 24 ? 'center' : 'right';
+  if (/[\u0600-\u06FF]/.test(t)) return 'right';
+  const words = t.replace(/\$[^$]*\$/g, ' ');
+  return /[A-Za-z]{2,}/.test(words) ? 'en' : 'right';
+}
 
 export function questionHtml(q: QuizQuestion, mode: 'practice' | 'exam' = 'practice'): string {
   const tags: string[] = [];
@@ -49,9 +62,13 @@ export function questionHtml(q: QuizQuestion, mode: 'practice' | 'exam' = 'pract
   if (d) tags.push(`<span class="tag t-${d[1]}">${svg(GaugeIcon as IconData)}${d[0]}</span>`);
   const k = q.kind ? KIND[q.kind] : null;
   if (k) tags.push(`<span class="tag t-kind">${svg(k[1])}${k[0]}</span>`);
+  if (q.badge && mode !== 'exam') tags.push(`<span class="tag t-${q.badge === 'new' ? 'new' : 'upd'}">${q.badge === 'new' ? 'تازه' : 'به‌روز شده'}</span>`);
   if (q.corrected && mode !== 'exam') tags.push(`<span class="tag t-fixed">${svg(CheckIcon as IconData)}اصلاح‌شده</span>`);
   const choices = q.choices
-    .map((c, i) => `<button class="choice" data-id="${c.id}"><span class="key">${KEYS[i]}</span><span class="ctext">${renderMarkdown(c.text)}</span></button>`)
+    .map((c, i) => {
+      const a = choiceAlign(c.text);
+      return `<button class="choice" data-id="${c.id}"><span class="key">${KEYS[i]}</span><span class="ctext a-${a}"${a === 'en' ? ' dir="ltr"' : ''}>${renderMarkdown(c.text)}</span></button>`;
+    })
     .join('');
   return `${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
 <div class="stem">${renderMarkdown(q.stem)}</div>
@@ -119,6 +136,7 @@ export const QUIZ_CSS = `
 .quiz .t-easy { background: #E3F3E9; color: #1F5E3A; } .quiz .t-medium { background: #FFF1B8; color: #6B5200; }
 .quiz .t-hard { background: #FBE7E6; color: #9E2F2A; } .quiz .t-kind { background: #EEF0FC; color: #3B44B8; }
 .quiz .t-fixed { background: #E8E4FA; color: #4A3A9E; }
+.quiz .t-new { background: #FFE27A; color: #17201A; } .quiz .t-upd { background: #E8E4FA; color: #4A3A9E; }
 .quiz .corrected { margin-top: 10px; border-radius: 12px; padding: 8px 12px; background: #F1EEFC; color: #3A2F7A; font-size: 13px; line-height: 1.9; }
 .quiz .corrected p { display: inline; margin: 0; }
 .quiz .stem { font-size: 17px; margin-bottom: 14px; } .quiz .stem p { margin: 0 0 8px; }
@@ -127,7 +145,9 @@ export const QUIZ_CSS = `
   border: 2px solid #E3E8DE; background: #fff; font: inherit; color: inherit; text-align: right; cursor: pointer; }
 .quiz .choice .key { flex: none; width: 30px; height: 30px; border-radius: 10px; background: #F1F3EC; display: flex; align-items: center;
   justify-content: center; font-weight: 800; }
-.quiz .ctext { flex: 1; } .quiz .ctext p { margin: 0; }
+.quiz .ctext { flex: 1; min-width: 0; } .quiz .ctext p { margin: 0; }
+.quiz .ctext.a-center, .quiz .choice .ctext.a-center p { text-align: center; text-align-last: center; } .quiz .ctext.a-center .math-block { margin: 0; border: 0; background: transparent; padding: 0; }
+.quiz .ctext.a-en, .quiz .choice .ctext.a-en p { text-align: left; text-align-last: left; direction: ltr; font-family: system-ui, sans-serif; }
 .quiz .choice.picked { border-color: #17201A; background: #FFF6CF; }
 .quiz .choice.picked .key { background: #17201A; color: #F5C518; }
 .quiz .choice.right { background: #E3F3E9; border-color: #2F7D4F; } .quiz .choice.right .key { background: #2F7D4F; color: #fff; }

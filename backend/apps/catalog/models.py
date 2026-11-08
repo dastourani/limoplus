@@ -106,6 +106,8 @@ class ContentNode(MP_Node):
     is_published = models.BooleanField("منتشر شده", default=False)
     is_archived = models.BooleanField("بایگانی", default=False, help_text="به‌جای حذف؛ داده‌ی کاربران حفظ می‌شود")
     updated_at = models.DateTimeField(auto_now=True)
+    # «مطلب تازه»: the last time the panel marked this text as worth a second look («به‌روز شده» in the app).
+    refreshed_at = models.DateTimeField("به‌روزرسانی مهم", null=True, blank=True, editable=False)
 
     node_order_by = None
 
@@ -373,3 +375,52 @@ class Label(models.Model):
         return {"name": self.name, "group": self.group, "style": self.style, "role": self.role,
                 "aliases": split(self.aliases, r"[،,]"), "columns": split(self.columns, r"\|"), "hidden": self.is_hidden,
                 "numbered": self.numbered, "icon": self.icon}
+
+
+class BookChange(models.Model):
+    """«تغییرات کتاب»: one line per important update (the panel's «مطلب تازه»), shown to learners with its date."""
+
+    book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="changes", verbose_name="کتاب",
+                             limit_choices_to={"kind": "book", "depth": 1})
+    node = models.ForeignKey(ContentNode, on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name="فصل یا بخش")
+    text = models.CharField("شرح تغییر", max_length=300)
+    created_at = models.DateTimeField("تاریخ", auto_now_add=True)
+    is_hidden = models.BooleanField("پنهان", default=False, help_text="در صفحه‌ی «تغییرات کتاب» نشان داده نمی‌شود.")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "تغییر کتاب"
+        verbose_name_plural = "تغییرات کتاب‌ها"
+
+    def __str__(self):
+        return self.text
+
+
+class FormulaCommand(models.Model):
+    """«دستورهای فرمول»: a short command for every formula of every book, e.g. «\\R» for «\\mathbb{R}». KaTeX expands it
+    (with #1, #2 for arguments), so changing one line changes every formula that uses it."""
+
+    name = models.CharField("دستور", max_length=40, unique=True, help_text="با «\\» و فقط حروف انگلیسی، مثلاً \\R یا \\norm")
+    definition = models.CharField("معنی", max_length=300, help_text="LaTeX؛ برای ورودی‌ها #1 و #2، مثلاً \\lVert #1 \\rVert")
+    note = models.CharField("توضیح", max_length=120, blank=True)
+    is_hidden = models.BooleanField("خاموش", default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "دستور فرمول"
+        verbose_name_plural = "دستورهای فرمول"
+
+    def __str__(self):
+        return f"{self.name} = {self.definition}"
+
+    def clean(self):
+        import re
+
+        from django.core.exceptions import ValidationError
+
+        self.name = (self.name or "").strip()
+        if not re.fullmatch(r"\\[A-Za-z]+", self.name):
+            raise ValidationError({"name": "دستور با «\\» شروع می‌شود و بعد فقط حروف انگلیسی، مثلاً \\R"})
+        if (self.definition or "").count("{") != (self.definition or "").count("}"):
+            raise ValidationError({"definition": "تعداد «{» و «}» برابر نیست."})

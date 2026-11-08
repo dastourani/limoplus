@@ -67,6 +67,16 @@ Code, identifiers and commit messages are in English.
 - Numbered boxes (`Label.numbered`; «مثال», «نمودار»): counted over the chapter («مثال ۳-۵»), never written in the text;
   `:::مثال {#name}` + `[[#name]]` links. Server: `apps/catalog/numbering.py` (section's start counts and book refs sent with
   each section; explanations get `[[#name|text|node]]` filled in). App: `src/lib/numbering.ts`, renderer.
+- Reading order (`catalog/views.py` `reading_order`): chapter introduction («مقدمه‌ی فصل», the chapter node's own page,
+  no summary), its sections, the next chapter's introduction. Highlights store their quote with formulas as `$tex$`
+  (`READER_SCRIPT` `layout()`); the Android selection menu offers «هایلایت»/«یادداشت» (`menuItems`).
+- Text extras: `==قرمز:…==` (red/blue/green), `:::پرسش و پاسخ` (lines «پرسش:»/«پاسخ:»), `:::تمرین` (numbered, solution after
+  «حل:» hidden in `<details>`), named display formulas `$$…$$ {#name}` numbered «(۳-۲)» (counted as «رابطه» in `numbering.py`).
+  «دستورهای فرمول» (`FormulaCommand`) are KaTeX macros for all books (`lib/macros.ts`); `lib/mathvariant.ts` rewrites
+  MathML mathvariant (ℝ, 𝐯) because Chrome/WebView ignore it.
+- «مطلب تازه» (`catalog/fresh.py`): a tick on panel saves sets `refreshed_at` and writes `BookChange` («تغییرات کتاب»);
+  learners see «به‌روز شده» until they have seen it since. Tests/cards added after a learner started the section show
+  «تازه» (`added_at`, 14 days). Restore offers «فقط متن بخش‌ها را برگردان» (`file.restore_text`).
 - Plots: a «:::نمودار» box with «تابع:» lines is drawn as SVG by `src/lib/plot.ts` (formulas: `src/lib/expr.ts`, a small
   numeric parser; mathjs was ~1 MB). Checks: `app/scripts/plot-check.ts` (run with esbuild + node; must pass).
 - «صندوق» (`apps/catalog/inbox.py`): a hidden book (`ContentNode.is_inbox`, never visible, never published) whose one

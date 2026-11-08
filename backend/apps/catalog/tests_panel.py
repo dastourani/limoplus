@@ -1076,3 +1076,66 @@ class MovingContentTests(TestCase):
         card = Flashcard.objects.get(slug="card1")
         self.assertEqual(card.node_id, two.pk)
         self.assertEqual(card.questions.count(), 0, "q1 stayed in the other book: no link across books")
+
+
+class FreshAndRestoreTests(_Base):
+    """«مطلب تازه», «تغییرات کتاب», «تازه» tests, numbered formulas and «فقط متن بخش‌ها را برگردان»."""
+
+    def test_fresh_tick_marks_the_section_and_writes_a_change(self):
+        from .models import BookChange
+
+        r = self.op(op="section.update", slug="one", full_body="نکته‌ی تازه.", fresh=True, fresh_note="یک نکته‌ی مهم اضافه شد")
+        self.assertEqual(r.status_code, 200, r.content)
+        node = ContentNode.objects.get(slug="one")
+        self.assertIsNotNone(node.refreshed_at)
+        change = BookChange.objects.get(book=self.book)
+        self.assertEqual(change.text, "یک نکته‌ی مهم اضافه شد")
+        data = self.client.get(f"/api/v1/books/{self.book.slug}/changes/").json()
+        self.assertEqual(data["changes"][0]["text"], "یک نکته‌ی مهم اضافه شد")
+        self.assertIsNotNone(self.client.get(f"/api/v1/books/{self.book.slug}/").json()["updated_on"])
+        # Without the tick nothing is marked.
+        self.op(op="section.update", slug="two", full_body="اصلاح غلط تایپی.")
+        self.assertIsNone(ContentNode.objects.get(slug="two").refreshed_at)
+        self.assertEqual(BookChange.objects.count(), 1)
+
+    def test_badges_for_a_learner(self):
+        from django.utils import timezone
+
+        from apps.study.models import SectionProgress
+
+        from .fresh import question_badges, section_badges
+
+        learner = User.objects.create_user("09120000002")
+        one = ContentNode.objects.get(slug="one")
+        SectionProgress.objects.create(user=learner, node=one, book=self.book, percent=100, is_done=True)
+        q = Question.objects.get(slug="q1")
+        self.assertEqual(question_badges(learner, [q]), {})  # older than the learner's start
+        q.added_at = timezone.now()
+        q.save()
+        self.assertEqual(question_badges(learner, [q]), {q.id: "new"})
+        self.op(op="section.update", slug="one", full_body="نکته.", fresh=True)
+        one.refresh_from_db()
+        self.assertEqual(section_badges(learner, [one]), {one.id: "updated"})
+
+    def test_numbered_formulas_count_and_link(self):
+        from .numbering import chapter_numbering
+
+        self.op(op="section.update", slug="one", full_body="$$a=b$$ {#eq-a}\n\nمتن\n\n$$c=d$$\n\n$$\ne=f\n$$ {#eq-b}")
+        chapter = ContentNode.objects.get(pk=self.chapter.pk)
+        starts, refs = chapter_numbering(chapter, chapter.get_children())
+        self.assertEqual(refs["eq-a"]["text"], f"رابطه‌ی ({chapter.position and '۱-'}۱)".replace("None", ""))
+        self.assertTrue(refs["eq-b"]["text"].endswith("۲)"))
+        two = ContentNode.objects.get(slug="two")
+        self.assertEqual(starts[two.id].get("رابطه"), 2)
+        # A name used twice is refused.
+        r = self.op(op="section.update", slug="two", full_body="$$x$$ {#eq-a}")
+        self.assertEqual(r.status_code, 400)
+
+    def test_restore_text_only_hides_nothing(self):
+        first_text = export_chapter(self.chapter)
+        self.op(op="section.update", slug="one", full_body="نسخه‌ی تازه.")
+        self.op(op="section.create", title="بخش سوم", slug="three")
+        r = self.op(op="file.restore_text", text=first_text)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn("متن جزوه با فرمول", ContentNode.objects.get(slug="one").full_body)
+        self.assertFalse(ContentNode.objects.get(slug="three").is_archived, "a section missing from the old version stays")

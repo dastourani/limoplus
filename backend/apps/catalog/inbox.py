@@ -102,10 +102,17 @@ def relocate(source: ContentNode, slugs: list[str], target_id, user, kind: str =
                     outside = [q for q in item.questions.all() if not q.node.path.startswith(target_book.path)]
                     item.questions.remove(*outside)
                 unlinked += len(outside)
+            fields = ["node", "order", "slug"]
+            if source.is_inbox or source.book().is_inbox:
+                # Out of the hidden «صندوق»: learners see it from now («تازه»).
+                from django.utils import timezone
+
+                item.added_at = timezone.now()
+                fields.append("added_at")
             item.node = target
             item.order = nxt
             nxt += 1
-            item.save(update_fields=["node", "order", "slug"])
+            item.save(update_fields=fields)
             moved += 1
         where = f"«{target.title}»" + (f" در «{target_book.title}»" if target_book.pk != source.book().pk else "")
         note = f"انتقال {moved} {word} به {where}"

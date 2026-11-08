@@ -118,6 +118,12 @@
     bar.appendChild(btn('B', 'پررنگ (Ctrl+B)', function () { self.wrap('**', '**', 'متن پررنگ'); }));
     bar.appendChild(btn('I', 'کج', function () { self.wrap('*', '*', 'متن کج'); }));
     bar.appendChild(btn('S̶', 'خط روی متن', function () { self.wrap('~~', '~~', 'متن'); }));
+    // Coloured words: «==قرمز:متن==» (red, blue, green).
+    [['قرمز', '#C2413B'], ['آبی', '#2F5BC8'], ['سبز', '#23784A']].forEach(function (c) {
+      var b = btn('●', 'متن ' + c[0] + ' (==' + c[0] + ':متن==)', function () { self.wrap('==' + c[0] + ':', '==', 'متن'); });
+      b.style.color = c[1];
+      bar.appendChild(b);
+    });
     bar.appendChild(h('span', { class: 'sep' }));
     if (!opts.inline) {
       bar.appendChild(btn('تیتر', 'تیتر کوچک داخل متن (###)', function () { self.linePrefix('### '); }));
@@ -176,7 +182,9 @@
           wrap.insertBefore(menu, body);
           return;
         }
-        var sample = l.style === 'table' && l.columns && l.columns.length
+        var sample = l.name === 'پرسش و پاسخ' ? 'پرسش: …\nپاسخ: …'
+          : l.name === 'تمرین' ? 'صورت تمرین…\nحل: …'
+          : l.style === 'table' && l.columns && l.columns.length
           ? '| ' + l.columns.join(' | ') + ' |\n|' + l.columns.map(function () { return ' --- '; }).join('|') + '|\n|' + l.columns.map(function () { return ' … '; }).join('|') + '|'
           : 'متن ' + l.name;
         self.block(':::' + l.name + '\n', '\n:::', sample);
@@ -333,6 +341,7 @@
         if (res.data.state) {
           self.state = res.data.state;
           if (P && P.setLabels) P.setLabels(self.state.labels);
+          if (P && P.setMacros) P.setMacros(self.state.macros);
           MEDIA = self.state.media_url;
         }
         if (res.data.warnings && res.data.warnings.length) {
@@ -347,6 +356,7 @@
     fetch(this.api, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
       self.state = d.state;
       if (P && P.setLabels) P.setLabels(self.state.labels);
+      if (P && P.setMacros) P.setMacros(self.state.macros);
       MEDIA = d.state.media_url;
       if (!self.fromHash()) { self.sel = d.state.sections.length ? d.state.sections[0].slug : ''; self.render(); }
     });
@@ -624,11 +634,25 @@
     return wrap;
   };
 
-  Manager.prototype.saveBar = function (onSave, label) {
+  Manager.prototype.saveBar = function (onSave, label, opts) {
     var dirty = h('span', { class: 'dirty' });
     var btn = h('button', { class: 'btn primary', type: 'button', onclick: onSave }, label || 'ذخیره');
-    return { el: h('div', { class: 'cm-save' }, btn, dirty), mark: function (on, what) { var t = on ? '● ذخیره نشده' : ''; if (dirty.textContent !== t) dirty.textContent = t; } };
+    var el = h('div', { class: 'cm-save' }, btn, dirty);
+    var fresh = freshControls();
+    if (opts && opts.fresh) el.appendChild(fresh.el);
+    return { el: el, fresh: fresh.value, mark: function (on, what) { var t = on ? '● ذخیره نشده' : ''; if (dirty.textContent !== t) dirty.textContent = t; } };
   };
+
+  // «مطلب تازه»: this save is worth a second look; learners see «به‌روز شده» and a line in «تغییرات کتاب».
+  function freshControls() {
+    var box = h('input', { type: 'checkbox' });
+    var note = h('input', { type: 'text', placeholder: 'یک جمله برای «تغییرات کتاب» (اختیاری)', style: 'display:none;min-width:280px' });
+    box.onchange = function () { note.style.display = box.checked ? '' : 'none'; if (box.checked) note.focus(); };
+    var el = h('span', { class: 'fresh', title: 'برای اصلاح غلط تایپی نزنید؛ برای نکته‌ی تازه یا اصلاح مهم بزنید.' },
+      h('label', null, box, ' مطلب تازه'), note);
+    return { el: el, value: function () { return box.checked ? { fresh: true, fresh_note: note.value.trim() } : {}; } };
+  }
+  window.LimoFreshControls = freshControls;
 
   // «مثال ۳-۵»: the previews number this section's boxes from where the chapter's count is, and show [[#names]].
   Manager.prototype.numbering = function (s) {
@@ -642,8 +666,8 @@
     ta.value = s.full_body;
     body.appendChild(ta);
     var bar = this.saveBar(function () {
-      self.call({ op: 'section.update', slug: s.slug, full_body: ta.value }).then(function () { self.dirty = null; self.render(); toast('درسنامه ذخیره شد.'); }).catch(function () {});
-    }, 'ذخیره‌ی درسنامه');
+      self.call(Object.assign({ op: 'section.update', slug: s.slug, full_body: ta.value }, bar.fresh())).then(function (d) { self.dirty = null; self.render(); toast(['درسنامه ذخیره شد.'].concat(d && d.note ? [d.note] : [])); }).catch(function () {});
+    }, 'ذخیره‌ی درسنامه', { fresh: true });
     new MdEditor(ta, { variant: 'notes', labels: true, uploadUrl: this.api, onChange: function () { self.dirty = 'درسنامه'; bar.mark(true); } });
     body.appendChild(bar.el);
     if (s.missing_phrases.length) body.appendChild(h('div', { class: 'msg warn' }, 'این عبارت‌های پرش چکیده در درسنامه پیدا نمی‌شوند: ' + s.missing_phrases.join('، ')));
@@ -708,8 +732,8 @@
     function current() { return mode === 'form' ? formToSummary(form) : rawTa.value; }
     function refresh() { frame.srcdoc = previewDoc(render(current(), 'summary')); }
     var bar = this.saveBar(function () {
-      self.call({ op: 'section.update', slug: s.slug, summary_body: current() }).then(function () { self.dirty = null; self.render(); toast('چکیده ذخیره شد.'); }).catch(function () {});
-    }, 'ذخیره‌ی چکیده');
+      self.call(Object.assign({ op: 'section.update', slug: s.slug, summary_body: current() }, bar.fresh())).then(function (d) { self.dirty = null; self.render(); toast(['چکیده ذخیره شد.'].concat(d && d.note ? [d.note] : [])); }).catch(function () {});
+    }, 'ذخیره‌ی چکیده', { fresh: true });
     var formEdited = false;
     function changed() { if (mode === 'form') formEdited = true; self.dirty = 'چکیده'; bar.mark(true); clearTimeout(changed.t); changed.t = setTimeout(refresh, 250); }
     // Back to the raw text: untouched if nothing was changed in the form (so Ctrl+Z keeps its history); otherwise the
@@ -1122,10 +1146,10 @@
     box.appendChild(head);
     box.appendChild(h('div', { class: 'two' }, left, h('div', { class: 'phone-wrap' }, frame)));
     var bar = this.saveBar(function () {
-      var req = { op: kind + '.save', slug: slugInput.value.trim(), data: payload(), section: s.slug };
+      var req = Object.assign({ op: kind + '.save', slug: slugInput.value.trim(), data: payload(), section: s.slug }, isNew ? {} : bar.fresh());
       if (isNew) req.new = true;
-      self.call(req).then(function () { self.dirty = null; self.open = null; self.render(); toast('ذخیره شد.'); }).catch(function () {});
-    }, 'ذخیره');
+      self.call(req).then(function (d) { self.dirty = null; self.open = null; self.render(); toast(['ذخیره شد.'].concat(d && d.note ? [d.note] : [])); }).catch(function () {});
+    }, 'ذخیره', { fresh: !isNew });
     bar.el.appendChild(h('button', { class: 'btn', type: 'button', onclick: function () { if (self.guard()) { self.dirty = null; self.open = null; self.render(); } } }, 'انصراف'));
     box.appendChild(bar.el);
     drawForm();
@@ -1139,16 +1163,43 @@
     var ta = document.getElementById('file-text'), out = document.getElementById('file-result');
     cmUpgrade(ta, 24);
     var checkBtn = document.getElementById('file-check'), saveBtn = document.getElementById('file-save');
-    var checked = null;
+    var fresh = freshControls();
+    if (!opts.restore) saveBtn.parentNode.insertBefore(fresh.el, saveBtn.nextSibling);
+    var checked = null, hides = [];
     function post(body) {
       return fetch(opts.api, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify(body) })
         .then(function (r) { return r.json(); });
+    }
+    // Restoring a version: «فقط متن بخش‌ها را برگردان» puts back the texts of the sections that still exist, and hides
+    // nothing (no section, test or flashcard is archived).
+    var textOnly = null;
+    if (opts.restore) {
+      textOnly = h('button', { class: 'btn', type: 'button', onclick: function () {
+        if (!confirm('متن درسنامه و چکیده‌ی بخش‌هایی که الان هستند به این نسخه برمی‌گردد. هیچ بخش، تست یا فلش‌کارتی پنهان نمی‌شود. ادامه می‌دهید؟')) return;
+        textOnly.disabled = true;
+        post({ op: 'file.restore_text', text: ta.value, version: opts.version, note: opts.note + ' (فقط متن بخش‌ها)' }).then(function (d) {
+          textOnly.disabled = false;
+          if (d.errors) { out.prepend(h('div', { class: 'msg err' }, d.errors.join(' '))); return; }
+          location.href = opts.done;
+        });
+      } }, 'فقط متن بخش‌ها را برگردان، چیزی پنهان نشود');
+      saveBtn.parentNode.insertBefore(textOnly, saveBtn.nextSibling);
     }
     ta.addEventListener('input', function () { if (checked !== null) { checked = null; saveBtn.disabled = true; } });
     checkBtn.onclick = function () {
       out.innerHTML = 'در حال بررسی…';
       post({ op: 'file.check', text: ta.value }).then(function (d) {
         out.innerHTML = '';
+        hides = [];
+        if (d.plan) ['sections', 'questions', 'flashcards'].forEach(function (k) {
+          d.plan[k].forEach(function (r) { if (typeof r !== 'string' && r[0] === 'archived') hides.push({ sections: 'بخش', questions: 'تست', flashcards: 'فلش‌کارت' }[k] + ' ' + r[1]); });
+        });
+        if (opts.restore && hides.length) {
+          out.appendChild(h('div', { class: 'msg err big-warn' },
+            h('b', null, 'هشدار: با «ذخیره» ' + fa(hides.length) + ' مورد از دید کاربران پنهان می‌شود'),
+            h('p', null, 'این‌ها در نسخه‌ای که برمی‌گردانید نبودند. پاک نمی‌شوند و آمار کاربران می‌ماند؛ از «بایگانی» در «مدیریت فصل» یا با بازگرداندن نسخه‌ی جدیدتر برمی‌گردند. اگر فقط متن‌ها را می‌خواهید، دکمه‌ی «فقط متن بخش‌ها را برگردان» را بزنید.'),
+            h('ul', null, hides.map(function (x) { return h('li', null, x); }))));
+        }
         out.appendChild(window.LimoReport(d));
         checked = d.errors.length ? null : ta.value;
         saveBtn.disabled = !!d.errors.length || !d.plan || (!d.plan.count && !d.plan.notes.length);
@@ -1157,8 +1208,9 @@
     };
     saveBtn.onclick = function () {
       if (checked === null || checked !== ta.value) return;
+      if (opts.restore && hides.length && !confirm(fa(hides.length) + ' مورد از دید کاربران پنهان می‌شود (پاک نمی‌شود و برمی‌گردد). کل نسخه برگردد؟')) return;
       saveBtn.disabled = true;
-      post({ op: 'file.apply', text: ta.value, version: opts.version, restore: opts.restore, note: opts.note }).then(function (d) {
+      post(Object.assign({ op: 'file.apply', text: ta.value, version: opts.version, restore: opts.restore, note: opts.note }, fresh.value())).then(function (d) {
         if (d.errors) { out.prepend(h('div', { class: 'msg err' }, d.errors.join(' '))); return; }
         location.href = opts.done;
       });

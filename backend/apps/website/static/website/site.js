@@ -24,6 +24,8 @@
 
   function formulas() {
     if (!P || !P.renderMarkdown) return;
+    var m = document.getElementById('limo-macros');
+    if (m && P.setMacros) { try { P.setMacros(JSON.parse(m.textContent)); } catch (e) { /* ignore */ } }
     if (P.CONTENT_CSS && !document.getElementById('limo-css')) {
       var st = document.createElement('style');
       st.id = 'limo-css';

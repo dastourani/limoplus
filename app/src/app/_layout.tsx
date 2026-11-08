@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { I18nManager, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { endpoints } from '../api/endpoints';
 import { CelebrationProvider } from '../components/Celebrate';
 import { FeedbackProvider } from '../components/Feedback';
 import { Intro } from '../components/Intro';
@@ -13,6 +14,7 @@ import { UpdateGate } from '../components/UpdateGate';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { FONT_FILES } from '../lib/fonts';
 import { NetworkProvider } from '../lib/network';
+import { loadMacros } from '../lib/macrosStore';
 import { markActive } from '../lib/studyTime';
 import { useScreenProtection } from '../lib/protect';
 import { colors } from '../theme';
@@ -34,6 +36,10 @@ function Root() {
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => undefined);
   }, [ready]);
+  // «دستورهای فرمول» for every formula (kept on the phone for offline reading).
+  useEffect(() => {
+    loadMacros(endpoints.formulaCommands);
+  }, []);
   if (!ready) return <View style={{ flex: 1, backgroundColor: colors.ink }} />;
   return (
     // Every touch tells the study-time counter the learner is here (it never takes the touch for itself).

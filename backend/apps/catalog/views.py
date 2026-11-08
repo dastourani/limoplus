@@ -8,6 +8,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .access import AccessMap
+from .fresh import book_updated_on, formula_macros, section_badges
 from .drawing import loads as loads_drawing
 from .importer import MEDIA_PREFIX
 from .labels import all_labels
@@ -189,9 +190,12 @@ def book_detail(request, slug):
         for row in rows:
             counts.setdefault(row["node_id"], {})[key] = row["n"]
 
+    badges = section_badges(request.user, sections)
+
     def summary(node):
         data = {"id": node.id, "slug": node.slug, "kind": node.kind, "title": node.title, "is_locked": not access.readable(node.id)}
         if node.kind == ContentNode.Kind.SECTION:
+            data["badge"] = badges.get(node.id)
             data["has_summary"] = bool(node.summary_body)
             data["group"] = node.group
             data["question_count"] = counts.get(node.id, {}).get("question_count", 0)
@@ -222,8 +226,38 @@ def book_detail(request, slug):
             "id": book.id,
             # «مرور فلش‌کارت‌های کتاب»: only cards of finished (green) sections.
             "done_card_count": _done_cards(access, _states[1]).count() if request.user.is_authenticated else 0,
+            # «آخرین به‌روزرسانی» and «تغییرات کتاب».
+            "updated_on": book_updated_on(book),
+            "change_count": book.changes.filter(is_hidden=False).count(),
         }
     )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def book_changes(request, slug):
+    """«تغییرات کتاب»: the important updates of a book, newest first."""
+    book = get_object_or_404(ContentNode, kind=ContentNode.Kind.BOOK, slug=slug, depth=1)
+    access = AccessMap(request.user, book)
+    if not access.visible(book.id):
+        return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    rows = book.changes.filter(is_hidden=False).select_related("node")[:200]
+    return Response({
+        "title": book.title,
+        "changes": [
+            {"id": c.id, "text": c.text, "at": c.created_at,
+             "place": c.node.title if c.node and c.node.id != book.id and access.visible(c.node.id) else "",
+             "node_id": c.node.id if c.node and c.node.kind == ContentNode.Kind.SECTION and access.visible(c.node.id) else None}
+            for c in rows
+        ],
+    })
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def formula_commands(request):
+    """«دستورهای فرمول»: KaTeX macros for every formula (the app keeps them for offline reading)."""
+    return Response({"macros": formula_macros()})
 
 
 def _done_cards(access, done_ids):
@@ -323,6 +357,10 @@ def node_detail(request, node_id):
             "chapter_end": _chapter_end(access, node, parent, request) if last_in_chapter else None,
             "status": _section_status(request.user, access, node),
             "intro": _chapter_intro(request, access, node) if is_chapter else None,
+            # «به‌روز شده»: the panel marked this text since the learner last read it.
+            "badge": section_badges(request.user, [node]).get(node.id),
+            "refreshed_at": node.refreshed_at,
+            "macros": formula_macros(),
         }
     )
 
@@ -353,9 +391,10 @@ def _chapter_intro(request, access, chapter):
     started, done = section_states(request.user, access, request)
     sections = access.children(chapter)
     ids = [s.id for s in sections]
+    badges = section_badges(request.user, sections)
     items = [
         {"id": s.id, "title": s.title, "locked": not access.readable(s.id),
-         "state": "done" if s.id in done else "read" if s.id in started else "empty"}
+         "state": "done" if s.id in done else "read" if s.id in started else "empty", "badge": badges.get(s.id)}
         for s in sections
     ]
     go_on = next((i for i in items if i["state"] != "done" and not i["locked"]), None) or next((i for i in items if not i["locked"]), None)

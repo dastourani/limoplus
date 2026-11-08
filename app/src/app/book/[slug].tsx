@@ -316,6 +316,14 @@ export default function Book() {
               <Text style={styles.timeText}>تا الان {studyDuration(book.mine.time_seconds)} وقت گذاشتی</Text>
             </View>
           )}
+          {/* «آخرین به‌روزرسانی»: the book's last important update; tap for «تغییرات کتاب». */}
+          {!!book.updated_on && (
+            <Pressable onPress={() => router.push({ pathname: '/changes/[slug]', params: { slug: book.slug } })} style={styles.timeRow} accessibilityRole="button">
+              <Icon name="sparkles" size={16} color={colors.muted} />
+              <Text style={styles.timeText}>آخرین به‌روزرسانی: {jalaliDate(book.updated_on)}</Text>
+              <Text style={[styles.timeText, { color: colors.greenDark, fontWeight: '800' }]}>تغییرات کتاب ←</Text>
+            </Pressable>
+          )}
           {!!offline && offlineSupported && (
             <Pressable
               onPress={async () =>
@@ -564,6 +572,7 @@ function SectionRow({ section, state }: { section: NodeSummary; state: 'none' | 
       <Text style={[styles.sectionTitle, rtl, section.is_locked && { color: colors.muted }]} numberOfLines={2}>
         {section.title}
       </Text>
+      {section.badge === 'updated' && <Text style={styles.updated}>به‌روز شده</Text>}
       {section.is_locked ? (
         <Icon name="lock" size={16} color={colors.muted} />
       ) : (
@@ -578,6 +587,7 @@ const BAR_H = 58;
 
 const styles = StyleSheet.create({
   scroll: { flexGrow: 1 },
+  updated: { fontSize: 11, fontWeight: '800', color: '#4A3A9E', backgroundColor: '#E8E4FA', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 1, overflow: 'hidden' },
   inkBack: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: colors.ink },
   sheet: { flexGrow: 1, backgroundColor: colors.ground, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingBottom: 28 },
   bar: { position: 'absolute', top: 0, left: 0, right: 0, height: BAR_H, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 16, zIndex: 2 },

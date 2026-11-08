@@ -8,6 +8,7 @@ import { coverByline, coverMotifSvg, coverPalette, MOTIFS, type CoverTheme } fro
 import { CONTENT_CSS, renderMarkdown, renderSummary } from '../src/lib/renderMarkdown';
 import { allLabels, findLabel, normalizeName, setLabels } from '../src/lib/labels';
 import { setNumbering } from '../src/lib/numbering';
+import { setMacros } from '../src/lib/macros';
 import { cells, jumpTarget, parseSummary } from '../src/lib/reviewCard';
 
 function esc(s: string) {
@@ -154,6 +155,7 @@ function bannerHtml(b: BannerInput, w = 360): string {
   jumpTarget,
   setLabels,
   setNumbering,
+  setMacros,
   allLabels,
   findLabel,
   normalizeName,

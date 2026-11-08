@@ -1,1 +1,1 @@
-{% load static %}<script src="{% static 'catalog/limo-preview.js' %}" defer></script><script src="{% static 'website/site.js' %}" defer></script>
+{{ macros|json_script:'limo-macros' }}{% load static %}<script src="{% static 'catalog/limo-preview.js' %}" defer></script><script src="{% static 'website/site.js' %}" defer></script>

@@ -575,18 +575,19 @@ def _parse_flashcard(body, slug, line_no, chapter) -> ParsedFlashcard:
 
 def _validate(chapter: ParsedChapter):
     # Names of boxes («:::مثال {#sin-hamarz}») are unique in the chapter; links «[[#name]]» are checked in the panel.
-    from .numbering import BOX
+    from .numbering import BOX, EQUATION
 
     names: dict[str, str] = {}
     for s in chapter.all_sections():
-        for m in BOX.finditer(s.full_body or ""):
-            name = (m.group(2) or "").strip()
+        found = [(m.group(2) or "").strip() for m in BOX.finditer(s.full_body or "")]
+        found += [(m.group(1) or "").strip() for m in EQUATION.finditer(s.full_body or "")]  # «$$…$$ {#name}»
+        for name in found:
             if not name:
                 continue
             if not _SLUG.match(name):
-                chapter.error(f"نام کادر «{name}» فقط می‌تواند حرف، عدد، - و _ داشته باشد.", s.line)
+                chapter.error(f"نام کادر یا فرمول «{name}» فقط می‌تواند حرف، عدد، - و _ داشته باشد.", s.line)
             elif name in names:
-                chapter.error(f"نام کادر «{name}» دو بار آمده (در «{names[name]}» و «{s.title or 'مقدمه'}»).", s.line)
+                chapter.error(f"نام «{name}» دو بار آمده (در «{names[name]}» و «{s.title or 'مقدمه'}»).", s.line)
             names[name] = s.title or "مقدمه"
     seen = {}
     for kind, items in (

@@ -28,6 +28,8 @@ api = [
     path("books/<str:slug>/glossary/", catalog.book_glossary),
     path("books/<str:slug>/samples/", learning.book_samples),
     path("books/<str:slug>/notify/", catalog.book_notify),
+    path("books/<str:slug>/changes/", catalog.book_changes),
+    path("formula-commands/", catalog.formula_commands),
     path("nodes/<int:node_id>/", catalog.node_detail),
     path("nodes/<int:node_id>/questions/", learning.node_questions),
     path("nodes/<int:node_id>/boxes/", catalog.node_boxes),

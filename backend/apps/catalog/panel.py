@@ -9,6 +9,7 @@ import hashlib
 import json
 import posixpath
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import messages
@@ -32,6 +33,7 @@ from .importer import outside_flashcards
 from .importer import IMAGE_EXTENSIONS, MAX_IMAGE_BYTES, _SVG_DANGER, apply_chapter, parse_chapter, read_upload, check_against_db
 from .jalali import jalali_datetime
 from .models import ChapterRevision, ContentNode
+from .fresh import formula_macros
 from .labels import all_labels
 from .summary import parse_parts
 
@@ -165,6 +167,7 @@ def chapter_state(chapter: ContentNode) -> dict:
         "media_url": settings.MEDIA_URL if settings.MEDIA_URL.startswith("/") else "/" + settings.MEDIA_URL,
         "revisions": chapter.revisions.count(),
         "labels": all_labels(),
+        "macros": formula_macros(),
         "inbox": chapter.is_inbox,
         "refs": panel_refs(book),
         # Flashcards of the book's other chapters, for linking tests to them.
@@ -379,8 +382,48 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
     else:
         raise EditError("عملیات ناشناخته.")
 
+    before = editing.load(chapter) if data.get("fresh") else None
     result, version, warnings = editing.save(chapter, parsed, user=user, note=note, expected_version=data.get("version"))
-    return {"ok": True, "warnings": warnings}
+    out = {"ok": True, "warnings": warnings}
+    if before is not None:
+        out["note"] = _mark_fresh(chapter, before, editing.load(chapter), data.get("fresh_note") or "")
+    return out
+
+
+def _fresh_targets(before, after) -> tuple[list[str], list[str], list[str]]:
+    """Slugs of what a save changed or added: sections (the intro is ""), tests and flashcards."""
+    old_s = {s.slug: s for s in before.all_sections()}
+    sections = [s.slug for s in after.all_sections()
+                if s.slug not in old_s or (old_s[s.slug].full_body, old_s[s.slug].summary_body) != (s.full_body, s.summary_body)]
+    out = [sections]
+    for attr in ("questions", "flashcards"):
+        old = {i.slug: editing._item_fields(i) for s in before.all_sections() for i in getattr(s, attr)}
+        out.append([i.slug for s in after.all_sections() for i in getattr(s, attr) if old.get(i.slug) != editing._item_fields(i)])
+    return out[0], out[1], out[2]
+
+
+def _mark_fresh(chapter, before, after, text: str) -> str:
+    """«مطلب تازه»: mark what this save changed as «به‌روز شده» for learners, and write it in «تغییرات کتاب»."""
+    from .fresh import mark
+
+    book = chapter.book()
+    sections, questions, flashcards = _fresh_targets(before, after)
+    by_slug = {n.slug: n.pk for n in chapter.get_children().filter(kind=ContentNode.Kind.SECTION)}
+    node_ids = [chapter.pk if not slug else by_slug.get(slug) for slug in sections]
+    ids = [chapter.pk, *chapter.get_descendants().values_list("pk", flat=True)]
+    q_ids = list(Question.objects.filter(node_id__in=ids, slug__in=questions, is_archived=False).values_list("pk", flat=True))
+    f_ids = list(Flashcard.objects.filter(node_id__in=ids, slug__in=flashcards, is_archived=False).values_list("pk", flat=True))
+    # New tests and cards are «تازه» by themselves; the tick marks the edited ones.
+    added_q = set(Question.objects.filter(pk__in=q_ids, added_at__gte=timezone.now() - timedelta(minutes=5)).values_list("pk", flat=True))
+    added_f = set(Flashcard.objects.filter(pk__in=f_ids, added_at__gte=timezone.now() - timedelta(minutes=5)).values_list("pk", flat=True))
+    where = ContentNode.objects.filter(pk=node_ids[0]).first() if len(node_ids) == 1 and node_ids[0] else chapter
+    n = mark(book, nodes=node_ids, questions=[i for i in q_ids if i not in added_q], flashcards=[i for i in f_ids if i not in added_f],
+             text=text, where=where)
+    if not n and (added_q or added_f) and text.strip():
+        from .models import BookChange
+
+        BookChange.objects.create(book=book, node=chapter, text=text.strip()[:300])
+    return "به‌عنوان «مطلب تازه» به کاربران نشان داده می‌شود." if n or added_q or added_f else "چیزی تغییر نکرده بود که «مطلب تازه» بخورد."
 
 
 def _drop_refs(parsed, flashcard_slugs: set[str]):
@@ -406,6 +449,8 @@ def chapter_api(request, chapter_id):
             return JsonResponse(_file_check(chapter, data.get("text", "")))
         if data.get("op") == "file.apply":
             return _file_apply(request, chapter, data)
+        if data.get("op") == "file.restore_text":
+            return _restore_text(request, chapter, data)
         try:
             outcome = apply_op(chapter, data, request.user)
         except editing.Conflict as e:
@@ -459,12 +504,39 @@ def _file_apply(request, chapter, data):
             if data.get("version") and editing.version_of(export_chapter(locked)) != data["version"]:
                 raise editing.Conflict("این فصل در این فاصله تغییر کرده است؛ صفحه را تازه کنید.")
             editing.ensure_baseline(locked, request.user)
+            before = editing.load(locked) if data.get("fresh") else None
             apply_chapter(parsed)
             source = ChapterRevision.Source.RESTORE if data.get("restore") else ChapterRevision.Source.PANEL
             editing.record_revision(locked, user=request.user, source=source, note=data.get("note") or "ویرایش کل فایل")
+            note = _mark_fresh(locked, before, editing.load(locked), data.get("fresh_note") or "") if before is not None else ""
     except editing.Conflict as e:
         return JsonResponse({"errors": e.messages, "conflict": True}, status=409)
-    return JsonResponse({"ok": True, "state": chapter_state(chapter)})
+    return JsonResponse({"ok": True, "note": note, "state": chapter_state(chapter)})
+
+
+def _restore_text(request, chapter, data):
+    """«فقط متن بخش‌ها را برگردان»: the notes and summaries of an old version go back into the sections that exist now
+    (and the intro). Nothing else changes: no section, test or flashcard is archived, moved or edited."""
+    old = parse_chapter(data.get("text", ""))
+    texts = {s.slug: s for s in old.all_sections()}
+    current = editing.load(chapter)
+    changed = 0
+    for s in current.all_sections():
+        o = texts.get(s.slug)
+        if o and (o.full_body, o.summary_body) != (s.full_body, s.summary_body):
+            s.full_lines, s.summary_lines = list(o.full_lines), list(o.summary_lines)
+            changed += 1
+    if not changed:
+        return JsonResponse({"errors": ["متن هیچ بخشی با این نسخه فرقی ندارد."]}, status=400)
+    try:
+        with transaction.atomic():
+            editing.save(chapter, current, user=request.user, note=data.get("note") or "بازگرداندن متن بخش‌ها",
+                         expected_version=data.get("version"), source=ChapterRevision.Source.RESTORE)
+    except editing.Conflict as e:
+        return JsonResponse({"errors": e.messages, "conflict": True}, status=409)
+    except EditError as e:
+        return JsonResponse({"errors": e.messages}, status=400)
+    return JsonResponse({"ok": True, "changed": changed, "state": chapter_state(chapter)})
 
 
 def open_inbox(request):

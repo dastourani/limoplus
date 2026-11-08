@@ -60,6 +60,9 @@ def node_questions(request, node_id):
     for q in usable:
         by_section.setdefault(q.node_id, []).append((q.id, q.is_extra))
     counted = {qid for rows in by_section.values() for qid in core(rows)}
+    from apps.catalog.fresh import formula_macros, question_badges
+
+    badges = question_badges(request.user, usable)
     for q in usable:
         items.append(
             {
@@ -85,9 +88,11 @@ def node_questions(request, node_id):
                 "corrected": q.correction(),
                 # «تست تکمیلی»: extra practice, shown after the section's own tests and not counted in its progress.
                 "extra": q.id not in counted,
+                # «تازه» (added since the learner started the section) or «به‌روز شده» (the panel's «مطلب تازه»).
+                "badge": badges.get(q.id),
             }
         )
-    return Response({"questions": items, "locked_count": locked})
+    return Response({"questions": items, "locked_count": locked, "macros": formula_macros()})
 
 
 @api_view(["POST"])
@@ -185,16 +190,20 @@ def node_flashcards(request, node_id):
 
         cards = cards.filter(node_id__in=section_states(request.user, access, request)[1])
     items, locked = [], 0
+    from apps.catalog.fresh import flashcard_badges, formula_macros
+
+    cards = list(cards)
+    badges = flashcard_badges(request.user, cards)
     for f in cards:
         if not _usable(access, f):
             locked += 1
             continue
-        items.append({"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula,
+        items.append({"id": f.id, "badge": badges.get(f.id), "title": f.title, "point": media_urls(request, f.point), "formula": f.formula,
                       "node_id": f.node_id, "node_title": access.nodes[f.node_id].title if f.node_id in access.nodes else "",
                       "chapter_number": chapter_number(request, access.nodes.get(f.node_id)),
                       # «تست‌های این نکته»: the linked tests the learner may practise.
                       "question_ids": [q.id for q in f.questions.all() if not q.is_archived and _usable(access, q)]})
-    return Response({"flashcards": items, "locked_count": locked, "book_id": access.book.id})
+    return Response({"flashcards": items, "locked_count": locked, "book_id": access.book.id, "macros": formula_macros()})
 
 
 @api_view(["GET"])

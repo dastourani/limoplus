@@ -240,6 +240,7 @@ export function FlashcardDeck({
             <View style={styles.cardBox}>
               <Animated.View style={[styles.card, { opacity: frontOpacity, transform: [{ perspective: 1000 }, { rotateY: frontRotate }] }]}>
                 <Text style={styles.chip}>مفهوم</Text>
+                {!!card!.badge && <Text style={[styles.badge, card!.badge === 'new' && styles.badgeNew]}>{card!.badge === 'new' ? 'تازه' : 'به‌روز شده'}</Text>}
                 {!!box && <Text style={styles.boxLabel}>جعبه‌ی {toPersianDigits(box)}</Text>}
                 <Text style={styles.cardTitle}>{card!.title}</Text>
                 <Text style={styles.hint}>بزن تا نکته را ببینی</Text>
@@ -312,6 +313,8 @@ export function FlashcardDeck({
 const styles = StyleSheet.create({
   testsBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: '#EEF0FC' },
   testsText: { fontSize: 13, fontWeight: '700', color: '#3B44B8' },
+  badge: { position: 'absolute', top: 52, right: 18, fontSize: 11, fontWeight: '800', color: '#4A3A9E', backgroundColor: '#E8E4FA', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
+  badgeNew: { color: colors.ink, backgroundColor: '#FFE27A' },
   place: { fontSize: 12.5, color: colors.muted, paddingHorizontal: 16, paddingBottom: 6 },
   stage: { flex: 1, padding: 22, justifyContent: 'center' },
   stack: { position: 'absolute', bottom: 90, borderRadius: 30, backgroundColor: colors.line },

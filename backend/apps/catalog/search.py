@@ -56,6 +56,8 @@ def _clean(text: str) -> str:
     """Markdown and LaTeX markup out, for a readable snippet."""
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text or "")
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"==(?:قرمز|آبی|سبز|red|blue|green):", "", text)  # coloured text «==قرمز:…==»
+    text = text.replace("==", "")
     text = re.sub(r"\{#[^}]*\}|:::[^\n]*|<[^>]+>", " ", text)
     text = re.sub(r"\\[a-zA-Z]+", " ", text)
     text = re.sub(r"[*_`#>$|{}^\\]", "", text)

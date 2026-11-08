@@ -10,7 +10,8 @@ from .drawing import DrawingError, clean_svg
 from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
 from .filters import BookFilter, ChapterFilter, YesNoFilter
-from .models import Banner, Book, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, Label, Major, Section, ShareSettings, Shelf, ShelfBook
+from .models import (Banner, Book, BookChange, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
+                     ShareSettings, Shelf, ShelfBook)
 
 
 class ShelfBookInline(admin.TabularInline):
@@ -488,3 +489,47 @@ class LabelAdmin(admin.ModelAdmin):
         from .labels import forget
 
         forget()
+
+
+@admin.register(FormulaCommand)
+class FormulaCommandAdmin(admin.ModelAdmin):
+    """«دستورهای فرمول»: \\R for \\mathbb{R} in every formula of every book (the app uses KaTeX macros)."""
+
+    list_display = ("name", "definition", "note", "is_hidden")
+    list_editable = ("definition", "note", "is_hidden")
+    search_fields = ("name", "definition", "note")
+    fieldsets = (
+        (None, {"fields": ("name", "definition", "note", "is_hidden"),
+                "description": "دستوری که این‌جا تعریف کنید در فرمول‌های همه‌ی کتاب‌ها کار می‌کند. مثال‌ها: «\\R» با معنی «\\mathbb{R}»؛ "
+                               "«\\norm» با معنی «\\lVert #1 \\rVert» که در متن «\\norm{v}» نوشته می‌شود (#1 جای اولین ورودی است). "
+                               "اگر معنی را عوض کنید، همه‌ی فرمول‌هایی که از آن استفاده کرده‌اند عوض می‌شوند. دستوری را که در متن‌ها به کار رفته پاک نکنید."}),
+    )
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        from .fresh import forget_macros
+
+        forget_macros()
+
+
+class ChangeBookFilter(BookFilter):
+    path_field = "book__path"
+
+
+@admin.register(BookChange)
+class BookChangeAdmin(admin.ModelAdmin):
+    """«تغییرات کتاب»: written by the panel's «مطلب تازه» tick; the text can be edited or the line hidden here."""
+
+    list_display = ("text", "book", "node", "created_at", "is_hidden")
+    list_editable = ("is_hidden",)
+    list_filter = (ChangeBookFilter, "is_hidden")
+    search_fields = ("text",)
+    fields = ("book", "node", "text", "is_hidden")
+    raw_id_fields = ("node",)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+

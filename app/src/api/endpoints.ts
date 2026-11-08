@@ -45,6 +45,8 @@ export type NodeSummary = {
   question_count?: number;
   flashcard_count?: number;
   group?: string;
+  /** «به‌روز شده»: marked in the panel since the learner last read it. */
+  badge?: Badge;
 };
 export type ChapterSummary = NodeSummary & { sections: NodeSummary[]; has_overview?: boolean; term_count?: number };
 export type Shelf = { id: number | null; title: string; books: BookListItem[] };
@@ -73,6 +75,9 @@ export type BookDetail = BookListItem & {
   share_link?: string;
   /** Each finished chapter's next review, and the book's weekly mixed review. */
   reviews?: { chapters: Record<string, { step: number; due_on: string; days: number; done: number }>; book: { due_on: string; days: number } | null } | null;
+  /** «آخرین به‌روزرسانی»: the date of the book's last «مطلب تازه», and how many lines «تغییرات کتاب» has. */
+  updated_on?: string | null;
+  change_count?: number;
 };
 export type NodeDetail = {
   id: number;
@@ -95,7 +100,14 @@ export type NodeDetail = {
   status?: SectionStatus | null;
   /** A chapter's own page is its introduction: its sections and where to go on. */
   intro?: ChapterIntro | null;
+  badge?: Badge;
+  /** «دستورهای فرمول» for KaTeX. */
+  macros?: Record<string, string>;
 };
+/** «تغییرات کتاب»: the important updates of a book, newest first. */
+export type BookChanges = { title: string; changes: { id: number; text: string; at: string; place: string; node_id: number | null }[] };
+/** «تازه» (added since the learner started the section) or «به‌روز شده» (marked in the panel since they saw it). */
+export type Badge = 'new' | 'updated' | null;
 export type Question = {
   id: number;
   /** The section the question belongs to («این نکته در جزوه»), and its title (shown above «سؤال ۱ از ۴»). */
@@ -122,6 +134,7 @@ export type Question = {
   extra?: boolean;
   /** The answer key was corrected («اصلاح‌شده»). */
   corrected?: Correction | null;
+  badge?: Badge;
 };
 export type Correction = { at: string; note: string };
 /** One box of «کادرهای کتاب»: all boxes of one label, in reading order. */
@@ -252,6 +265,7 @@ export type Flashcard = {
   chapter_number?: number | null;
   /** «تست‌های این نکته»: tests linked to the card. */
   question_ids?: number[];
+  badge?: Badge;
 };
 export type Banner = {
   id: number;
@@ -407,7 +421,7 @@ export const endpoints = {
     api<{ labels: { name: string; style: string; count: number }[]; boxes: BoxItem[]; locked_count: number; title: string; all_labels: Label[]; refs: Record<string, RefTarget> }>(
       `nodes/${nodeId}/boxes/${label ? `?label=${encodeURIComponent(label)}` : ''}`,
     ),
-  questions: (nodeId: number, ids?: string) => api<{ questions: Question[]; locked_count: number }>(`nodes/${nodeId}/questions/${ids ? `?ids=${ids}` : ''}`),
+  questions: (nodeId: number, ids?: string) => api<{ questions: Question[]; locked_count: number; macros?: Record<string, string> }>(`nodes/${nodeId}/questions/${ids ? `?ids=${ids}` : ''}`),
   today: () => api<Today>('me/today/'),
   reviews: () => api<{ due: ReviewItem[]; today: ReviewItem[]; daily_cap: number }>('me/reviews/'),
   bookSamples: (slug: string) => api<{ book: string; questions: Question[] }>(`books/${encodeURIComponent(slug)}/samples/`),
@@ -425,7 +439,7 @@ export const endpoints = {
   mistakeReason: (questionId: number, reason: string) => api<{ reason: string }>(`me/mistakes/${questionId}/reason/`, { body: { reason } }),
   answer: (questionId: number, choiceId: number) => api<AnswerResult>(`questions/${questionId}/answer/`, { body: { choice_id: choiceId } }),
   flashcards: (nodeId: number, doneOnly = false, ids?: string) =>
-    api<{ flashcards: Flashcard[]; locked_count: number; book_id?: number }>(
+    api<{ flashcards: Flashcard[]; locked_count: number; book_id?: number; macros?: Record<string, string> }>(
       `nodes/${nodeId}/flashcards/${ids ? `?ids=${ids}` : doneOnly ? '?done=1' : ''}`,
     ),
   banners: () => api<Banner[]>('banners/'),
@@ -465,6 +479,8 @@ export const endpoints = {
   myExams: () => api<ExamSummary[]>('me/exams/'),
   examPage: (page: number, book = '') => api<ExamPage>(`me/exams/?page=${page}${book ? `&book=${encodeURIComponent(book)}` : ''}`),
   library: () => api<Library>('me/library/'),
+  formulaCommands: () => api<{ macros: Record<string, string> }>('formula-commands/'),
+  bookChanges: (slug: string) => api<BookChanges>(`books/${slug}/changes/`),
   appVersion: (platform: string, build: number) => api<AppVersion>(`app/version/?platform=${platform}&build=${build}`),
   stats: () => api<Stats>('me/stats/'),
   offline: (slug: string) => api<OfflineBundle>(`books/${encodeURIComponent(slug)}/offline/`, { timeoutMs: 90_000 }),

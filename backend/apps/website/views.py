@@ -18,6 +18,7 @@ from django.utils.safestring import mark_safe
 
 from apps.catalog.access import AccessMap
 from apps.catalog.drawing import loads as loads_drawing
+from apps.catalog.fresh import formula_macros
 from apps.catalog.models import ContentNode, Major
 
 from .models import FaqItem, SitePage, SiteSettings
@@ -86,6 +87,8 @@ def _base(request, **extra) -> dict:
         "apk": _apk(s),
         "pages": {p.slug: p for p in SitePage.objects.all()},
         "canonical": request.build_absolute_uri(request.path),
+        # «دستورهای فرمول» for the formulas the browser draws.
+        "macros": formula_macros(),
         **extra,
     }
 

@@ -10,6 +10,7 @@ import { ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { colors, toPersianDigits } from '../../theme';
 import { useAuth } from '../../lib/auth';
 import { useApi } from '../../lib/useApi';
+import { setMacros } from '../../lib/macros';
 
 type Mode = 'smart' | 'shuffle' | 'book';
 const MODES: [Mode, string][] = [['smart', 'هوشمند'], ['shuffle', 'تصادفی'], ['book', 'ترتیب کتاب']];
@@ -40,6 +41,7 @@ export default function Flashcards() {
   const title = ids ? 'فلش‌کارت مرتبط' : doneOnly ? 'فلش‌کارت‌های کتاب' : 'فلش‌کارت';
   const { user } = useAuth();
   const { data, error, loading, retry } = useApi(() => endpoints.flashcards(Number(nodeId), doneOnly, ids), [nodeId, doneOnly, ids]);
+  setMacros(data?.macros);
   const asked = (list: Flashcard[]) => {
     if (!ids || keep !== '1') return null;
     const want = ids.split(',').map(Number);

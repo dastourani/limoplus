@@ -34,7 +34,9 @@
 .lp .pill { display: inline-block; border-radius: 999px; padding: 0 8px; font-size: 11px; background: var(--soft); border: 1px solid var(--line); }
 .lp .pill.ok { color: var(--ok); } .lp .pill.warn { color: var(--warn); } .lp .pill.err { color: var(--err); }
 .lp .msg { border-radius: 10px; padding: 10px 14px; margin: 8px 0; }
-.lp .msg.err { background: #fdecea; color: var(--err); } .lp .msg.ok { background: #e3f3e9; color: var(--ok); } .lp .msg.warn { background: #fff6d6; color: #7a4f00; }
+.lp .msg.err { background: #fdecea; color: var(--err); }
+.lp .msg.big-warn { border: 2px solid var(--err); font-size: 15px; padding: 14px 16px; } .lp .msg.big-warn b { font-size: 17px; }
+.lp .fresh { display: inline-flex; gap: 8px; align-items: center; margin-inline-start: 12px; } .lp .fresh label { font-weight: 700; } .lp .msg.ok { background: #e3f3e9; color: var(--ok); } .lp .msg.warn { background: #fff6d6; color: #7a4f00; }
 .lp .msg ul { margin: 4px 0 0; padding-right: 18px; }
 
 /* Markdown editor */

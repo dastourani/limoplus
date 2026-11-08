@@ -12,16 +12,35 @@ import MarkdownIt from 'markdown-it';
 
 import { findLabel } from './labels';
 import { faDigits, numbering } from './numbering';
+import { macros } from './macros';
+import { fixMathVariants } from './mathvariant';
 import { PLOT_CSS, renderPlot } from './plot';
 import { DEFAULT_LABEL_ICON, labelIconSvg } from './labelIcons';
 import { cells, jumpTarget, parseSummary } from './reviewCard';
 
 const md = new MarkdownIt({ html: false, linkify: false, typographer: false });
 
-function renderMath(tex: string, display: boolean): string {
-  const html = katex.renderToString(tex, { output: 'mathml', displayMode: display, throwOnError: false, strict: 'ignore' });
-  return display ? `<div class="math-block" dir="ltr">${html}</div>` : `<span class="math" dir="ltr">${html}</span>`;
+function renderMath(tex: string, display: boolean, eq?: { id: string; label: string }): string {
+  // A copy each time: KaTeX writes \gdef definitions into the object it is given.
+  const html = fixMathVariants(
+    katex.renderToString(tex, { output: 'mathml', displayMode: display, throwOnError: false, strict: 'ignore', macros: { ...macros() } }),
+  );
+  if (!display) return `<span class="math" dir="ltr">${html}</span>`;
+  if (!eq) return `<div class="math-block" dir="ltr">${html}</div>`;
+  // A named formula «$$…$$ {#name}»: its number on the left, «رابطه‌ی (۳-۲)» wherever [[#name]] points to it.
+  return `<div class="math-block eq"${eq.id ? ` id="box-${esc(eq.id)}"` : ''} dir="ltr">${html}<span class="eq-n" aria-hidden="true">${eq.label}</span></div>`;
 }
+
+/** Named display formulas are numbered over the chapter while a lesson is drawn (renderMarkdown sets this). */
+let eqCount: { chapter?: number | null; n: number } | null = null;
+function eqLabel(): string {
+  if (!eqCount) return '';
+  eqCount.n += 1;
+  return `(${eqCount.chapter ? `${faDigits(eqCount.chapter)}-` : ''}${faDigits(eqCount.n)})`;
+}
+
+/** «==قرمز:متن==»: coloured words (red, blue, green). */
+const COLORS: Record<string, string> = { قرمز: 'red', red: 'red', آبی: 'blue', blue: 'blue', سبز: 'green', green: 'green' };
 
 function renderInline(source: string): string {
   const html = renderPlain(source).trim();
@@ -87,7 +106,47 @@ function boxBody(name: string, body: string): string {
     const plot = renderPlot(body, renderInline);
     if (plot !== null) return plot;
   }
+  if (name === 'پرسش و پاسخ') return qaBody(body);
+  if (name === 'تمرین') return exerciseBody(body);
   return renderPlain(body);
+}
+
+/** Markdown with a bold key in front of its first paragraph: «پرسش: …». */
+function keyed(key: string, text: string, cls: string): string {
+  const html = renderPlain(text.trim() || ' ');
+  const k = `<b class="qa-k">${esc(key)}:</b> `;
+  return `<div class="${cls}">${html.startsWith('<p>') ? html.replace('<p>', `<p>${k}`) : k + html}</div>`;
+}
+
+const QA_KEY = /^\s*(پرسش|سؤال|سوال|پاسخ|جواب)\s*[:：]\s?(.*)$/;
+
+/** «:::پرسش و پاسخ»: lines «پرسش: …» and «پاسخ: …» (several pairs if needed), always open. */
+function qaBody(body: string): string {
+  const parts: { key: string; lines: string[] }[] = [];
+  for (const line of body.split('\n')) {
+    const m = line.match(QA_KEY);
+    if (m) parts.push({ key: m[1] === 'پاسخ' || m[1] === 'جواب' ? 'پاسخ' : 'پرسش', lines: [m[2]] });
+    else if (parts.length) parts[parts.length - 1].lines.push(line);
+    else parts.push({ key: '', lines: [line] });
+  }
+  return parts
+    .map((p) => (p.key ? keyed(p.key, p.lines.join('\n'), p.key === 'پاسخ' ? 'qa-a' : 'qa-q') : renderPlain(p.lines.join('\n'))))
+    .join('');
+}
+
+const SOLUTION = /^\s*(حل|پاسخ|جواب)\s*[:：]\s?(.*)$/;
+
+/** «:::تمرین»: the question, then «حل:» (or «پاسخ:») and the solution, hidden until the box is tapped. */
+function exerciseBody(body: string): string {
+  const lines = body.split('\n');
+  const at = lines.findIndex((l) => SOLUTION.test(l));
+  if (at < 0) return renderPlain(body);
+  const m = lines[at].match(SOLUTION)!;
+  const solution = [m[2], ...lines.slice(at + 1)].join('\n');
+  return (
+    renderPlain(lines.slice(0, at).join('\n')) +
+    `<details class="ex-sol"><summary>دیدن ${m[1] === 'حل' ? 'حل' : 'پاسخ'}</summary>${keyed(m[1] === 'حل' ? 'حل' : 'پاسخ', solution, 'ex-body')}</details>`
+  );
 }
 
 function renderPlain(source: string): string {
@@ -106,9 +165,15 @@ function renderPlain(source: string): string {
       );
     })
     .replace(/\[\[([^\]\n]+)\]\]/g, '$1')
-    .replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => `\n\n${keep(renderMath(tex.trim(), true))}\n\n`);
+    .replace(/\$\$([\s\S]+?)\$\$[ \t]*(?:\{#([^}\s]+)\})?/g, (_, tex: string, name?: string) => {
+      const label = name ? eqLabel() : '';
+      return `\n\n${keep(renderMath(tex.trim(), true, name ? { id: name, label } : undefined))}\n\n`;
+    });
   text = text.replace(/(^|[^\\])\$([^$\n]+?)\$/g, (_, before: string, tex: string) => before + keep(renderMath(tex.trim(), false)));
+  // «==قرمز:متن==» → marks the markdown leaves alone, made into coloured spans after.
+  text = text.replace(/==(قرمز|آبی|سبز|red|blue|green):([^\n]+?)==/g, (_, c: string, inner: string) => `@@C${COLORS[c]}@@${inner}@@CE@@`);
   let html = md.render(text);
+  html = html.replace(/@@C(red|blue|green)@@/g, '<span class="tc tc-$1">').replace(/@@CE@@/g, '</span>');
   html = html.replace(/<p>\s*(@@MATH\d+@@)\s*<\/p>/g, '$1');
   html = html.replace(/@@MATH(\d+)@@/g, (_, i: string) => formulas[Number(i)]);
   html = html.replace(/<table>/g, '<div class="table-wrap"><table>').replace(/<\/table>/g, '</table></div>');
@@ -127,6 +192,8 @@ export function renderMarkdown(source: string): string {
   const { chapter, start, titles } = numbering();
   const counts: Record<string, number> = { ...(start ?? {}) };
   let boxIndex = 0;
+  const outer = eqCount;
+  eqCount = { chapter, n: start?.['رابطه'] ?? 0 };
   for (let i = 0; i < lines.length; i++) {
     const open = lines[i].match(/^:::\s*(\S.*?)\s*(?:\{#([^}\s]+)\})?\s*$/);
     const label = open ? findLabel(open[1]) : undefined;
@@ -152,6 +219,7 @@ export function renderMarkdown(source: string): string {
     buffer.push(lines[i]);
   }
   flush();
+  eqCount = outer;
   return parts.join('\n');
 }
 
@@ -166,7 +234,7 @@ body { margin: 0; background: transparent; color: #17201A; }
 .lesson p { margin: 0 0 14px; }
 /* Paragraphs aligned on both sides like a printed book (last line to the right); lists and short texts stay ragged.
    «ragged»: the learner chose right-aligned text. */
-.lesson:not(.compact):not(.ragged) p { text-align: justify; text-align-last: right; text-justify: inter-word; }
+.lesson:not(.compact):not(.ragged) p { text-align: justify; text-align-last: start; text-justify: inter-word; }
 .lesson h1, .lesson h2, .lesson h3 { line-height: 1.5; margin: 22px 0 10px; }
 .lesson strong { background: #FFF1B8; border-radius: 4px; padding: 0 3px; }
 .lesson ul, .lesson ol { padding-right: 22px; padding-left: 0; margin: 0 0 14px; }
@@ -287,10 +355,30 @@ mark.flash.fade { background: transparent; box-shadow: 0 0 0 0 rgba(255,212,59,0
 .ci-st.ci-lock { border: 0; font-size: 13px; }
 .ci-n { flex: none; color: #56655B; font-weight: 700; } .ci-t { flex: 1; min-width: 0; } .ci-go { flex: none; color: #B9A23A; font-weight: 800; }
 .ci-continue { margin-top: 16px; }
+.ci-badge { flex: none; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #E8E4FA; color: #4A3A9E; }
 .lesson.dark .ci-row { background: #1E2621; border-color: #33403A; } .lesson.dark .ci-row.ci-on { background: #2A2614; border-color: #8C7414; }
 .lesson.dark .ci-n { color: #9AA79F; } .lesson.dark .ci-st { border-color: #3A463E; }
 .lesson.sepia .ci-row { background: #FBF5E6; border-color: #E6D8B8; }
-.box-plot { padding: 10px 8px 8px; } .box-plot .box-title { padding: 0 6px; }
+.box-plot { padding: 10px 8px 8px; }
+/* Coloured words («==قرمز:…==») */
+.tc-red { color: #C2413B; } .tc-blue { color: #2F5BC8; } .tc-green { color: #23784A; }
+.lesson.dark .tc-red { color: #FF8A80; } .lesson.dark .tc-blue { color: #8FB0FF; } .lesson.dark .tc-green { color: #7FD9A2; }
+.lesson.sepia .tc-red { color: #A8322C; } .lesson.sepia .tc-blue { color: #2A4FA8; } .lesson.sepia .tc-green { color: #1F6A40; }
+/* «پرسش و پاسخ» and «تمرین» */
+.qa-k { font-weight: 900; }
+.qa-a { border-top: 1px dashed rgba(59,68,184,.3); margin-top: 6px; padding-top: 8px; }
+details.ex-sol { margin: 4px 0 12px; }
+details.ex-sol > summary { list-style: none; cursor: pointer; text-align: center; font-weight: 800; padding: 9px 12px; border-radius: 12px;
+  border: 1.5px dashed rgba(31,94,58,.45); color: #1F5E3A; -webkit-user-select: none; user-select: none; }
+details.ex-sol > summary::-webkit-details-marker { display: none; }
+details.ex-sol[open] > summary { display: none; }
+.ex-body { background: rgba(255,255,255,.75); border-radius: 12px; padding: 10px 12px 2px; }
+.lesson.dark details.ex-sol > summary { color: #9BE3B4; border-color: rgba(155,227,180,.4); } .lesson.dark .ex-body { background: rgba(0,0,0,.2); }
+/* Numbered formulas: «(۳-۲)» on the left. */
+.math-block.eq { position: relative; padding-left: 52px; padding-right: 52px; }
+.eq-n { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-family: Vazirmatn, Tahoma, sans-serif; font-size: 15px; color: #56655B; }
+.lesson.dark .eq-n { color: #9AA79F; }
+.math-block.reached { box-shadow: 0 0 0 3px #FFD43B; transition: box-shadow 1.4s; } .math-block.reached.fade { box-shadow: 0 0 0 0 rgba(255,212,59,0); } .box-plot .box-title { padding: 0 6px; }
 ${PLOT_CSS}`;
 
 /** Longest text a learner may copy at once; longer copies are blocked (the book is protected). */
@@ -604,7 +692,7 @@ export type ChapterEnd = {
 /** A chapter's introduction page: its number, its sections with the learner's state, and where to go on. */
 export type ChapterIntro = {
   number: number | null;
-  sections: { id: number; title: string; locked: boolean; state: 'done' | 'read' | 'empty' }[];
+  sections: { id: number; title: string; locked: boolean; state: 'done' | 'read' | 'empty'; badge?: 'new' | 'updated' | null }[];
   questions: number;
   flashcards: number;
   continue_id: number | null;
@@ -723,7 +811,8 @@ function introEndHtml(c: ChapterIntro): string {
         : x.state === 'done'
           ? '<span class="ci-st ci-done">✓</span>'
           : `<span class="ci-st${x.state === 'read' ? ' ci-read' : ''}"></span>`;
-      return `<a class="ci-row${x.id === c.continue_id && c.started ? ' ci-on' : ''}" data-open="${x.id}" role="button">${mark}<span class="ci-n">${fa(i + 1)}.</span><span class="ci-t">${escHtml(x.title)}</span><span class="ci-go">←</span></a>`;
+      const badge = x.badge === 'updated' ? '<span class="ci-badge">به‌روز شده</span>' : '';
+      return `<a class="ci-row${x.id === c.continue_id && c.started ? ' ci-on' : ''}" data-open="${x.id}" role="button">${mark}<span class="ci-n">${fa(i + 1)}.</span><span class="ci-t">${escHtml(x.title)}</span>${badge}<span class="ci-go">←</span></a>`;
     })
     .join('');
   const at = c.sections.findIndex((x) => x.id === c.continue_id);
