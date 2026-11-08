@@ -269,7 +269,7 @@ export default function Home() {
       el: (
         <View style={styles.section}>
             <SectionHeader title="تازه‌های لیمو" />
-            <BannerCarousel banners={banners.data!} onOpen={(b) => openLink(b.link, b.id)} paused={pageScrolling} />
+            <BannerCarousel banners={banners.data!} onOpen={(b) => openLink(b.link, b.id)} paused={pageScrolling} frameWidth={wide ? 380 : undefined} />
           </View>
       ),
     });
@@ -302,7 +302,8 @@ export default function Home() {
 
   // A computer: today's jobs and «نیاز به مرور» in a column beside the books.
   if (wide) {
-    const side = new Set(['today', 'needs-review']);
+    // «تازه‌های لیمو» under today's jobs: one frame that turns by itself.
+    const side = new Set(['today', 'needs-review', 'banners']);
     return (
       <Screen tab wide>
         <ScrollView contentContainerStyle={styles.wide} refreshControl={refresh}>

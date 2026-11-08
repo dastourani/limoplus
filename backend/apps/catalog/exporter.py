@@ -38,8 +38,7 @@ def question_to_parsed(q: Question) -> ParsedQuestion:
         line=0,
         stem=q.stem,
         explanation=q.explanation,
-        quick_solution=q.quick_solution,
-        alternative_view=q.alternative_view,
+        solutions=[(x.get("title", ""), x.get("body", "")) for x in (q.solutions or [])],
         difficulty=q.difficulty,
         domain=q.domain,
         kind=q.kind,
@@ -51,6 +50,7 @@ def question_to_parsed(q: Question) -> ParsedQuestion:
         sources=sources,
         # Links to archived cards are left out (a card archived in another chapter must not break this one).
         flashcard_slugs=list(q.flashcards.filter(is_archived=False).order_by("order", "id").values_list("slug", flat=True)),
+        similar_slugs=list(q.similar_to.order_by("id").values_list("slug", flat=True)),
         choices=[(c.text, c.is_correct) for c in q.choices.all()],
     )
 
@@ -86,12 +86,12 @@ def question_block(q: ParsedQuestion) -> list[str]:
     for text, ok in q.choices:
         lines.append(f"- [{'x' if ok else ' '}] {' '.join(text.split())}")
     lines.append(f"توضیح: {q.explanation}")
-    if q.quick_solution:
-        lines.append(f"راه‌حل سریع: {q.quick_solution}")
-    if q.alternative_view:
-        lines.append(f"زاویه‌ی دیگر: {q.alternative_view}")
+    for title, body in q.solutions:
+        lines.append(f"راه‌حل ({title}): {body}")
     if q.flashcard_slugs:
         lines.append(f"فلش‌کارت: {', '.join(q.flashcard_slugs)}")
+    if q.similar_slugs:
+        lines.append(f"مشابه: {', '.join(q.similar_slugs)}")
     lines.append(":::")
     return "\n".join(lines).split("\n")
 

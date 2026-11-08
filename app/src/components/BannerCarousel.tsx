@@ -17,12 +17,15 @@ export function BannerCarousel({
   onOpen,
   gutter = 20,
   paused,
+  frameWidth,
 }: {
   banners: Banner[];
   onOpen: (b: Banner) => void;
   gutter?: number;
   /** True while the page around is being scrolled: no turning by itself then. */
   paused?: { current: boolean };
+  /** A fixed frame width (the side column on a computer) instead of the screen's. */
+  frameWidth?: number;
 }) {
   const { width } = useWindowDimensions();
   // Countdowns run on the server's clock (the phone's may be wrong) and tick once a second.
@@ -40,7 +43,7 @@ export function BannerCarousel({
   }, [counting]);
   const msLeft = (b: Banner) => (b.ends_at ? Date.parse(b.ends_at) - (Date.now() + offset) : Infinity);
   const banners = useMemo(() => all.filter((b) => msLeft(b) > 0), [all, tick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const w = Math.min(width, 760) - gutter * 2;
+  const w = frameWidth ?? Math.min(width, 760) - gutter * 2;
   const h = Math.round(w / 2);
   const ordered = [...banners].reverse(); // first banner sits at the right end
   const scroll = useRef<ScrollViewInstance>(null);
@@ -97,7 +100,19 @@ export function BannerCarousel({
       {n > 1 && (
         <View style={styles.dots}>
           {banners.map((b, i) => (
-            <View key={b.id} style={[styles.dot, i === page && styles.dotOn]} />
+            // A dot jumps to its banner (with a mouse there is no swiping).
+            <Pressable
+              key={b.id}
+              onPress={() => {
+                setPage(i);
+                scroll.current?.scrollTo({ x: toX(i), animated: true });
+              }}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`تازه‌ی ${i + 1}`}
+            >
+              <View style={[styles.dot, i === page && styles.dotOn]} />
+            </Pressable>
           ))}
         </View>
       )}

@@ -70,7 +70,7 @@ function Row({ t, ended, first, onError }: { t: TodayTask; ended: boolean; first
     size = `${t.book_title}، ${fa(left)} تست، حدود ${fa(Math.max(1, Math.round((t.minutes * left) / Math.max(1, t.questions))))} دقیقه`;
     open = () => openReview({ ...t, kind: t.review_kind }).catch(onError);
   } else if (t.kind === 'cards') {
-    title = t.comeback && t.total > t.count ? 'کارت‌های مهم‌تر' : 'مرور فلش‌کارت‌ها';
+    title = t.comeback && t.total > t.count ? 'کارت‌های مهم‌تر' : 'مرور کارت‌ها';
     total = t.count + done;
     size = `${fa(t.count)} کارت، حدود ${fa(t.minutes)} دقیقه`;
     open = () => router.push(t.comeback ? { pathname: '/review', params: { limit: String(t.count) } } : '/review');

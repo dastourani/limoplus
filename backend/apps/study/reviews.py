@@ -348,7 +348,8 @@ def book_schedule(user, book) -> dict:
     today = timezone.localdate()
     chapters = {}
     for r in ChapterReview.objects.filter(user=user, book=book, is_archived=False):
-        chapters[str(r.chapter_id)] = {"step": r.stage, "due_on": r.due_on, "days": (r.due_on - today).days, "done": r.done_count}
+        # id: what «مرور فصل» on the book page starts (the same as the home page's tile).
+        chapters[str(r.chapter_id)] = {"id": r.id, "step": r.stage, "due_on": r.due_on, "days": (r.due_on - today).days, "done": r.done_count}
     b = BookReview.objects.filter(user=user, book=book).first()
     return {"chapters": chapters, "book": {"due_on": b.due_on, "days": (b.due_on - today).days} if b else None}
 

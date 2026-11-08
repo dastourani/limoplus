@@ -73,8 +73,9 @@
           });
           var ex = box.querySelector('.explain');
           var parts = [];
-          if (res.quick_solution) parts.push('<h4>راه‌حل سریع</h4>' + (md(res.quick_solution) || res.quick_solution));
-          if (res.explanation) parts.push('<h4>پاسخ تشریحی</h4>' + (md(res.explanation) || res.explanation));
+          var esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+          if (res.explanation) parts.push('<h4>پاسخ تشریحی</h4>' + (md(res.explanation) || esc(res.explanation)));
+          (res.solutions || []).forEach(function (x) { if (x.body) parts.push('<h4>' + esc(x.title || 'راه‌حل') + '</h4>' + (md(x.body) || esc(x.body))); });
           if (parts.length) { ex.innerHTML = parts.join(''); ex.hidden = false; }
         }).catch(function () { buttons.forEach(function (b) { b.disabled = false; }); });
       });

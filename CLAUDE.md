@@ -77,6 +77,10 @@ Code, identifiers and commit messages are in English.
 - «مطلب تازه» (`catalog/fresh.py`): a tick on panel saves sets `refreshed_at` and writes `BookChange` («تغییرات کتاب»);
   learners see «به‌روز شده» until they have seen it since. Tests/cards added after a learner started the section show
   «تازه» (`added_at`, 14 days). Restore offers «فقط متن بخش‌ها را برگردان» (`file.restore_text`).
+- Solutions: `Question.solutions` (JSON list of {title, body}; file `راه‌حل (عنوان): …`; old `quick_solution`/`alternative_view`
+  copied in by migration 0011 and unused). «مشابه:» → `Question.similar_to` (shown both ways under the answer; never two in one
+  exam). Past exams from `QuestionSource` (`learning/views.py` `book_past_*`, «تکراری‌ها و مشابه‌ها» = `_repeat_groups`);
+  exams accept `konkur_only`, `years`, `source` (a whole past exam in its own order).
 - Plots: a «:::نمودار» box with «تابع:» lines is drawn as SVG by `src/lib/plot.ts` (formulas: `src/lib/expr.ts`, a small
   numeric parser; mathjs was ~1 MB). Checks: `app/scripts/plot-check.ts` (run with esbuild + node; must pass).
 - «صندوق» (`apps/catalog/inbox.py`): a hidden book (`ContentNode.is_inbox`, never visible, never published) whose one

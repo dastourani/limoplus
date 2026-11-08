@@ -92,12 +92,14 @@ QUESTION_KEYS = {
     for k, v in {
         "صورت": "stem", "سؤال": "stem", "سوال": "stem",
         "توضیح": "explanation", "پاسخ تشریحی": "explanation",
+        # Old keys: each becomes a solution with that title («راه‌حل (عنوان):» is the general form).
         "راه‌حل سریع": "quick_solution", "راه حل سریع": "quick_solution",
         "زاویه‌ی دیگر": "alternative_view", "زاویه دیگر": "alternative_view",
+        "راه‌حل": "solution_plain", "راه حل": "solution_plain",
         "منبع": "source", "سطح": "difficulty", "حوزه": "domain", "نوع": "kind",
         "زمان": "seconds", "فلش‌کارت": "flashcards", "رایگان": "free",
         "ترتیب گزینه‌ها": "fixed_order", "ترتیب گزینه ها": "fixed_order", "ترتیب": "fixed_order",
-        "نقش": "role",
+        "نقش": "role", "مشابه": "similar",
     }.items()
 }
 
@@ -136,8 +138,8 @@ class ParsedQuestion:
     line: int
     stem: str = ""
     explanation: str = ""
-    quick_solution: str = ""
-    alternative_view: str = ""
+    # Extra solutions, each with its own title: «راه‌حل (راه‌حل تستی): …» (any number).
+    solutions: list[tuple[str, str]] = field(default_factory=list)
     difficulty: str = ""
     domain: str = ""
     kind: str = ""
@@ -148,6 +150,8 @@ class ParsedQuestion:
     is_extra: bool = False
     sources: list[tuple[str, int, int | None]] = field(default_factory=list)
     flashcard_slugs: list[str] = field(default_factory=list)
+    # «مشابه:»: tests of the same book that came back in another exam with a change (shown under the answer).
+    similar_slugs: list[str] = field(default_factory=list)
     choices: list[tuple[str, bool]] = field(default_factory=list)
 
 
@@ -290,7 +294,7 @@ def _texts_with_lines(section: ParsedSection):
     yield section.line, section.full_body
     yield section.line, section.summary_body
     for q in section.questions:
-        yield q.line, "\n".join([q.stem, q.explanation, q.quick_solution, q.alternative_view] + [c for c, _ in q.choices])
+        yield q.line, "\n".join([q.stem, q.explanation, *[b for _, b in q.solutions]] + [c for c, _ in q.choices])
     for f in section.flashcards:
         yield f.line, f.point
 
@@ -426,8 +430,12 @@ def _parse_front_matter(lines, chapter, book: ContentNode | None = None) -> int:
     return i + 1
 
 
-SINGLE_LINE_FIELDS = {"source", "difficulty", "domain", "kind", "seconds", "free", "flashcards", "title", "formula", "fixed_order", "role"}
+SINGLE_LINE_FIELDS = {"source", "difficulty", "domain", "kind", "seconds", "free", "flashcards", "title", "formula", "fixed_order", "role", "similar"}
 FIXED = YES | {"ثابت"}
+
+
+_SOLUTION_KEY = re.compile(r"^\s*راه[\u200c ]?حل\s*[(（](.+?)[)）]\s*$")
+TITLE_MARK = "\x00"  # first line of a «solution» field: its title
 
 
 def _split_fields(body, keys):
@@ -438,6 +446,12 @@ def _split_fields(body, keys):
     for offset, line in enumerate(body):
         if ":" in line and not _CHOICE.match(line):
             raw_key, value = line.split(":", 1)
+            titled = _SOLUTION_KEY.match(raw_key) if keys is QUESTION_KEYS else None
+            if titled:
+                # «راه‌حل (عنوان): متن»
+                fields.setdefault("solution", []).append([TITLE_MARK + " ".join(titled.group(1).split()), value.strip()])
+                current = "solution"
+                continue
             mapped = keys.get(_key(raw_key))
             if mapped:
                 fields.setdefault(mapped, []).append([value.strip()])
@@ -479,9 +493,16 @@ def _parse_question(body, slug, line_no, chapter) -> ParsedQuestion:
     if [l for _, l in tail_loose if l.strip()]:
         chapter.warn("متنی بعد از گزینه‌ها بدون کلید آمده و نادیده گرفته شد.", line_no)
 
-    for name in ("explanation", "quick_solution", "alternative_view"):
-        if name in fields:
-            setattr(q, name, _join(fields[name][-1]))
+    if "explanation" in fields:
+        q.explanation = _join(fields["explanation"][-1])
+    for name, title in (("quick_solution", "راه‌حل سریع"), ("alternative_view", "زاویه‌ی دیگر"), ("solution_plain", "راه‌حل دیگر")):
+        for parts in fields.get(name, []):
+            q.solutions.append((title, _join(parts)))
+    for parts in fields.get("solution", []):
+        q.solutions.append((parts[0][len(TITLE_MARK):], _join(parts[1:])))
+    for title, body_text in q.solutions:
+        if not body_text:
+            chapter.error(f"تست {slug}: راه‌حل «{title}» متن ندارد.", line_no)
 
     difficulty = _join(fields.get("difficulty", [[""]])[-1])
     q.difficulty = DIFFICULTY.get(difficulty, "")
@@ -534,6 +555,8 @@ def _parse_question(body, slug, line_no, chapter) -> ParsedQuestion:
 
     for parts in fields.get("flashcards", []):
         q.flashcard_slugs.extend(s.strip() for s in re.split(r"[,،]", _join(parts)) if s.strip())
+    for parts in fields.get("similar", []):
+        q.similar_slugs.extend(s.strip() for s in re.split(r"[,،]", _join(parts)) if s.strip() and s.strip() != slug)
 
     if not q.stem:
         chapter.error(f"تست {slug}: صورت سؤال خالی است.", line_no)
@@ -547,7 +570,7 @@ def _parse_question(body, slug, line_no, chapter) -> ParsedQuestion:
     from apps.learning.order import names_choice_number, refers_to_choices
 
     if not q.fixed_order and not refers_to_choices(t for t, _ in q.choices):
-        for text in (q.explanation, q.quick_solution, q.alternative_view):
+        for text in (q.explanation, *[b for _, b in q.solutions]):
             named = names_choice_number(text)
             if named:
                 chapter.warn(
@@ -657,6 +680,15 @@ def check_against_db(chapter: ParsedChapter):
     book = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, slug=chapter.meta["book_slug"], depth=1).first()
     if book is None and not majors:
         chapter.warn("کتاب جدید است ولی هیچ رشته‌ای برایش تعیین نشده؛ در اپ نمایش داده نمی‌شود.", 1)
+    own_questions = {q.slug for s in chapter.all_sections() for q in s.questions}
+    wanted = {ref for s in chapter.all_sections() for q in s.questions for ref in q.similar_slugs if ref not in own_questions}
+    if wanted:
+        found_q = set(Question.objects.filter(node__path__startswith=book.path, slug__in=wanted).values_list("slug", flat=True)) if book else set()
+        for s in chapter.all_sections():
+            for q in s.questions:
+                for ref in q.similar_slugs:
+                    if ref not in own_questions and ref not in found_q:
+                        chapter.error(f"تست {q.slug}: تست مشابه «{ref}» در این کتاب پیدا نشد.", q.line)
     if chapter.outside_cards:
         found = set(outside_flashcards(book, chapter, {ref for _, ref, _ in chapter.outside_cards}))
         for test, ref, line in chapter.outside_cards:
@@ -785,6 +817,7 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
     )
 
     kept_questions = set()
+    similar_pending = []
     for node, parsed in targets:
         for order, q in enumerate(parsed.questions, start=1):
             obj = Question.objects.filter(slug=q.slug, **in_book).first()
@@ -793,8 +826,7 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
             obj.node = node
             obj.stem = _rewrite_images(q.stem, image_paths)
             obj.explanation = _rewrite_images(q.explanation, image_paths)
-            obj.quick_solution = _rewrite_images(q.quick_solution, image_paths)
-            obj.alternative_view = _rewrite_images(q.alternative_view, image_paths)
+            obj.solutions = [{"title": t, "body": _rewrite_images(b, image_paths)} for t, b in q.solutions]
             obj.difficulty, obj.domain, obj.kind = q.difficulty, q.domain, q.kind
             obj.estimated_seconds, obj.is_original, obj.is_free, obj.is_archived = q.seconds, q.is_original, q.is_free, False
             obj.fixed_order = q.fixed_order
@@ -830,6 +862,11 @@ def apply_chapter(chapter: ParsedChapter, publish: bool = False) -> ImportResult
             if missing:
                 flashcard_by_slug.update(outside_flashcards(book, chapter, missing))
             obj.flashcards.set([flashcard_by_slug[s] for s in q.flashcard_slugs if s in flashcard_by_slug])
+            similar_pending.append((obj, q.similar_slugs))
+    # «مشابه:» once every test of the file exists (a link may point to a test further down, or in another chapter).
+    for obj, slugs in similar_pending:
+        targets = Question.objects.filter(node__path__startswith=book.path, slug__in=slugs).exclude(pk=obj.pk) if slugs else []
+        obj.similar_to.set(list(targets))
     result.archived["question"] += (
         Question.objects.filter(node_id__in=scope_nodes, is_archived=False).exclude(pk__in=kept_questions).update(is_archived=True)
     )

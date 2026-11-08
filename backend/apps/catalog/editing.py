@@ -281,8 +281,9 @@ def question_from_form(data: dict, slug: str) -> ParsedQuestion:
             line=0,
             stem=(data.get("stem") or "").strip(),
             explanation=(data.get("explanation") or "").strip(),
-            quick_solution=(data.get("quick_solution") or "").strip(),
-            alternative_view=(data.get("alternative_view") or "").strip(),
+            # «راه‌حل‌ها»: rows of a title and a text; an empty row is left out, a text without a title is refused.
+            solutions=[(" ".join((x.get("title") or "").split()), (x.get("body") or "").strip())
+                       for x in data.get("solutions") or [] if (x.get("title") or "").strip() or (x.get("body") or "").strip()],
             difficulty=data.get("difficulty") or "",
             domain=data.get("domain") or "",
             kind=data.get("kind") or "",
@@ -293,9 +294,16 @@ def question_from_form(data: dict, slug: str) -> ParsedQuestion:
             is_original=bool(data.get("is_original")) or not sources,
             sources=sources,
             flashcard_slugs=[s for s in data.get("flashcards") or [] if s],
+            similar_slugs=[s.strip() for s in re.split(r"[,،\s]+", data.get("similar") or "") if s.strip()] if isinstance(data.get("similar"), str)
+            else [s for s in data.get("similar") or [] if s],
             choices=[((c.get("text") or "").strip(), bool(c.get("correct"))) for c in data.get("choices") or [] if (c.get("text") or "").strip()],
         )
-        for name, value in (("صورت سؤال", draft.stem), ("توضیح", draft.explanation), ("راه‌حل سریع", draft.quick_solution), ("زاویه‌ی دیگر", draft.alternative_view)):
+        for title, _ in draft.solutions:
+            if not title:
+                raise EditError("هر راه‌حل یک عنوان لازم دارد (مثلاً «راه‌حل تستی»).")
+            if "(" in title or ")" in title:
+                raise EditError("عنوان راه‌حل پرانتز نداشته باشد.")
+        for name, value in (("صورت سؤال", draft.stem), ("توضیح", draft.explanation), *[(f"راه‌حل «{t}»", b) for t, b in draft.solutions]):
             errs = check_body(value, name)
             if errs:
                 raise EditError(errs)
@@ -367,9 +375,9 @@ def _item_fields(item):
 
 
 QUESTION_LABELS = {
-    "stem": "صورت", "choices": "گزینه‌ها", "explanation": "توضیح", "quick_solution": "راه‌حل سریع", "alternative_view": "زاویه‌ی دیگر",
+    "stem": "صورت", "choices": "گزینه‌ها", "explanation": "توضیح", "solutions": "راه‌حل‌ها",
     "difficulty": "سطح", "domain": "حوزه", "kind": "نوع", "seconds": "زمان", "is_free": "رایگان", "is_original": "منبع",
-    "fixed_order": "ترتیب گزینه‌ها", "is_extra": "نقش", "sources": "منبع", "flashcard_slugs": "فلش‌کارت‌های مرتبط",
+    "fixed_order": "ترتیب گزینه‌ها", "is_extra": "نقش", "sources": "منبع", "flashcard_slugs": "فلش‌کارت‌های مرتبط", "similar_slugs": "تست‌های مشابه",
 }
 FLASHCARD_LABELS = {"title": "عنوان", "point": "نکته", "formula": "فرمول", "is_free": "رایگان"}
 

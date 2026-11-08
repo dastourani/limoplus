@@ -7,6 +7,13 @@ remembers the answer:
 - «نیازمند تثبیت» (settling): answered right since, but not yet right again on a later day. It is due again
   SETTLE_DAYS days after that first right answer; a right answer on or after that day takes it out («تثبیت شد»).
 A wrong answer at any point puts it back to the start. Built from the answer history, so nothing new is recorded.
+
+The learner's reason («چرا غلط زدم؟», MistakeNote) counts only for the wrong answer it was given after: a new wrong answer
+asks again (the old reason is kept but no longer shown). What each reason does:
+- «بلد نبودم»: the item offers the section's notes («خواندن درسنامه») before trying again.
+- «فراموش کردم»: the question's linked flashcards come back into today's review.
+- «بی‌دقتی»: the knowledge was there, so it settles sooner (CARELESS_SETTLE_DAYS instead of SETTLE_DAYS).
+- «کمبود وقت»: the item shows the question's time and its quick solutions first.
 """
 
 from __future__ import annotations
@@ -30,6 +37,7 @@ from .models import ExamAnswer, MistakeNote
 
 MAX_ITEMS = 300
 SETTLE_DAYS = 3
+CARELESS_SETTLE_DAYS = 1
 
 OPEN, SETTLING, SETTLED = "open", "settling", "settled"
 
@@ -54,18 +62,22 @@ def answer_rows(user, question_ids=None, since=None):
     return rows
 
 
-def _entry(answers) -> dict | None:
-    """The notebook state of one question from its answers (oldest first), or None if never wrong."""
+def _entry(answers, note=None) -> dict | None:
+    """The notebook state of one question from its answers (oldest first), or None if never wrong.
+    note: (reason, set at) of the learner's MistakeNote; it counts if given after the last wrong answer."""
     wrong_at = [i for i, (ok, _, _) in enumerate(answers) if not ok]
     if not wrong_at:
         return None
     last_wrong = wrong_at[-1]
     ok, at, source = answers[-1]
     entry = {"ok": ok, "at": at, "source": source, "wrong": len(wrong_at), "wrong_at": answers[last_wrong][1],
-             "state": OPEN, "due": None}
+             "state": OPEN, "due": None, "reason": ""}
+    if note and note[0] and note[1] >= entry["wrong_at"]:
+        entry["reason"] = note[0]
     after = answers[last_wrong + 1:]
     if after:
-        due = _day(after[0][1]) + timedelta(days=SETTLE_DAYS)
+        days = CARELESS_SETTLE_DAYS if entry["reason"] == "careless" else SETTLE_DAYS
+        due = _day(after[0][1]) + timedelta(days=days)
         entry["due"] = due
         entry["state"] = SETTLED if any(_day(a) >= due for _, a, _ in after) else SETTLING
     return entry
@@ -76,9 +88,10 @@ def notebook(user, question_ids=None) -> dict[int, dict]:
     by_q: dict[int, list] = {}
     for qid, ok, at, source in answer_rows(user, question_ids):
         by_q.setdefault(qid, []).append((ok, at, source))
+    notes = {qid: (reason, at) for qid, reason, at in MistakeNote.objects.filter(user=user, question_id__in=list(by_q)).values_list("question_id", "reason", "updated_at")}
     out = {}
     for qid, answers in by_q.items():
-        e = _entry(answers)
+        e = _entry(answers, notes.get(qid))
         if e:
             out[qid] = e
     return out
@@ -183,8 +196,9 @@ def due_items(items):
 @api_view(["GET"])
 def my_mistakes(request):
     items, books = _mistakes(request, request.query_params.get("book") or "")
-    reasons = dict(MistakeNote.objects.filter(user=request.user, question_id__in=[q.id for q, _, _ in items]).values_list("question_id", "reason"))
     today = timezone.localdate()
+    # «کمبود وقت»: the titles of the question's other solutions (the quick ones), shown on the item.
+    quick = {q.id: [x.get("title", "") for x in q.solutions or []] for q, _, a in items if a["reason"] == "time"}
     return Response(
         {
             "count": len(items),
@@ -207,7 +221,10 @@ def my_mistakes(request):
                     "state": a["state"],
                     "due_on": a["due"],
                     "is_due": is_due(a, today),
-                    "reason": reasons.get(q.id, ""),
+                    # Given after the last wrong answer (a new wrong answer asks again).
+                    "reason": a["reason"],
+                    "seconds": q.estimated_seconds,
+                    "solutions": quick.get(q.id, []),
                     # The answer key changed after this learner's last answer.
                     "corrected": bool(q.key_changed_at and a["at"] < q.key_changed_at),
                 }
@@ -240,7 +257,23 @@ def mistake_reason(request, question_id):
     note, _ = MistakeNote.objects.get_or_create(user=request.user, question=question)
     note.reason = reason
     note.save(update_fields=["reason", "updated_at"])
-    return Response({"reason": note.reason})
+    cards = 0
+    if reason == "forgot":
+        # «فراموش کردم»: the key points of this question come back into today's review.
+        from .models import FlashcardReview
+
+        now = timezone.now()
+        ids = list(question.flashcards.filter(is_archived=False).values_list("pk", flat=True))
+        cards = len(ids)
+        for fid in ids:
+            r, created = FlashcardReview.objects.get_or_create(user=request.user, flashcard_id=fid, defaults={"due_at": now})
+            if not created and r.due_at > now:
+                r.due_at = now
+                r.save(update_fields=["due_at"])
+    from .reviews import recheck
+
+    recheck(request.user)
+    return Response({"reason": note.reason, "cards": cards})
 
 
 def fixed_info(user, question_id, now=None) -> dict | None:

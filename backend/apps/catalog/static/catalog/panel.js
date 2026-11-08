@@ -962,7 +962,7 @@
   Manager.prototype.itemEditor = function (s, kind, item) {
     var self = this, isNew = !item;
     var data = item ? JSON.parse(JSON.stringify(item)) : (kind === 'question'
-      ? { stem: '', choices: [{ text: '', correct: true }, { text: '', correct: false }, { text: '', correct: false }, { text: '', correct: false }], explanation: '', quick_solution: '', alternative_view: '', difficulty: 'medium', kind: '', domain: '', seconds: '', is_free: false, fixed_order: false, is_extra: false, is_original: true, sources: [], flashcards: [] }
+      ? { stem: '', choices: [{ text: '', correct: true }, { text: '', correct: false }, { text: '', correct: false }, { text: '', correct: false }], explanation: '', solutions: [], similar: [], difficulty: 'medium', kind: '', domain: '', seconds: '', is_free: false, fixed_order: false, is_extra: false, is_original: true, sources: [], flashcards: [] }
       : { title: '', point: '', formula: '', is_free: false });
     var box = h('div', { class: 'item open', id: 'item-' + (item ? item.slug : 'new') });
     var mode = 'form';
@@ -1000,8 +1000,9 @@
         html = render(data.stem) + '<ol style="padding-right:22px">' + data.choices.map(function (c) {
           return '<li style="margin:6px 0;padding:6px 10px;border-radius:12px;background:' + (c.correct ? '#E3F3E9' : '#fff') + ';border:1px solid #E3E8DE">' + render(c.text).replace(/<\/?p>/g, '') + '</li>';
         }).join('') + '</ol>' + (data.explanation ? '<div class="box box-0"><div class="box-title">پاسخ تشریحی</div>' + render(data.explanation) + '</div>' : '') +
-          (data.quick_solution ? '<div class="box box-3"><div class="box-title">راه‌حل سریع</div>' + render(data.quick_solution) + '</div>' : '') +
-          (data.alternative_view ? '<div class="box box-1"><div class="box-title">زاویه‌ی دیگر</div>' + render(data.alternative_view) + '</div>' : '');
+          (data.solutions || []).filter(function (x) { return x.body; }).map(function (x, i) {
+            return '<div class="box box-' + (i % 2 ? '1' : '3') + '"><div class="box-title">' + (x.title || 'راه‌حل').replace(/</g, '&lt;') + '</div>' + render(x.body) + '</div>';
+          }).join('');
       } else {
         html = '<div style="background:#17201A;color:#F5C518;border-radius:18px;padding:22px;text-align:center;font-weight:800;font-size:1.1em;margin-bottom:12px">' +
           (data.title || 'عنوان') + '</div><div style="background:#fff;border-radius:18px;padding:16px;border:1px solid #E3E8DE">' + render(data.point) +
@@ -1040,8 +1041,28 @@
         })();
         left.appendChild(field('گزینه‌ها', choices, '(دایره = گزینه‌ی درست؛ جای گزینه‌ی درست را متنوع کنید)'));
         left.appendChild(mdField('توضیح (پاسخ تشریحی)', 'explanation', 4));
-        left.appendChild(mdField('راه‌حل سریع', 'quick_solution', 2, '(اختیاری)'));
-        left.appendChild(mdField('زاویه‌ی دیگر', 'alternative_view', 2, '(اختیاری)'));
+        // «راه‌حل‌ها»: any number, each with its own title («راه‌حل تستی», «حل دیگر»…), in this order in the app.
+        if (!data.solutions) data.solutions = [];
+        var sols = h('div');
+        (function drawSols() {
+          sols.innerHTML = '';
+          data.solutions.forEach(function (x, i) {
+            var t = h('input', { type: 'text', value: x.title || '', placeholder: 'عنوان، مثلاً «راه‌حل تستی»', list: 'cm-sol-titles', style: 'max-width:260px',
+              oninput: function () { x.title = t.value; changed(); } });
+            var ta = h('textarea', { rows: 2 });
+            ta.value = x.body || '';
+            var row = h('div', { class: 'sol-row', style: 'border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:8px' },
+              h('div', { class: 'row', style: 'flex-wrap:nowrap;margin-bottom:4px' }, t, h('span', { class: 'grow' }),
+                h('button', { class: 'btn icon', type: 'button', title: 'بالا', onclick: function () { if (i) { var y = data.solutions[i - 1]; data.solutions[i - 1] = x; data.solutions[i] = y; drawSols(); changed(); } } }, '▲'),
+                h('button', { class: 'btn icon danger', type: 'button', title: 'حذف این راه‌حل', onclick: function () { data.solutions.splice(i, 1); drawSols(); changed(); } }, '✕')),
+              ta);
+            sols.appendChild(row);
+            setTimeout(function () { new MdEditor(ta, { compact: true, inline: true, mode: 'text', uploadUrl: self.api, onChange: function () { x.body = ta.value; changed(); } }); }, 0);
+          });
+          sols.appendChild(h('button', { class: 'btn small', type: 'button', onclick: function () { data.solutions.push({ title: '', body: '' }); drawSols(); } }, '+ راه‌حل'));
+          sols.appendChild(h('datalist', { id: 'cm-sol-titles' }, ['راه‌حل تستی', 'راه‌حل سریع', 'حل دیگر', 'زاویه‌ی دیگر', 'روش هندسی'].map(function (v) { return h('option', { value: v }); })));
+        })();
+        left.appendChild(field('راه‌حل‌های دیگر', sols, '(اختیاری؛ هر کدام با عنوان خودش، در اپ زیر پاسخ تشریحی)'));
         var sel = function (list, key) {
           var el = h('select', { onchange: function () { data[key] = el.value; changed(); } }, list.map(function (o) { return h('option', { value: o[0], selected: data[key] === o[0] }, o[1]); }));
           return el;
@@ -1074,7 +1095,11 @@
           });
           src.appendChild(h('button', { class: 'btn small', type: 'button', onclick: function () { data.sources.push({ name: '', year: '', number: '' }); drawSrc(); } }, '+ منبع کنکور'));
         })();
-        left.appendChild(field('منبع', src, '(هرگز منبع کنکور از خودتان نسازید)'));
+        left.appendChild(field('منبع', src, '(هرگز منبع کنکور از خودتان نسازید؛ تستی که عیناً در چند کنکور آمده، چند منبع دارد)'));
+        // «مشابه»: the same test that came back in another exam with a change (a separate test of this book).
+        var sim = h('input', { type: 'text', value: (data.similar || []).join('، '), placeholder: 'شناسه‌ی تست‌های مشابه، جدا با «،» (مثلاً q-1401-23)',
+          oninput: function () { data.similar = sim.value.split(/[,،\s]+/).filter(Boolean); changed(); } });
+        left.appendChild(field('تست مشابه', sim, '(اختیاری؛ همان تست با کمی تغییر در کنکور دیگر. در اپ زیر پاسخ نشان داده می‌شود و در یک آزمون با هم نمی‌آیند)'));
         // flashcards
         var cards = self.allFlashcards();
         var fc = h('div', { style: 'max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px' },

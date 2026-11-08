@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, ScrollView, StyleSheet, View, type HostInstance } from 'react-native';
 
 import { ApiError } from '../../api/client';
-import { endpoints, type Question, type ReviewSessionData } from '../../api/endpoints';
+import { endpoints, type Flashcard, type Question, type ReviewSessionData } from '../../api/endpoints';
 import { useFeedback } from '../../components/Feedback';
 import { LemonProgress, type PartState } from '../../components/LemonProgress';
 import { PageHeader } from '../../components/PageHeader';
@@ -19,7 +19,8 @@ import { QuestionPicker } from '../../components/QuestionPicker';
 import { QuizView, type QuizEvent } from '../../components/QuizView';
 import { ReportSheet } from '../../components/ReportSheet';
 import { Text } from '../../components/Text';
-import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
+import { Button, ErrorState, Header, Loading, Screen, Sheet } from '../../components/ui';
+import { RichText } from '../../components/RichText';
 import { Pill } from '../../components/Pill';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { useGuestNudge } from '../../lib/guestNudge';
@@ -42,13 +43,25 @@ const ORDERS: [Order, string][] = [
 
 export default function Quiz() {
   // ?ids=…: only these tests (from a flashcard's «تست‌های این نکته»).
-  const { nodeId, book: bookParam, q: openQuestion, session, ids } = useLocalSearchParams<{ nodeId: string; book?: string; q?: string; session?: string; ids?: string }>();
+  const { nodeId, book: bookParam, q: openQuestion, session, ids, source, names } = useLocalSearchParams<{
+    nodeId: string;
+    book?: string;
+    q?: string;
+    session?: string;
+    ids?: string;
+    /** /quiz/past?book=…&source=…: the tests of one past exam, in its own order. */
+    source?: string;
+    /** /quiz/repeats?book=…&names=a|b: «تکراری‌ها و مشابه‌ها» of those konkurs, each group together. */
+    names?: string;
+  }>();
   // /quiz/review?session=N: a chapter or book review, five questions at a time («۵ تست دیگر»).
   const review = nodeId === 'review';
   // /quiz/mistakes: the questions of the mistakes notebook (optionally one book), practised like a section's.
   const notebook = nodeId === 'mistakes';
   // /quiz/quick: the three questions of «فقط ۵ دقیقه».
   const quick = nodeId === 'quick';
+  const repeats = nodeId === 'repeats';
+  const past = nodeId === 'past' || repeats;
   const { data, error, loading, retry } = useApi(
     () =>
       review
@@ -57,8 +70,12 @@ export default function Quiz() {
         ? endpoints.quick().then((r) => ({ questions: r.questions, locked_count: 0 }))
         : notebook
           ? endpoints.mistakeQuestions(bookParam ?? '')
-          : endpoints.questions(Number(nodeId), ids),
-    [nodeId, bookParam, session, ids],
+          : repeats
+            ? endpoints.pastRepeats(bookParam ?? '', (names ?? '').split('|').filter(Boolean))
+            : past
+            ? endpoints.pastQuestions(bookParam ?? '', Number(source))
+            : endpoints.questions(Number(nodeId), ids),
+    [nodeId, bookParam, session, ids, source, names],
   );
   // A review grows by five when the learner asks for more; its result comes from the server when it ends.
   const [reviewQs, setReviewQs] = useState<Question[] | null>(null);
@@ -68,6 +85,18 @@ export default function Quiz() {
   const { confirm, toast: flash } = useFeedback();
 
   const [index, setIndex] = useState(0);
+  // «فلش‌کارت مرتبط» opens over the test, so going back never loses the place.
+  const [cardSheet, setCardSheet] = useState<{ book: number; ids: number[]; cards: Flashcard[] | null } | null>(null);
+  const openCards = (book: number, ids: number[]) => {
+    setCardSheet({ book, ids, cards: null });
+    endpoints
+      .flashcards(book, false, ids.join(','))
+      .then((r) => {
+        setMacros(r.macros);
+        setCardSheet((s) => (s ? { ...s, cards: ids.map((id) => r.flashcards.find((f) => f.id === id)).filter(Boolean) as Flashcard[] } : s));
+      })
+      .catch(() => setCardSheet((s) => (s ? { ...s, cards: [] } : s)));
+  };
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
   const [serverAnswered, setServerAnswered] = useState<Record<string, boolean>>({});
   const [reported, setReported] = useState<number[]>([]);
@@ -83,7 +112,7 @@ export default function Quiz() {
   const { style: pageStyle, turn } = usePageTurn();
 
   // Order of the questions: as in the book, shuffled (choices too), or only the ones not yet right.
-  const orderKey = `limo.quiz.${nodeId}${ids ? `.${ids}` : ''}.order`;
+  const orderKey = `limo.quiz.${nodeId}${ids ? `.${ids}` : ''}${source ? `.s${source}` : ''}${names ? `.n${names}` : ''}.order`;
   const [order, setOrder] = useState<{ order: Order; seed: number; ids?: number[] } | null>(null);
   useEffect(() => {
     AsyncStorage.getItem(orderKey)
@@ -93,7 +122,7 @@ export default function Quiz() {
 
   // «تست تکمیلی»: a section's extra tests come after its own, once the learner asks for «تمرین بیشتر».
   const [withExtra, setWithExtra] = useState(false);
-  const sectionQuiz = !review && !notebook && !quick;
+  const sectionQuiz = !review && !notebook && !quick && !past;
   // «دستورهای فرمول» before any formula is drawn.
   setMacros((data as { macros?: Record<string, string> } | undefined)?.macros);
   const extraCount = sectionQuiz ? (data?.questions ?? []).filter((q) => q.extra).length : 0;
@@ -113,7 +142,7 @@ export default function Quiz() {
 
   // Signed-in learners continue at the first question they have not answered yet.
   useEffect(() => {
-    if (!user || !data || !order || notebook || quick || review) return;
+    if (!user || !data || !order || notebook || quick || review || past) return;
     endpoints
       .practiceState(Number(nodeId))
       .then((s) => {
@@ -266,12 +295,11 @@ export default function Quiz() {
   const onEvent = (e: QuizEvent) => {
     if (e.type === 'choose') choose(e.id);
     else if (e.type === 'card') {
-      // The tapped card first, then the other cards of this answer.
+      // The tapped card first, then the other cards of this answer, in a sheet over the test (back stays here).
       const c = answers[q.id]?.cards;
-      if (c) {
-        const ids = [e.id, ...c.ids.filter((x) => x !== e.id)].join(',');
-        router.push({ pathname: '/flashcards/[nodeId]', params: { nodeId: String(c.book), ids, keep: '1' } });
-      }
+      if (c) openCards(c.book, [e.id, ...c.ids.filter((x) => x !== e.id)]);
+    } else if (e.type === 'similar') {
+      router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: String(e.node), ids: String(e.id) } });
     } else if (e.type === 'ref') {
       if (e.node) router.push({ pathname: '/section/[id]', params: { id: e.node, find: '#' + e.name } });
     } else if (e.type === 'notes') {
@@ -313,7 +341,7 @@ export default function Quiz() {
       icon: 'rotate-ccw',
     });
     if (!ok) return;
-    if (user && !notebook && !quick && !review) await endpoints.practiceReset(Number(nodeId)).catch(() => undefined);
+    if (user && !notebook && !quick && !review && !past) await endpoints.practiceReset(Number(nodeId)).catch(() => undefined);
     setAnswers({});
     setServerAnswered({});
     setShowSummary(false);
@@ -409,8 +437,8 @@ export default function Quiz() {
   return (
     <Screen>
       <PageHeader
-        icon={notebook ? 'notebook-pen' : review ? 'rotate-ccw' : 'list-checks'}
-        title={notebook ? 'تمرین اشتباه‌ها' : review ? 'مرور' : quick ? 'فقط ۵ دقیقه' : 'تمرین تست'}
+        icon={notebook ? 'notebook-pen' : review ? 'rotate-ccw' : repeats ? 'repeat' : past ? 'graduation-cap' : 'list-checks'}
+        title={notebook ? 'تمرین اشتباه‌ها' : review ? 'مرور فصل' : quick ? 'فقط ۵ دقیقه' : past ? ((data as { title?: string } | undefined)?.title ?? 'کنکور') : 'تمرین تست'}
         status={`تست ${toPersianDigits(index + 1)} از ${toPersianDigits(questions.length)}`}
         lemon={<LemonProgress parts={parts} current={index} size={46} onPress={() => setPickerOpen(true)} accessibilityLabel="پیشرفت تست‌ها؛ برای رفتن به سؤال دیگر بزنید" />}
       />
@@ -444,6 +472,28 @@ export default function Quiz() {
           <QuestionShareCard ref={shareRef} questions={[q]} />
         </View>
       )}
+      <Sheet visible={!!cardSheet} onClose={() => setCardSheet(null)} title="فلش‌کارت مرتبط">
+        {cardSheet && !cardSheet.cards && <Loading />}
+        {cardSheet?.cards?.length === 0 && <Text style={[styles.hint, rtl]}>کارت پیدا نشد.</Text>}
+        {cardSheet?.cards?.map((c) => (
+          <View key={c.id} style={styles.cardBox}>
+            <Text style={[styles.cardTitle, rtl]}>{c.title}</Text>
+            <RichText text={c.point} size={15} />
+            {!!c.formula && <RichText text={`$$${c.formula}$$`} size={15} />}
+          </View>
+        ))}
+        {!!cardSheet?.cards?.length && (
+          <Button
+            label="مرور این کارت‌ها در فلش‌کارت‌ها"
+            variant="outline"
+            onPress={() => {
+              const s = cardSheet;
+              setCardSheet(null);
+              router.push({ pathname: '/flashcards/[nodeId]', params: { nodeId: String(s.book), ids: s.ids.join(','), keep: '1' } });
+            }}
+          />
+        )}
+      </Sheet>
       <ReportSheet
         visible={reportOpen}
         onClose={() => setReportOpen(false)}
@@ -474,6 +524,8 @@ const styles = StyleSheet.create({
   offscreen: { position: 'absolute', left: -2000, top: 0 },
   bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
   hint: { fontSize: 12, color: colors.muted, paddingHorizontal: 16, paddingBottom: 8 },
+  cardBox: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 6 },
+  cardTitle: { fontSize: 16, fontWeight: '900', color: colors.ink },
   result: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
   resultPercent: { fontSize: 64, fontWeight: '900', color: colors.ink },
   resultLine: { fontSize: 15, color: colors.muted, marginBottom: 12 },

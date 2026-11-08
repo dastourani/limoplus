@@ -98,6 +98,7 @@ def _used_files() -> set[str]:
     scan(ContentNode.objects.values_list("about", flat=True))
     for field in ("stem", "explanation", "quick_solution", "alternative_view"):
         scan(Question.objects.values_list(field, flat=True))
+    scan(x.get("body", "") for items in Question.objects.values_list("solutions", flat=True) for x in (items or []))
     scan(Choice.objects.values_list("text", flat=True))
     scan(Flashcard.objects.values_list("point", flat=True))
     scan(ChapterRevision.objects.values_list("text", flat=True).iterator())

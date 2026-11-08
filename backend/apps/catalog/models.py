@@ -327,6 +327,18 @@ ICON_CHOICES = [
     ("lightbulb", "لامپ (نکته)"), ("triangle-alert", "مثلث هشدار (تله)"), ("pin", "سنجاق (مهم)"), ("pen-line", "قلم (مثال)"),
     ("repeat", "تکرار (یادآوری)"), ("brain", "مغز (حفظی)"), ("target", "هدف (در یک نگاه)"), ("circle-x", "ضربدر (مثال نقض)"),
     ("chart-spline", "نمودار"), ("languages", "زبان (واژه)"), ("info", "اطلاعات"), ("star", "ستاره"),
+    ("badge-check", "مهر تأیید"), ("scroll", "طومار"), ("scale", "ترازو"), ("calculator", "ماشین‌حساب"), ("square-function", "تابع"),
+    ("infinity", "بی‌نهایت"), ("pi", "عدد پی"), ("radical", "رادیکال"), ("percent", "درصد"), ("ruler", "خط‌کش"),
+    ("drafting-compass", "پرگار"), ("triangle", "مثلث"), ("shapes", "شکل‌ها"), ("atom", "اتم"), ("flask-conical", "ارلن (شیمی)"),
+    ("microscope", "میکروسکوپ"), ("dna", "دی‌ان‌ای"), ("leaf", "برگ"), ("globe", "کره‌ی زمین"), ("zap", "برق"),
+    ("magnet", "آهنربا"), ("thermometer", "دماسنج"), ("landmark", "بنای تاریخی"), ("gavel", "چکش قاضی (حقوق)"), ("coins", "سکه (اقتصاد)"),
+    ("trending-up", "روند صعودی"), ("chart-column", "نمودار ستونی"), ("chart-pie", "نمودار دایره‌ای"), ("clock", "ساعت"), ("calendar", "تقویم"),
+    ("quote", "نقل‌قول"), ("message-circle-question-mark", "پرسش و پاسخ"), ("circle-question-mark", "علامت سؤال"), ("circle-check", "تیک"), ("key", "کلید (نکته‌ی کلیدی)"),
+    ("puzzle", "پازل"), ("layers", "لایه‌ها"), ("link", "پیوند"), ("eye", "چشم (توجه)"), ("flag", "پرچم"),
+    ("bookmark", "نشان"), ("graduation-cap", "کلاه دانش‌آموختگی (کنکور)"), ("notebook-pen", "دفتر"), ("sparkles", "درخشش"), ("heart", "قلب"),
+    ("shield", "سپر"), ("cpu", "تراشه"), ("code", "کد"), ("network", "شبکه"), ("map", "نقشه"),
+    ("users", "گروه"), ("palette", "رنگ‌ها"), ("compass", "قطب‌نما"), ("hammer", "چکش"), ("wrench", "آچار"),
+    ("search", "ذره‌بین"), ("footprints", "قدم‌به‌قدم"),
 ]
 
 
@@ -358,7 +370,7 @@ class Label(models.Model):
     order = models.PositiveIntegerField("ترتیب", default=0)
     is_hidden = models.BooleanField("پنهان", default=False, help_text="در دکمه‌های پنل نمی‌آید؛ متن‌هایی که از آن استفاده کرده‌اند مثل قبل نشان داده می‌شوند.")
     numbered = models.BooleanField("شماره‌دار", default=False, help_text="کادرهای این برچسب در درسنامه در کل فصل شماره می‌خورند («مثال ۳-۵»)، و با «[[#نام]]» می‌شود به آن‌ها ارجاع داد.")
-    icon = models.CharField("آیکون", max_length=20, blank=True, default="", choices=ICON_CHOICES,
+    icon = models.CharField("آیکون", max_length=40, blank=True, default="", choices=ICON_CHOICES,
                             help_text="کنار عنوان کادر در درسنامه و بخش چکیده. خالی: بدون آیکون.")
     updated_at = models.DateTimeField(auto_now=True)
 

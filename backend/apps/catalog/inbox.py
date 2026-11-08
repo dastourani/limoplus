@@ -131,8 +131,8 @@ def relocate(source: ContentNode, slugs: list[str], target_id, user, kind: str =
 def _texts(node: ContentNode) -> str:
     """Everything of a section that may hold a [[#name]] link: notes, summary and its tests' explanations."""
     parts = [node.full_body or "", node.summary_body or ""]
-    for q in Question.objects.filter(node=node, is_archived=False).only("explanation", "quick_solution", "alternative_view", "stem"):
-        parts += [q.stem, q.explanation, q.quick_solution, q.alternative_view]
+    for q in Question.objects.filter(node=node, is_archived=False).only("explanation", "solutions", "stem"):
+        parts += [q.stem, q.explanation, *[x.get("body", "") for x in q.solutions or []]]
     return "\n".join(p for p in parts if p)
 
 

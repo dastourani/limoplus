@@ -69,8 +69,8 @@ def _broken_refs(book: ContentNode) -> list[dict]:
         for name in REF.findall((n.full_body or "") + "\n" + (n.summary_body or "")):
             if name not in known:
                 where.setdefault(name, set()).add(n.title)
-    for q in Question.objects.filter(node__path__startswith=book.path, is_archived=False).only("node_id", "slug", "explanation", "quick_solution", "alternative_view", "stem"):
-        for name in REF.findall(" ".join([q.stem, q.explanation, q.quick_solution, q.alternative_view])):
+    for q in Question.objects.filter(node__path__startswith=book.path, is_archived=False).only("node_id", "slug", "explanation", "solutions", "stem"):
+        for name in REF.findall(" ".join([q.stem, q.explanation, *[x.get("body", "") for x in q.solutions or []]])):
             if name not in known:
                 where.setdefault(name, set()).add(f"تست {q.slug} ({titles.get(q.node_id, '')})")
     return [{"level": "warn", "text": f"ارجاع «[[#{name}]]» کادری در این کتاب پیدا نمی‌کند (در {'، '.join(sorted(places))}); در اپ به رنگ قرمز دیده می‌شود."}
@@ -84,10 +84,10 @@ def _numbered_explanations(book: ContentNode) -> list[dict]:
 
     found = []
     questions = Question.objects.filter(node__path__startswith=book.path, is_archived=False).prefetch_related("choices")
-    for q in questions.only("id", "slug", "fixed_order", "explanation", "quick_solution", "alternative_view"):
+    for q in questions.only("id", "slug", "fixed_order", "explanation", "solutions"):
         if q.keeps_order:
             continue
-        if any(names_choice_number(t) for t in (q.explanation, q.quick_solution, q.alternative_view)):
+        if any(names_choice_number(t) for t in (q.explanation, *[x.get("body", "") for x in q.solutions or []])):
             found.append(q.slug)
     if not found:
         return []

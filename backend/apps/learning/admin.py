@@ -36,19 +36,19 @@ class SourceFilter(admin.SimpleListFilter):
 
 
 class HasQuickFilter(YesNoFilter):
-    title = "راه‌حل سریع دارد"
+    title = "راه‌حل دیگر دارد"
     parameter_name = "quick"
 
     def yes(self, qs):
-        return qs.exclude(quick_solution="")
+        return qs.exclude(solutions=[])
 
 
 class HasAlternativeFilter(YesNoFilter):
-    title = "زاویه‌ی دیگر دارد"
+    title = "بیش از یک راه‌حل دیگر دارد"
     parameter_name = "alt"
 
     def yes(self, qs):
-        return qs.exclude(alternative_view="")
+        return qs.filter(pk__in=[q.pk for q in qs.only("pk", "solutions") if len(q.solutions or []) > 1])
 
 
 class HasFlashcardsFilter(YesNoFilter):
@@ -156,7 +156,7 @@ class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
     def unmake_sample(self, request, queryset):
         n = queryset.update(is_sample=False)
         self.message_user(request, f"{n} تست از نمونه‌ها برداشته شد.")
-    search_fields = ("stem", "explanation", "quick_solution", "slug", "choices__text")
+    search_fields = ("stem", "explanation", "slug", "choices__text")
     list_per_page = 50
 
     def get_queryset(self, request):

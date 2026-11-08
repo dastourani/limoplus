@@ -141,18 +141,12 @@ export default function ExamResult() {
                 <View style={{ gap: 8 }}>
                   <Text style={[styles.label, rtl]}>پاسخ تشریحی</Text>
                   <RichText text={r?.explanation ?? ''} size={14} />
-                  {!!r?.quick_solution && (
-                    <>
-                      <Text style={[styles.label, rtl]}>راه‌حل سریع</Text>
-                      <RichText text={r.quick_solution} size={14} />
-                    </>
-                  )}
-                  {!!r?.alternative_view && (
-                    <>
-                      <Text style={[styles.label, rtl]}>زاویه‌ی دیگر</Text>
-                      <RichText text={r.alternative_view} size={14} />
-                    </>
-                  )}
+                  {(r?.solutions ?? []).filter((x) => x.body).map((x, i) => (
+                    <View key={i} style={{ gap: 8 }}>
+                      <Text style={[styles.label, rtl]}>{x.title || 'راه‌حل دیگر'}</Text>
+                      <RichText text={x.body} size={14} />
+                    </View>
+                  ))}
                   {!!r?.node_id && (
                     <Pressable onPress={() => router.push(`/section/${r.node_id}`)} accessibilityRole="link">
                       <Text style={styles.link}>این نکته در جزوه ←</Text>

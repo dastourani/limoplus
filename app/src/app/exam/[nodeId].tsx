@@ -7,6 +7,7 @@ import { ApiError } from '../../api/client';
 import { endpoints, type ExamDetail } from '../../api/endpoints';
 import { LemonProgress, type PartState } from '../../components/LemonProgress';
 import { PageHeader, TimerChip } from '../../components/PageHeader';
+import { Pill } from '../../components/Pill';
 import { QuestionPicker } from '../../components/QuestionPicker';
 import { QuizView, type QuizEvent } from '../../components/QuizView';
 import { Text } from '../../components/Text';
@@ -31,17 +32,31 @@ function clock(seconds: number) {
 
 /** Exam mode: timed, no feedback until the end, negative marking on by default (as in the konkur). */
 export default function Exam() {
-  const { nodeId, attempt, count: suggested } = useLocalSearchParams<{ nodeId: string; attempt?: string; count?: string }>();
+  const { nodeId, attempt, count: suggested, source, title: sourceTitle } = useLocalSearchParams<{
+    nodeId: string;
+    attempt?: string;
+    count?: string;
+    /** One past exam of the book («کنکور ارشد ۱۴۰۱»), taken whole in its own order. */
+    source?: string;
+    title?: string;
+  }>();
   const { user } = useAuth();
   // Sizes come from how many questions there really are (examSizes). Until the server says, nothing is offered; if
   // it cannot be asked, only «همه‌ی تست‌ها». The end of a chapter suggests a size, chosen here to begin with.
   const [pool, setPool] = useState<number | 'unknown' | null>(null);
   const [count, setCount] = useState(0);
+  // «فقط تست‌های کنکور», and which years (none chosen: every year).
+  const [konkur, setKonkur] = useState<{ total: number; years: { year: number; count: number }[] }>({ total: 0, years: [] });
+  const [konkurOnly, setKonkurOnly] = useState(false);
+  const [years, setYears] = useState<number[]>([]);
+  const [allPool, setAllPool] = useState(0);
   useEffect(() => {
     if (attempt) return;
     endpoints
       .examInfo(Number(nodeId))
       .then((info) => {
+        setAllPool(info.questions);
+        setKonkur({ total: info.konkur ?? 0, years: info.years ?? [] });
         setPool(info.questions);
         const sizes = examSizes(info.questions);
         const wish = Number(suggested) > 0 ? Number(suggested) : info.questions;
@@ -52,6 +67,13 @@ export default function Exam() {
         setCount(ALL_THERE_ARE);
       });
   }, [nodeId, attempt, suggested]);
+  // Narrowed to the konkur tests (of the chosen years): the sizes follow.
+  useEffect(() => {
+    if (pool === null || pool === 'unknown' || !allPool) return;
+    const n = !konkurOnly ? allPool : years.length ? Math.min(konkur.total, konkur.years.filter((y) => years.includes(y.year)).reduce((a, y) => a + y.count, 0)) : konkur.total;
+    setPool(n);
+    setCount((c) => (c > n || c === 0 ? n : c));
+  }, [konkurOnly, years, allPool]); // eslint-disable-line react-hooks/exhaustive-deps
   const counts = typeof pool === 'number' ? examSizes(pool) : pool === 'unknown' ? [ALL_THERE_ARE] : [];
   const [negative, setNegative] = useState(true);
   const [focus, setFocus] = useState(false);
@@ -141,7 +163,12 @@ export default function Exam() {
     setBusy(true);
     setError(null);
     try {
-      const e = await endpoints.startExam(Number(nodeId), { count, negative_marking: negative, focus_mistakes: focus });
+      const e = await endpoints.startExam(
+        Number(nodeId),
+        source
+          ? { count: 100, negative_marking: negative, source: Number(source) }
+          : { count, negative_marking: negative, focus_mistakes: focus, konkur_only: konkurOnly, years: konkurOnly ? years : [] },
+      );
       setExam(e);
       setAnswers({});
       setIndex(0);
@@ -204,7 +231,42 @@ export default function Exam() {
       <Screen>
         <Header title="آزمون" />
         <ScrollView contentContainerStyle={styles.page}>
+          {source ? (
+            <Card>
+              <Text style={[styles.label, rtl]}>آزمون «{sourceTitle}»</Text>
+              <Text style={[styles.help, rtl]}>همه‌ی تست‌های این کنکور که در این کتاب هست، به ترتیب شماره‌ی اصلی سؤال‌ها، مثل جلسه‌ی کنکور.</Text>
+              <View style={styles.switchRow}>
+                <Text style={[styles.label, rtl, { flex: 1 }]}>نمره‌ی منفی (هر ۳ غلط، ۱ درست را خنثی می‌کند)</Text>
+                <Switch value={negative} onValueChange={setNegative} trackColor={{ true: colors.green }} />
+              </View>
+            </Card>
+          ) : (
           <Card>
+            {konkur.total > 0 && (
+              <View style={{ gap: 8 }}>
+                <View style={styles.switchRow}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={[styles.label, rtl]}>فقط تست‌های کنکور</Text>
+                    <Text style={[styles.help, rtl]}>{toPersianDigits(konkur.total)} تست این‌جا از کنکورهای سال‌های قبل است.</Text>
+                  </View>
+                  <Switch value={konkurOnly} onValueChange={setKonkurOnly} trackColor={{ true: colors.green }} />
+                </View>
+                {konkurOnly && konkur.years.length > 1 && (
+                  <View style={styles.years}>
+                    {konkur.years.map((y) => (
+                      <Pill
+                        key={y.year}
+                        small
+                        label={`${toPersianDigits(y.year)} (${toPersianDigits(y.count)})`}
+                        selected={years.includes(y.year)}
+                        onPress={() => setYears((list) => (list.includes(y.year) ? list.filter((x) => x !== y.year) : [...list, y.year]))}
+                      />
+                    ))}
+                    <Text style={[styles.help, rtl, { width: '100%' }]}>{years.length ? 'فقط سال‌های انتخاب‌شده' : 'هیچ سالی انتخاب نشده: همه‌ی سال‌ها'}</Text>
+                  </View>
+                )}
+              </View>
+            )}
             <Text style={[styles.label, rtl]}>تعداد سؤال</Text>
             <View style={styles.counts}>
               {pool === null && <Text style={[styles.help, rtl, { flex: 1 }]}>در حال بارگذاری…</Text>}
@@ -233,8 +295,9 @@ export default function Exam() {
             )}
             <Text style={[styles.help, rtl]}>زمان بر اساس سطح سؤال‌ها تعیین می‌شود. پاسخ‌ها تا پایان آزمون نشان داده نمی‌شوند.</Text>
           </Card>
+          )}
           {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}
-          <Button label="شروع آزمون" onPress={start} loading={busy} disabled={!count} />
+          <Button label="شروع آزمون" onPress={start} loading={busy} disabled={!source && !count} />
         </ScrollView>
       </Screen>
     );
@@ -333,6 +396,7 @@ const styles = StyleSheet.create({
   count: { flex: 1, paddingVertical: 12, borderRadius: 14, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center' },
   countOn: { backgroundColor: colors.ink, borderColor: colors.ink },
   switchRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  years: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 },
   top: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
   clock: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
   timer: { fontSize: 22, fontWeight: '800', color: colors.ink },

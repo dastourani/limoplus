@@ -67,8 +67,11 @@ class Question(models.Model):
     slug = models.SlugField("شناسه در فایل محتوا", max_length=120, allow_unicode=True)
     stem = models.TextField("صورت سؤال (Markdown)")
     explanation = models.TextField("پاسخ تشریحی")
-    quick_solution = models.TextField("راه‌حل سریع (تستی)", blank=True)
-    alternative_view = models.TextField("زاویه‌ی دیگر", blank=True)
+    # Old fields, copied into «solutions» by migration 0011 and no longer used (kept so the migration can be undone).
+    quick_solution = models.TextField("راه‌حل سریع (قدیمی)", blank=True, editable=False)
+    alternative_view = models.TextField("زاویه‌ی دیگر (قدیمی)", blank=True, editable=False)
+    # Any number of extra solutions, each with the title the panel gives it: [{"title": "راه‌حل تستی", "body": "…"}].
+    solutions = models.JSONField("راه‌حل‌ها", default=list, blank=True)
     difficulty = models.CharField("سطح اعلام‌شده", max_length=10, choices=Difficulty.choices)
     domain = models.CharField("حوزه", max_length=12, choices=Domain.choices, blank=True)
     kind = models.CharField("نوع", max_length=10, choices=Kind.choices, blank=True)
@@ -77,6 +80,9 @@ class Question(models.Model):
     is_original = models.BooleanField("تألیفی", default=False)
     sources = models.ManyToManyField(ExamSource, through="QuestionSource", blank=True, verbose_name="منابع کنکور")
     flashcards = models.ManyToManyField(Flashcard, blank=True, related_name="questions", verbose_name="فلش‌کارت‌های مرتبط")
+    # «مشابه:» in the file: the same test that came back in another exam with a change. One way (the file that says it);
+    # the app shows both ways (similar_to and similar_from).
+    similar_to = models.ManyToManyField("self", symmetrical=False, blank=True, related_name="similar_from", verbose_name="تست‌های مشابه")
     # Set in the panel, not in the file: up to ten per book may be shared as an image from the app.
     is_sample = models.BooleanField("نمونه‌ی قابل اشتراک", default=False)
     # «ترتیب گزینه‌ها: ثابت» in the file: the app never shuffles these choices (e.g. «گزینه‌های ۱ و ۳»).

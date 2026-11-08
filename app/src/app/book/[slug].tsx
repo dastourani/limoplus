@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, LayoutAnimation, Platform, Pressable, ScrollView, Share, StyleSheet, UIManager, useWindowDimensions, View } from 'react-native';
 
 import { ApiError } from '../../api/client';
-import { endpoints, type ChapterSummary, type NodeSummary } from '../../api/endpoints';
+import { endpoints, type ChapterSummary, type NodeSummary, type ReviewItem } from '../../api/endpoints';
+import { openReview } from '../../lib/reviews';
 import { BookCover } from '../../components/BookCover';
+import { Pill } from '../../components/Pill';
 import { MarkdownView } from '../../components/MarkdownView';
 import { Text } from '../../components/Text';
 import { useFeedback } from '../../components/Feedback';
@@ -47,6 +49,10 @@ export default function Book() {
   const { width } = useWindowDimensions();
   const [notify, setNotify] = useState<{ on: boolean; canCancel: boolean } | null>(null);
   const [aboutOpen, setAboutOpen] = useState(true);
+  // «کنکورهای سال‌های قبل»: the past exams that have tests in this book.
+  const { data: past } = useApi(() => endpoints.pastExams(String(slug)), [slug, user?.id]);
+  const [pastOpen, setPastOpen] = useState(false);
+  const [pastNames, setPastNames] = useState<string[]>([]);
   // The green part with the cover stays put; the page slides up over it. A bar with the buttons stays on top, and the
   // book's name shows in it once the cover is covered.
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -269,7 +275,7 @@ export default function Book() {
                 >
                   <Icon name="layers" size={18} color={colors.ink} />
                   <Text style={styles.shortcutText}>
-                    {book.done_card_count ? `مرور فلش‌کارت‌ها (${toPersianDigits(book.done_card_count)})` : 'مرور فلش‌کارت‌ها'}
+                    {book.done_card_count ? `مرور کارت‌ها (${toPersianDigits(book.done_card_count)})` : 'مرور کارت‌ها'}
                   </Text>
                 </Pressable>
               )}
@@ -344,6 +350,80 @@ export default function Book() {
                 <Icon name="chevron-down" size={20} color={colors.muted} />
               </Pressable>
               {aboutOpen && <MarkdownView markdown={book.about} compact />}
+            </View>
+          )}
+
+          {!book.is_coming_soon && !!past?.exams.length && (
+            <View style={styles.about}>
+              <Pressable onPress={() => setPastOpen((v) => !v)} style={styles.aboutHead} accessibilityRole="button" accessibilityState={{ expanded: pastOpen }}>
+                <Text style={[styles.aboutTitle, rtl]}>
+                  کنکورهای سال‌های قبل ({toPersianDigits(past.exams.length)} کنکور، {toPersianDigits(past.total)} تست)
+                </Text>
+                <Icon name="chevron-down" size={20} color={colors.muted} />
+              </Pressable>
+              {pastOpen && (
+                <View style={{ gap: 8 }}>
+                  {past.exams.map((x) => (
+                    <View key={x.id} style={styles.pastRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.pastTitle, rtl]}>
+                          {x.name} {toPersianDigits(x.year)}
+                        </Text>
+                        <Text style={[styles.sectionMeta, rtl]}>
+                          {toPersianDigits(x.count)} تست، حدود {toPersianDigits(x.minutes)} دقیقه
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={() => router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: 'past', book: book.slug, source: String(x.id) } })}
+                        style={styles.pastBtn}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.pastBtnText}>تمرین</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() =>
+                          router.push({ pathname: '/exam/[nodeId]', params: { nodeId: String(book.id), source: String(x.id), title: `${x.name} ${toPersianDigits(x.year)}` } })
+                        }
+                        style={[styles.pastBtn, styles.pastBtnMain]}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.pastBtnText}>آزمون</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                  {!!past.repeats && (
+                    <View style={[styles.pastRepeats]}>
+                      <Text style={[styles.pastTitle, rtl]}>تکراری‌ها و مشابه‌ها</Text>
+                      <Text style={[styles.sectionMeta, rtl]}>
+                        تست‌هایی که عیناً یا با کمی تغییر در چند کنکور آمده‌اند، کنار هم. کنکور یا کنکورهایی را که می‌خواهی انتخاب کن (هیچ: همه).
+                      </Text>
+                      {(past.names ?? []).length > 1 && (
+                        <View style={styles.pastNames}>
+                          {(past.names ?? []).map((n) => (
+                            <Pill
+                              key={n.name}
+                              small
+                              label={`${n.name} (${toPersianDigits(n.repeats)})`}
+                              selected={pastNames.includes(n.name)}
+                              onPress={() => setPastNames((l) => (l.includes(n.name) ? l.filter((x) => x !== n.name) : [...l, n.name]))}
+                            />
+                          ))}
+                        </View>
+                      )}
+                      <Pressable
+                        onPress={() => router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: 'repeats', book: book.slug, names: pastNames.join('|') } })}
+                        style={[styles.pastBtn, styles.pastBtnMain, { alignSelf: 'flex-end' }]}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.pastBtnText}>
+                          تمرین {toPersianDigits(pastNames.length ? (past.names ?? []).filter((n) => pastNames.includes(n.name)).reduce((a, n) => a + n.repeats, 0) : past.repeats)} گروه
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                  {!!past.locked && <Text style={[styles.sectionMeta, rtl]}>{toPersianDigits(past.locked)} تست کنکور دیگر در فصل‌های نسخه‌ی کامل است.</Text>}
+                </View>
+              )}
             </View>
           )}
 
@@ -429,7 +509,7 @@ function ChapterCard({
   seconds: number;
   bookSlug: string;
   /** «مرور بعدی: ۶ روز دیگر» once the chapter is finished. */
-  review: { step: number; days: number; done: number } | null;
+  review: { id?: number; step: number; days: number; done: number } | null;
   canFinish: boolean;
   onFinish: () => void;
   chapter: ChapterSummary;
@@ -441,6 +521,7 @@ function ChapterCard({
   owned: boolean;
 }) {
   const turn = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const { toast } = useFeedback();
   useEffect(() => {
     Animated.spring(turn, { toValue: open ? 1 : 0, friction: 7, tension: 120, useNativeDriver: true }).start();
   }, [open, turn]);
@@ -482,12 +563,24 @@ function ChapterCard({
             (review.days > 0 ? (
               <View style={styles.stripItem}>
                 <Icon name="calendar" size={14} color={colors.muted} />
-                <Text style={styles.stripText}>مرور: {toPersianDigits(review.days)} روز دیگر</Text>
+                <Text style={styles.stripText}>مرور فصل: {toPersianDigits(review.days)} روز دیگر</Text>
               </View>
-            ) : review.days === 0 ? (
-              <Chip label="مرور امروز" icon="rotate-ccw" color={colors.ink} background={colors.lemon} />
             ) : (
-              <Chip label="مرور عقب افتاده" icon="rotate-ccw" color={colors.amberDark} background={colors.amberSoft} />
+              // Its day has come (or passed): a tap starts the chapter's review, as the home page's tile does.
+              <Pressable
+                onPress={() =>
+                  review.id &&
+                  openReview({ kind: 'chapter', id: review.id, chapter_id: chapter.id } as ReviewItem).catch((e: Error) => toast(e.message || 'مرور شروع نشد.'))
+                }
+                accessibilityRole="button"
+                accessibilityLabel={review.days === 0 ? 'مرور فصل، امروز' : 'مرور فصل، عقب افتاده'}
+              >
+                {review.days === 0 ? (
+                  <Chip label="مرور فصل: امروز ←" icon="rotate-ccw" color={colors.ink} background={colors.lemon} />
+                ) : (
+                  <Chip label={`مرور فصل: ${toPersianDigits(-review.days)} روز عقب ←`} icon="rotate-ccw" color={colors.amberDark} background={colors.amberSoft} />
+                )}
+              </Pressable>
             ))}
         </View>
       )}
@@ -625,6 +718,13 @@ const styles = StyleSheet.create({
   shortcutText: { fontSize: 13, fontWeight: '700', color: colors.ink },
   smallLink: { fontSize: 12, color: colors.muted, textDecorationLine: 'underline' },
   note: { fontSize: 13, color: colors.muted },
+  pastRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.line },
+  pastTitle: { fontSize: 14, fontWeight: '800', color: colors.ink },
+  pastRepeats: { gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.line },
+  pastNames: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 },
+  pastBtn: { borderRadius: 999, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, paddingVertical: 6 },
+  pastBtnMain: { backgroundColor: colors.lemon, borderColor: colors.lemon },
+  pastBtnText: { fontSize: 13, fontWeight: '800', color: colors.ink },
   about: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 6 },
   aboutHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   aboutTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },

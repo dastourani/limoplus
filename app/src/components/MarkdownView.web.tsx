@@ -77,6 +77,28 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
     requestAnimationFrame(() => handler.current?.({ type: 'ready' }));
   }, [compact, html]);
 
+  // In a browser the lesson cannot be copied at all (the phone app has no copy in its selection menu either): copy and
+  // cut are refused, the browser's own menu and dragging text out are off, and printing shows a notice instead.
+  useEffect(() => {
+    const el = root.current;
+    if (compact || !el) return;
+    const refuse = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type === 'copy' || e.type === 'cut') handler.current?.({ type: 'copy_blocked' });
+    };
+    const events = ['copy', 'cut', 'contextmenu', 'dragstart'];
+    events.forEach((n) => el.addEventListener(n, refuse, true));
+    if (!document.getElementById('limo-no-print')) {
+      const style = document.createElement('style');
+      style.id = 'limo-no-print';
+      style.textContent =
+        "@media print { .lesson { display: none !important; } body::after { content: 'چاپ متن درس‌های لیموخوان ممکن نیست.'; display: block; padding: 40px; font: 20px Vazirmatn, Tahoma, sans-serif; text-align: center; direction: rtl; } }";
+      document.head.appendChild(style);
+    }
+    return () => events.forEach((n) => el.removeEventListener(n, refuse, true));
+  }, [compact, html]);
+
   useEffect(() => {
     const el = root.current as (HTMLDivElement & { __setHighlights?: (h: Highlight[]) => void }) | null;
     if (!compact && highlights && el?.__setHighlights) el.__setHighlights(highlights);

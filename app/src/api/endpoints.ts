@@ -74,7 +74,7 @@ export type BookDetail = BookListItem & {
   /** Sent with «معرفی به دوست»: the book's own link, or the default one set in the panel (empty: none). */
   share_link?: string;
   /** Each finished chapter's next review, and the book's weekly mixed review. */
-  reviews?: { chapters: Record<string, { step: number; due_on: string; days: number; done: number }>; book: { due_on: string; days: number } | null } | null;
+  reviews?: { chapters: Record<string, { id?: number; step: number; due_on: string; days: number; done: number }>; book: { due_on: string; days: number } | null } | null;
   /** «آخرین به‌روزرسانی»: the date of the book's last «مطلب تازه», and how many lines «تغییرات کتاب» has. */
   updated_on?: string | null;
   change_count?: number;
@@ -139,13 +139,26 @@ export type Question = {
 export type Correction = { at: string; note: string };
 /** One box of «کادرهای کتاب»: all boxes of one label, in reading order. */
 export type BoxItem = { label: string; title: string; name: string; body: string; section_id: number; section_title: string; chapter_number: number | null };
+export type Solution = { title: string; body: string };
+/** «کنکورهای سال‌های قبل» of a book: each exam with its tests here (a test in several exams counts in each). */
+export type PastExams = {
+  exams: { id: number; name: string; year: number; count: number; minutes: number }[];
+  years: number[];
+  /** «تکراری‌ها و مشابه‌ها»: each konkur (by name, every year) and its groups of repeated or similar tests. */
+  names?: { name: string; repeats: number }[];
+  repeats?: number;
+  total: number;
+  locked: number;
+};
 export type AnswerResult = {
   is_correct: boolean;
   correct_choice_id: number;
   explanation: string;
-  quick_solution: string;
-  alternative_view: string;
+  /** Extra solutions, each under the title the panel gave it. */
+  solutions?: Solution[];
   flashcards: { id: number; title: string }[];
+  /** «مشابه»: the same test with a change in another exam. */
+  similar?: { id: number; node_id: number; source: string }[];
   /** The book the linked cards belong to (opened with flashcards(book_id, …, ids)). */
   book_id?: number;
   /** Linked cards just added to today's review after a wrong answer. */
@@ -174,6 +187,9 @@ export type MistakeItem = {
   /** Settling: the day it comes back. */
   due_on: string | null;
   is_due: boolean;
+  /** «کمبود وقت»: the question's time and the titles of its other solutions. */
+  seconds?: number | null;
+  solutions?: string[];
 };
 export type Today = {
   away_days: number;
@@ -314,8 +330,7 @@ export type ExamReview = {
   picked_choice_id: number | null;
   correct_choice_id: number | null;
   explanation: string;
-  quick_solution: string;
-  alternative_view: string;
+  solutions?: Solution[];
   node_id?: number | null;
   /** The answer key was corrected after this exam began (the score keeps the key it was taken with). */
   corrected?: Correction | null;
@@ -436,7 +451,7 @@ export const endpoints = {
   quick: () => api<{ cards: (Flashcard & { box: number; hints: GradeHints })[]; questions: Question[] }>('me/quick/'),
   mistakes: (book = '') => api<Mistakes>(`me/mistakes/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
   mistakeQuestions: (book = '') => api<{ questions: Question[]; locked_count: number }>(`me/mistakes/questions/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
-  mistakeReason: (questionId: number, reason: string) => api<{ reason: string }>(`me/mistakes/${questionId}/reason/`, { body: { reason } }),
+  mistakeReason: (questionId: number, reason: string) => api<{ reason: string; cards: number }>(`me/mistakes/${questionId}/reason/`, { body: { reason } }),
   answer: (questionId: number, choiceId: number) => api<AnswerResult>(`questions/${questionId}/answer/`, { body: { choice_id: choiceId } }),
   flashcards: (nodeId: number, doneOnly = false, ids?: string) =>
     api<{ flashcards: Flashcard[]; locked_count: number; book_id?: number; macros?: Record<string, string> }>(
@@ -471,9 +486,20 @@ export const endpoints = {
   reportQuestion: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`questions/${id}/report/`, { body: { reason, note } }),
   reportFlashcard: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`flashcards/${id}/report/`, { body: { reason, note } }),
   reportNode: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`nodes/${id}/report/`, { body: { reason, note } }),
-  startExam: (nodeId: number, body: { count: number; negative_marking: boolean; minutes?: number; focus_mistakes?: boolean }) => api<ExamDetail>(`nodes/${nodeId}/exams/`, { body }),
+  startExam: (
+    nodeId: number,
+    body: { count: number; negative_marking: boolean; minutes?: number; focus_mistakes?: boolean; konkur_only?: boolean; years?: number[]; source?: number },
+  ) => api<ExamDetail>(`nodes/${nodeId}/exams/`, { body }),
   exam: (id: number) => api<ExamDetail>(`exams/${id}/`),
-  examInfo: (nodeId: number) => api<{ questions: number; title: string }>(`nodes/${nodeId}/exam-info/`),
+  examInfo: (nodeId: number) =>
+    api<{ questions: number; title: string; konkur?: number; years?: { year: number; count: number }[] }>(`nodes/${nodeId}/exam-info/`),
+  pastExams: (slug: string) => api<PastExams>(`books/${slug}/past/`),
+  pastQuestions: (slug: string, source: number) =>
+    api<{ questions: Question[]; locked_count: number; title: string; macros?: Record<string, string> }>(`books/${slug}/past/questions/?source=${source}`),
+  pastRepeats: (slug: string, names: string[]) =>
+    api<{ questions: Question[]; locked_count: number; title: string; groups: number; macros?: Record<string, string> }>(
+      `books/${slug}/past/repeats/?names=${encodeURIComponent(names.join('|'))}`,
+    ),
   submitExam: (id: number, answers: Record<string, number | null>, doubts: number[] = []) =>
     api<ExamDetail>(`exams/${id}/submit/`, { body: { answers, doubts } }),
   myExams: () => api<ExamSummary[]>('me/exams/'),

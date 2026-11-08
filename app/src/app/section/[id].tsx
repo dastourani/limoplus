@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { ApiError } from '../../api/client';
 import { endpoints, type NodeDetail, type Note } from '../../api/endpoints';
@@ -341,7 +341,7 @@ export default function Section() {
         setNoteSheet({ quote });
       }
     }
-    else if (e.type === 'copy_blocked') flash('کپی متن طولانی مجاز نیست.');
+    else if (e.type === 'copy_blocked') flash(Platform.OS === 'web' ? 'کپی متن درس مجاز نیست.' : 'کپی متن طولانی مجاز نیست.');
     else if (e.type === 'highlights') setMissing(e.missing);
     else if (e.type === 'note') {
       const n = notes.find((x) => x.id === e.id);
@@ -381,6 +381,17 @@ export default function Section() {
   };
 
   const [noteBusy, setNoteBusy] = useState(false);
+  const recolor = async (note: Note, color: string) => {
+    if (note.color === color) return;
+    try {
+      const updated = await endpoints.editNote(note.id, { color });
+      setNotes((list) => list.map((n) => (n.id === updated.id ? updated : n)));
+      setNoteSheet((s) => (s?.note?.id === updated.id ? { ...s, note: updated } : s));
+    } catch {
+      flash('رنگ عوض نشد. اتصال اینترنت را بررسی کنید.');
+    }
+  };
+
   const saveNote = async () => {
     if (!node || !noteSheet || noteBusy) return;
     setNoteBusy(true);
@@ -678,7 +689,27 @@ export default function Section() {
       </Sheet>
 
       <Sheet visible={!!noteSheet} onClose={closeNoteSheet} title={noteSheet?.note ? 'یادداشت' : 'یادداشت تازه'}>
-        {!!(noteSheet?.note?.quote || noteSheet?.quote) && <Text style={[styles.quote, rtl]}>{quoteText(noteSheet?.note?.quote || noteSheet?.quote || '')}</Text>}
+        {!!(noteSheet?.note?.quote || noteSheet?.quote) && (
+          <Text style={[styles.quote, rtl, noteSheet?.note && { backgroundColor: NOTE_COLORS.find(([c]) => c === noteSheet.note!.color)?.[1] }]}>
+            {quoteText(noteSheet?.note?.quote || noteSheet?.quote || '')}
+          </Text>
+        )}
+        {/* The highlight's colour, changed at once. */}
+        {!!noteSheet?.note?.quote && (
+          <View style={styles.colorRow}>
+            <Text style={[styles.help, { flex: 1 }, rtl]}>رنگ هایلایت</Text>
+            {NOTE_COLORS.map(([name, hex]) => (
+              <Pressable
+                key={name}
+                onPress={() => recolor(noteSheet.note!, name)}
+                style={[styles.swatch, { backgroundColor: hex, borderColor: noteSheet.note!.color === name ? colors.ink : colors.line }]}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: noteSheet.note!.color === name }}
+                accessibilityLabel="رنگ هایلایت"
+              />
+            ))}
+          </View>
+        )}
         <TextInput value={noteText} onChangeText={setNoteText} multiline placeholder="یادداشت شما…" style={styles.noteInput} maxLength={5000} />
         <Button label="ذخیره" onPress={saveNote} loading={noteBusy} />
         {noteSheet?.note && <Button label="حذف" variant="outline" onPress={() => deleteNote(noteSheet.note!)} />}
@@ -765,6 +796,7 @@ const styles = StyleSheet.create({
   lockPrice: { fontSize: 15, color: colors.muted, marginBottom: 8 },
   selBar: { position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row-reverse', alignItems: 'center', gap: 10, backgroundColor: colors.ink, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10, elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10 },
   swatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: '#fff' },
+  colorRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   selNote: { paddingHorizontal: 10 },
   selNoteText: { color: colors.lemon, fontWeight: '800' },
   toast: { position: 'absolute', top: 10, alignSelf: 'center', backgroundColor: colors.ink, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },

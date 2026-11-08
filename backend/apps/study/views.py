@@ -14,7 +14,7 @@ from apps.catalog.places import chapter_number
 from apps.catalog.access import AccessMap, access_until, book_of
 from apps.catalog.models import ContentNode
 from apps.catalog.views import NOT_FOUND, media_urls
-from apps.learning.models import Flashcard, Question, QuizAnswer, Report
+from apps.learning.models import Flashcard, Question, QuestionSource, QuizAnswer, Report
 
 from .models import Bookmark, ExamAnswer, ExamAttempt, FlashcardReview, Note, SectionProgress, StudyDay
 
@@ -313,6 +313,14 @@ def in_open_exam(user, question_id) -> bool:
 # --- Exams ---------------------------------------------------------------------------------------------------------------
 
 
+def _snapshot_solutions(q: dict) -> list[dict]:
+    """The solutions kept with an exam; older exams kept «راه‌حل سریع» and «زاویه‌ی دیگر» as two fields."""
+    if "solutions" in q:
+        return [{"title": x.get("title", ""), "body": x.get("body", "")} for x in q["solutions"] or []]
+    old = [("راه‌حل سریع", q.get("quick_solution")), ("زاویه‌ی دیگر", q.get("alternative_view"))]
+    return [{"title": t, "body": b} for t, b in old if b]
+
+
 def _snapshot(questions) -> dict:
     return {
         str(q.id): {
@@ -320,8 +328,7 @@ def _snapshot(questions) -> dict:
             "difficulty": q.difficulty,
             "choices": [{"id": c.id, "text": c.text, "ok": c.is_correct} for c in q.choices.all()],
             "explanation": q.explanation,
-            "quick_solution": q.quick_solution,
-            "alternative_view": q.alternative_view,
+            "solutions": q.solutions or [],
             "fixed": q.keeps_order,
         }
         for q in questions
@@ -375,7 +382,55 @@ def exam_info(request, node_id):
     if not access.visible(node.id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
     pool = [q for q in Question.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False).only("id", "node_id", "is_free") if _usable(access, q)]
-    return Response({"questions": min(len(pool), EXAM_MAX_QUESTIONS), "title": node.title})
+    # «فقط تست‌های کنکور»: which years have tests here, and how many.
+    years: dict[int, int] = {}
+    for qid, year in QuestionSource.objects.filter(question_id__in=[q.id for q in pool], source__year__gt=0).values_list("question_id", "source__year").distinct():
+        years[year] = years.get(year, 0) + 1
+    konkur = QuestionSource.objects.filter(question_id__in=[q.id for q in pool], source__year__gt=0).values("question_id").distinct().count()
+    return Response({"questions": min(len(pool), EXAM_MAX_QUESTIONS), "title": node.title,
+                     "konkur": konkur, "years": [{"year": y, "count": n} for y, n in sorted(years.items(), reverse=True)]})
+
+
+def _exam_filter(pool, data):
+    """«فقط تست‌های کنکور» (optionally some years only) or one past exam (`source`): the pool narrowed to those."""
+    source = data.get("source")
+    konkur = data.get("konkur_only") in (True, "true", 1, "1") or bool(data.get("years")) or bool(source)
+    if not konkur:
+        return pool, False
+    rows = QuestionSource.objects.filter(question_id__in=[q.id for q in pool], source__year__gt=0)
+    years = [int(y) for y in (data.get("years") or []) if str(y).isdigit()]
+    if years:
+        rows = rows.filter(source__year__in=years)
+    if source:
+        rows = rows.filter(source_id=int(source) if str(source).isdigit() else 0)
+    ids = set(rows.values_list("question_id", flat=True))
+    return [q for q in pool if q.id in ids], bool(source)
+
+
+def _without_similar(picked, pool):
+    """Two tests marked «مشابه» never sit in the same exam: the second is swapped for another of the pool."""
+    ids = {q.id for q in picked}
+    links = {}
+    for a, b in Question.similar_to.through.objects.filter(from_question_id__in=[q.id for q in pool]).values_list("from_question_id", "to_question_id"):
+        links.setdefault(a, set()).add(b)
+        links.setdefault(b, set()).add(a)
+    if not links:
+        return picked
+    kept, taken = [], set()
+    spare = [q for q in pool if q.id not in ids]
+    random.shuffle(spare)
+    for q in picked:
+        if links.get(q.id, set()) & taken:
+            while spare:
+                alt = spare.pop()
+                if not links.get(alt.id, set()) & taken:
+                    kept.append(alt)
+                    taken.add(alt.id)
+                    break
+            continue
+        kept.append(q)
+        taken.add(q.id)
+    return kept
 
 
 def _pick_focused(user, pool, count):
@@ -420,14 +475,19 @@ def start_exam(request, node_id):
     if not access.visible(node.id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
     pool = [q for q in Question.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False) if _usable(access, q)]
+    pool, one_exam = _exam_filter(pool, request.data)
     if not pool:
-        return _err("برای این بخش تستی در دسترس نیست.", "no_questions")
+        return _err("برای این انتخاب تستی در دسترس نیست.", "no_questions")
     try:
         count = max(1, min(EXAM_MAX_QUESTIONS, int(request.data.get("count") or 20), len(pool)))
     except (TypeError, ValueError):
         count = min(20, len(pool))
+    if one_exam:
+        count = min(EXAM_MAX_QUESTIONS, len(pool))  # a past exam is taken whole
     focus = request.data.get("focus_mistakes") in (True, "true", 1, "1")
     picked, focused = (_pick_focused(request.user, pool, count) if focus else (random.sample(pool, count), 0))
+    if not one_exam:
+        picked = _without_similar(picked, pool)
     seconds = sum(q.estimated_seconds or 90 for q in picked)
     try:
         if request.data.get("minutes"):
@@ -435,7 +495,12 @@ def start_exam(request, node_id):
     except (TypeError, ValueError):
         pass
     picked = list(Question.objects.filter(pk__in=[q.id for q in picked]).prefetch_related("choices"))
-    random.shuffle(picked)
+    if one_exam:
+        # In the order of the real exam (its question numbers).
+        numbers = dict(QuestionSource.objects.filter(source_id=int(request.data["source"]), question_id__in=[q.id for q in picked]).values_list("question_id", "number"))
+        picked.sort(key=lambda q: (numbers.get(q.id) or 10_000, q.id))
+    else:
+        random.shuffle(picked)
     attempt = ExamAttempt.objects.create(
         user=request.user,
         node=node,
@@ -492,8 +557,8 @@ def _exam_detail(request, attempt):
                     "picked_choice_id": picked["id"] if picked else None,
                     "correct_choice_id": correct["id"] if correct else None,
                     "explanation": media_urls(request, resolve_refs(request, nodes.get(qid), q["explanation"])),
-                    "quick_solution": media_urls(request, resolve_refs(request, nodes.get(qid), q["quick_solution"])),
-                    "alternative_view": media_urls(request, resolve_refs(request, nodes.get(qid), q["alternative_view"])),
+                    "solutions": [{"title": x["title"], "body": media_urls(request, resolve_refs(request, nodes.get(qid), x["body"]))}
+                                  for x in _snapshot_solutions(q)],
                     # The answer key was corrected after this exam began; the exam keeps the key it was taken with.
                     "corrected": (
                         {"at": current[qid][1], "note": current[qid][2]}

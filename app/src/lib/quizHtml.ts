@@ -39,19 +39,6 @@ const KIND: Record<string, [string, IconData]> = {
 /** Practice questions carry tags; exam questions only stem and choices. */
 export type QuizQuestion = Pick<Question, 'id' | 'stem' | 'choices'> & Partial<Pick<Question, 'sources' | 'is_original' | 'kind' | 'corrected' | 'badge'>> & { difficulty?: string };
 
-/**
- * How a choice sits in its box: Persian text and short formulas or numbers to the right (as now); a choice that is one
- * long formula in the middle; an English choice from the left, written left to right.
- */
-export function choiceAlign(text: string): 'right' | 'center' | 'en' {
-  const t = (text ?? '').trim();
-  const formula = t.match(/^\$\$?([^$]+)\$\$?$/);
-  if (formula) return formula[1].trim().length > 24 ? 'center' : 'right';
-  if (/[\u0600-\u06FF]/.test(t)) return 'right';
-  const words = t.replace(/\$[^$]*\$/g, ' ');
-  return /[A-Za-z]{2,}/.test(words) ? 'en' : 'right';
-}
-
 export function questionHtml(q: QuizQuestion, mode: 'practice' | 'exam' = 'practice'): string {
   const tags: string[] = [];
   for (const s of mode === 'exam' ? [] : (q.sources ?? [])) {
@@ -65,10 +52,7 @@ export function questionHtml(q: QuizQuestion, mode: 'practice' | 'exam' = 'pract
   if (q.badge && mode !== 'exam') tags.push(`<span class="tag t-${q.badge === 'new' ? 'new' : 'upd'}">${q.badge === 'new' ? 'تازه' : 'به‌روز شده'}</span>`);
   if (q.corrected && mode !== 'exam') tags.push(`<span class="tag t-fixed">${svg(CheckIcon as IconData)}اصلاح‌شده</span>`);
   const choices = q.choices
-    .map((c, i) => {
-      const a = choiceAlign(c.text);
-      return `<button class="choice" data-id="${c.id}"><span class="key">${KEYS[i]}</span><span class="ctext a-${a}"${a === 'en' ? ' dir="ltr"' : ''}>${renderMarkdown(c.text)}</span></button>`;
-    })
+    .map((c, i) => `<button class="choice" data-id="${c.id}"><span class="key">${KEYS[i]}</span><span class="ctext">${renderMarkdown(c.text)}</span></button>`)
     .join('');
   return `${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
 <div class="stem">${renderMarkdown(q.stem)}</div>
@@ -94,20 +78,17 @@ export type QuizViewState = {
         notes?: boolean;
         /** «اصلاح‌شده»: what changed in the answer key, as HTML. */
         corrected?: string;
+        similar?: string;
       })
     | null;
 };
 
 export function resultForView(r: AnswerResult): NonNullable<QuizViewState['result']> {
-  const tabs = (
-    [
-      ['explanation', 'پاسخ تشریحی'],
-      ['quick_solution', 'راه‌حل سریع'],
-      ['alternative_view', 'زاویه‌ی دیگر'],
-    ] as const
-  )
-    .filter(([key]) => !!r[key])
-    .map(([key, label]) => ({ key, label, html: renderMarkdown(r[key]) }));
+  // «پاسخ تشریحی», then each extra solution under its own title.
+  const tabs = [
+    ...(r.explanation ? [{ key: 'explanation', label: 'پاسخ تشریحی', html: renderMarkdown(r.explanation) }] : []),
+    ...(r.solutions ?? []).filter((x) => x.body).map((x, i) => ({ key: `s${i}`, label: x.title || 'راه‌حل دیگر', html: renderMarkdown(x.body) })),
+  ];
   return {
     correct_choice_id: r.correct_choice_id,
     is_correct: r.is_correct,
@@ -115,9 +96,16 @@ export function resultForView(r: AnswerResult): NonNullable<QuizViewState['resul
     // Each linked card opens (in the book's cards); after a wrong answer they are in today's review too.
     flashcards: r.flashcards.length
       ? `<span>فلش‌کارت مرتبط:</span> ${r.flashcards.map((f) => `<button class="fc-link" data-fc="${f.id}">${esc(f.title)}</button>`).join(' ')}` +
-        (r.cards_queued ? `<div class="fc-queued">${r.cards_queued === 1 ? 'به' : toPersianDigits(r.cards_queued) + ' تا به'} «مرور امروز» اضافه شد.</div>` : '')
+        (r.cards_queued ? `<div class="fc-queued">${r.cards_queued === 1 ? 'به' : toPersianDigits(r.cards_queued) + ' تا به'} «مرور کارت‌ها» اضافه شد.</div>` : '')
       : '',
     corrected: r.corrected ? correctionHtml(r.corrected, r.corrected.answered_before) : '',
+    // «مشابه»: the same test came back in another exam with a change.
+    similar: (r.similar ?? [])
+      .map(
+        (x) =>
+          `<div class="similar">نسخه‌ی دیگری از این تست ${x.source ? `در «${esc(x.source)}»` : ''} آمده؛ <button class="sim-link" data-sim="${x.id}" data-node="${x.node_id}">ببین</button></div>`,
+      )
+      .join(''),
   };
 }
 
@@ -146,8 +134,6 @@ export const QUIZ_CSS = `
 .quiz .choice .key { flex: none; width: 30px; height: 30px; border-radius: 10px; background: #F1F3EC; display: flex; align-items: center;
   justify-content: center; font-weight: 800; }
 .quiz .ctext { flex: 1; min-width: 0; } .quiz .ctext p { margin: 0; }
-.quiz .ctext.a-center, .quiz .choice .ctext.a-center p { text-align: center; text-align-last: center; } .quiz .ctext.a-center .math-block { margin: 0; border: 0; background: transparent; padding: 0; }
-.quiz .ctext.a-en, .quiz .choice .ctext.a-en p { text-align: left; text-align-last: left; direction: ltr; font-family: system-ui, sans-serif; }
 .quiz .choice.picked { border-color: #17201A; background: #FFF6CF; }
 .quiz .choice.picked .key { background: #17201A; color: #F5C518; }
 .quiz .choice.right { background: #E3F3E9; border-color: #2F7D4F; } .quiz .choice.right .key { background: #2F7D4F; color: #fff; }
@@ -163,6 +149,8 @@ export const QUIZ_CSS = `
 .quiz .related { font-size: 12px; color: #56655B; margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .quiz .fc-link { font: inherit; font-size: 12.5px; font-weight: 700; color: #3B44B8; background: #EEF0FC; border: 0; border-radius: 999px; padding: 5px 11px; cursor: pointer; }
 .quiz .fc-queued { flex-basis: 100%; color: #1F5E3A; }
+.quiz .similar { margin-top: 8px; font-size: 13px; color: #4A3A9E; background: #F1EEFC; border-radius: 12px; padding: 8px 12px; }
+.quiz .sim-link { font: inherit; font-weight: 800; color: #4A3A9E; background: #fff; border: 0; border-radius: 999px; padding: 3px 10px; margin-right: 4px; cursor: pointer; }
 .quiz .to-notes { margin-top: 10px; border: 0; border-radius: 12px; padding: 8px 14px; background: #17201A; color: #F5C518; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
 .quiz .err { color: #9E2F2A; margin-top: 10px; }
 .quiz .report-row { display: flex; justify-content: flex-start; margin-top: 14px; }
@@ -182,6 +170,8 @@ root.addEventListener('click', function (e) {
   if (choice && !choice.disabled) { post({ type: 'choose', id: Number(choice.getAttribute('data-id')) }); return; }
   if (t.closest && t.closest('.report')) { post({ type: 'report' }); return; }
   if (t.closest && t.closest('.to-notes')) { post({ type: 'notes' }); return; }
+  var sim = t.closest && t.closest('.sim-link');
+  if (sim) { post({ type: 'similar', id: Number(sim.getAttribute('data-sim')), node: Number(sim.getAttribute('data-node')) }); return; }
   var fc = t.closest && t.closest('.fc-link');
   if (fc) { post({ type: 'card', id: Number(fc.getAttribute('data-fc')) }); return; }
   var ref = t.closest && t.closest('a.ref');
@@ -241,7 +231,7 @@ function render() {
     }).join('') + '</div>' : '';
     fb.className = 'feedback ' + (r.is_correct ? 'ok' : 'no');
     fb.innerHTML = '<div class="fb-title">' + (r.is_correct ? 'آفرین، درست بود!' : 'نزدیک بودی؛ ببین چرا:') + '</div>' + tabs +
-      '<div class="pane">' + (r.tabs[tab] ? r.tabs[tab].html : '') + '</div>' + (r.flashcards ? '<div class="related">' + r.flashcards + '</div>' : '') +
+      '<div class="pane">' + (r.tabs[tab] ? r.tabs[tab].html : '') + '</div>' + (r.flashcards ? '<div class="related">' + r.flashcards + '</div>' : '') + (r.similar || '') +
       (r.corrected ? '<div class="corrected">' + r.corrected + '</div>' : '') +
       (r.notes ? '<button class="to-notes">این نکته در جزوه ←</button>' : '');
     fb.hidden = false;
