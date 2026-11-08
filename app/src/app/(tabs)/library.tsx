@@ -10,7 +10,7 @@ import { ListRow, RowCount } from '../../components/ListRow';
 import { Pill } from '../../components/Pill';
 import { useAuth } from '../../lib/auth';
 import { useFeedback } from '../../components/Feedback';
-import { quoteText } from '../../lib/noteQuote';
+import { QuoteView } from '../../components/QuoteView';
 import { relativeDay } from '../../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
@@ -153,7 +153,7 @@ export default function LibraryTab() {
                         <Icon name="x" size={18} color={colors.muted} />
                       </Pressable>
                     </View>
-                    {!!n.quote && <Text style={[styles.quote, rtl, { backgroundColor: NOTE_COLORS[n.color] ?? NOTE_COLORS.yellow }]}>{quoteText(n.quote)}</Text>}
+                    {!!n.quote && <QuoteView quote={n.quote} color={NOTE_COLORS[n.color] ?? NOTE_COLORS.yellow} maxHeight={160} />}
                     {!!n.body && <Text style={[styles.body, rtl]}>{n.body}</Text>}
                   </Card>
                 </Pressable>

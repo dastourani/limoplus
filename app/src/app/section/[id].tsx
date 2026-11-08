@@ -22,7 +22,7 @@ import { setMacros } from '../../lib/macros';
 import { useWide } from '../../lib/layout';
 import { ChapterSide } from '../../components/ChapterSide';
 import { parseTerms, type Term } from '../../lib/reviewCard';
-import { quoteText } from '../../lib/noteQuote';
+import { QuoteView } from '../../components/QuoteView';
 import { offlineBooks, offlineSection } from '../../lib/offline';
 import { storage, type ReaderTheme } from '../../lib/storage';
 import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
@@ -690,9 +690,10 @@ export default function Section() {
 
       <Sheet visible={!!noteSheet} onClose={closeNoteSheet} title={noteSheet?.note ? 'یادداشت' : 'یادداشت تازه'}>
         {!!(noteSheet?.note?.quote || noteSheet?.quote) && (
-          <Text style={[styles.quote, rtl, noteSheet?.note && { backgroundColor: NOTE_COLORS.find(([c]) => c === noteSheet.note!.color)?.[1] }]}>
-            {quoteText(noteSheet?.note?.quote || noteSheet?.quote || '')}
-          </Text>
+          <QuoteView
+            quote={noteSheet?.note?.quote || noteSheet?.quote || ''}
+            color={noteSheet?.note ? NOTE_COLORS.find(([c]) => c === noteSheet.note!.color)?.[1] : undefined}
+          />
         )}
         {/* The highlight's colour, changed at once. */}
         {!!noteSheet?.note?.quote && (
@@ -727,7 +728,7 @@ export default function Section() {
               }}
               style={{ flex: 1, gap: 6 }}
             >
-              {!!n.quote && <Text style={[styles.quote, rtl, { backgroundColor: NOTE_COLORS.find(([c]) => c === n.color)?.[1] }]}>{quoteText(n.quote)}</Text>}
+              {!!n.quote && <QuoteView quote={n.quote} color={NOTE_COLORS.find(([c]) => c === n.color)?.[1]} maxHeight={160} />}
               {!!n.body && <Text style={[styles.help, rtl, { color: colors.ink }]}>{n.body}</Text>}
               {missingNotes.some((m) => m.id === n.id) && <Text style={[styles.help, rtl]}>متن این بخش ویرایش شده و جای این هایلایت پیدا نشد.</Text>}
             </Pressable>
