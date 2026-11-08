@@ -19,6 +19,7 @@ import { colors, rtl, toPersianDigits } from '../theme';
 import { useCelebrate } from './Celebrate';
 import { Icon } from './Icon';
 import { LemonProgress, type PartState } from './LemonProgress';
+import { PageHeader } from './PageHeader';
 import { MarkdownView } from './MarkdownView';
 import { ReportSheet } from './ReportSheet';
 import { ReportButton } from './Tags';
@@ -214,25 +215,22 @@ export function FlashcardDeck({
 
   return (
     <Screen>
-      <Header
-        // The card's own section above, «کارت ۲ از ۸» below (a mixed review changes section card by card).
-        subtitle={placeLabel(card?.node_title, card?.chapter_number) || title}
-        title={`کارت ${toPersianDigits(Math.min(pos + 1, queue.length))} از ${toPersianDigits(queue.length)}`}
-        right={
+      <PageHeader
+        icon="layers"
+        title="فلش‌کارت"
+        status={`کارت ${toPersianDigits(Math.min(pos + 1, queue.length))} از ${toPersianDigits(queue.length)}`}
+        extra={
           Platform.OS !== 'web' ? (
-            <Pressable onPress={share} style={{ padding: 10 }} accessibilityLabel="اشتراک‌گذاری کارت">
-              <Icon name="share-2" size={22} />
+            <Pressable onPress={share} style={{ padding: 8 }} accessibilityLabel="اشتراک‌گذاری کارت">
+              <Icon name="share-2" size={21} />
             </Pressable>
           ) : undefined
         }
+        lemon={<LemonProgress parts={parts} current={cards.findIndex((c) => c.id === card!.id)} size={46} />}
       />
-      <View style={styles.puzzleRow}>
-        <LemonProgress parts={parts} current={cards.findIndex((c) => c.id === card!.id)} size={50} />
-        <Text style={[styles.puzzleText, rtl]}>
-          {toPersianDigits(gradedCount)} از {toPersianDigits(cards.length)} کارت مرور شد
-          {puzzle && user && masteredIdx.size ? `، ${toPersianDigits(masteredIdx.size)} کارت کاملاً بلدی` : ''}
-        </Text>
-      </View>
+      <Text style={[styles.place, rtl]} numberOfLines={2}>
+        {[placeLabel(card?.node_title, card?.chapter_number) || title, `${toPersianDigits(gradedCount)} از ${toPersianDigits(cards.length)} کارت مرور شد${puzzle && user && masteredIdx.size ? `، ${toPersianDigits(masteredIdx.size)} کارت کاملاً بلدی` : ''}`].join('؛ ')}
+      </Text>
       {toolbar}
       <View style={styles.stage}>
         <View style={[styles.stack, { top: 34, left: 34, right: 34 }]} />
@@ -314,8 +312,7 @@ export function FlashcardDeck({
 const styles = StyleSheet.create({
   testsBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: '#EEF0FC' },
   testsText: { fontSize: 13, fontWeight: '700', color: '#3B44B8' },
-  puzzleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 20 },
-  puzzleText: { flex: 1, fontSize: 13, color: colors.muted },
+  place: { fontSize: 12.5, color: colors.muted, paddingHorizontal: 16, paddingBottom: 6 },
   stage: { flex: 1, padding: 22, justifyContent: 'center' },
   stack: { position: 'absolute', bottom: 90, borderRadius: 30, backgroundColor: colors.line },
   cardBox: { minHeight: 360 },

@@ -3,7 +3,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'rea
 import { ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native';
 
 import { FONT_FILES, fontFaceCss } from '../lib/fonts';
-import { CONTENT_CSS, READER_SCRIPT, pageEndHtml, renderMarkdown, type PageEnd, renderSummary } from '../lib/renderMarkdown';
+import { CONTENT_CSS, READER_SCRIPT, pageEndHtml, pageStartHtml, renderMarkdown, type PageEnd, renderSummary } from '../lib/renderMarkdown';
 import type { Highlight, MarkdownViewHandle, ReaderEvent } from './MarkdownView';
 
 export type { Highlight, MarkdownViewHandle, ReaderEvent } from './MarkdownView';
@@ -15,6 +15,7 @@ type Props = {
   dark?: boolean;
   sepia?: boolean;
   lineHeight?: number;
+  justify?: boolean;
   highlights?: Highlight[];
   variant?: 'notes' | 'summary';
   hasCards?: boolean;
@@ -37,12 +38,12 @@ function injectCss() {
 
 /** Lesson text with formulas, tables and boxes. Web version: rendered straight into the page. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, end, startAt },
+  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, justify = true, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, end, startAt },
   ref,
 ) {
   injectCss();
   const html = useMemo(
-    () => (variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)) + (compact ? '' : pageEndHtml(end)),
+    () => (compact ? '' : pageStartHtml(end)) + (variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)) + (compact ? '' : pageEndHtml(end)),
     [markdown, variant, hasCards, compact, end],
   );
   const root = useRef<HTMLDivElement | null>(null);
@@ -100,7 +101,7 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
   const content = (
     <div
       ref={root}
-      className={`lesson${compact ? ' compact' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}`}
+      className={`lesson${compact ? ' compact' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}${justify ? '' : ' ragged'}`}
       style={{ ['--fs' as string]: `${fontSize}px`, ['--lh' as string]: String(lineHeight) }}
       dangerouslySetInnerHTML={{ __html: html }}
     />

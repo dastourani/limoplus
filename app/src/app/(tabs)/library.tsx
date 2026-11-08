@@ -9,6 +9,8 @@ import { Button, Card, Empty, ErrorState, Loading, Screen, usePullRefresh } from
 import { ListRow, RowCount } from '../../components/ListRow';
 import { Pill } from '../../components/Pill';
 import { useAuth } from '../../lib/auth';
+import { useFeedback } from '../../components/Feedback';
+import { quoteText } from '../../lib/noteQuote';
 import { relativeDay } from '../../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
@@ -62,6 +64,26 @@ export default function LibraryTab() {
       .finally(() => setLoading(false));
   }, [user]);
   useFocusEffect(load);
+  const { toast } = useFeedback();
+  // × on a note: gone at once, with «برگرداندن» for a few seconds (the server only archives it).
+  const removeNote = async (n: Library['notes'][number]) => {
+    try {
+      await endpoints.deleteNote(n.id);
+    } catch {
+      toast('حذف نشد. اتصال اینترنت را بررسی کنید.');
+      return;
+    }
+    setData((d) => (d ? { ...d, notes: d.notes.filter((x) => x.id !== n.id) } : d));
+    toast(n.quote && !n.body ? 'هایلایت حذف شد.' : 'یادداشت حذف شد.', {
+      label: 'برگرداندن',
+      onPress: () => {
+        endpoints
+          .addNote(n.node_id, { quote: n.quote, body: n.body, color: n.color, mode: n.mode })
+          .then(() => load())
+          .catch(() => toast('برگرداندن ممکن نشد.'));
+      },
+    });
+  };
   const refresh = usePullRefresh(loading, load);
 
   if (!user) {
@@ -125,8 +147,13 @@ export default function LibraryTab() {
               data!.notes.map((n) => (
                 <Pressable key={n.id} onPress={() => router.push(`/section/${n.node_id}`)}>
                   <Card>
-                    <Text style={[styles.muted, rtl]}>{n.node_title}، {relativeDay(n.updated_at)}</Text>
-                    {!!n.quote && <Text style={[styles.quote, rtl, { backgroundColor: NOTE_COLORS[n.color] ?? NOTE_COLORS.yellow }]}>{n.quote}</Text>}
+                    <View style={styles.noteHead}>
+                      <Text style={[styles.muted, rtl, { flex: 1 }]}>{n.node_title}، {relativeDay(n.updated_at)}</Text>
+                      <Pressable onPress={() => removeNote(n)} hitSlop={10} style={styles.noteX} accessibilityRole="button" accessibilityLabel="حذف">
+                        <Icon name="x" size={18} color={colors.muted} />
+                      </Pressable>
+                    </View>
+                    {!!n.quote && <Text style={[styles.quote, rtl, { backgroundColor: NOTE_COLORS[n.color] ?? NOTE_COLORS.yellow }]}>{quoteText(n.quote)}</Text>}
                     {!!n.body && <Text style={[styles.body, rtl]}>{n.body}</Text>}
                   </Card>
                 </Pressable>
@@ -149,4 +176,6 @@ const styles = StyleSheet.create({
   muted: { fontSize: 12, color: colors.muted },
   quote: { fontSize: 15, lineHeight: 28, color: colors.ink, borderRadius: 8, padding: 8 },
   body: { fontSize: 15, lineHeight: 24, color: colors.ink },
+  noteHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  noteX: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginVertical: -6 },
 });

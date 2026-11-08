@@ -371,7 +371,9 @@ class PageEndAndPlacesTests(TestCase):
     def test_last_section_of_a_chapter_leads_on(self):
         last = self.chapter.get_children().last()
         data = self.client.get(f"/api/v1/nodes/{last.id}/").data
-        self.assertIsNone(data["next_id"])
+        # Reading goes on into the next chapter (its first section: that chapter is paid, so its introduction is skipped).
+        nxt = self.chapter.get_next_sibling()
+        self.assertEqual(data["next_id"], nxt.get_children().first().id)
         end = data["chapter_end"]
         self.assertEqual(end["chapter_id"], self.chapter.id)
         self.assertEqual(end["book_slug"], "math-1")
@@ -379,6 +381,21 @@ class PageEndAndPlacesTests(TestCase):
         first = self.chapter.get_children().first()
         if first.id != last.id:
             self.assertIsNone(self.client.get(f"/api/v1/nodes/{first.id}/").data["chapter_end"])
+
+    def test_reading_order_runs_through_chapter_introductions(self):
+        from apps.catalog.models import ContentNode
+
+        self.chapter.full_body = "مقدمه"
+        self.chapter.save()
+        first = self.chapter.get_children().first()
+        intro = self.client.get(f"/api/v1/nodes/{self.chapter.id}/").data
+        self.assertEqual(intro["next_id"], first.id)
+        self.assertEqual(intro["summary"], "")
+        self.assertEqual(intro["intro"]["sections"][0]["id"], first.id)
+        self.assertEqual(intro["intro"]["continue_id"], first.id)
+        self.assertIsNone(intro["chapter_end"])
+        self.assertEqual(self.client.get(f"/api/v1/nodes/{first.id}/").data["previous_id"], self.chapter.id)
+        self.assertEqual(ContentNode.objects.get(pk=self.chapter.pk).full_body, "مقدمه")
 
     def test_section_status_counts_what_is_left(self):
         status = self.client.get(f"/api/v1/nodes/{self.section.id}/").data["status"]

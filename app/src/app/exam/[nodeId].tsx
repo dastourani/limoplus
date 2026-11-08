@@ -6,6 +6,7 @@ import { Animated, Pressable, ScrollView, StyleSheet, Switch, View } from 'react
 import { ApiError } from '../../api/client';
 import { endpoints, type ExamDetail } from '../../api/endpoints';
 import { LemonProgress, type PartState } from '../../components/LemonProgress';
+import { PageHeader, TimerChip } from '../../components/PageHeader';
 import { QuestionPicker } from '../../components/QuestionPicker';
 import { QuizView, type QuizEvent } from '../../components/QuizView';
 import { Text } from '../../components/Text';
@@ -276,28 +277,26 @@ export default function Exam() {
 
   return (
     <Screen>
-      <View style={styles.top}>
-        <LemonProgress parts={parts} current={index} size={50} onPress={() => setPickerOpen(true)} accessibilityLabel="پیشرفت آزمون؛ برای رفتن به سؤال دیگر بزنید" />
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={[styles.label, rtl]}>
-            سؤال {toPersianDigits(index + 1)} از {toPersianDigits(exam.questions.length)}
-          </Text>
-          <Text style={[styles.help, rtl]}>{toPersianDigits(answeredCount)} پاسخ داده‌شده</Text>
-        </View>
-        <Pressable
-          onPress={toggleFlag}
-          style={[styles.flag, flagged && styles.flagOn]}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: flagged }}
-          accessibilityLabel="علامت شک‌دار برای مرور دوباره"
-        >
-          <Icon name="flag" size={18} color={colors.ink} />
-        </Pressable>
-        <View style={styles.clock}>
-          <Icon name="timer" size={20} color={left < 60 ? colors.red : colors.ink} />
-          <Text style={[styles.timer, left < 60 && { color: colors.red }]}>{clock(left)}</Text>
-        </View>
-      </View>
+      <PageHeader
+        icon="timer"
+        title="آزمون"
+        status={`سؤال ${toPersianDigits(index + 1)} از ${toPersianDigits(exam.questions.length)}`}
+        extra={
+          <>
+            <Pressable
+              onPress={toggleFlag}
+              style={[styles.flag, flagged && styles.flagOn]}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: flagged }}
+              accessibilityLabel="علامت شک‌دار برای مرور دوباره"
+            >
+              <Icon name="flag" size={18} color={colors.ink} />
+            </Pressable>
+            <TimerChip text={clock(left)} urgent={left < 60} />
+          </>
+        }
+        lemon={<LemonProgress parts={parts} current={index} size={46} onPress={() => setPickerOpen(true)} accessibilityLabel="پیشرفت آزمون؛ برای رفتن به سؤال دیگر بزنید" />}
+      />
       <QuestionPicker
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -337,7 +336,7 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
   clock: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
   timer: { fontSize: 22, fontWeight: '800', color: colors.ink },
-  flag: { width: 40, height: 40, borderRadius: 12, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
+  flag: { width: 36, height: 36, borderRadius: 12, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
   flagOn: { backgroundColor: colors.amber, borderColor: colors.amber },
   bar: { flexDirection: 'row-reverse', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
 });

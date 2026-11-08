@@ -13,6 +13,7 @@ import { ApiError } from '../../api/client';
 import { endpoints, type Question, type ReviewSessionData } from '../../api/endpoints';
 import { useFeedback } from '../../components/Feedback';
 import { LemonProgress, type PartState } from '../../components/LemonProgress';
+import { PageHeader } from '../../components/PageHeader';
 import { QuestionPicker } from '../../components/QuestionPicker';
 import { QuizView, type QuizEvent } from '../../components/QuizView';
 import { ReportSheet } from '../../components/ReportSheet';
@@ -404,16 +405,15 @@ export default function Quiz() {
 
   return (
     <Screen>
-      <Header subtitle={placeLabel(q.node_title, q.chapter_number)} title={`سؤال ${toPersianDigits(index + 1)} از ${toPersianDigits(questions.length)}`} />
-      <View style={styles.progress}>
-        <LemonProgress parts={parts} current={index} size={54} onPress={() => setPickerOpen(true)} accessibilityLabel="پیشرفت تست‌ها؛ برای رفتن به سؤال دیگر بزنید" />
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={[styles.counts, rtl]}>
-            {toPersianDigits(counts.right)} درست، {toPersianDigits(counts.wrong)} غلط، {toPersianDigits(counts.none)} مانده
-          </Text>
-          <Text style={[styles.hint, rtl, { paddingHorizontal: 0, paddingBottom: 0 }]}>بکش تا ورق بخورد؛ لیمو را بزن تا به هر سؤال بروی</Text>
-        </View>
-      </View>
+      <PageHeader
+        icon={notebook ? 'notebook-pen' : review ? 'rotate-ccw' : 'list-checks'}
+        title={notebook ? 'تمرین اشتباه‌ها' : review ? 'مرور' : quick ? 'فقط ۵ دقیقه' : 'تمرین تست'}
+        status={`تست ${toPersianDigits(index + 1)} از ${toPersianDigits(questions.length)}`}
+        lemon={<LemonProgress parts={parts} current={index} size={46} onPress={() => setPickerOpen(true)} accessibilityLabel="پیشرفت تست‌ها؛ برای رفتن به سؤال دیگر بزنید" />}
+      />
+      <Text style={[styles.place, rtl]} numberOfLines={1}>
+        {[placeLabel(q.node_title, q.chapter_number), `${toPersianDigits(counts.right)} درست، ${toPersianDigits(counts.wrong)} غلط، ${toPersianDigits(counts.none)} مانده`].filter(Boolean).join('؛ ')}
+      </Text>
       {!review && <View style={styles.orders}>
         {ORDERS.map(([key, label]) => (
           <Pill key={key} label={label} small selected={order.order === key} onPress={() => changeOrder(key)} />
@@ -463,8 +463,7 @@ export default function Quiz() {
 }
 
 const styles = StyleSheet.create({
-  progress: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 6 },
-  counts: { fontSize: 15, fontWeight: '800', color: colors.ink },
+  place: { fontSize: 12.5, color: colors.muted, paddingHorizontal: 16, paddingBottom: 6 },
   orders: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 16, paddingBottom: 6 },
   page: { flex: 1, backfaceVisibility: 'hidden' },
   share: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, alignSelf: 'flex-end', marginHorizontal: 16, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.lemonSoft },

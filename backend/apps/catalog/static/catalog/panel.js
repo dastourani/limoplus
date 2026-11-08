@@ -583,7 +583,7 @@
     var card = h('div', { class: 'cm-card' });
     if (isIntro) {
       card.appendChild(h('h3', { style: 'margin:0' }, 'مقدمه‌ی فصل'));
-      card.appendChild(h('p', { class: 'hint' }, 'متن قبل از اولین بخش: در اپ با «نمای کلی فصل» باز می‌شود. می‌تواند خالی باشد.'));
+      card.appendChild(h('p', { class: 'hint' }, 'متن قبل از اولین بخش: در اپ صفحه‌ی «مقدمه‌ی فصل» است (بالای فهرست بخش‌ها). می‌تواند خالی باشد. مقدمه چکیده ندارد.'));
     } else {
       var title = h('input', { type: 'text', value: s.title });
       var group = h('input', { type: 'text', value: s.group, list: 'cm-groups', placeholder: 'بدون گروه' });
@@ -607,7 +607,8 @@
         } }, 'بایگانی بخش')));
     }
     var tabs = h('div', { class: 'cm-tabs' });
-    [['notes', 'درسنامه'], ['summary', 'چکیده (کارت مرور)'], ['questions', 'تست‌ها (' + fa(s.questions.length) + ')'], ['flashcards', 'فلش‌کارت‌ها (' + fa(s.flashcards.length) + ')']].forEach(function (t) {
+    if (isIntro && this.tab === 'summary') this.tab = 'notes';
+    [['notes', isIntro ? 'متن مقدمه' : 'درسنامه']].concat(isIntro ? [] : [['summary', 'چکیده (کارت مرور)']]).concat([ ['questions', 'تست‌ها (' + fa(s.questions.length) + ')'], ['flashcards', 'فلش‌کارت‌ها (' + fa(s.flashcards.length) + ')']]).forEach(function (t) {
       tabs.appendChild(h('button', { type: 'button', class: self.tab === t[0] ? 'on' : '', onclick: function () {
         if (self.tab === t[0] || !self.guard()) return; self.tab = t[0]; self.open = null; self.render();
       } }, t[1]));

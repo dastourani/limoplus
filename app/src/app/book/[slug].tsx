@@ -488,7 +488,7 @@ function ChapterCard({
           {chapter.has_overview && (
             <Pressable onPress={() => router.push(`/section/${chapter.id}`)} style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}>
               <Icon name="map" size={18} color={colors.greenDark} />
-              <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>نمای کلی فصل</Text>
+              <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>مقدمه‌ی فصل</Text>
             </Pressable>
           )}
           {chapter.sections.map((section) => {

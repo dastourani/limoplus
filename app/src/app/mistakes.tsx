@@ -9,6 +9,7 @@ import { RichText } from '../components/RichText';
 import { Text } from '../components/Text';
 import { Button, Empty, ErrorState, Header, Loading, Screen, usePullRefresh } from '../components/ui';
 import { Pill } from '../components/Pill';
+import { PageHeader } from '../components/PageHeader';
 import { requireLogin, useAuth } from '../lib/auth';
 import { jalaliDate } from '../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../theme';
@@ -66,7 +67,15 @@ export default function MistakesScreen() {
 
   return (
     <Screen>
-      <Header title="دفترچه‌ی اشتباهات" />
+      <PageHeader
+        icon="notebook-pen"
+        title="دفترچه‌ی اشتباهات"
+        status={
+          data && data.count
+            ? [data.open ? `${toPersianDigits(data.open)} منتظر جبران` : '', data.settling ? `${toPersianDigits(data.settling)} نیازمند تثبیت` : ''].filter(Boolean).join('، ')
+            : undefined
+        }
+      />
       {!data && busy ? (
         <Loading />
       ) : error && !data ? (

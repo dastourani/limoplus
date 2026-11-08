@@ -23,8 +23,9 @@ export type ReadingNext = {
 };
 export type ReadingItem = { slug: string; bookTitle: string; id: number; title: string; book?: BookListItem; next?: ReadingNext | null };
 
+/** One wedge per section of the book, as everywhere else (LemonProgress groups them past 24). */
 function wedges(progress: number | null | undefined, sections: number) {
-  const n = Math.max(1, Math.min(sections || 8, 12));
+  const n = Math.max(1, sections || 1);
   const done = Math.round((progress ?? 0) * n);
   return Array.from({ length: n }, (_, i) => (i < done ? ('done' as const) : ('empty' as const)));
 }

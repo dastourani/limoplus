@@ -14,6 +14,7 @@ import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { jalaliDate } from '../../lib/jalali';
 import { play, setSoundEnabled, soundEnabled } from '../../lib/sound';
 import { setCoverTheme, useCoverTheme } from '../../lib/coverTheme';
+import { storage } from '../../lib/storage';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
 function Row({ label, value, onPress, danger }: { label: string; value?: string; onPress: () => void; danger?: boolean }) {
@@ -30,10 +31,12 @@ export default function Profile() {
   const { confirm } = useFeedback();
   const [purchases, setPurchases] = useState<Purchases | null>(null);
   const [sound, setSound] = useState(true);
+  const [justify, setJustify] = useState(true);
   const coverTheme = useCoverTheme();
   const asLearner = useViewAsLearner();
   useEffect(() => {
     soundEnabled().then(setSound);
+    storage.getReader().then((p) => setJustify(p?.justify ?? true));
   }, []);
 
   const [reloading, setReloading] = useState(false);
@@ -96,6 +99,23 @@ export default function Profile() {
               accessibilityLabel="صدای جشن‌ها"
             />
           </View>
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowLabel, rtl]}>متن درس تراز باشد</Text>
+              <Text style={[styles.rowHint, rtl]}>پاراگراف‌ها از دو طرف صاف، مثل کتاب چاپی. خاموش: راست‌چین.</Text>
+            </View>
+            <Switch
+              value={justify}
+              onValueChange={async (on) => {
+                setJustify(on);
+                const p = await storage.getReader();
+                await storage.setReader({ ...(p ?? { fontSize: 17 }), justify: on });
+              }}
+              trackColor={{ true: colors.green }}
+              accessibilityLabel="متن درس تراز باشد"
+            />
+          </View>
+          <Row label="لیموها چه می‌گویند؟" onPress={() => router.push('/lemons')} />
           {/* «ظاهر اپ»: two little covers; the chosen one has a lemon border and a tick. */}
           <View style={[styles.row, { flexDirection: 'column', alignItems: 'stretch', gap: 10 }]}>
             <View>

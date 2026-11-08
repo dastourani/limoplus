@@ -22,7 +22,7 @@ export function ChapterSide({ bookSlug, nodeId, dark = false }: { bookSlug: stri
   const number = data.chapters.indexOf(chapter) + 1;
   const ink = dark ? '#E4E9E2' : colors.ink;
   const rows = [
-    ...(chapter.has_overview ? [{ id: chapter.id, title: 'نمای کلی فصل', locked: !!chapter.is_locked }] : []),
+    ...(chapter.has_overview ? [{ id: chapter.id, title: 'مقدمه‌ی فصل', locked: !!chapter.is_locked }] : []),
     ...chapter.sections.map((s) => ({ id: s.id, title: s.title, locked: !!s.is_locked })),
   ];
   return (

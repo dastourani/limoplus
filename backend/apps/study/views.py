@@ -623,11 +623,14 @@ def _next_section(access, node):
     nxt = sections[ids.index(node.id) + 1]
     chapter = next((c for c in access.nodes.values() if c.kind == ContentNode.Kind.CHAPTER and nxt.path.startswith(c.path)), None)
     here = next((c for c in access.nodes.values() if c.kind == ContentNode.Kind.CHAPTER and node.path.startswith(c.path)), None)
+    new_chapter = bool(chapter and here and chapter.id != here.id)
+    # A new chapter starts at its introduction page (when the learner may open it).
+    start = chapter if new_chapter and access.readable(chapter.id) else nxt
     return {
-        "id": nxt.id,
+        "id": start.id,
         "title": nxt.title,
         "locked": not access.readable(nxt.id),
-        "new_chapter": bool(chapter and here and chapter.id != here.id),
+        "new_chapter": new_chapter,
         "chapter_title": chapter.title if chapter else "",
         "chapter_number": chapter.position if chapter else None,
         "finished_chapter_number": here.position if here else None,

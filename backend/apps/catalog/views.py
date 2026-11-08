@@ -201,7 +201,8 @@ def book_detail(request, slug):
     chapters = []
     for chapter in access.children(book):
         item = summary(chapter)
-        item["has_overview"] = bool(chapter.full_body or chapter.summary_body) and not item["is_locked"]
+        # Every chapter opens with its introduction page (its text, if any, its sections and «ادامه»).
+        item["has_overview"] = not item["is_locked"]
         item["sections"] = [summary(s) for s in access.children(chapter)]
         item["term_count"] = _term_count(access, chapter)
         chapters.append(item)
@@ -288,8 +289,17 @@ def node_detail(request, node_id):
         return locked_response(access.book)
     ancestors = sorted((n for n in access.nodes.values() if node.path.startswith(n.path) and n.id != node.id), key=lambda n: n.depth)
     parent = ancestors[-1] if ancestors else None
-    siblings = [n.id for n in access.children(parent)] if parent else [node.id]
-    index = siblings.index(node.id)
+    # The book is read in one line: a chapter's introduction, its sections, then the next chapter's introduction.
+    order = reading_order(access)
+    if node.id not in order:
+        order = [n.id for n in access.children(parent)] if parent else [node.id]
+    index = order.index(node.id)
+    prev_id = order[index - 1] if index > 0 else None
+    next_id = order[index + 1] if index + 1 < len(order) else None
+    is_chapter = node.kind == ContentNode.Kind.CHAPTER
+    last_in_chapter = (
+        node.kind == ContentNode.Kind.SECTION and parent is not None and access.children(parent)[-1:] == [node]
+    )
     return Response(
         {
             "id": node.id,
@@ -297,22 +307,66 @@ def node_detail(request, node_id):
             "title": node.title,
             # A chapter's number is its place in the book (kept in step when chapters are reordered in the panel).
             "breadcrumb": [{"id": a.id, "kind": a.kind, "slug": a.slug, "title": a.title, "number": a.position} for a in ancestors],
-            "summary": media_urls(request, node.summary_body),
+            # A chapter's page is its introduction only: no summary of its own.
+            "summary": "" if is_chapter else media_urls(request, node.summary_body),
             "full": media_urls(request, node.full_body),
             # The panel's labels: boxes in the notes and parts of the summary (app/src/lib/labels.ts).
             "labels": all_labels(),
             # «مثال ۳-۵»: where this section's numbered boxes start, and the book's [[#names]] (apps/catalog/numbering.py).
             "numbering": numbering_for(access, node),
-            "previous_id": siblings[index - 1] if index > 0 else None,
-            "next_id": siblings[index + 1] if index + 1 < len(siblings) else None,
+            "previous_id": prev_id,
+            "next_id": next_id,
             # Titles of the neighbours, for the page drawn while turning to them.
-            "previous_title": access.nodes[siblings[index - 1]].title if index > 0 else None,
-            "next_title": access.nodes[siblings[index + 1]].title if index + 1 < len(siblings) else None,
+            "previous_title": _turn_title(access, prev_id),
+            "next_title": _turn_title(access, next_id),
             "updated_at": node.updated_at,
-            "chapter_end": _chapter_end(access, node, parent, request) if index + 1 == len(siblings) else None,
+            "chapter_end": _chapter_end(access, node, parent, request) if last_in_chapter else None,
             "status": _section_status(request.user, access, node),
+            "intro": _chapter_intro(request, access, node) if is_chapter else None,
         }
     )
+
+
+def reading_order(access) -> list[int]:
+    """Every visible chapter and section of the book in reading order: chapter, its sections, next chapter…"""
+    order = []
+    for chapter in access.children(access.book):
+        # A chapter the learner may not open (a paid one with a free section) is not in the way of its free sections.
+        if access.readable(chapter.id):
+            order.append(chapter.id)
+        order.extend(s.id for s in access.children(chapter))
+    return order
+
+
+def _turn_title(access, node_id):
+    if node_id is None:
+        return None
+    n = access.nodes[node_id]
+    return f"مقدمه‌ی فصل {n.position}، {n.title}" if n.kind == ContentNode.Kind.CHAPTER and n.position else n.title
+
+
+def _chapter_intro(request, access, chapter):
+    """A chapter's introduction page: its number, its sections (each with the learner's state), counts, and where to go on."""
+    from apps.learning.models import Flashcard, Question
+    from apps.study.progress import section_states
+
+    started, done = section_states(request.user, access, request)
+    sections = access.children(chapter)
+    ids = [s.id for s in sections]
+    items = [
+        {"id": s.id, "title": s.title, "locked": not access.readable(s.id),
+         "state": "done" if s.id in done else "read" if s.id in started else "empty"}
+        for s in sections
+    ]
+    go_on = next((i for i in items if i["state"] != "done" and not i["locked"]), None) or next((i for i in items if not i["locked"]), None)
+    return {
+        "number": chapter.position,
+        "sections": items,
+        "questions": Question.objects.filter(node_id__in=[chapter.id, *ids], is_archived=False).count(),
+        "flashcards": Flashcard.objects.filter(node_id__in=[chapter.id, *ids], is_archived=False).count(),
+        "continue_id": go_on["id"] if go_on else None,
+        "started": any(i["state"] != "empty" for i in items),
+    }
 
 
 def _chapter_end(access, node, chapter, request=None):
@@ -324,9 +378,10 @@ def _chapter_end(access, node, chapter, request=None):
     nxt = None
     if 0 <= i < len(chapters) - 1:
         c = access.nodes[chapters[i + 1]]
+        # Its introduction comes first (the reading order of the book).
         sections = access.children(c)
-        first = sections[0] if sections else c
-        nxt = {"id": first.id, "chapter_title": c.title, "title": first.title, "locked": not access.readable(first.id)}
+        first = c if access.readable(c.id) or not sections else sections[0]
+        nxt = {"id": first.id, "chapter_title": c.title, "title": _turn_title(access, first.id), "locked": not access.readable(first.id)}
     # The summary exam it suggests: 10 questions (fewer if the chapter has fewer), with its time from their own estimates.
     from apps.learning.models import Question
 

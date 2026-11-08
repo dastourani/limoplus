@@ -164,6 +164,9 @@ body { margin: 0; background: transparent; color: #17201A; }
   font-size: var(--fs, 17px); line-height: var(--lh, 2); padding: 4px 20px 32px; overflow-wrap: anywhere; }
 .lesson.compact { padding: 0; font-size: 16px; line-height: 1.9; }
 .lesson p { margin: 0 0 14px; }
+/* Paragraphs aligned on both sides like a printed book (last line to the right); lists and short texts stay ragged.
+   «ragged»: the learner chose right-aligned text. */
+.lesson:not(.compact):not(.ragged) p { text-align: justify; text-align-last: right; text-justify: inter-word; }
 .lesson h1, .lesson h2, .lesson h3 { line-height: 1.5; margin: 22px 0 10px; }
 .lesson strong { background: #FFF1B8; border-radius: 4px; padding: 0 3px; }
 .lesson ul, .lesson ol { padding-right: 22px; padding-left: 0; margin: 0 0 14px; }
@@ -193,6 +196,15 @@ a.ref { color: #3B44B8; font-weight: 700; text-decoration: none; border-bottom: 
 .lesson.dark a.ref { color: #AEB4F5; }
 mark.hl { color: inherit; border-radius: 3px; padding: 0 1px; }
 mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } mark.hl-blue { background: #C9DBFF; } mark.hl-pink { background: #FFD0DF; }
+.hl-tip { position: fixed; z-index: 50; max-width: 320px; padding: 8px 12px; border-radius: 12px; background: #17201A; color: #F3F1E7;
+  font: 14px/1.9 Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; white-space: pre-wrap; pointer-events: none; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
+.hl-tip.dark { background: #F3F1E7; color: #17201A; }
+mark.hl[data-body] { box-shadow: inset 0 -2px 0 rgba(23,32,26,.35); }
+.math-block.hlb { cursor: pointer; } .math-block.hlb-yellow { background: #FFE98A; } .math-block.hlb-green { background: #BFE8CF; }
+.math-block.hlb-blue { background: #C9DBFF; } .math-block.hlb-pink { background: #FFD0DF; }
+.lesson.dark .math-block.hlb, .lesson.sepia .math-block.hlb { color: #17201A; }
+.lesson.dark .math-block.hlb-yellow, .lesson.sepia .math-block.hlb-yellow { background: #FFE98A; } .lesson.dark .math-block.hlb-green, .lesson.sepia .math-block.hlb-green { background: #BFE8CF; }
+.lesson.dark .math-block.hlb-blue, .lesson.sepia .math-block.hlb-blue { background: #C9DBFF; } .lesson.dark .math-block.hlb-pink, .lesson.sepia .math-block.hlb-pink { background: #FFD0DF; }
 .lesson.no-select { -webkit-user-select: none; user-select: none; }
 /* Sepia reading */
 .lesson.sepia { color: #4A3B2A; }
@@ -260,6 +272,24 @@ mark.flash.fade { background: transparent; box-shadow: 0 0 0 0 rgba(255,212,59,0
 .lesson.dark .rc-s-formal { background: #20233A; border-color: #363B66; } .lesson.dark .rc-s-formal h4 { color: #AEB4F5; } .lesson.dark .rc-s-note h4 { color: #9BE3B4; }
 .lesson.dark .term .en { color: #AEB4F5; } .lesson.dark mark.flash { color: #17201A; }
 .lesson.sepia .rc-part { background: #FBF5E6; border-color: #E6D8B8; } .lesson.sepia .rc-part a.jump { background: #F1E6CC; }
+.ci-head { display: flex; align-items: center; gap: 14px; margin: 6px 0 18px; padding: 18px; border-radius: 22px; background: #1B2620; color: #fff; }
+.ci-text { flex: 1; min-width: 0; } .ci-lemon { flex: none; }
+.ci-label { color: #F5C518; font-weight: 900; font-size: 13px; line-height: 1.6; }
+.ci-title { font-size: 23px; font-weight: 900; line-height: 1.5; }
+.ci-sizes { font-size: 12px; color: #C9D3CC; margin-top: 2px; line-height: 1.6; }
+.ci-list { margin: 22px 0 0; }
+.ci-h { font-weight: 900; font-size: 16px; margin-bottom: 4px; }
+.ci-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-top: 8px; border-radius: 14px; background: #fff; border: 1px solid #E3E8DE;
+  color: inherit; text-decoration: none; cursor: pointer; font-size: 15px; line-height: 1.7; text-align: right; }
+.ci-row.ci-on { border-color: #F5C518; background: #FFFBEA; }
+.ci-st { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #D5DBCF; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; }
+.ci-st.ci-read { border-color: #F5C518; background: #FFF6CF; } .ci-st.ci-done { border-color: #2F7D4F; background: #2F7D4F; color: #fff; }
+.ci-st.ci-lock { border: 0; font-size: 13px; }
+.ci-n { flex: none; color: #56655B; font-weight: 700; } .ci-t { flex: 1; min-width: 0; } .ci-go { flex: none; color: #B9A23A; font-weight: 800; }
+.ci-continue { margin-top: 16px; }
+.lesson.dark .ci-row { background: #1E2621; border-color: #33403A; } .lesson.dark .ci-row.ci-on { background: #2A2614; border-color: #8C7414; }
+.lesson.dark .ci-n { color: #9AA79F; } .lesson.dark .ci-st { border-color: #3A463E; }
+.lesson.sepia .ci-row { background: #FBF5E6; border-color: #E6D8B8; }
 .box-plot { padding: 10px 8px 8px; } .box-plot .box-title { padding: 0 6px; }
 ${PLOT_CSS}`;
 
@@ -281,29 +311,103 @@ function textNodes() {
 function clearMarks() {
   var marks = root.querySelectorAll('mark.hl');
   for (var i = 0; i < marks.length; i++) { var m = marks[i]; var p = m.parentNode; while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m); p.normalize(); }
+  var blocks = root.querySelectorAll('.math-block[data-note]');
+  for (var b = 0; b < blocks.length; b++) { blocks[b].removeAttribute('data-note'); blocks[b].removeAttribute('data-body'); blocks[b].className = 'math-block'; }
 }
-function norm(s) { return s.replace(/\s+/g, ' '); }
-function mark(quote, color, id) {
+function norm(s) { return s.replace(/\\s+/g, ' '); }
+// The page as one line of text in which each formula is written as its LaTeX ($…$), whitespace collapsed, a space
+// between blocks. A highlight's quote is a piece of this line, so a selection that runs through formulas is found again.
+var BLOCKS = /^(P|LI|DIV|H1|H2|H3|H4|TD|TH|TR|UL|OL|TABLE|BLOCKQUOTE)$/;
+function isMathBox(el) { return el.classList && (el.classList.contains('math') || el.classList.contains('math-block')); }
+function layout() {
+  var units = [], full = '', space = true;
+  function sep() { if (!space) { full += ' '; space = true; } }
+  (function walk(n) {
+    for (var c = n.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 3) {
+        var raw = c.nodeValue, map = new Array(raw.length + 1);
+        for (var k = 0; k < raw.length; k++) {
+          map[k] = full.length;
+          if (/\\s/.test(raw.charAt(k))) { if (!space) { full += ' '; space = true; } } else { full += raw.charAt(k); space = false; }
+        }
+        map[raw.length] = full.length;
+        units.push({ node: c, map: map });
+      } else if (c.nodeType === 1) {
+        if (isMathBox(c)) {
+          var a = c.querySelector('annotation'), tex = a ? a.textContent.trim() : '';
+          var block = c.classList.contains('math-block');
+          if (block) sep();
+          var start = full.length; full += '$' + tex + '$'; space = false;
+          units.push({ node: c, math: true, block: block, start: start, end: full.length });
+          if (block) sep();
+        } else if (c.tagName !== 'MATH' && c.tagName !== 'SCRIPT' && c.tagName !== 'STYLE') {
+          var isBlock = BLOCKS.test(c.tagName);
+          if (isBlock) sep();
+          walk(c);
+          if (isBlock) sep();
+        }
+      }
+    }
+  })(root);
+  return { units: units, full: full };
+}
+function unitStart(u) { return u.math ? u.start : u.map[0]; }
+function unitEnd(u) { return u.math ? u.end : u.map[u.map.length - 1]; }
+// Where a selection boundary falls in the line of text.
+function placeOf(L, container, offset, isEnd) {
+  var el = container.nodeType === 1 ? container : container.parentNode;
+  var box = el && el.closest ? el.closest('.math, .math-block') : null;
+  for (var i = 0; i < L.units.length; i++) {
+    var u = L.units[i];
+    if (box && u.node === box) return isEnd ? u.end : u.start;
+    if (!box && u.node === container) return u.map[Math.min(offset, u.map.length - 1)];
+  }
+  if (box) return isEnd ? L.full.length : 0;
+  // An element and a child index: the first piece of text at or after that point.
+  var at = container.childNodes[offset];
+  for (var j = 0; j < L.units.length; j++) {
+    var n = L.units[j].node;
+    if (at ? n === at || at.contains(n) || (at.compareDocumentPosition(n) & 4) : (container.compareDocumentPosition(n) & 4) && !container.contains(n))
+      return unitStart(L.units[j]);
+  }
+  return L.full.length;
+}
+function selectedQuote() {
+  var sel = window.getSelection ? window.getSelection() : null;
+  if (!sel || !sel.rangeCount || sel.isCollapsed) return '';
+  var r = sel.getRangeAt(0);
+  if (!root.isConnected || !root.contains(r.commonAncestorContainer)) return '';
+  var L = layout();
+  var s = placeOf(L, r.startContainer, r.startOffset, false), e = placeOf(L, r.endContainer, r.endOffset, true);
+  return e > s ? L.full.slice(s, e).trim() : '';
+}
+function mark(quote, color, id, body) {
   var q = norm(quote).trim(); if (!q) return false;
-  var nodes = textNodes(), full = '', starts = [];
-  for (var i = 0; i < nodes.length; i++) { starts.push(full.length); full += norm(nodes[i].nodeValue); }
-  var at = full.indexOf(q); if (at < 0) return false;
+  var L = layout();
+  var at = L.full.indexOf(q); if (at < 0) return false;
   var end = at + q.length;
-  for (var j = nodes.length - 1; j >= 0; j--) {
-    var s = starts[j], len = norm(nodes[j].nodeValue).length, e = s + len;
-    if (e <= at || s >= end || len === 0) continue;
-    var node = nodes[j], from = Math.max(0, at - s), to = Math.min(len, end - s);
-    if (norm(node.nodeValue) !== node.nodeValue) { from = 0; to = node.nodeValue.length; }
-    var after = node.splitText(to); var middle = node.splitText(from);
-    var m = document.createElement('mark'); m.className = 'hl hl-' + color; m.setAttribute('data-note', id);
-    middle.parentNode.insertBefore(m, middle); m.appendChild(middle); void after;
+  for (var j = L.units.length - 1; j >= 0; j--) {
+    var u = L.units[j];
+    if (unitEnd(u) <= at || unitStart(u) >= end) continue;
+    if (u.math) {
+      if (u.block) { u.node.className = 'math-block hlb hlb-' + color; u.node.setAttribute('data-note', id); if (body) u.node.setAttribute('data-body', body); continue; }
+      var mm = document.createElement('mark'); mm.className = 'hl hl-' + color; mm.setAttribute('data-note', id); if (body) mm.setAttribute('data-body', body);
+      u.node.parentNode.insertBefore(mm, u.node); mm.appendChild(u.node);
+      continue;
+    }
+    var len = u.map.length - 1, from = -1, to = len;
+    for (var k = 0; k < len; k++) { if (from < 0 && u.map[k] >= at) from = k; if (u.map[k] >= end) { to = k; break; } }
+    if (from < 0 || from >= to || !/\\S/.test(u.node.nodeValue.slice(from, to))) continue;
+    var node = u.node, after = node.splitText(to), middle = node.splitText(from); void after;
+    var m = document.createElement('mark'); m.className = 'hl hl-' + color; m.setAttribute('data-note', id); if (body) m.setAttribute('data-body', body);
+    middle.parentNode.insertBefore(m, middle); m.appendChild(middle);
   }
   return true;
 }
 root.__setHighlights = function (list) {
   clearMarks();
   var missing = [];
-  for (var i = 0; i < list.length; i++) { if (list[i].quote && !mark(list[i].quote, list[i].color, list[i].id)) missing.push(list[i].id); }
+  for (var i = 0; i < list.length; i++) { if (list[i].quote && !mark(list[i].quote, list[i].color, list[i].id, list[i].body || '')) missing.push(list[i].id); }
   post({ type: 'highlights', missing: missing });
 };
 root.addEventListener('click', function (e) {
@@ -318,11 +422,34 @@ root.addEventListener('click', function (e) {
   }
   if (t.closest('.rc-cards')) { post({ type: 'cards' }); return; }
   if (t.closest('.next-card')) { post({ type: 'next' }); return; }
+  var op = t.closest('[data-open]'); if (op) { post({ type: 'open', id: Number(op.getAttribute('data-open')) }); return; }
   var go = t.closest('[data-go]'); if (go) { post({ type: 'go', to: go.getAttribute('data-go') }); return; }
   var g = t.closest('.gl'); if (g) { post({ type: 'term', fa: g.getAttribute('data-t') }); return; }
-  var m = t.closest('mark.hl');
+  var m = t.closest('mark.hl, .math-block[data-note]');
   if (m) post({ type: 'note', id: Number(m.getAttribute('data-note')) });
 });
+// With a mouse: resting on a highlight that has a note shows the note above it.
+(function () {
+  if (root.__tipBound || !(window.matchMedia && window.matchMedia('(hover: hover)').matches)) return;
+  root.__tipBound = true;
+  var tip = null;
+  function hide() { if (tip) { tip.remove(); tip = null; } }
+  root.addEventListener('mouseover', function (e) {
+    var m = e.target && e.target.closest ? e.target.closest('[data-body]') : null;
+    if (!m) { hide(); return; }
+    if (tip && tip.__for === m) return;
+    hide();
+    tip = document.createElement('div'); tip.className = 'hl-tip' + (root.classList.contains('dark') ? ' dark' : ''); tip.__for = m;
+    tip.textContent = m.getAttribute('data-body');
+    document.body.appendChild(tip);
+    var r = m.getClientRects()[0] || m.getBoundingClientRect(), h = tip.offsetHeight, w = tip.offsetWidth;
+    var top = r.top - h - 8; if (top < 8) top = r.bottom + 8;
+    var left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+    tip.style.top = top + 'px'; tip.style.left = left + 'px';
+  });
+  root.addEventListener('mouseleave', hide);
+  window.addEventListener('scroll', hide, true);
+})();
 // Show where an important point is in the notes: find it, scroll to it, light it up for a moment.
 // A numbered box on this page («[[#name]]»): scroll to it and light it up. False when it is in another section.
 root.__box = function (name) {
@@ -341,7 +468,7 @@ root.__flash = function (q) {
   q = norm(q || '').trim(); if (!q) return;
   var nodes = textNodes(), hit = null;
   for (var k = 0; k < nodes.length && !hit; k++) {
-    var v = nodes[k].nodeValue.replace(/\s/g, ' '), at = v.indexOf(q);
+    var v = nodes[k].nodeValue.replace(/\\s/g, ' '), at = v.indexOf(q);
     if (at >= 0) { var after = nodes[k].splitText(at + q.length); var mid = nodes[k].splitText(at); void after; hit = mid; }
   }
   if (!hit) { post({ type: 'flash_missing' }); return; }
@@ -369,15 +496,28 @@ root.__setTerms = function (list) {
     }
   }
 };
-var selTimer = null;
-document.addEventListener('selectionchange', function () {
-  clearTimeout(selTimer);
-  selTimer = setTimeout(function () {
-    var sel = window.getSelection(); var text = sel ? sel.toString() : '';
-    if (sel && sel.rangeCount && !root.contains(sel.getRangeAt(0).commonAncestorContainer)) text = '';
-    post({ type: 'selection', text: text.slice(0, 2000) });
-  }, 250);
-});
+// The selection, told to the app as a quote (formulas as LaTeX). Some Android WebViews never fire «selectionchange»,
+// so the selection is also checked after a touch ends and twice a second while the page is open.
+var selTimer = null, lastSent = null;
+root.__lastQuote = ''; root.__lastQuoteAt = 0;
+function reportSelection() {
+  if (!root.isConnected) return;
+  var q = selectedQuote().slice(0, 2000);
+  if (q) { root.__lastQuote = q; root.__lastQuoteAt = Date.now(); }
+  if (q === lastSent) return;
+  lastSent = q;
+  post({ type: 'selection', text: q });
+}
+function soon() { clearTimeout(selTimer); selTimer = setTimeout(reportSelection, 250); }
+document.addEventListener('selectionchange', soon);
+document.addEventListener('touchend', soon);
+document.addEventListener('mouseup', soon);
+var selPoll = setInterval(function () { if (!root.isConnected) { clearInterval(selPoll); return; } reportSelection(); }, 500);
+// The phone's own selection menu («هایلایت», «یادداشت»): that menu closes the selection, so the last quote is used.
+root.__menu = function (action, fallback) {
+  var q = selectedQuote() || (Date.now() - root.__lastQuoteAt < 4000 ? root.__lastQuote : '') || norm(fallback || '').trim();
+  post({ type: 'menu', action: action, text: q.slice(0, 2000) });
+};
 root.addEventListener('copy', function (e) {
   var text = (window.getSelection() || '').toString();
   if (text.length > MAX_COPY) { e.preventDefault(); post({ type: 'copy_blocked' }); }
@@ -461,7 +601,23 @@ export type ChapterEnd = {
   /** The learner's chapter: complete (read and tested), or what is left. Null for a guest. */
   progress?: { state: 'complete' | 'tests' | 'notes'; tests_left: number; notes_left: number } | null;
 };
-export type PageEnd = { nextTitle?: string | null; status?: SectionStatus | null; chapterEnd?: ChapterEnd | null };
+/** A chapter's introduction page: its number, its sections with the learner's state, and where to go on. */
+export type ChapterIntro = {
+  number: number | null;
+  sections: { id: number; title: string; locked: boolean; state: 'done' | 'read' | 'empty' }[];
+  questions: number;
+  flashcards: number;
+  continue_id: number | null;
+  started: boolean;
+};
+export type PageEnd = {
+  nextTitle?: string | null;
+  status?: SectionStatus | null;
+  chapterEnd?: ChapterEnd | null;
+  /** On a chapter's introduction: the chapter (drawn above the text, sections and «ادامه» below). */
+  intro?: ChapterIntro | null;
+  introTitle?: string;
+};
 
 const escHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const fa = (n: number) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
@@ -469,6 +625,7 @@ const fa = (n: number) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'
 /** The end of a section: what is left here (each part opens directly), then the next section, or the chapter's end. */
 export function pageEndHtml(end?: PageEnd): string {
   if (!end) return '';
+  if (end.intro) return introEndHtml(end.intro);
   let html = '';
   const s = end.status;
   if (s && (s.questions || s.cards || s.read)) {
@@ -522,4 +679,56 @@ export function pageEndHtml(end?: PageEnd): string {
     html += `<div class="ch-end"><div class="ch-title">${title}</div>${text ? `<div class="ch-text">${text}</div>` : ''}${main}${second}</div>`;
   }
   return html;
+}
+
+/** A small lemon, one wedge per section (the same drawing as LemonProgress). */
+function lemonSvg(states: ('done' | 'read' | 'empty')[], size: number): string {
+  const fill = { done: '#FFC414', read: '#FFDB5C', empty: '#ECE3C2' };
+  const pt = (r: number, deg: number) => {
+    const a = ((deg - 90) * Math.PI) / 180;
+    return `${(r * Math.cos(a)).toFixed(2)} ${(r * Math.sin(a)).toFixed(2)}`;
+  };
+  const list = states.length > 1 ? states : Array.from({ length: 8 }, () => states[0] ?? 'empty');
+  const n = list.length;
+  const stroke = n > 16 ? 3.5 : n > 8 ? 4.5 : 6;
+  const wedges = list
+    .map((st, i) => {
+      const a0 = (i * 360) / n, a1 = ((i + 1) * 360) / n;
+      return `<path d="M0 0 L${pt(76, a0)} A76 76 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${pt(76, a1)}Z" fill="${fill[st]}" stroke="#fff" stroke-width="${stroke}" stroke-linejoin="round"/>`;
+    })
+    .join('');
+  return `<svg class="ci-lemon" width="${size}" height="${size}" viewBox="-100 -100 200 200" aria-hidden="true"><circle r="98" fill="#F5C518"/><circle r="98" fill="none" stroke="#E0AE0B" stroke-width="3"/><circle r="87" fill="#fff"/>${wedges}<circle r="9" fill="#fff"/></svg>`;
+}
+
+/** Above a chapter's introduction: the dark card with its number, title, sizes and lemon. */
+export function pageStartHtml(end?: PageEnd): string {
+  const c = end?.intro;
+  if (!c) return '';
+  const sizes = [
+    c.sections.length ? `${fa(c.sections.length)} بخش` : '',
+    c.questions ? `${fa(c.questions)} تست` : '',
+    c.flashcards ? `${fa(c.flashcards)} فلش‌کارت` : '',
+  ].filter(Boolean).join('، ');
+  const label = c.number ? `مقدمه‌ی فصل ${fa(c.number)}` : 'مقدمه‌ی فصل';
+  return `<div class="ci-head"><div class="ci-text"><div class="ci-label">${label}</div><div class="ci-title">${escHtml(end?.introTitle ?? '')}</div>${sizes ? `<div class="ci-sizes">${sizes}</div>` : ''}</div>${c.sections.length ? lemonSvg(c.sections.map((x) => x.state), 64) : ''}</div>`;
+}
+
+/** Below a chapter's introduction: its sections (tap to open) and «ادامه». */
+function introEndHtml(c: ChapterIntro): string {
+  if (!c.sections.length) return '';
+  const rows = c.sections
+    .map((x, i) => {
+      const mark = x.locked
+        ? '<span class="ci-st ci-lock">🔒</span>'
+        : x.state === 'done'
+          ? '<span class="ci-st ci-done">✓</span>'
+          : `<span class="ci-st${x.state === 'read' ? ' ci-read' : ''}"></span>`;
+      return `<a class="ci-row${x.id === c.continue_id && c.started ? ' ci-on' : ''}" data-open="${x.id}" role="button">${mark}<span class="ci-n">${fa(i + 1)}.</span><span class="ci-t">${escHtml(x.title)}</span><span class="ci-go">←</span></a>`;
+    })
+    .join('');
+  const at = c.sections.findIndex((x) => x.id === c.continue_id);
+  const go = c.continue_id
+    ? `<a class="ch-btn ch-main ci-continue" data-open="${c.continue_id}" role="button">${c.started && at >= 0 ? `ادامه از بخش ${fa(at + 1)}` : 'شروع فصل'} ←</a>`
+    : '';
+  return `<div class="ci-list"><div class="ci-h">بخش‌های این فصل</div>${rows}</div>${go}`;
 }

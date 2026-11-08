@@ -9,7 +9,8 @@ const KEYS = {
 } as const;
 
 export type ReaderTheme = 'white' | 'paper' | 'sepia' | 'dark';
-export type ReaderPrefs = { fontSize: number; dark?: boolean; theme?: ReaderTheme; lineHeight?: number };
+/** justify: lesson paragraphs aligned on both sides (the default); false keeps them right-aligned. */
+export type ReaderPrefs = { fontSize: number; dark?: boolean; theme?: ReaderTheme; lineHeight?: number; justify?: boolean };
 
 export type LastSection = { id: number; title: string; bookTitle: string; bookSlug: string };
 /** Where the reader is in one book: the section, notes or summary, and how far down (0–100). */

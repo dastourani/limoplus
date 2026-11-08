@@ -21,6 +21,7 @@ import { setNumbering } from '../../lib/numbering';
 import { useWide } from '../../lib/layout';
 import { ChapterSide } from '../../components/ChapterSide';
 import { parseTerms, type Term } from '../../lib/reviewCard';
+import { quoteText } from '../../lib/noteQuote';
 import { offlineBooks, offlineSection } from '../../lib/offline';
 import { storage, type ReaderTheme } from '../../lib/storage';
 import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
@@ -88,6 +89,7 @@ export default function Section() {
   const [fontSize, setFontSize] = useState(17);
   const [theme, setTheme] = useState<ReaderTheme>('paper');
   const [lineHeight, setLineHeight] = useState(2);
+  const [justify, setJustify] = useState(true);
   const [panelOpen, setPanelOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -145,6 +147,7 @@ export default function Section() {
         setFontSize(p.fontSize);
         setTheme(p.theme ?? (p.dark ? 'dark' : 'paper'));
         setLineHeight(p.lineHeight ?? 2);
+        setJustify(p.justify ?? true);
       }
     });
   }, [load]);
@@ -189,11 +192,12 @@ export default function Section() {
     }
   }, [node, user, offline]);
 
-  const savePrefs = (next: { fontSize?: number; theme?: ReaderTheme; lineHeight?: number }) => {
-    const prefs = { fontSize: next.fontSize ?? fontSize, theme: next.theme ?? theme, lineHeight: next.lineHeight ?? lineHeight };
+  const savePrefs = (next: { fontSize?: number; theme?: ReaderTheme; lineHeight?: number; justify?: boolean }) => {
+    const prefs = { fontSize: next.fontSize ?? fontSize, theme: next.theme ?? theme, lineHeight: next.lineHeight ?? lineHeight, justify: next.justify ?? justify };
     setFontSize(prefs.fontSize);
     setTheme(prefs.theme);
     setLineHeight(prefs.lineHeight);
+    setJustify(prefs.justify);
     storage.setReader(prefs);
   };
 
@@ -265,7 +269,17 @@ export default function Section() {
 
   const terms = useMemo(() => parseTerms(node?.summary ?? ''), [node?.summary]);
   const pageEnd = useMemo(
-    () => (node ? { nextTitle: node.next_title, status: node.status, chapterEnd: node.chapter_end } : undefined),
+    () =>
+      node
+        ? {
+            // The last section shows the chapter's end (and its own «فصل بعد»), not a plain «بخش بعد».
+            nextTitle: node.chapter_end ? null : node.next_title,
+            status: node.status,
+            chapterEnd: node.chapter_end,
+            intro: node.intro,
+            introTitle: node.title,
+          }
+        : undefined,
     [node],
   );
   const termWords = useMemo(() => terms.map((t) => t.fa), [terms]);
@@ -278,6 +292,13 @@ export default function Section() {
         goTo(e.dir);
       }
     } else if (e.type === 'next') turnBy(1);
+    else if (e.type === 'open') {
+      // A section in a chapter's introduction, or its «ادامه».
+      if (!leaving.current) {
+        leaving.current = true;
+        router.replace({ pathname: `/section/${e.id}`, params: { from: '1', title: node?.intro?.sections.find((x) => x.id === e.id)?.title ?? '' } });
+      }
+    }
     else if (e.type === 'go' && node) {
       const end = node.chapter_end;
       const book = node.breadcrumb.find((b) => b.kind === 'book');
@@ -309,6 +330,16 @@ export default function Section() {
     } else if (e.type === 'term') {
       setTerm(terms.find((t) => t.fa === e.fa) ?? null);
     } else if (e.type === 'selection') setSelection(e.text.trim());
+    else if (e.type === 'menu') {
+      // The phone's own selection menu.
+      const quote = e.text.trim() || selection;
+      if (!quote) flash('متنی انتخاب نشده است.');
+      else if (e.action === 'highlight') addHighlight('yellow', quote);
+      else {
+        setNoteText('');
+        setNoteSheet({ quote });
+      }
+    }
     else if (e.type === 'copy_blocked') flash('کپی متن طولانی مجاز نیست.');
     else if (e.type === 'highlights') setMissing(e.missing);
     else if (e.type === 'note') {
@@ -332,14 +363,14 @@ export default function Section() {
   };
 
   const highlights = useMemo(
-    () => notes.filter((n) => n.quote && n.mode === mode).map((n) => ({ id: n.id, quote: n.quote, color: n.color })),
+    () => notes.filter((n) => n.quote && n.mode === mode).map((n) => ({ id: n.id, quote: n.quote, color: n.color, body: n.body })),
     [notes, mode],
   );
 
-  const addHighlight = async (color: string, body = '') => {
-    if (!node || !requireLogin(user, 'برای هایلایت و یادداشت وارد شوید؛ روی همه‌ی دستگاه‌هایتان می‌ماند.')) return;
+  const addHighlight = async (color: string, quote = selection) => {
+    if (!node || !quote || !requireLogin(user, 'برای هایلایت و یادداشت وارد شوید؛ روی همه‌ی دستگاه‌هایتان می‌ماند.')) return;
     try {
-      const note = await endpoints.addNote(node.id, { quote: selection, body, color, mode });
+      const note = await endpoints.addNote(node.id, { quote, body: '', color, mode });
       setNotes((list) => [...list, note]);
       setSelection('');
       reader.current?.clearSelection();
@@ -462,8 +493,16 @@ export default function Section() {
   if (error || !node) return <Screen><Header /><ErrorState message={error?.message ?? 'پیدا نشد.'} onRetry={load} /></Screen>;
 
   const chapter = node.breadcrumb[node.breadcrumb.length - 1];
+  const isIntro = node.kind === 'chapter';
   // «فصل ۲: تابش و اتم»: the number comes from the chapter's place in the book.
-  const chapterLabel = chapter ? (chapter.kind === 'chapter' && chapter.number ? `فصل ${toPersianDigits(chapter.number)}، ${chapter.title}` : chapter.title) : '';
+  const chapterLabel = isIntro
+    ? chapter?.title ?? ''
+    : chapter
+      ? chapter.kind === 'chapter' && chapter.number
+        ? `فصل ${toPersianDigits(chapter.number)}، ${chapter.title}`
+        : chapter.title
+      : '';
+  const pageTitle = isIntro ? (node.intro?.number ? `مقدمه‌ی فصل ${toPersianDigits(node.intro.number)}` : 'مقدمه‌ی فصل') : node.title;
   // The panel's labels (boxes in the notes, parts of the summary), before the text is drawn.
   setLabels(node.labels);
   setNumbering(node.numbering);
@@ -484,7 +523,7 @@ export default function Section() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین، ${chapterLabel}` : chapterLabel}</Text>
-          <Text style={[styles.title, rtl, { color: ink }]} numberOfLines={1}>{node.title}</Text>
+          <Text style={[styles.title, rtl, { color: ink }]} numberOfLines={1}>{pageTitle}</Text>
         </View>
         <Pressable onPress={toggleBookmark} disabled={bookmarkBusy} style={[styles.icon, bookmarkBusy && { opacity: 0.35 }]} accessibilityLabel="نشان کردن">
           <Icon name={bookmarked ? 'bookmark-check' : 'bookmark'} size={22} color={bookmarked ? colors.lemon : ink} />
@@ -520,6 +559,7 @@ export default function Section() {
           dark={dark}
           sepia={theme === 'sepia'}
           lineHeight={lineHeight}
+          justify={justify}
           highlights={highlights}
           onEvent={onEvent}
           turn={{ next: !!node.next_id, prev: !!node.previous_id }}
@@ -617,10 +657,23 @@ export default function Section() {
             </Pressable>
           ))}
         </View>
+        <Text style={[styles.panelLabel, rtl]}>چینش پاراگراف‌ها</Text>
+        <View style={styles.themes}>
+          {(
+            [
+              [true, 'تراز (دو طرف)'],
+              [false, 'راست‌چین'],
+            ] as const
+          ).map(([value, label]) => (
+            <Pressable key={label} onPress={() => savePrefs({ justify: value })} style={[styles.lh, justify === value && styles.themeOn]} accessibilityRole="radio" accessibilityState={{ checked: justify === value }}>
+              <Text style={{ fontWeight: '700', color: colors.ink }}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
       </Sheet>
 
       <Sheet visible={!!noteSheet} onClose={closeNoteSheet} title={noteSheet?.note ? 'یادداشت' : 'یادداشت تازه'}>
-        {!!(noteSheet?.note?.quote || noteSheet?.quote) && <Text style={[styles.quote, rtl]}>{noteSheet?.note?.quote || noteSheet?.quote}</Text>}
+        {!!(noteSheet?.note?.quote || noteSheet?.quote) && <Text style={[styles.quote, rtl]}>{quoteText(noteSheet?.note?.quote || noteSheet?.quote || '')}</Text>}
         <TextInput value={noteText} onChangeText={setNoteText} multiline placeholder="یادداشت شما…" style={styles.noteInput} maxLength={5000} />
         <Button label="ذخیره" onPress={saveNote} loading={noteBusy} />
         {noteSheet?.note && <Button label="حذف" variant="outline" onPress={() => deleteNote(noteSheet.note!)} />}
@@ -629,19 +682,23 @@ export default function Section() {
       <Sheet visible={notesOpen} onClose={() => setNotesOpen(false)} title="یادداشت‌ها و هایلایت‌های این بخش">
         {notes.length === 0 && <Text style={[styles.help, rtl]}>متنی را انتخاب کنید تا هایلایت یا یادداشت بگذارید.</Text>}
         {notes.map((n) => (
-          <Pressable
-            key={n.id}
-            onPress={() => {
-              setNotesOpen(false);
-              setNoteText(n.body);
-              setNoteSheet({ note: n });
-            }}
-            style={styles.noteRow}
-          >
-            {!!n.quote && <Text style={[styles.quote, rtl, { backgroundColor: NOTE_COLORS.find(([c]) => c === n.color)?.[1] }]}>{n.quote}</Text>}
-            {!!n.body && <Text style={[styles.help, rtl, { color: colors.ink }]}>{n.body}</Text>}
-            {missingNotes.some((m) => m.id === n.id) && <Text style={[styles.help, rtl]}>متن این بخش ویرایش شده و جای این هایلایت پیدا نشد.</Text>}
-          </Pressable>
+          <View key={n.id} style={styles.noteRow}>
+            <Pressable
+              onPress={() => {
+                setNotesOpen(false);
+                setNoteText(n.body);
+                setNoteSheet({ note: n });
+              }}
+              style={{ flex: 1, gap: 6 }}
+            >
+              {!!n.quote && <Text style={[styles.quote, rtl, { backgroundColor: NOTE_COLORS.find(([c]) => c === n.color)?.[1] }]}>{quoteText(n.quote)}</Text>}
+              {!!n.body && <Text style={[styles.help, rtl, { color: colors.ink }]}>{n.body}</Text>}
+              {missingNotes.some((m) => m.id === n.id) && <Text style={[styles.help, rtl]}>متن این بخش ویرایش شده و جای این هایلایت پیدا نشد.</Text>}
+            </Pressable>
+            <Pressable onPress={() => deleteNote(n)} hitSlop={8} style={styles.noteX} accessibilityRole="button" accessibilityLabel="حذف">
+              <Icon name="x" size={18} color={colors.muted} />
+            </Pressable>
+          </View>
         ))}
         <View style={{ paddingVertical: 8 }}>
           <ReportButton
@@ -709,6 +766,7 @@ const styles = StyleSheet.create({
   quote: { fontSize: 15, lineHeight: 28, color: colors.ink, backgroundColor: '#FFE98A', borderRadius: 8, padding: 8 },
   noteInput: { minHeight: 110, borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.sm, padding: 12, textAlign: 'right', textAlignVertical: 'top', writingDirection: 'rtl', fontSize: 15 },
   help: { fontSize: 13, color: colors.muted, lineHeight: 22 },
-  noteRow: { gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
+  noteRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
+  noteX: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   link: { color: colors.greenDark, fontWeight: '800', paddingVertical: 8 },
 });

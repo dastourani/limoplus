@@ -2,7 +2,7 @@ import type { Label } from '../lib/labels';
 import type { Numbering, RefTarget } from '../lib/numbering';
 import { api } from './client';
 import type { ReadingNext } from '../components/home/ReadingCards';
-import type { ChapterEnd, SectionStatus } from '../lib/renderMarkdown';
+import type { ChapterEnd, ChapterIntro, SectionStatus } from '../lib/renderMarkdown';
 
 export type Major = { slug: string; name: string; color: string; is_coming_soon: boolean };
 export type BookListItem = {
@@ -93,6 +93,8 @@ export type NodeDetail = {
   chapter_end?: ChapterEnd | null;
   /** Signed-in learners: what is left in this section. */
   status?: SectionStatus | null;
+  /** A chapter's own page is its introduction: its sections and where to go on. */
+  intro?: ChapterIntro | null;
 };
 export type Question = {
   id: number;
