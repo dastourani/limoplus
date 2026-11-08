@@ -362,6 +362,25 @@ class BookWaitlistAdmin(admin.ModelAdmin):
         return False
 
 
+class BannerBookFilter(admin.SimpleListFilter):
+    """«کتاب مخاطب»: banners for the readers of one book, or for everyone (targeting by major is gone)."""
+
+    title = "کتاب مخاطب"
+    parameter_name = "audience"
+
+    def lookups(self, request, model_admin):
+        from .filters import _book_choices
+
+        return [("all", "همه (بدون کتاب)")] + _book_choices()
+
+    def queryset(self, request, queryset):
+        if self.value() == "all":
+            return queryset.filter(audience_book__isnull=True)
+        if self.value():
+            return queryset.filter(audience_book_id=self.value())
+        return queryset
+
+
 @admin.register(Banner)
 class BannerAdmin(admin.ModelAdmin):
     list_display = ("title", "target", "is_active", "priority", "starts_at", "ends_at", "impressions", "clicks")
@@ -395,8 +414,7 @@ class BannerAdmin(admin.ModelAdmin):
             messages.warning(request, "برای شمارش معکوس، «پایان» را پر کنید؛ فعلاً بدون شمارش ذخیره شد.")
         super().save_model(request, obj, form, change)
     list_editable = ("is_active", "priority")
-    list_filter = ("is_active", "majors")
-    filter_horizontal = ("majors",)
+    list_filter = ("is_active", BannerBookFilter)
 
 
 @admin.register(CleanupRun)

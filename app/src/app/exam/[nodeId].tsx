@@ -50,11 +50,15 @@ export default function Exam() {
   const [konkurOnly, setKonkurOnly] = useState(false);
   const [years, setYears] = useState<number[]>([]);
   const [allPool, setAllPool] = useState(0);
+  // A past konkur with tests from chapters not studied yet: «فقط فصل‌های خوانده‌شده» or «همه».
+  const [unread, setUnread] = useState<{ count: number; unread: number; unread_chapters: string[] } | null>(null);
+  const [onlyStudied, setOnlyStudied] = useState(false);
   useEffect(() => {
     if (attempt) return;
     endpoints
-      .examInfo(Number(nodeId))
+      .examInfo(Number(nodeId), source ? Number(source) : undefined)
       .then((info) => {
+        if (info.source && info.source.unread > 0) setUnread(info.source);
         setAllPool(info.questions);
         setKonkur({ total: info.konkur ?? 0, years: info.years ?? [] });
         setPool(info.questions);
@@ -166,7 +170,7 @@ export default function Exam() {
       const e = await endpoints.startExam(
         Number(nodeId),
         source
-          ? { count: 100, negative_marking: negative, source: Number(source) }
+          ? { count: 100, negative_marking: negative, source: Number(source), only_studied: onlyStudied }
           : { count, negative_marking: negative, focus_mistakes: focus, konkur_only: konkurOnly, years: konkurOnly ? years : [] },
       );
       setExam(e);
@@ -235,6 +239,23 @@ export default function Exam() {
             <Card>
               <Text style={[styles.label, rtl]}>آزمون «{sourceTitle}»</Text>
               <Text style={[styles.help, rtl]}>همه‌ی تست‌های این کنکور که در این کتاب هست، به ترتیب شماره‌ی اصلی سؤال‌ها، مثل جلسه‌ی کنکور.</Text>
+              {!!unread && (
+                <View style={styles.warn}>
+                  <Text style={[styles.warnTitle, rtl]}>
+                    {unread.unread === unread.count
+                      ? 'هیچ‌کدام از فصل‌های این کنکور را هنوز تمام نکرده‌ای.'
+                      : `${toPersianDigits(unread.unread)} تست از ${toPersianDigits(unread.count)} تست این کنکور از فصل‌هایی است که هنوز تمام نکرده‌ای.`}
+                  </Text>
+                  {!!unread.unread_chapters.length && <Text style={[styles.help, rtl]}>{unread.unread_chapters.join('؛ ')}</Text>}
+                  <Text style={[styles.help, rtl]}>زدن تست فصل نخوانده نمره را پایین می‌آورد و آن تست‌ها را پیش از خواندن فصل لو می‌دهد.</Text>
+                  <View style={styles.years}>
+                    {unread.unread < unread.count && (
+                      <Pill label={`فقط فصل‌های خوانده‌شده (${toPersianDigits(unread.count - unread.unread)} تست)`} selected={onlyStudied} onPress={() => setOnlyStudied(true)} />
+                    )}
+                    <Pill label={`همه (${toPersianDigits(unread.count)} تست)`} selected={!onlyStudied} onPress={() => setOnlyStudied(false)} />
+                  </View>
+                </View>
+              )}
               <View style={styles.switchRow}>
                 <Text style={[styles.label, rtl, { flex: 1 }]}>نمره‌ی منفی (هر ۳ غلط، ۱ درست را خنثی می‌کند)</Text>
                 <Switch value={negative} onValueChange={setNegative} trackColor={{ true: colors.green }} />
@@ -397,6 +418,8 @@ const styles = StyleSheet.create({
   countOn: { backgroundColor: colors.ink, borderColor: colors.ink },
   switchRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   years: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 },
+  warn: { backgroundColor: '#FFF3E0', borderRadius: 14, padding: 12, gap: 6, marginTop: 6 },
+  warnTitle: { fontSize: 14, fontWeight: '800', color: '#8A4B00' },
   top: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
   clock: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
   timer: { fontSize: 22, fontWeight: '800', color: colors.ink },

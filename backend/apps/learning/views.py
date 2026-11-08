@@ -268,19 +268,27 @@ def book_past_exams(request, slug):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
     groups: dict[int, dict] = {}
     pool = _past_pool(access)
+    from apps.study.readiness import chapter_of, studied_chapters
+
+    # «آمادگی»: the share of each exam's tests that come from chapters the learner has studied (None for guests).
+    studied = studied_chapters(request.user, access)
     for q in pool:
+        c = chapter_of(access, q.node_id)
         for qs in q.questionsource_set.all():
             if not qs.source.year:
                 continue
-            g = groups.setdefault(qs.source_id, {"id": qs.source_id, "name": qs.source.name, "year": qs.source.year, "count": 0, "seconds": 0})
+            g = groups.setdefault(qs.source_id, {"id": qs.source_id, "name": qs.source.name, "year": qs.source.year, "count": 0, "seconds": 0, "studied": 0})
             g["count"] += 1
             g["seconds"] += q.estimated_seconds or 90
+            g["studied"] += 1 if c and c.id in studied else 0
     every = Question.objects.filter(node_id__in=access.visible_ids_under(book), is_archived=False, questionsource__source__year__gt=0).distinct().count()
     items = sorted(groups.values(), key=lambda g: (-g["year"], g["name"]))
     # «تکراری‌ها و مشابه‌ها»: the exams by name (a field's konkur, every year), with how many repeats each has.
     names = sorted({g["name"] for g in items})
     # «locked»: past-exam tests in parts of the book this learner has not bought.
-    return Response({"exams": [{**g, "minutes": max(1, round(g["seconds"] / 60))} for g in items],
+    signed_in = request.user.is_authenticated
+    return Response({"exams": [{**g, "minutes": max(1, round(g["seconds"] / 60)),
+                                "ready": round(100 * g["studied"] / g["count"]) if signed_in and g["count"] else None} for g in items],
                      "years": sorted({g["year"] for g in items}, reverse=True),
                      "names": [{"name": n, "repeats": len(_repeat_groups(pool, [n]))} for n in names],
                      "repeats": len(_repeat_groups(pool, names)),

@@ -58,6 +58,10 @@ Code, identifiers and commit messages are in English.
   The panel's text boxes are CodeMirror (`static/catalog/limo-editor.js`, source `app/admin-preview/editor.ts`, rebuild
   with `npm run build:admin-editor`): formulas and Latin runs are isolated left to right inside Persian lines; the hidden
   textarea keeps a textarea API (value, selection, 'input' events) so panel.js works on it unchanged.
+  Every panel text box has the tools of `addTools()` in panel.js: ↶ ↷, formula toolbox (`FX_TABS` + the user's macros), `[[#name]]`
+  picker, «مرتب‌سازی فارسی» (`tidyFa`, never touches formulas/links), Ctrl+Shift+2 نیم‌فاصله, find/replace (Ctrl+F), the formula under
+  the cursor drawn live, and drafts in localStorage (`draftKeeper`, offered back on reopen). Past-exam readiness and the exam report by
+  chapter: `apps/study/readiness.py`.
   Question/flashcard/section admin lists are for filtering; their «ویرایش» opens the chapter manager.
 - Labels («برچسب‌های متن», `catalog.Label`, admin): one list for boxes in the notes («درسنامه», `:::تعریف … :::`) and parts
   of the summary («چکیده», `تعریف:` + `- ` items), each with a group and one of four looks (formal/note/warn/table).

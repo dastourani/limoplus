@@ -119,6 +119,36 @@ class PastExamTests(QuizApiTests):
         flat = str(rep)
         self.assertNotIn("is_correct", flat)
 
+    def test_panel_filters(self):
+        """The panel's list filters answer (on PostgreSQL too: the solutions count runs in the database)."""
+        from django.contrib.auth import get_user_model
+
+        free, a, b = self._setup_sources()
+        free[0].solutions = [{"title": "", "body": "یک"}, {"title": "", "body": "دو"}]
+        free[0].save()
+        free[1].solutions = [{"title": "", "body": "یک"}]
+        free[1].save()
+        admin_user = get_user_model().objects.create_superuser("09120000077", "pw-123456")
+        self.client.force_login(admin_user)
+        url = "/admin/learning/question/"
+
+        def ids(params):
+            r = self.client.get(url, params)
+            self.assertEqual(r.status_code, 200)
+            return {q.pk for q in r.context["cl"].result_list}
+
+        many = {q.pk for q in Question.objects.all() if len(q.solutions or []) > 1}
+        self.assertIn(free[0].pk, many)
+        self.assertEqual(ids({"alt": "1"}), many)
+        self.assertEqual(ids({"similar": "1"}), {free[1].pk, free[2].pk})
+        self.assertEqual(ids({"konkur": "کنکور دکتری اقتصاد"}), {free[0].pk, free[2].pk})
+        self.assertEqual(ids({"year": "1401"}), {free[0].pk, free[1].pk})
+        self.assertNotIn(free[0].pk, ids({"key": "1"}))
+        self.assertTrue(ids({"role": "core"}))
+        for page, params in [("/admin/learning/report/", {"about": "question"}), ("/admin/learning/examsource/", {"name": "کنکور ارشد اقتصاد"}),
+                             ("/admin/catalog/banner/", {"audience": "all"}), ("/admin/accounts/user/", {"bought": "0", "week": "1"})]:
+            self.assertEqual(self.client.get(page, params).status_code, 200, page)
+
     def test_similar_shown_under_the_answer_and_solutions_titled(self):
         free, a, b = self._setup_sources()
         right = free[1].choices.get(is_correct=True)
@@ -160,3 +190,29 @@ class PastExamTests(QuizApiTests):
         self.assertFalse({free[1].id, free[2].id} <= ids, "two «مشابه» tests in one exam")
         e = self.client.post(f"/api/v1/nodes/{self.free_chapter.id}/exams/", {"count": 20, "negative_marking": True, "years": [1401]}, format="json")
         self.assertEqual({q["id"] for q in e.data["questions"]}, {free[0].id, free[1].id})
+
+    def test_readiness_warning_and_report_by_chapter(self):
+        from apps.study.models import ChapterReview
+
+        free, a, b = self._setup_sources()
+        book = self.free_chapter.get_parent()
+        user = User.objects.create_user("09120000066")
+        self.client.force_authenticate(user)
+        data = self.client.get(f"/api/v1/books/{book.slug}/past/").data
+        self.assertEqual({x["ready"] for x in data["exams"]}, {0})
+        info = self.client.get(f"/api/v1/nodes/{book.id}/exam-info/", {"source": a.id}).data
+        self.assertEqual((info["source"]["count"], info["source"]["unread"]), (2, 2))
+        # The learner says the chapter is finished: ready, and «فقط فصل‌های خوانده‌شده» keeps its tests.
+        from datetime import date
+
+        ChapterReview.objects.create(user=user, chapter=self.free_chapter, book=book, finished_at="2026-01-01T00:00Z", due_on=date(2026, 1, 2))
+        data = self.client.get(f"/api/v1/books/{book.slug}/past/").data
+        self.assertEqual({x["ready"] for x in data["exams"]}, {100})
+        e = self.client.post(f"/api/v1/nodes/{book.id}/exams/", {"count": 20, "negative_marking": False, "source": a.id, "only_studied": True}, format="json")
+        self.assertEqual(e.status_code, 201, e.content)
+        attempt = e.data["id"]
+        right = {q.id: q.choices.get(is_correct=True).id for q in free[:2]}
+        r = self.client.post(f"/api/v1/exams/{attempt}/submit/", {"answers": {str(free[1].id): right[free[1].id]}}, format="json").data
+        rows = r["by_chapter"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["chapter_id"], rows[0]["total"], rows[0]["right"], rows[0]["blank"]), (self.free_chapter.id, 2, 1, 1))

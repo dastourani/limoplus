@@ -10,7 +10,7 @@
  */
 import { EditorSelection, EditorState, RangeSetBuilder, Transaction } from '@codemirror/state';
 import { Decoration, type DecorationSet, Direction, EditorView, keymap, ViewPlugin, type ViewUpdate } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab, redo as cmRedo, undo as cmUndo } from '@codemirror/commands';
 
 type Upgraded = HTMLTextAreaElement & { __cm?: EditorView };
 
@@ -143,6 +143,8 @@ export function upgrade(ta: Upgraded, opts: { minLines?: number } = {}): EditorV
         EditorView.theme({ '.cm-content': { minHeight: `${Math.max(1, minLines) * 1.9 + 1}em` } }),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) ta.dispatchEvent(new Event('input', { bubbles: true }));
+          // The cursor moved: the panel shows the formula under it.
+          if (u.selectionSet || u.docChanged) ta.dispatchEvent(new Event('limo-cursor'));
         }),
         EditorView.domEventHandlers({
           keydown(e) {
@@ -184,6 +186,20 @@ export function upgrade(ta: Upgraded, opts: { minLines?: number } = {}): EditorV
   return view;
 }
 
+/** ↶ and ↷ of the panel's toolbar; false for a plain textarea (the caller uses execCommand). */
+export function undo(ta: Upgraded): boolean {
+  if (!ta.__cm) return false;
+  cmUndo(ta.__cm);
+  ta.__cm.focus();
+  return true;
+}
+export function redo(ta: Upgraded): boolean {
+  if (!ta.__cm) return false;
+  cmRedo(ta.__cm);
+  ta.__cm.focus();
+  return true;
+}
+
 /** Insert text at the selection of an upgraded textarea; false for a plain one (the caller uses execCommand). */
 export function insert(ta: Upgraded, text: string): boolean {
   if (!ta.__cm) return false;
@@ -191,4 +207,4 @@ export function insert(ta: Upgraded, text: string): boolean {
   return true;
 }
 
-(globalThis as unknown as { LimoCM: unknown }).LimoCM = { upgrade, insert, ltrRuns };
+(globalThis as unknown as { LimoCM: unknown }).LimoCM = { upgrade, insert, ltrRuns, undo, redo };

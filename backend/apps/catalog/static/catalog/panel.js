@@ -94,6 +94,382 @@
     insertText(ta, text + (v[ta.selectionEnd] && v[ta.selectionEnd] !== '\n' ? '\n' : ''), from, from + sample.length);
   }
 
+  // ---------- editor tools (every text box of the panel) ----------
+  // What the page knows about the chapter: [[#name]] targets, «دستورهای فرمول», konkur names already in use.
+  var CTX = { refs: {}, macros: {}, sources: [] };
+  function setCtx(st) {
+    if (!st) return;
+    CTX.refs = st.refs || {};
+    CTX.macros = st.macros || {};
+    CTX.sources = st.source_names || [];
+    if (P && P.setLabels && st.labels) P.setLabels(st.labels);
+    if (P && P.setMacros) P.setMacros(CTX.macros);
+    var dl = document.getElementById('limo-src-names');
+    if (!dl) { dl = h('datalist', { id: 'limo-src-names' }); document.body.appendChild(dl); }
+    dl.innerHTML = '';
+    CTX.sources.forEach(function (n) { dl.appendChild(h('option', { value: n })); });
+  }
+
+  function undoRedo(ta, back) {
+    var cm = window.LimoCM;
+    if (cm && cm.undo && (back ? cm.undo(ta) : cm.redo(ta))) return;
+    ta.focus();
+    try { document.execCommand(back ? 'undo' : 'redo'); } catch (e) { /* ignore */ }
+  }
+  // The whole text (or a part of it) replaced as one edit, so Ctrl+Z takes it back.
+  function replaceRange(ta, from, to, text) {
+    ta.focus();
+    ta.setSelectionRange(from, to);
+    if (!typeIn(ta, text)) { ta.setRangeText(text, from, to, 'end'); ta.dispatchEvent(new Event('input')); }
+  }
+
+  // The formula the cursor is in ($…$ or $$…$$), looked for in the cursor's paragraph.
+  var MATH_RE = /\$\$([\s\S]+?)\$\$|\$((?:\\.|[^$\n\\])+?)\$/g;
+  function formulaAt(text, pos) {
+    var a = text.lastIndexOf('\n\n', pos - 1); a = a < 0 ? 0 : a;
+    var b = text.indexOf('\n\n', pos); b = b < 0 ? text.length : b;
+    var part = text.slice(a, b), m;
+    MATH_RE.lastIndex = 0;
+    while ((m = MATH_RE.exec(part))) {
+      var s = a + m.index, e = s + m[0].length;
+      if (pos > s && pos < e) return { from: s, to: e, tex: (m[1] != null ? m[1] : m[2]).trim(), display: m[1] != null };
+      if (s >= pos) break;
+    }
+    return null;
+  }
+
+  // ----- formula toolbox -----
+  // Each button: [what goes in, what the button shows (default: the same), title]. «‸» is where the cursor (or the
+  // selected text) goes. Outside a formula the button's text comes inside $…$.
+  function cmds(list) { return list.split(' ').map(function (c) { return ['\\' + c]; }); }
+  var FX_TABS = [
+    ['یونانی', cmds('alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa varkappa lambda mu nu xi omicron pi varpi rho varrho sigma varsigma tau upsilon phi varphi chi psi omega digamma')
+      .concat(cmds('Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa Lambda Mu Nu Xi Omicron Pi Rho Sigma Tau Upsilon Phi Chi Psi Omega'))
+      .concat(cmds('varGamma varDelta varTheta varLambda varXi varPi varSigma varUpsilon varPhi varPsi varOmega'))],
+    ['اعداد رومی', 'Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ Ⅶ Ⅷ Ⅸ Ⅹ Ⅺ Ⅻ ⅰ ⅱ ⅲ ⅳ ⅴ ⅵ ⅶ ⅷ ⅸ ⅹ ⅺ ⅻ'.split(' ').map(function (c) { return [c, c, 'عدد رومی (در متن، بیرون از فرمول)', 'text']; })],
+    ['ساختار', [['\\frac{‸}{}', null, 'کسر'], ['\\dfrac{‸}{}', null, 'کسر بزرگ'], ['^{‸}', 'x^{\\square}', 'توان'], ['_{‸}', 'x_{\\square}', 'زیرنویس'],
+      ['_{‸}^{}', 'x_{\\square}^{\\square}', 'زیرنویس و توان'], ['\\sqrt{‸}', null, 'رادیکال'], ['\\sqrt[3]{‸}', null, 'ریشه‌ی سوم'], ['\\sqrt[n]{‸}', null, 'ریشه‌ی n‌ام'],
+      ['\\left( ‸ \\right)', null, 'پرانتز هم‌اندازه'], ['\\left[ ‸ \\right]', null, 'کروشه'], ['\\left\\{ ‸ \\right\\}', null, 'آکولاد'], ['\\left| ‸ \\right|', null, 'قدر مطلق'],
+      ['\\left\\| ‸ \\right\\|', null, 'نُرم'], ['\\langle ‸ \\rangle', null, 'ضرب داخلی'], ['\\lfloor ‸ \\rfloor', null, 'جزء صحیح'], ['\\lceil ‸ \\rceil', null, 'سقف'],
+      ['\\binom{‸}{}', null, 'ترکیب'], ['\\overline{‸}', null, 'خط رو'], ['\\underbrace{‸}_{}', null, 'آکولاد زیر'], ['\\overbrace{‸}^{}', null, 'آکولاد رو'],
+      ['\\stackrel{‸}{=}', null, 'چیزی روی علامت'], ['\\boxed{‸}', null, 'در کادر']]],
+    ['حسابان', [['\\int'], ['\\int_{‸}^{}', null, 'انتگرال معین'], ['\\iint'], ['\\iiint'], ['\\oint'], ['\\sum_{‸}^{}', null, 'سیگما'], ['\\sum_{i=1}^{n}'], ['\\prod_{‸}^{}', null, 'ضرب'],
+      ['\\lim_{‸ \\to }', '\\lim_{x \\to a}', 'حد'], ['\\lim_{x \\to \\infty}'], ['\\frac{d‸}{dx}', '\\frac{d}{dx}', 'مشتق'], ['\\frac{d^2‸}{dx^2}', '\\frac{d^2}{dx^2}', 'مشتق دوم'],
+      ['\\frac{\\partial ‸}{\\partial x}', '\\frac{\\partial}{\\partial x}', 'مشتق جزئی'], ['\\partial'], ['\\nabla'], ['\\infty'], ['\\mathrm{d}x'], ["f'(x)"], ["f''(x)"],
+      ['\\dot{‸}', '\\dot{x}'], ['\\ddot{‸}', '\\ddot{x}'], ['\\left. ‸ \\right|_{}', '\\left. f \\right|_{a}^{b}', 'جای‌گذاری حدود'], ['\\Delta'], ['\\delta']]],
+    ['ماتریس و بردار', [['\\begin{pmatrix} ‸ & \\\\ & \\end{pmatrix}', '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}', 'ماتریس ۲×۲'],
+      ['\\begin{pmatrix} ‸ & & \\\\ & & \\\\ & & \\end{pmatrix}', '\\begin{pmatrix} 1&0&0\\\\0&1&0\\\\0&0&1 \\end{pmatrix}', 'ماتریس ۳×۳'],
+      ['\\begin{bmatrix} ‸ & \\\\ & \\end{bmatrix}', '\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}', 'ماتریس با کروشه'],
+      ['\\begin{vmatrix} ‸ & \\\\ & \\end{vmatrix}', '\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}', 'دترمینان'],
+      ['\\begin{bmatrix} ‸ \\\\ \\\\ \\end{bmatrix}', '\\begin{bmatrix} x \\\\ y \\\\ z \\end{bmatrix}', 'بردار ستونی'],
+      ['\\vec{‸}', '\\vec{v}'], ['\\mathbf{‸}', '\\mathbf{v}', 'بردار پررنگ'], ['\\hat{‸}', '\\hat{i}', 'بردار یکه'], ['\\cdot'], ['\\times'], ['\\otimes'], ['\\oplus'],
+      ['^{T}', 'A^{T}', 'ترانهاده'], ['^{-1}', 'A^{-1}', 'وارون'], ['^{H}', 'A^{H}', 'ترانهاده‌ی مزدوج'], ['\\det'], ['\\operatorname{tr}'], ['\\operatorname{rank}'],
+      ['\\ldots'], ['\\cdots'], ['\\vdots'], ['\\ddots']]],
+    ['حالت‌ها و هم‌ترازی', [['\\begin{cases} ‸ & x > 0 \\\\  & x \\le 0 \\end{cases}', '\\begin{cases} a & x>0 \\\\ b & x\\le 0 \\end{cases}', 'تابع چندضابطه‌ای'],
+      ['\\begin{aligned} ‸ &= \\\\ &= \\end{aligned}', '\\begin{aligned} a &= b \\\\ &= c \\end{aligned}', 'چند خط هم‌تراز با ='],
+      ['\\begin{array}{cc} ‸ & \\\\ & \\end{array}', '\\begin{array}{cc} a & b \\\\ c & d \\end{array}', 'جدول در فرمول'],
+      ['\\\\', '\\backslash\\backslash', 'خط بعد (در cases و aligned)'], ['&', '\\&', 'ستون بعد / نقطه‌ی هم‌ترازی'],
+      ['\\,', 'a\\,b', 'فاصله‌ی کوچک'], ['\\quad', 'a\\quad b', 'فاصله'], ['\\qquad', 'a\\qquad b', 'فاصله‌ی بزرگ']]],
+    ['رابطه‌ها', [['='], ['\\neq'], ['<'], ['>'], ['\\le'], ['\\ge'], ['\\ll'], ['\\gg'], ['\\approx'], ['\\sim'], ['\\simeq'], ['\\cong'], ['\\equiv'], ['\\propto'],
+      ['\\pm'], ['\\mp'], ['\\triangleq'], ['\\coloneqq'], ['\\doteq'], ['\\perp'], ['\\parallel'], ['\\mid'], ['\\nmid']]],
+    ['مجموعه و منطق', [['\\mathbb{R}'], ['\\mathbb{N}'], ['\\mathbb{Z}'], ['\\mathbb{Q}'], ['\\mathbb{C}'], ['\\in'], ['\\notin'], ['\\ni'], ['\\subset'], ['\\subseteq'], ['\\supset'],
+      ['\\supseteq'], ['\\cup'], ['\\cap'], ['\\bigcup_{‸}', '\\bigcup_{i}'], ['\\bigcap_{‸}', '\\bigcap_{i}'], ['\\setminus'], ['\\emptyset'], ['\\varnothing'], ['A^{c}'],
+      ['\\{ ‸ \\}', '\\{\\square\\}', 'مجموعه'], ['\\{ x \\mid ‸ \\}', '\\{x \\mid \\square\\}', 'مجموعه با شرط'], ['\\forall'], ['\\exists'], ['\\nexists'], ['\\neg'], ['\\land'], ['\\lor'],
+      ['\\Rightarrow'], ['\\Leftrightarrow'], ['\\therefore'], ['\\because']]],
+    ['پیکان‌ها', cmds('to rightarrow leftarrow leftrightarrow Rightarrow Leftarrow Leftrightarrow implies iff mapsto longrightarrow Longrightarrow longleftrightarrow uparrow downarrow updownarrow nearrow searrow rightleftharpoons hookrightarrow')
+      .concat([['\\xrightarrow{‸}', '\\xrightarrow{f}', 'پیکان با نوشته'], ['\\xleftarrow{‸}', '\\xleftarrow{f}']])],
+    ['تابع‌ها', cmds('sin cos tan cot sec csc arcsin arccos arctan sinh cosh tanh log ln exp max min sup inf arg deg gcd det')
+      .concat([['\\log_{‸}', '\\log_{a}'], ['\\operatorname{sgn}'], ['\\operatorname{Re}'], ['\\operatorname{Im}'], ['\\operatorname{sinc}'], ['\\operatorname{‸}', '\\operatorname{f}', 'تابعی با نام دلخواه']])],
+    ['نشانه‌ها', [['\\hat{‸}', '\\hat{a}'], ['\\bar{‸}', '\\bar{a}'], ['\\tilde{‸}', '\\tilde{a}'], ['\\vec{‸}', '\\vec{a}'], ['\\dot{‸}', '\\dot{a}'], ['\\ddot{‸}', '\\ddot{a}'],
+      ['\\overline{‸}', '\\overline{ab}'], ['\\underline{‸}', '\\underline{ab}'], ['\\widehat{‸}', '\\widehat{ab}'], ['\\widetilde{‸}', '\\widetilde{ab}'],
+      ['\\overrightarrow{‸}', '\\overrightarrow{AB}'], ['\\cancel{‸}', '\\cancel{x}', 'خط خورده'], ['^{\\circ}', '30^{\\circ}', 'درجه'], ['\\angle'], ['\\triangle'], ['\\%'],
+      ['\\star'], ['\\ast'], ['\\dagger'], ['\\prime'], ['\\ell'], ['\\hbar'], ['\\Re'], ['\\Im'], ['\\aleph']]],
+    ['آمار و احتمال', [['\\bar{x}'], ['\\hat{\\theta}'], ['\\mu'], ['\\sigma^{2}'], ['E[‸]', 'E[X]', 'امید ریاضی'], ['\\operatorname{Var}(‸)', '\\operatorname{Var}(X)'],
+      ['\\operatorname{Cov}(‸, )', '\\operatorname{Cov}(X,Y)'], ['P(‸)', 'P(A)'], ['P(‸ \\mid )', 'P(A \\mid B)', 'احتمال شرطی'], ['\\binom{n}{k}'], ['n!'],
+      ['\\sim \\mathcal{N}(\\mu, \\sigma^{2})', null, 'توزیع نرمال'], ['\\sum_{i=1}^{n} x_i'], ['\\overline{X}'], ['\\rho'], ['\\chi^{2}'], ['\\lambda'], ['f_X(x)'], ['F_X(x)']]],
+    ['متن و قلم', [['\\text{‸}', '\\text{متن}', 'نوشته‌ی فارسی یا انگلیسی داخل فرمول'], ['\\mathrm{‸}', '\\mathrm{abc}', 'ایستاده'], ['\\mathbf{‸}', '\\mathbf{abc}', 'پررنگ'],
+      ['\\boldsymbol{‸}', '\\boldsymbol{\\alpha}', 'پررنگ (برای یونانی هم)'], ['\\mathit{‸}', '\\mathit{abc}'], ['\\mathcal{‸}', '\\mathcal{L}'], ['\\mathbb{‸}', '\\mathbb{R}'],
+      ['\\mathfrak{‸}', '\\mathfrak{g}'], ['\\mathsf{‸}', '\\mathsf{abc}'], ['\\textcolor{red}{‸}', '\\textcolor{red}{a}', 'رنگی'], ['\\textcolor{blue}{‸}', '\\textcolor{blue}{a}']]],
+  ];
+  function fxShow(item) {
+    var t = item[1] || item[0];
+    return t.replace(/‸/g, '\\square').replace(/\{\}/g, '{\\square}');
+  }
+  function insertTex(ta, item) {
+    var snip = item[0];
+    if (item[3] === 'text') { insertText(ta, snip); return; }
+    var v = ta.value, at = ta.selectionStart, end = ta.selectionEnd, sel = v.slice(at, end);
+    var inside = formulaAt(v, at);
+    if (/\\[a-zA-Z]+$/.test(snip)) snip += ' ';
+    var caret = snip.indexOf('‸');
+    var body = caret < 0 ? snip + (sel ? ' ' + sel : '') : snip.replace('‸', sel);
+    var text = inside ? body : '$' + body + '$';
+    var off = inside ? 0 : 1;
+    var c = off + (caret < 0 ? body.length : caret + sel.length);
+    ta.setSelectionRange(at, end);
+    insertText(ta, text, c, c);
+  }
+  // The user's «دستورهای فرمول»: \name, with {} for each #1, #2 of the definition.
+  function macroItems() {
+    return Object.keys(CTX.macros || {}).sort().map(function (name) {
+      var args = 0, m, re = /#(\d)/g, def = CTX.macros[name] || '';
+      while ((m = re.exec(def))) args = Math.max(args, +m[1]);
+      var snip = name + (args ? '{‸}' + new Array(args).join('{}') : '');
+      return [snip, null, name + ' = ' + def];
+    });
+  }
+  var lastFxTab = 0;
+  function fxBox(ta) {
+    var box = h('div', { class: 'fx-box' });
+    var tabs = h('div', { class: 'fx-tabs' }), grid = h('div', { class: 'fx-grid' });
+    var all = FX_TABS.concat([['دستورهای من', null]]);
+    function show(i) {
+      lastFxTab = i;
+      tabs.querySelectorAll('button').forEach(function (b, j) { b.classList.toggle('on', i === j); });
+      grid.innerHTML = '';
+      var items = all[i][1] || macroItems();
+      if (!items.length) grid.appendChild(h('span', { class: 'hint' }, 'هنوز دستوری تعریف نشده؛ از «دستورهای فرمول» در پنل اضافه کنید (مثلاً \\R برای ℝ).'));
+      items.forEach(function (it) {
+        var b = h('button', { type: 'button', title: (it[2] ? it[2] + '\n' : '') + it[0].replace(/‸/g, ''),
+          onmousedown: function (e) { e.preventDefault(); }, onclick: function (e) { e.preventDefault(); insertTex(ta, it); } });
+        if (it[3] === 'text' || !P || !P.mathHtml) b.textContent = it[1] || it[0];
+        else { try { b.innerHTML = P.mathHtml(fxShow(it)); } catch (er) { b.textContent = it[0]; } }
+        grid.appendChild(b);
+      });
+    }
+    all.forEach(function (t, i) {
+      tabs.appendChild(h('button', { type: 'button', onmousedown: function (e) { e.preventDefault(); }, onclick: function (e) { e.preventDefault(); show(i); } }, t[0]));
+    });
+    box.appendChild(tabs);
+    box.appendChild(grid);
+    box.appendChild(h('div', { class: 'hint' }, 'بیرون از فرمول، دکمه‌ها فرمول تازه‌ای با $…$ می‌سازند؛ داخل فرمول، همان‌جا می‌نشینند. اگر متنی انتخاب شده باشد، داخل ساختار می‌رود.'));
+    show(Math.min(lastFxTab, all.length - 1));
+    return box;
+  }
+
+  // ----- «مرتب‌سازی فارسی» -----
+  // ي→ی، ك→ک، ارقام عربی→فارسی، فاصله‌های اضافه، نیم‌فاصله‌ی «می/نمی»، «ها/های/تر/ترین» و «ه ی». Formulas, links,
+  // images, {#names}, [[links]] and code stay exactly as they are.
+  var ZW = '\u200c';
+  function tidyFa(text) {
+    var keep = [], n = 0;
+    var t = text.replace(/\$\$[\s\S]*?\$\$|\$(?:\\.|[^$\n\\])+?\$|`[^`\n]*`|!?\[[^\]\n]*\]\([^)\n]*\)|\[\[[^\]\n]*\]\]|\{#[^}\n]*\}|https?:\/\/\S+/g,
+      function (m) { keep.push(m); return '\uE000' + (keep.length - 1) + '\uE001'; });
+    function rep(re, by) { t = t.replace(re, function () { n++; return typeof by === 'function' ? by.apply(null, arguments) : by; }); }
+    rep(/ي/g, 'ی'); rep(/ى/g, 'ی'); rep(/ك/g, 'ک');
+    rep(/[٠-٩]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)]; });
+    rep(/[ \t]+$/gm, '');
+    rep(/(\S)[ \t]{2,}(?=\S)/g, function (m, a) { return a + ' '; });
+    rep(/[ \t]+([،؛؟])/g, function (m, p) { return p; });
+    var L = 'آ-ی';
+    rep(new RegExp('(^|[\\s(«])(ن?می)[ ]+(?=[' + L + '])', 'gm'), function (m, a, b) { return a + b + ZW; });
+    rep(new RegExp('([' + L + '])[ ]+(ها|های|هایی|هایم|هایت|هایش|هایمان|هایتان|هایشان|تر|ترین)(?=$|[\\s.،؛؟!:)»\\]])', 'gm'), function (m, a, b) { return a + ZW + b; });
+    rep(new RegExp('(ه)[ ]+(ی)(?=$|[\\s.،؛؟!:)»])', 'gm'), function (m, a, b) { return a + ZW + b; });
+    t = t.replace(/\uE000(\d+)\uE001/g, function (m, i) { return keep[+i]; });
+    return { text: t, changes: n };
+  }
+  function tidyIn(ta) {
+    var v = ta.value, a = ta.selectionStart, b = ta.selectionEnd;
+    var whole = a === b;
+    var from = whole ? 0 : a, to = whole ? v.length : b;
+    var r = tidyFa(v.slice(from, to));
+    if (r.text === v.slice(from, to)) { toast('همه‌چیز مرتب بود.'); return; }
+    replaceRange(ta, from, to, r.text);
+    ta.setSelectionRange(Math.min(a, from + r.text.length), Math.min(a, from + r.text.length));
+    toast((whole ? 'کل متن' : 'متن انتخاب‌شده') + ' مرتب شد (' + fa(r.changes) + ' مورد). با Ctrl+Z برمی‌گردد.');
+  }
+
+  // ----- find and replace -----
+  function findRe(needle, whole) {
+    if (!needle) return null;
+    var src = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/[یيى]/g, '[یيى]').replace(/[کك]/g, '[کك]').replace(/[ \u200c]/g, '[ \\u200c]');
+    if (whole) src = '(?<![\\p{L}\\p{N}])' + src + '(?![\\p{L}\\p{N}])';
+    try { return new RegExp(src, 'giu'); } catch (e) { return null; }
+  }
+  function findBar(ta, opts) {
+    var q = h('input', { type: 'text', placeholder: 'جست‌وجو…' });
+    var r = h('input', { type: 'text', placeholder: 'جایگزین با…' });
+    var whole = h('input', { type: 'checkbox' });
+    var count = h('span', { class: 'hint' });
+    function matches() {
+      var re = findRe(q.value, whole.checked), out = [], m;
+      if (!re) return out;
+      while ((m = re.exec(ta.value))) { out.push([m.index, m.index + m[0].length]); if (!m[0].length) re.lastIndex++; }
+      return out;
+    }
+    function upd() { var n = matches().length; count.textContent = q.value ? (n ? fa(n) + ' مورد' : 'پیدا نشد') : ''; return n; }
+    function go(dir) {
+      var all = matches();
+      if (!all.length) { upd(); return; }
+      var at = dir > 0 ? ta.selectionEnd : ta.selectionStart, pick = null;
+      if (dir > 0) pick = all.filter(function (x) { return x[0] >= at; })[0] || all[0];
+      else pick = all.filter(function (x) { return x[1] <= at; }).pop() || all[all.length - 1];
+      ta.setSelectionRange(pick[0], pick[1]);
+      count.textContent = fa(all.indexOf(pick) + 1) + ' از ' + fa(all.length);
+    }
+    function one() {
+      var all = matches(), a = ta.selectionStart, b = ta.selectionEnd;
+      var hit = all.filter(function (x) { return x[0] === a && x[1] === b; })[0];
+      if (!hit) { go(1); return; }
+      replaceRange(ta, a, b, r.value);
+      ta.setSelectionRange(a + r.value.length, a + r.value.length);
+      go(1);
+    }
+    function every() {
+      var re = findRe(q.value, whole.checked); if (!re) return;
+      var n = upd(); if (!n) return;
+      var v = ta.value, out = v.replace(re, function () { return r.value; });
+      replaceRange(ta, 0, v.length, out);
+      ta.setSelectionRange(0, 0);
+      upd();
+      toast(fa(n) + ' مورد جایگزین شد. با Ctrl+Z برمی‌گردد.');
+    }
+    q.addEventListener('input', upd);
+    whole.addEventListener('change', upd);
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(e.shiftKey ? -1 : 1); } });
+    r.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); one(); } });
+    function b(label, fn, title) { return h('button', { type: 'button', class: 'btn small', title: title, onmousedown: function (e) { e.preventDefault(); }, onclick: function (e) { e.preventDefault(); fn(); } }, label); }
+    var el = h('div', { class: 'find-bar' }, q, b('▲', function () { go(-1); }, 'قبلی (Shift+Enter)'), b('▼', function () { go(1); }, 'بعدی (Enter)'), count,
+      r, b('جایگزین', one), b('جایگزین همه', every), h('label', { class: 'hint' }, whole, ' کل کلمه'));
+    if (opts && opts.fileUrl) el.appendChild(h('a', { class: 'hint', href: opts.fileUrl, title: 'جست‌وجو و جایگزینی در درسنامه، چکیده، تست‌ها و فلش‌کارت‌های همه‌ی بخش‌ها' }, 'در کل فصل…'));
+    el.appendChild(h('span', { class: 'hint' }, 'ی/ي و ک/ك و فاصله/نیم‌فاصله یکی حساب می‌شوند.'));
+    return { el: el, focus: function () { var s = ta.value.slice(ta.selectionStart, ta.selectionEnd); if (s && s.indexOf('\n') < 0) q.value = s; q.focus(); q.select(); upd(); } };
+  }
+
+  // ----- [[#name]] picker -----
+  function refBox(ta) {
+    var names = Object.keys(CTX.refs || {});
+    var box = h('div', { class: 'ref-box' });
+    if (!names.length) {
+      box.appendChild(h('span', { class: 'hint' }, 'هنوز کادر یا فرمول نام‌داری در این کتاب نیست. به کادر شماره‌دار یا فرمول جدا یک نام بدهید: «:::مثال {#نام}» یا «$$…$$ {#نام}».'));
+      return box;
+    }
+    var filter = h('input', { type: 'text', placeholder: 'پیدا کردن…' });
+    var list = h('div', { class: 'ref-list' });
+    function draw() {
+      list.innerHTML = '';
+      var f = filter.value.trim();
+      names.filter(function (n) { var r = CTX.refs[n] || {}; return !f || n.indexOf(f) >= 0 || String(r.text || '').indexOf(f) >= 0; }).slice(0, 200).forEach(function (n) {
+        var r = CTX.refs[n] || {};
+        list.appendChild(h('button', { type: 'button', onmousedown: function (e) { e.preventDefault(); },
+          onclick: function (e) { e.preventDefault(); insertText(ta, '[[#' + n + ']]'); } },
+          h('b', null, r.text || n), ' ', h('span', { class: 'hint', dir: 'ltr' }, '#' + n)));
+      });
+    }
+    filter.addEventListener('input', draw);
+    box.appendChild(filter);
+    box.appendChild(list);
+    box.appendChild(h('div', { class: 'hint' }, 'در متن «[[#نام]]» می‌نشیند و اپ به جایش شماره را می‌نویسد (مثلاً «مثال ۳-۵»).'));
+    draw();
+    return box;
+  }
+
+  // ----- the tools on a toolbar -----
+  // bar: the toolbar; host: where the panels open (under the toolbar). opts: { before (a node of the bar the tools go
+  // in front of), fileUrl (the whole-file page, for «در کل فصل»), find, refs }.
+  function addTools(ta, bar, host, opts) {
+    opts = opts || {};
+    var open = null, find = null;
+    var panel = h('div', { class: 'md-panel' });
+    var fx = h('div', { class: 'fx-prev', style: 'display:none', title: 'فرمولی که مکان‌نما در آن است' });
+    host.appendChild(panel);
+    host.appendChild(fx);
+    function toggle(name, make, button) {
+      bar.querySelectorAll('button.tool').forEach(function (x) { x.classList.remove('on'); });
+      panel.innerHTML = '';
+      if (open === name) { open = null; return null; }
+      open = name;
+      var made = make();
+      panel.appendChild(made.el || made);
+      if (button) button.classList.add('on');
+      return made;
+    }
+    function tb(label, title, fn, cls) {
+      return h('button', { type: 'button', class: cls || '', title: title, onmousedown: function (e) { e.preventDefault(); }, onclick: function (e) { e.preventDefault(); fn(e.currentTarget); } }, label);
+    }
+    var first = bar.firstChild;
+    bar.insertBefore(tb('↶', 'برگرداندن (Ctrl+Z)', function () { undoRedo(ta, true); }), first);
+    bar.insertBefore(tb('↷', 'دوباره (Ctrl+Y)', function () { undoRedo(ta, false); }), first);
+    bar.insertBefore(h('span', { class: 'sep' }), first);
+    var tools = h('span', { class: 'tools' });
+    var fxBtn = tb('ƒ ابزار فرمول', 'حروف یونانی، کسر، انتگرال، ماتریس، مجموعه‌ها… (روی هر دکمه بزنید تا سر جای مکان‌نما بنشیند)', function (b) { toggle('fx', function () { return fxBox(ta); }, b); }, 'tool');
+    tools.appendChild(fxBtn);
+    if (opts.refs !== false) tools.appendChild(tb('# ارجاع', 'ارجاع به کادر یا فرمول نام‌دار: [[#نام]]', function (b) { toggle('ref', function () { return refBox(ta); }, b); }, 'tool'));
+    tools.appendChild(tb('نیم‌فاصله', 'نیم‌فاصله (Ctrl+Shift+2)', function () { insertText(ta, ZW); }));
+    tools.appendChild(tb('مرتب‌سازی فارسی', 'ي و ك عربی، فاصله‌های اضافه، نیم‌فاصله‌ی «می»، «ها»، «تر» و «ترین». روی متن انتخاب‌شده یا کل متن. فرمول‌ها دست نمی‌خورند.', function () { tidyIn(ta); }));
+    function openFind() { var b = bar.querySelector('button.find'); if (open !== 'find') find = toggle('find', function () { return findBar(ta, opts); }, b); if (find) find.focus(); }
+    if (opts.find !== false) tools.appendChild(tb('🔍 جست‌وجو', 'جست‌وجو و جایگزینی (Ctrl+F)', function (b) { if (open === 'find') toggle('find'); else openFind(); }, 'tool find'));
+    bar.insertBefore(h('span', { class: 'sep' }), opts.before || null);
+    bar.insertBefore(tools, opts.before || null);
+
+    ta.addEventListener('keydown', function (e) {
+      var k = e.ctrlKey || e.metaKey;
+      if (k && e.shiftKey && e.code === 'Digit2') { e.preventDefault(); insertText(ta, ZW); }
+      else if (k && !e.shiftKey && (e.code === 'KeyF' || e.code === 'KeyH') && opts.find !== false) { e.preventDefault(); openFind(); }
+      else if (k && !e.shiftKey && e.code === 'KeyY') { e.preventDefault(); undoRedo(ta, false); }
+      else if (e.key === 'Escape' && open) { toggle(open); }
+    });
+    // The formula under the cursor, drawn as the learner sees it.
+    var pending = false, lastTex = null;
+    function showFx() {
+      pending = false;
+      var f = formulaAt(ta.value, ta.selectionStart);
+      if (!f || !f.tex || !P || !P.mathHtml) { fx.style.display = 'none'; lastTex = null; return; }
+      if (f.tex === lastTex) { fx.style.display = ''; return; }
+      lastTex = f.tex;
+      try { fx.innerHTML = P.mathHtml(f.tex, true); } catch (e) { fx.textContent = e.message; }
+      fx.style.display = '';
+    }
+    function later() { if (!pending) { pending = true; requestAnimationFrame(showFx); } }
+    ['limo-cursor', 'input', 'keyup', 'click', 'select'].forEach(function (ev) { ta.addEventListener(ev, later); });
+  }
+
+  // ----- drafts -----
+  // While typing, the text is kept in this browser; if the page is closed before «ذخیره», the next time the same box
+  // opens it offers the draft back. A save, «دور بینداز» or getting the text back to the saved one forgets it.
+  var Drafts = {
+    k: function (key) { return 'limo.draft.' + key; },
+    get: function (key) {
+      try {
+        var d = JSON.parse(localStorage.getItem(this.k(key)) || 'null');
+        if (d && Date.now() - d.at > 30 * 864e5) { this.drop(key); return null; }
+        return d;
+      } catch (e) { return null; }
+    },
+    put: function (key, text, base) { try { localStorage.setItem(this.k(key), JSON.stringify({ text: text, base: base, at: Date.now() })); } catch (e) { /* full or blocked */ } },
+    drop: function (key) { try { localStorage.removeItem(this.k(key)); } catch (e) { /* ignore */ } },
+  };
+  function whenFa(at) {
+    var d = new Date(at), mins = Math.round((Date.now() - at) / 60000);
+    if (mins < 1) return 'همین الان';
+    if (mins < 60) return fa(mins) + ' دقیقه پیش';
+    if (mins < 24 * 60) return fa(Math.round(mins / 60)) + ' ساعت پیش';
+    try { return d.toLocaleDateString('fa-IR-u-ca-persian', { month: 'long', day: 'numeric' }); } catch (e) { return fa(Math.round(mins / 1440)) + ' روز پیش'; }
+  }
+  // key: one box; base: the saved text; get(): the text now; restore(text): put the draft back. Returns
+  // { el (the offer, or null), changed() to call on every edit, saved() to call after a save }.
+  function draftKeeper(key, base, get, restore) {
+    var d = Drafts.get(key), el = null, t = null;
+    if (d && d.text === base) { Drafts.drop(key); d = null; }
+    if (d) {
+      el = h('div', { class: 'msg warn draft-bar' },
+        h('b', null, 'پیش‌نویس ذخیره‌نشده (' + whenFa(d.at) + ')'), ' ',
+        d.base !== base ? h('span', null, 'متن ذخیره‌شده از آن موقع عوض شده؛ اگر برگردانید، روی آن نوشته می‌شود. ') : null,
+        h('button', { class: 'btn small primary', type: 'button', onclick: function () { el.remove(); restore(d.text); } }, 'برگرداندن پیش‌نویس'), ' ',
+        h('button', { class: 'btn small', type: 'button', onclick: function () { el.remove(); Drafts.drop(key); } }, 'دور بینداز'));
+    }
+    return {
+      el: el,
+      changed: function () {
+        clearTimeout(t);
+        t = setTimeout(function () { var v = get(); if (v === base) Drafts.drop(key); else Drafts.put(key, v, base); }, 600);
+      },
+      saved: function () { clearTimeout(t); Drafts.drop(key); },
+    };
+  }
+  window.LimoDrafts = Drafts;
+
   // ---------- Markdown editor ----------
 
   // Starting plots for the «نمودار» button (the lines are explained in docs/content-format.md).
@@ -147,6 +523,8 @@
       modes.appendChild(modeBtns[m[0]]);
     });
     bar.appendChild(modes);
+    var host = h('div', { class: 'md-host' });
+    addTools(textarea, bar, host, { before: modes, fileUrl: opts.fileUrl, find: !opts.inline });
     this.setMode = function (m) {
       wrap.classList.remove('mode-split', 'mode-text', 'mode-preview');
       wrap.classList.add('mode-' + m);
@@ -159,7 +537,13 @@
     textarea.parentNode.insertBefore(wrap, textarea);
     body.appendChild(textarea);
     body.appendChild(h('div', { class: 'md-prev' }, this.frame));
+    // A draft left from last time (closed before «ذخیره»): offered back above the toolbar.
+    this.drafts = opts.draft ? draftKeeper(opts.draft, textarea.value, function () { return textarea.value; }, function (text) {
+      replaceRange(textarea, 0, textarea.value.length, text);
+    }) : { el: null, changed: function () {}, saved: function () {} };
+    if (this.drafts.el) wrap.appendChild(this.drafts.el);
     wrap.appendChild(bar);
+    wrap.appendChild(host);
     // Label buttons, only in the notes («درسنامه»): each one puts the selected text (or a sample) in a box
     // «:::تعریف … :::». Not in tests or flashcards: they are blocks themselves, and blocks cannot go inside blocks.
     if (opts.labels && !opts.inline && labelList().length) {
@@ -198,6 +582,7 @@
       clearTimeout(timer);
       timer = setTimeout(function () { self.refresh(); }, 250);
       self.onChange(textarea.value);
+      self.drafts.changed();
     });
     textarea.addEventListener('keydown', function (e) {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'ذ')) { e.preventDefault(); self.wrap('**', '**', 'متن پررنگ'); }
@@ -340,8 +725,7 @@
         }
         if (res.data.state) {
           self.state = res.data.state;
-          if (P && P.setLabels) P.setLabels(self.state.labels);
-          if (P && P.setMacros) P.setMacros(self.state.macros);
+          setCtx(self.state);
           MEDIA = self.state.media_url;
         }
         if (res.data.warnings && res.data.warnings.length) {
@@ -355,8 +739,7 @@
     var self = this;
     fetch(this.api, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
       self.state = d.state;
-      if (P && P.setLabels) P.setLabels(self.state.labels);
-      if (P && P.setMacros) P.setMacros(self.state.macros);
+      setCtx(self.state);
       MEDIA = d.state.media_url;
       if (!self.fromHash()) { self.sel = d.state.sections.length ? d.state.sections[0].slug : ''; self.render(); }
     });
@@ -659,16 +1042,22 @@
     if (P && P.setNumbering) P.setNumbering({ chapter: this.state.chapter.number, start: (s && s.numbering_start) || {}, refs: this.state.refs || {} });
   };
 
+  // Drafts are kept per chapter page and box; «در کل فصل» opens the whole-file page.
+  Manager.prototype.draftKey = function (what) { return this.api + '|' + what; };
+  Manager.prototype.fileUrl = function () { return this.api.replace(/api\/$/, '') + 'file/'; };
+
   Manager.prototype.renderNotes = function (body, s) {
     var self = this;
     this.numbering(s);
     var ta = h('textarea', { rows: 22 });
     ta.value = s.full_body;
     body.appendChild(ta);
+    var ed = null;
     var bar = this.saveBar(function () {
-      self.call(Object.assign({ op: 'section.update', slug: s.slug, full_body: ta.value }, bar.fresh())).then(function (d) { self.dirty = null; self.render(); toast(['درسنامه ذخیره شد.'].concat(d && d.note ? [d.note] : [])); }).catch(function () {});
+      self.call(Object.assign({ op: 'section.update', slug: s.slug, full_body: ta.value }, bar.fresh())).then(function (d) { ed.drafts.saved(); self.dirty = null; self.render(); toast(['درسنامه ذخیره شد.'].concat(d && d.note ? [d.note] : [])); }).catch(function () {});
     }, 'ذخیره‌ی درسنامه', { fresh: true });
-    new MdEditor(ta, { variant: 'notes', labels: true, uploadUrl: this.api, onChange: function () { self.dirty = 'درسنامه'; bar.mark(true); } });
+    ed = new MdEditor(ta, { variant: 'notes', labels: true, uploadUrl: this.api, fileUrl: this.fileUrl(), draft: this.draftKey('notes:' + s.slug),
+      onChange: function () { self.dirty = 'درسنامه'; bar.mark(true); } });
     body.appendChild(bar.el);
     if (s.missing_phrases.length) body.appendChild(h('div', { class: 'msg warn' }, 'این عبارت‌های پرش چکیده در درسنامه پیدا نمی‌شوند: ' + s.missing_phrases.join('، ')));
   };
@@ -731,11 +1120,12 @@
     autoHeight(frame, 300);
     function current() { return mode === 'form' ? formToSummary(form) : rawTa.value; }
     function refresh() { frame.srcdoc = previewDoc(render(current(), 'summary')); }
+    var keeper = null;
     var bar = this.saveBar(function () {
-      self.call(Object.assign({ op: 'section.update', slug: s.slug, summary_body: current() }, bar.fresh())).then(function (d) { self.dirty = null; self.render(); toast(['چکیده ذخیره شد.'].concat(d && d.note ? [d.note] : [])); }).catch(function () {});
+      self.call(Object.assign({ op: 'section.update', slug: s.slug, summary_body: current() }, bar.fresh())).then(function (d) { keeper.saved(); self.dirty = null; self.render(); toast(['چکیده ذخیره شد.'].concat(d && d.note ? [d.note] : [])); }).catch(function () {});
     }, 'ذخیره‌ی چکیده', { fresh: true });
     var formEdited = false;
-    function changed() { if (mode === 'form') formEdited = true; self.dirty = 'چکیده'; bar.mark(true); clearTimeout(changed.t); changed.t = setTimeout(refresh, 250); }
+    function changed() { if (mode === 'form') formEdited = true; self.dirty = 'چکیده'; bar.mark(true); keeper.changed(); clearTimeout(changed.t); changed.t = setTimeout(refresh, 250); }
     // Back to the raw text: untouched if nothing was changed in the form (so Ctrl+Z keeps its history); otherwise the
     // new text goes in as one edit, which Ctrl+Z can take back too.
     function backToRaw() {
@@ -754,6 +1144,12 @@
       h('span', { class: 'hint' }, 'هر دو یکی‌اند؛ فرم همان متن خام را می‌سازد.'));
     var rawTa = h('textarea', { rows: 16, oninput: changed });
     rawTa.value = raw;
+    // A draft comes back as raw text (the form is drawn from it when switching back).
+    keeper = draftKeeper(this.draftKey('summary:' + s.slug), raw, current, function (text) {
+      if (mode !== 'raw') { self.summaryMode = 'raw'; mode = 'raw'; draw(); }
+      replaceRange(rawTa, 0, rawTa.value.length, text);
+    });
+    if (keeper.el) body.appendChild(keeper.el);
     var left = h('div');
     var grid = h('div', { class: 'two' }, left, h('div', { class: 'phone-wrap' }, frame));
     body.appendChild(switcher);
@@ -764,9 +1160,11 @@
 
     // The raw text box stays in the page the whole time (only hidden while the form is shown): taking it out of the
     // page would wipe its Ctrl+Z history.
+    var rawBar = h('div', { class: 'md-bar' }), rawHost = h('div', { class: 'md-host' });
+    addTools(rawTa, rawBar, rawHost, { fileUrl: this.fileUrl() });
     var rawBox = h('div', null,
       labelRow(function (l) { insertSummaryLabel(rawTa, l); }, null, 'برچسب:'),
-      rawTa,
+      h('div', { class: 'md-ed tools-only' }, rawBar, rawHost, rawTa),
       h('p', { class: 'hint' }, 'هر برچسب در خطی جدا با «:» (مثلاً «تعریف:») و هر مورد با «- ». با «[[عبارتی از درسنامه]]» در آخر هر مورد، لمسش اپ را به همان‌جای درسنامه می‌برد. ' +
         'چکیده‌ی بدون برچسب مثل متن معمولی نشان داده می‌شود؛ متنی که پیش از اولین برچسب بیاید، بالای کارت می‌آید. مثال‌های مفصل جایشان در درسنامه است.'));
     var formBox = h('div');
@@ -978,9 +1376,10 @@
     left.appendChild(rawBox);
     cmUpgrade(rawTa, 14);
     var formTouched = true, rawTouched = false; // what changed since the other view was last filled
+    var keeper = null;
     function changed() {
       if (mode === 'form') formTouched = true; else rawTouched = true;
-      self.dirty = kind === 'question' ? 'تست' : 'فلش‌کارت'; clearTimeout(changed.t); changed.t = setTimeout(preview, 250);
+      self.dirty = kind === 'question' ? 'تست' : 'فلش‌کارت'; if (keeper) keeper.changed(); clearTimeout(changed.t); changed.t = setTimeout(preview, 250);
     }
     rawTa.oninput = changed;
     function intoRaw(text) {
@@ -1088,14 +1487,14 @@
           var orig = h('input', { type: 'checkbox', checked: data.is_original, onchange: function () { data.is_original = orig.checked; } });
           src.appendChild(h('label', { class: 'btn small', style: 'margin-bottom:6px' }, orig, ' تألیفی (از کنکور واقعی نیست)'));
           data.sources.forEach(function (x, i) {
-            var n = h('input', { type: 'text', value: x.name, placeholder: 'نام کنکور، مثلاً «کنکور ارشد مهندسی پزشکی»، یا «کتاب ایساک مارون» (بی‌سال)', oninput: function () { x.name = n.value; } });
+            var n = h('input', { type: 'text', value: x.name, list: 'limo-src-names', placeholder: 'نام کنکور، مثلاً «کنکور ارشد مهندسی پزشکی»، یا «کتاب ایساک مارون» (بی‌سال)', oninput: function () { x.name = n.value; } });
             var y = h('input', { type: 'text', value: x.year || '', placeholder: 'سال', oninput: function () { x.year = y.value; } });
             var q = h('input', { type: 'text', value: x.number || '', placeholder: 'سؤال', oninput: function () { x.number = q.value; } });
             src.appendChild(h('div', { class: 'src-row' }, n, y, q, h('button', { class: 'btn icon danger', type: 'button', onclick: function () { data.sources.splice(i, 1); drawSrc(); } }, '✕')));
           });
           src.appendChild(h('button', { class: 'btn small', type: 'button', onclick: function () { data.sources.push({ name: '', year: '', number: '' }); drawSrc(); } }, '+ منبع کنکور'));
         })();
-        left.appendChild(field('منبع', src, '(هرگز منبع کنکور از خودتان نسازید؛ تستی که عیناً در چند کنکور آمده، چند منبع دارد)'));
+        left.appendChild(field('منبع', src, '(هرگز منبع کنکور از خودتان نسازید؛ تستی که عیناً در چند کنکور آمده، چند منبع دارد. نام کنکور را از فهرست انتخاب کنید تا همه‌جا یکسان نوشته شود)'));
         // «مشابه»: the same test that came back in another exam with a change (a separate test of this book).
         var sim = h('input', { type: 'text', value: (data.similar || []).join('، '), placeholder: 'شناسه‌ی تست‌های مشابه، جدا با «،» (مثلاً q-1401-23)',
           oninput: function () { data.similar = sim.value.split(/[,،\s]+/).filter(Boolean); changed(); } });
@@ -1153,9 +1552,9 @@
       var copy = {}; for (var k in data) if (k !== 'raw') copy[k] = data[k];
       return copy;
     }
+    function showRaw() { mode = 'raw'; formBox.style.display = 'none'; rawBox.style.display = ''; modeBtn.textContent = 'برگشت به فرم'; preview(); }
+    function showForm() { mode = 'form'; rawBox.style.display = 'none'; formBox.style.display = ''; modeBtn.textContent = 'متن خام'; preview(); }
     var modeBtn = h('button', { class: 'btn small', type: 'button', onclick: function () {
-      function showRaw() { mode = 'raw'; formBox.style.display = 'none'; rawBox.style.display = ''; modeBtn.textContent = 'برگشت به فرم'; preview(); }
-      function showForm() { mode = 'form'; rawBox.style.display = 'none'; formBox.style.display = ''; modeBtn.textContent = 'متن خام'; preview(); }
       // Nothing changed on this side since the other view was filled: just switch, both views keep their history.
       if (mode === 'form' && !formTouched) return showRaw();
       if (mode === 'raw' && !rawTouched) return showForm();
@@ -1169,13 +1568,23 @@
       h('b', null, isNew ? (kind === 'question' ? 'تست تازه' : 'فلش‌کارت تازه') : 'ویرایش ' + (kind === 'question' ? 'تست' : 'فلش‌کارت')),
       h('span', { class: 'hint' }, 'شناسه:'), h('span', { style: 'width:150px' }, slugInput), h('span', { class: 'grow' }), modeBtn);
     box.appendChild(head);
+    // A draft left from last time: the form's fields (or the raw text) come back as they were.
+    keeper = draftKeeper(this.draftKey(kind + ':' + (item ? item.slug : 'new:' + s.slug)), JSON.stringify(payload()),
+      function () { return JSON.stringify(payload()); },
+      function (text) {
+        var d; try { d = JSON.parse(text); } catch (e) { return; }
+        if (d.raw != null) { if (mode !== 'raw') showRaw(); intoRaw(d.raw); rawTouched = true; }
+        else { for (var k in d) data[k] = d[k]; if (mode !== 'form') showForm(); drawForm(); formTouched = true; }
+        changed();
+      });
+    if (keeper.el) box.appendChild(keeper.el);
     box.appendChild(h('div', { class: 'two' }, left, h('div', { class: 'phone-wrap' }, frame)));
     var bar = this.saveBar(function () {
       var req = Object.assign({ op: kind + '.save', slug: slugInput.value.trim(), data: payload(), section: s.slug }, isNew ? {} : bar.fresh());
       if (isNew) req.new = true;
-      self.call(req).then(function (d) { self.dirty = null; self.open = null; self.render(); toast(['ذخیره شد.'].concat(d && d.note ? [d.note] : [])); }).catch(function () {});
+      self.call(req).then(function (d) { keeper.saved(); self.dirty = null; self.open = null; self.render(); toast(['ذخیره شد.'].concat(d && d.note ? [d.note] : [])); }).catch(function () {});
     }, 'ذخیره', { fresh: !isNew });
-    bar.el.appendChild(h('button', { class: 'btn', type: 'button', onclick: function () { if (self.guard()) { self.dirty = null; self.open = null; self.render(); } } }, 'انصراف'));
+    bar.el.appendChild(h('button', { class: 'btn', type: 'button', onclick: function () { if (self.guard()) { keeper.saved(); self.dirty = null; self.open = null; self.render(); } } }, 'انصراف'));
     box.appendChild(bar.el);
     drawForm();
     return box;
@@ -1186,6 +1595,17 @@
   // ---------- Whole-file editor ----------
   window.LimoFileEditor = function (opts) {
     var ta = document.getElementById('file-text'), out = document.getElementById('file-result');
+    // The same tools as the chapter manager's boxes (find and replace here is over the whole chapter).
+    var edBar = h('div', { class: 'md-bar' }), edHost = h('div', { class: 'md-host' });
+    var edWrap = h('div', { class: 'md-ed tools-only file' }, edBar, edHost);
+    ta.parentNode.insertBefore(edWrap, ta);
+    edWrap.appendChild(ta);
+    addTools(ta, edBar, edHost, {});
+    fetch(opts.api, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) { setCtx(d.state); }).catch(function () {});
+    var keeper = opts.restore ? { el: null, changed: function () {}, saved: function () {} }
+      : draftKeeper(opts.api + '|file', ta.value, function () { return ta.value; }, function (text) { replaceRange(ta, 0, ta.value.length, text); });
+    if (keeper.el) edWrap.parentNode.insertBefore(keeper.el, edWrap);
+    ta.addEventListener('input', function () { keeper.changed(); });
     cmUpgrade(ta, 24);
     var checkBtn = document.getElementById('file-check'), saveBtn = document.getElementById('file-save');
     var fresh = freshControls();
@@ -1237,6 +1657,7 @@
       saveBtn.disabled = true;
       post(Object.assign({ op: 'file.apply', text: ta.value, version: opts.version, restore: opts.restore, note: opts.note }, fresh.value())).then(function (d) {
         if (d.errors) { out.prepend(h('div', { class: 'msg err' }, d.errors.join(' '))); return; }
+        keeper.saved();
         location.href = opts.done;
       });
     };

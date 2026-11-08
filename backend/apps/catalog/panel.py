@@ -24,7 +24,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from apps.learning.models import Flashcard, Question, Report
+from apps.learning.models import ExamSource, Flashcard, Question, Report
 
 from . import editing
 from .editing import EditError
@@ -170,6 +170,8 @@ def chapter_state(chapter: ContentNode) -> dict:
         "macros": formula_macros(),
         "inbox": chapter.is_inbox,
         "refs": panel_refs(book),
+        # Konkur names already in use, offered in the test form (the same name must be written the same way).
+        "source_names": sorted(set(ExamSource.objects.values_list("name", flat=True)))[:1000],
         # Flashcards of the book's other chapters, for linking tests to them.
         "book_cards": _book_cards(book, chapter),
     }

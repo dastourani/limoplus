@@ -8,6 +8,7 @@ import { RichText } from '../../components/RichText';
 import { Text } from '../../components/Text';
 import { Button, Card, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { Pill } from '../../components/Pill';
+import { LemonProgress } from '../../components/LemonProgress';
 import { jalaliDate, jalaliDateTime } from '../../lib/jalali';
 import { seeded } from '../../lib/shuffle';
 import { useApi } from '../../lib/useApi';
@@ -96,6 +97,32 @@ export default function ExamResult() {
             <Text style={[styles.heroSmall, { color: colors.lemon }]}>نسبت به دفعه‌ی قبل {toPersianDigits(Math.round(score - data.previous_score))}٪ بهتر شدی.</Text>
           )}
         </View>
+        {/* «به تفکیک فصل»: where the score came from, the weakest chapter and practice for it. */}
+        {(data.by_chapter?.length ?? 0) > 1 && (
+          <Card>
+            <Text style={[styles.chTitle, rtl]}>به تفکیک فصل</Text>
+            {data.by_chapter!.map((c) => (
+              <View key={c.chapter_id} style={[styles.chRow, c.weakest && styles.chWeak]}>
+                <LemonProgress value={c.percent / 100} segments={Math.min(12, Math.max(2, c.total))} size={30} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[styles.chName, rtl]} numberOfLines={2}>{c.title}</Text>
+                  <Text style={[styles.heroSmall, rtl, { color: colors.muted }]}>
+                    {toPersianDigits(c.total)} سؤال: {toPersianDigits(c.right)} درست، {toPersianDigits(c.wrong)} غلط، {toPersianDigits(c.blank)} نزده
+                    {c.weakest ? '؛ ضعیف‌ترین فصل' : ''}
+                  </Text>
+                </View>
+                <Text style={styles.chPercent}>{toPersianDigits(c.percent)}٪</Text>
+              </View>
+            ))}
+            {data.by_chapter!.some((c) => c.weakest) && (
+              <Button
+                label={`تمرین ${data.by_chapter!.find((c) => c.weakest)!.title}`}
+                variant="outline"
+                onPress={() => router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: String(data.by_chapter!.find((c) => c.weakest)!.chapter_id) } })}
+              />
+            )}
+          </Card>
+        )}
         {data.wrong + data.blank > 0 && (
           <Button label={`مرور پاسخ‌های غلط (${toPersianDigits(data.wrong + data.blank)})`} onPress={() => setFilter('wrong')} />
         )}
@@ -174,6 +201,11 @@ const styles = StyleSheet.create({
   heroText: { fontSize: 15, color: colors.ground, fontWeight: '700' },
   heroSmall: { fontSize: 12, color: '#B9C4BC' },
   filters: { flexDirection: 'row-reverse', gap: 8 },
+  chTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  chRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingVertical: 6, paddingHorizontal: 6, borderRadius: 12 },
+  chWeak: { backgroundColor: '#FFF3E0' },
+  chName: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  chPercent: { fontSize: 16, fontWeight: '900', color: colors.ink },
   qHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   qNum: { fontSize: 15, fontWeight: '700', color: colors.ink },
   badge: { fontSize: 12, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' },

@@ -31,6 +31,11 @@ function renderMath(tex: string, display: boolean, eq?: { id: string; label: str
   return `<div class="math-block eq"${eq.id ? ` id="box-${esc(eq.id)}"` : ''} dir="ltr">${html}<span class="eq-n" aria-hidden="true">${eq.label}</span></div>`;
 }
 
+/** One formula alone (the panel's formula toolbox and the preview of the formula under the cursor). */
+export function mathHtml(tex: string, display = false): string {
+  return renderMath(tex, display);
+}
+
 /** Named display formulas are numbered over the chapter while a lesson is drawn (renderMarkdown sets this). */
 let eqCount: { chapter?: number | null; n: number } | null = null;
 function eqLabel(): string {

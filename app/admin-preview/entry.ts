@@ -5,7 +5,7 @@
  *   npm run build:admin-preview
  */
 import { coverByline, coverMotifSvg, coverPalette, MOTIFS, type CoverTheme } from '../src/lib/cover';
-import { CONTENT_CSS, renderMarkdown, renderSummary } from '../src/lib/renderMarkdown';
+import { CONTENT_CSS, mathHtml, renderMarkdown, renderSummary } from '../src/lib/renderMarkdown';
 import { allLabels, findLabel, normalizeName, setLabels } from '../src/lib/labels';
 import { setNumbering } from '../src/lib/numbering';
 import { setMacros } from '../src/lib/macros';
@@ -150,6 +150,7 @@ function bannerHtml(b: BannerInput, w = 360): string {
   CONTENT_CSS,
   renderMarkdown,
   renderSummary,
+  mathHtml,
   parseSummary,
   cells,
   jumpTarget,

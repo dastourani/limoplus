@@ -365,6 +365,8 @@ export default function Book() {
                 <View style={{ gap: 8 }}>
                   {past.exams.map((x) => (
                     <View key={x.id} style={styles.pastRow}>
+                      {/* «آمادگی»: the share of its tests from chapters already studied. */}
+                      {x.ready != null && <LemonProgress value={x.ready / 100} segments={8} size={30} />}
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.pastTitle, rtl]}>
                           {x.name} {toPersianDigits(x.year)}
@@ -372,6 +374,12 @@ export default function Book() {
                         <Text style={[styles.sectionMeta, rtl]}>
                           {toPersianDigits(x.count)} تست، حدود {toPersianDigits(x.minutes)} دقیقه
                         </Text>
+                        {x.ready != null &&
+                          (x.ready >= 100 ? (
+                            <Text style={[styles.ready, rtl]}>آماده‌ای: همه‌ی فصل‌هایش را تمام کرده‌ای</Text>
+                          ) : (
+                            <Text style={[styles.sectionMeta, rtl]}>آمادگی: {toPersianDigits(x.ready)}٪ تست‌هایش از فصل‌های تمام‌شده است</Text>
+                          ))}
                       </View>
                       <Pressable
                         onPress={() => router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: 'past', book: book.slug, source: String(x.id) } })}
@@ -720,6 +728,7 @@ const styles = StyleSheet.create({
   note: { fontSize: 13, color: colors.muted },
   pastRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.line },
   pastTitle: { fontSize: 14, fontWeight: '800', color: colors.ink },
+  ready: { fontSize: 12, fontWeight: '800', color: colors.greenDark },
   pastRepeats: { gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.line },
   pastNames: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 },
   pastBtn: { borderRadius: 999, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, paddingVertical: 6 },

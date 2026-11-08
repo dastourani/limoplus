@@ -387,8 +387,26 @@ def exam_info(request, node_id):
     for qid, year in QuestionSource.objects.filter(question_id__in=[q.id for q in pool], source__year__gt=0).values_list("question_id", "source__year").distinct():
         years[year] = years.get(year, 0) + 1
     konkur = QuestionSource.objects.filter(question_id__in=[q.id for q in pool], source__year__gt=0).values("question_id").distinct().count()
-    return Response({"questions": min(len(pool), EXAM_MAX_QUESTIONS), "title": node.title,
-                     "konkur": konkur, "years": [{"year": y, "count": n} for y, n in sorted(years.items(), reverse=True)]})
+    out = {"questions": min(len(pool), EXAM_MAX_QUESTIONS), "title": node.title,
+           "konkur": konkur, "years": [{"year": y, "count": n} for y, n in sorted(years.items(), reverse=True)]}
+    source = request.query_params.get("source")
+    if source and str(source).isdigit():
+        # Before a past konkur: how many of its tests are from chapters not studied yet, and which chapters.
+        from .readiness import chapter_label, chapter_of, studied_chapters
+
+        mine = set(QuestionSource.objects.filter(source_id=int(source), question_id__in=[q.id for q in pool]).values_list("question_id", flat=True))
+        studied = studied_chapters(request.user, access)
+        unread, chapters = 0, {}
+        for q in pool:
+            if q.id not in mine:
+                continue
+            c = chapter_of(access, q.node_id)
+            if not c or c.id not in studied:
+                unread += 1
+                if c:
+                    chapters[c.id] = chapter_label(c)
+        out["source"] = {"count": len(mine), "unread": unread, "unread_chapters": list(chapters.values())}
+    return Response(out)
 
 
 def _exam_filter(pool, data):
@@ -405,6 +423,14 @@ def _exam_filter(pool, data):
         rows = rows.filter(source_id=int(source) if str(source).isdigit() else 0)
     ids = set(rows.values_list("question_id", flat=True))
     return [q for q in pool if q.id in ids], bool(source)
+
+
+def _only_studied(request, access, pool):
+    """«فقط فصل‌های خوانده‌شده»: the tests of the chapters the learner has studied."""
+    from .readiness import chapter_of, studied_chapters
+
+    studied = studied_chapters(request.user, access)
+    return [q for q in pool if (c := chapter_of(access, q.node_id)) and c.id in studied]
 
 
 def _without_similar(picked, pool):
@@ -476,6 +502,8 @@ def start_exam(request, node_id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
     pool = [q for q in Question.objects.filter(node_id__in=access.visible_ids_under(node), is_archived=False) if _usable(access, q)]
     pool, one_exam = _exam_filter(pool, request.data)
+    if request.data.get("only_studied") in (True, "true", 1, "1"):
+        pool = _only_studied(request, access, pool)
     if not pool:
         return _err("برای این انتخاب تستی در دسترس نیست.", "no_questions")
     try:
@@ -568,7 +596,35 @@ def _exam_detail(request, attempt):
                 }
             )
         data["review"] = review
+        data["by_chapter"] = _by_chapter(request, attempt, answers, nodes)
     return data
+
+
+def _by_chapter(request, attempt, answers, nodes) -> list[dict]:
+    """The exam's results by chapter, in book order: questions, right, wrong, blank and the share right. «weakest» marks
+    the chapter with the lowest share (of those with at least two questions), for «تمرین همین فصل»."""
+    from .readiness import chapter_label, chapter_of
+
+    access = AccessMap(request.user, attempt.node)
+    rows: dict[int, dict] = {}
+    for qid in attempt.question_ids:
+        c = chapter_of(access, nodes.get(qid))
+        if not c:
+            continue
+        r = rows.setdefault(c.id, {"chapter_id": c.id, "title": chapter_label(c), "position": c.position or 0,
+                                   "total": 0, "right": 0, "wrong": 0, "blank": 0})
+        a = answers.get(qid)
+        r["total"] += 1
+        key = "blank" if not a or a.was_correct is None else "right" if a.was_correct else "wrong"
+        r[key] += 1
+    out = sorted(rows.values(), key=lambda r: r["position"])
+    for r in out:
+        r["percent"] = round(100 * r["right"] / r["total"]) if r["total"] else 0
+        r["weakest"] = False
+    candidates = [r for r in out if r["total"] >= 2] or out
+    if len(out) > 1 and candidates:
+        min(candidates, key=lambda r: (r["percent"], -r["total"]))["weakest"] = True
+    return out
 
 
 @api_view(["GET"])

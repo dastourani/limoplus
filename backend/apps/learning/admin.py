@@ -1,5 +1,5 @@
 from django.contrib import admin, messages
-from django.db.models import Count, F, Q
+from django.db.models import Count, F, Func, IntegerField, Q
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -20,19 +20,77 @@ def manager_url(node, anchor: str) -> str:
     return reverse("admin:catalog_chapter_manager", args=[chapter.pk]) + anchor
 
 
-class SourceFilter(admin.SimpleListFilter):
-    title = "منبع"
-    parameter_name = "source"
+class SourceNameFilter(admin.SimpleListFilter):
+    """The konkur by name (all its years); «تألیفی» for tests written by us."""
+
+    title = "نام کنکور"
+    parameter_name = "konkur"
 
     def lookups(self, request, model_admin):
-        return [("original", "تألیفی")] + [(str(s.pk), str(s)) for s in ExamSource.objects.all()]
+        names = sorted(set(ExamSource.objects.values_list("name", flat=True)))
+        return [("original", "تألیفی")] + [(n, n) for n in names]
 
     def queryset(self, request, queryset):
         if self.value() == "original":
             return queryset.filter(is_original=True)
         if self.value():
-            return queryset.filter(sources__pk=self.value())
+            return queryset.filter(sources__name=self.value()).distinct()
         return queryset
+
+
+class SourceYearFilter(admin.SimpleListFilter):
+    title = "سال کنکور"
+    parameter_name = "year"
+
+    def lookups(self, request, model_admin):
+        years = sorted(set(ExamSource.objects.values_list("year", flat=True)), reverse=True)
+        return [(str(y), str(y)) for y in years]
+
+    def queryset(self, request, queryset):
+        if self.value():
+            return queryset.filter(sources__year=self.value()).distinct()
+        return queryset
+
+
+class RoleFilter(admin.SimpleListFilter):
+    title = "نقش"
+    parameter_name = "role"
+
+    def lookups(self, request, model_admin):
+        return [("core", "پایه"), ("extra", "تکمیلی")]
+
+    def queryset(self, request, queryset):
+        if self.value() == "core":
+            return queryset.filter(is_extra=False)
+        if self.value() == "extra":
+            return queryset.filter(is_extra=True)
+        return queryset
+
+
+class HasSimilarFilter(YesNoFilter):
+    title = "تست مشابه دارد"
+    parameter_name = "similar"
+
+    def yes(self, qs):
+        return qs.filter(Q(similar_to__isnull=False) | Q(similar_from__isnull=False)).distinct()
+
+
+class KeyChangedFilter(YesNoFilter):
+    title = "پاسخ‌نامه‌اش اصلاح شده"
+    parameter_name = "key"
+
+    def yes(self, qs):
+        return qs.filter(key_changed_at__isnull=False)
+
+
+class JsonArrayLength(Func):
+    """Length of a JSON list column (SQLite json_array_length, PostgreSQL jsonb_array_length)."""
+
+    function = "JSON_ARRAY_LENGTH"
+    output_field = IntegerField()
+
+    def as_postgresql(self, compiler, connection, **extra):
+        return super().as_sql(compiler, connection, function="JSONB_ARRAY_LENGTH", **extra)
 
 
 class HasQuickFilter(YesNoFilter):
@@ -48,7 +106,8 @@ class HasAlternativeFilter(YesNoFilter):
     parameter_name = "alt"
 
     def yes(self, qs):
-        return qs.filter(pk__in=[q.pk for q in qs.only("pk", "solutions") if len(q.solutions or []) > 1])
+        # Counted by the database: reading every test's solutions was slow on a big bank.
+        return qs.alias(n_solutions=JsonArrayLength("solutions")).filter(n_solutions__gt=1)
 
 
 class HasFlashcardsFilter(YesNoFilter):
@@ -143,8 +202,9 @@ class _ManagedInChapter:
 class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
     anchor = "q"
     list_display = ("short_stem", "place", "difficulty", "kind", "source_label", "answers", "open_reports", "is_sample", "is_archived", "manage")
-    list_filter = (NodeBookFilter, NodeChapterFilter, SourceFilter, "difficulty", "kind", "domain", MeasuredFilter, HasQuickFilter,
-                   HasAlternativeFilter, HasFlashcardsFilter, OpenReportsFilter, "is_sample", "is_free", "is_archived")
+    list_filter = (NodeBookFilter, NodeChapterFilter, SourceNameFilter, SourceYearFilter, RoleFilter, "difficulty", "kind", "domain", MeasuredFilter,
+                   HasQuickFilter, HasAlternativeFilter, HasSimilarFilter, KeyChangedFilter, HasFlashcardsFilter, OpenReportsFilter, "is_sample",
+                   "is_free", "is_archived")
     actions = ("make_sample", "unmake_sample")
 
     @admin.action(description="قابل اشتراک شود (کاربر می‌تواند تصویرش را بفرستد، بدون جواب)")
@@ -205,17 +265,65 @@ class FlashcardAdmin(_ManagedInChapter, admin.ModelAdmin):
         return bool(obj.formula)
 
 
+class ExamSourceNameFilter(admin.SimpleListFilter):
+    title = "نام کنکور"
+    parameter_name = "name"
+
+    def lookups(self, request, model_admin):
+        return [(n, n) for n in sorted(set(ExamSource.objects.values_list("name", flat=True)))]
+
+    def queryset(self, request, queryset):
+        return queryset.filter(name=self.value()) if self.value() else queryset
+
+
 @admin.register(ExamSource)
 class ExamSourceAdmin(admin.ModelAdmin):
     list_display = ("name", "year", "group", "booklet")
     search_fields = ("name", "group")
-    list_filter = ("year",)
+    list_filter = (ExamSourceNameFilter, "year")
+
+
+class ReportBookFilter(admin.SimpleListFilter):
+    title = "کتاب"
+    parameter_name = "book"
+
+    def lookups(self, request, model_admin):
+        from apps.catalog.filters import _book_choices
+
+        return _book_choices()
+
+    def queryset(self, request, queryset):
+        from apps.catalog.models import ContentNode
+
+        book = ContentNode.objects.filter(pk=self.value()).first() if self.value() else None
+        if not book:
+            return queryset
+        return queryset.filter(Q(question__node__path__startswith=book.path) | Q(flashcard__node__path__startswith=book.path)
+                               | Q(node__path__startswith=book.path))
+
+
+class ReportKindFilter(admin.SimpleListFilter):
+    title = "درباره‌ی"
+    parameter_name = "about"
+
+    def lookups(self, request, model_admin):
+        return [("question", "تست"), ("flashcard", "فلش‌کارت"), ("text", "متن درس")]
+
+    def queryset(self, request, queryset):
+        v = self.value()
+        if v == "question":
+            return queryset.filter(question__isnull=False)
+        if v == "flashcard":
+            return queryset.filter(flashcard__isnull=False)
+        if v == "text":
+            return queryset.filter(question__isnull=True, flashcard__isnull=True, node__isnull=False)
+        return queryset
 
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
     list_display = ("created_at", "user", "reason", "status", "question", "flashcard", "node", "manage")
-    list_filter = ("status", "reason")
+    list_filter = ("status", "reason", ReportBookFilter, ReportKindFilter)
     search_fields = ("note", "user__phone")
     raw_id_fields = ("user", "question", "flashcard", "node")
     actions = ["mark_fixed", "mark_rejected"]

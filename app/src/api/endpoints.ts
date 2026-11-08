@@ -142,7 +142,8 @@ export type BoxItem = { label: string; title: string; name: string; body: string
 export type Solution = { title: string; body: string };
 /** «کنکورهای سال‌های قبل» of a book: each exam with its tests here (a test in several exams counts in each). */
 export type PastExams = {
-  exams: { id: number; name: string; year: number; count: number; minutes: number }[];
+  /** ready: the share (0–100) of its tests from chapters the learner has studied (null for guests). */
+  exams: { id: number; name: string; year: number; count: number; minutes: number; ready?: number | null }[];
   years: number[];
   /** «تکراری‌ها و مشابه‌ها»: each konkur (by name, every year) and its groups of repeated or similar tests. */
   names?: { name: string; repeats: number }[];
@@ -361,7 +362,9 @@ export type ExamPage = {
   summary: { count: number; average: number | null; best: number | null; trend: number[] };
   books: { slug: string; title: string }[];
 };
-export type ExamDetail = ExamSummary & { questions: ExamQuestion[]; review?: ExamReview[] };
+/** An exam's results for one chapter («کارنامه به تفکیک فصل»). */
+export type ChapterResult = { chapter_id: number; title: string; total: number; right: number; wrong: number; blank: number; percent: number; weakest: boolean };
+export type ExamDetail = ExamSummary & { questions: ExamQuestion[]; review?: ExamReview[]; by_chapter?: ChapterResult[] };
 export type Library = {
   reading: {
     book_slug: string;
@@ -488,11 +491,18 @@ export const endpoints = {
   reportNode: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`nodes/${id}/report/`, { body: { reason, note } }),
   startExam: (
     nodeId: number,
-    body: { count: number; negative_marking: boolean; minutes?: number; focus_mistakes?: boolean; konkur_only?: boolean; years?: number[]; source?: number },
+    body: { count: number; negative_marking: boolean; minutes?: number; focus_mistakes?: boolean; konkur_only?: boolean; years?: number[]; source?: number; only_studied?: boolean },
   ) => api<ExamDetail>(`nodes/${nodeId}/exams/`, { body }),
   exam: (id: number) => api<ExamDetail>(`exams/${id}/`),
-  examInfo: (nodeId: number) =>
-    api<{ questions: number; title: string; konkur?: number; years?: { year: number; count: number }[] }>(`nodes/${nodeId}/exam-info/`),
+  examInfo: (nodeId: number, source?: number) =>
+    api<{
+      questions: number;
+      title: string;
+      konkur?: number;
+      years?: { year: number; count: number }[];
+      /** A past konkur: how many of its tests are from chapters not studied yet. */
+      source?: { count: number; unread: number; unread_chapters: string[] };
+    }>(`nodes/${nodeId}/exam-info/${source ? `?source=${source}` : ''}`),
   pastExams: (slug: string) => api<PastExams>(`books/${slug}/past/`),
   pastQuestions: (slug: string, source: number) =>
     api<{ questions: Question[]; locked_count: number; title: string; macros?: Record<string, string> }>(`books/${slug}/past/questions/?source=${source}`),
