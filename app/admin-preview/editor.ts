@@ -20,6 +20,19 @@ const PERSIAN = /[؀-ۿﭐ-﷿ﹰ-﻿]/;
 const ltr = Decoration.mark({ class: 'cm-ltr', attributes: { dir: 'ltr' }, bidiIsolate: Direction.LTR });
 const math = Decoration.mark({ class: 'cm-math', attributes: { dir: 'ltr' }, bidiIsolate: Direction.LTR });
 const boxLine = Decoration.line({ class: 'cm-box-line' });
+// Lines inside a «:::لاتین» box are written left to right, as the learner sees them.
+const ltrLine = Decoration.line({ class: 'cm-ltr-line', attributes: { dir: 'ltr' } });
+const LATIN_OPEN = /^:::\s*(لاتین|LTR|انگلیسی|English|چپ‌چین)\s*(\{#[^}]*\})?\s*$/i;
+/** Is the line before this one inside a «لاتین» box? (scanned from the top: chapters are short) */
+function latinBefore(view: EditorView, lineNo: number): boolean {
+  let inside = false;
+  for (let n = 1; n < lineNo; n++) {
+    const t = view.state.doc.line(n).text;
+    if (LATIN_OPEN.test(t)) inside = true;
+    else if (t.trim() === ':::') inside = false;
+  }
+  return inside;
+}
 const keyMark = Decoration.mark({ class: 'cm-key' });
 
 /** The parts of a line to keep left to right: $…$ / $$…$$ formulas, and runs of Latin, digits and symbols. */
@@ -57,9 +70,13 @@ function build(view: EditorView): DecorationSet {
   const b = new RangeSetBuilder<Decoration>();
   for (const { from, to } of view.visibleRanges) {
     let pos = from;
+    let latin = latinBefore(view, view.state.doc.lineAt(from).number);
     while (pos <= to) {
       const line = view.state.doc.lineAt(pos);
       const text = line.text;
+      if (LATIN_OPEN.test(text)) latin = true;
+      else if (latin && text.trim() === ':::') latin = false;
+      else if (latin) b.add(line.from, line.from, ltrLine);
       if (/^:::/.test(text)) b.add(line.from, line.from, boxLine);
       // «تابع: …» and other «key:» lines of plots and tests: the key in its own colour.
       const key = /^([^\s:$][^:$]{0,24}):/.exec(text);
@@ -107,6 +124,7 @@ const theme = EditorView.theme({
   '.cm-math': { color: 'var(--cm-math, #3B44B8)', backgroundColor: 'var(--cm-math-bg, rgba(59,68,184,.06))', borderRadius: '3px' },
   '.cm-ltr': { color: 'var(--cm-ltr, #1f5e3a)' },
   '.cm-key': { color: 'var(--cm-key, #7A4F00)', fontWeight: '700' },
+  '.cm-ltr-line': { textAlign: 'left' },
   '.cm-box-line': { backgroundColor: 'rgba(232,185,35,.12)' },
 });
 

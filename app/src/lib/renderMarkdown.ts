@@ -75,7 +75,7 @@ export function renderSummary(source: string, opts: { hasCards?: boolean } = {})
   for (const { label, items } of parsed.parts) {
     if (!items.length) continue;
     const role = label.role ? ` rc-${label.role}` : '';
-    html += `<section class="rc-part rc-s-${label.style}${role}"><h4>${iconFor(label)}${esc(label.name)}</h4>`;
+    html += `<section class="rc-part rc-s-${label.style}${role}${label.name === LATIN ? ' rc-ltr' : ''}"><h4>${iconFor(label)}${esc(label.name)}</h4>`;
     if (label.role === 'terms') {
       for (const item of items) {
         const [fa, en = '', ...rest] = cells(item);
@@ -137,6 +137,18 @@ function qaBody(body: string): string {
   return parts
     .map((p) => (p.key ? keyed(p.key, p.lines.join('\n'), p.key === 'پاسخ' ? 'qa-a' : 'qa-q') : renderPlain(p.lines.join('\n'))))
     .join('');
+}
+
+const LATIN = 'لاتین';
+const MORE = /^\s*(بیشتر|More)\s*[:：]\s?(.*)$/i;
+
+/** «:::لاتین»: left-to-right text; after a line «بیشتر:» the rest is hidden until tapped (a word's extra details). */
+function latinBody(body: string): string {
+  const lines = body.split('\n');
+  const at = lines.findIndex((l) => MORE.test(l));
+  if (at < 0) return renderPlain(body);
+  const rest = [lines[at].match(MORE)![2], ...lines.slice(at + 1)].join('\n');
+  return renderPlain(lines.slice(0, at).join('\n')) + `<details class="ltr-more"><summary dir="rtl">بیشتر</summary>${renderPlain(rest)}</details>`;
 }
 
 const SOLUTION = /^\s*(حل|پاسخ|جواب)\s*[:：]\s?(.*)$/;
@@ -214,6 +226,12 @@ export function renderMarkdown(source: string): string {
           title += ' ' + (chapter ? `${faDigits(chapter)}-${faDigits(counts[label.name])}` : faDigits(counts[label.name]));
         }
         const id = open![2] ? ` id="box-${esc(open![2])}"` : '';
+        // «لاتین»: English text left to right, without a title bar (the text speaks for itself).
+        if (label.name === LATIN) {
+          parts.push(`<div class="box box-ltr" dir="ltr"${id}>${latinBody(lines.slice(i + 1, end).join('\n'))}</div>`);
+          i = end;
+          continue;
+        }
         parts.push(
           `<div class="box box-${label.style}${label.name === 'نمودار' ? ' box-plot' : ''}"${id}><div class="box-title">${iconFor(label)}<span>${title}</span></div>${boxBody(label.name, lines.slice(i + 1, end).join('\n'))}</div>`,
         );
@@ -375,6 +393,18 @@ mark.flash.fade { background: transparent; box-shadow: 0 0 0 0 rgba(255,212,59,0
 .tc-red { color: #C2413B; } .tc-blue { color: #2F5BC8; } .tc-green { color: #23784A; }
 .lesson.dark .tc-red { color: #FF8A80; } .lesson.dark .tc-blue { color: #8FB0FF; } .lesson.dark .tc-green { color: #7FD9A2; }
 .lesson.sepia .tc-red { color: #A8322C; } .lesson.sepia .tc-blue { color: #2A4FA8; } .lesson.sepia .tc-green { color: #1F6A40; }
+/* «لاتین» */
+.box-ltr { direction: ltr; text-align: left; background: #F6F7F2; border: 1px solid #E3E8DE; border-left: 4px solid #F5C518; }
+/* Each paragraph takes the direction of its first letter: English lines go left, a Persian line (a meaning, a tip) right. */
+.lesson:not(.compact) .box-ltr p, .lesson .box-ltr p, .lesson .box-ltr li, .lesson .box-ltr td, .lesson .box-ltr th, .lesson .box-ltr h3, .lesson .box-ltr h4,
+.lesson .rc-ltr li { unicode-bidi: plaintext; text-align: start; text-align-last: auto; }
+.lesson:not(.compact):not(.ragged) .box-ltr p { text-align: start; }
+.box-ltr ul, .box-ltr ol { padding-left: 1.4em; padding-right: 0; }
+.box-ltr h3, .box-ltr h4 { margin-top: 0; }
+.rc-ltr ul, .rc-ltr .table-wrap { direction: ltr; text-align: left; } .rc-ltr ul { padding-left: 1.4em; padding-right: 0; }
+.ltr-more { margin-top: 6px; } .ltr-more > summary { cursor: pointer; color: #56655B; font-weight: 700; width: max-content; }
+.lesson.dark .box-ltr { background: #1E2621; border-color: #33403A; border-left-color: #C9A21A; }
+.lesson.sepia .box-ltr { background: #FBF5E6; border-color: #E6D8B8; }
 /* «پرسش و پاسخ» and «تمرین» */
 .qa-k { font-weight: 900; }
 .qa-a { border-top: 1px dashed rgba(59,68,184,.3); margin-top: 6px; padding-top: 8px; }
