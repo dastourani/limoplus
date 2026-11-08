@@ -142,13 +142,20 @@ function qaBody(body: string): string {
 const LATIN = 'لاتین';
 const MORE = /^\s*(بیشتر|More)\s*[:：]\s?(.*)$/i;
 
+/** In a «لاتین» box every line is its own paragraph (a word card is written line by line), except lists and tables. */
+function ownLines(text: string): string {
+  const block = /^\s*([-*+]\s|\d+[.)]\s|\||#|$)/;
+  const lines = text.split('\n');
+  return lines.map((l, i) => (i < lines.length - 1 && !block.test(l) && !block.test(lines[i + 1]) ? l + '\n' : l)).join('\n');
+}
+
 /** «:::لاتین»: left-to-right text; after a line «بیشتر:» the rest is hidden until tapped (a word's extra details). */
 function latinBody(body: string): string {
   const lines = body.split('\n');
   const at = lines.findIndex((l) => MORE.test(l));
-  if (at < 0) return renderPlain(body);
+  if (at < 0) return renderPlain(ownLines(body));
   const rest = [lines[at].match(MORE)![2], ...lines.slice(at + 1)].join('\n');
-  return renderPlain(lines.slice(0, at).join('\n')) + `<details class="ltr-more"><summary dir="rtl">بیشتر</summary>${renderPlain(rest)}</details>`;
+  return renderPlain(ownLines(lines.slice(0, at).join('\n'))) + `<details class="ltr-more"><summary dir="rtl">بیشتر</summary>${renderPlain(ownLines(rest))}</details>`;
 }
 
 const SOLUTION = /^\s*(حل|پاسخ|جواب)\s*[:：]\s?(.*)$/;

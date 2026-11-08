@@ -8,7 +8,7 @@ def forward(apps, schema_editor):
     order = (Label.objects.order_by("-order").values_list("order", flat=True).first() or 0) + 10
     Label.objects.get_or_create(
         name="لاتین",
-        defaults={"group": "زبان", "style": "table", "numbered": False, "icon": "languages",
+        defaults={"group": "زبان", "style": "note", "numbered": False, "icon": "languages",
                   "aliases": "LTR، انگلیسی، English، چپ‌چین", "order": order},
     )
 

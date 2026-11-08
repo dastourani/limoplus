@@ -36,7 +36,7 @@ DEFAULT_LABELS = [
     ("واژه", "زبان", "table", "terms", "واژه‌ها، واژه‌نامه", "فارسی | English | معنی", False),
     ("مترادف", "زبان", "table", "", "", "واژه | مترادف", False),
     ("متضاد", "زبان", "table", "", "", "واژه | متضاد", False),
-    ("لاتین", "زبان", "table", "", "LTR، انگلیسی، English، چپ‌چین", "", False),
+    ("لاتین", "زبان", "note", "", "LTR، انگلیسی، English، چپ‌چین", "", False),
 ]
 
 NUMBERED = {"مثال", "نمودار", "تمرین"}  # numbered from the start (migrations 0016, 0018)
