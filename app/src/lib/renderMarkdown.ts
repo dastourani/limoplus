@@ -273,6 +273,10 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
   font: 14px/1.9 Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; white-space: pre-wrap; pointer-events: none; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
 .hl-tip.dark { background: #F3F1E7; color: #17201A; }
 mark.hl[data-body] { box-shadow: inset 0 -2px 0 rgba(23,32,26,.35); }
+.box-pen { margin-inline-start: auto; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: inherit;
+  opacity: .55; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; -webkit-user-select: none; user-select: none; }
+.box-pen:hover, .box-pen:active { opacity: 1; background: rgba(0,0,0,.06); }
+.box-pen svg { width: 17px; height: 17px; }
 .math-picked { background: rgba(245,197,24,.28); box-shadow: 0 0 0 2px #F5C518; border-radius: 4px; }
 @media (hover: hover) { .lesson:not(.compact) .math, .lesson:not(.compact) .math-block { cursor: pointer; } }
 .math-block.hlb { cursor: pointer; } .math-block.hlb-yellow { background: #FFE98A; } .math-block.hlb-green { background: #BFE8CF; }
@@ -603,7 +607,7 @@ function reportSelection() {
   lastSent = q;
   post({ type: 'selection', text: q });
 }
-function soon() { clearTimeout(selTimer); selTimer = setTimeout(reportSelection, 250); }
+function soon() { clearTimeout(selTimer); selTimer = setTimeout(function () { snapToFormulas(); reportSelection(); }, 250); }
 document.addEventListener('selectionchange', soon);
 document.addEventListener('touchend', soon);
 document.addEventListener('mouseup', soon);
@@ -647,6 +651,56 @@ document.addEventListener('selectionchange', function () {
   var p = root.querySelector('.math-picked');
   if (p && !(window.getSelection() && !window.getSelection().isCollapsed && p.contains(window.getSelection().anchorNode))) p.classList.remove('math-picked');
 });
+// A selection that starts or ends partway into a formula takes the whole formula (on screen too, not only in the quote).
+// Only once the selection has stood still for a moment, so dragging a handle across formulas is not disturbed.
+function snapToFormulas() {
+  var sel = window.getSelection ? window.getSelection() : null;
+  if (!sel || !sel.rangeCount || sel.isCollapsed) return;
+  var r = sel.getRangeAt(0);
+  if (!root.contains(r.commonAncestorContainer)) return;
+  function boxOf(n) { var el = n.nodeType === 1 ? n : n.parentNode; return el && el.closest ? el.closest('.math, .math-block') : null; }
+  var a = boxOf(r.startContainer), b = boxOf(r.endContainer);
+  if (!a && !b) return;
+  var whole = function (box, n, off, end) { return n === box && off === (end ? box.childNodes.length : 0); };
+  if ((!a || whole(a, r.startContainer, r.startOffset, false)) && (!b || whole(b, r.endContainer, r.endOffset, true))) return;
+  var nr = r.cloneRange();
+  if (a) nr.setStart(a, 0);
+  if (b) nr.setEnd(b, b.childNodes.length);
+  sel.removeAllRanges(); sel.addRange(nr);
+}
+// «یادداشت روی کل کادر»: a small pen in each box's title (proof, example, theorem…) selects everything in the box under
+// its title and opens the note, so a note can belong to a whole box without selecting it by hand. The pen has no text,
+// so it never becomes part of a quote.
+var PEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+(function () {
+  if (root.classList.contains('compact')) return;
+  var titles = root.querySelectorAll('.box:not(.box-plot) > .box-title');
+  for (var i = 0; i < titles.length; i++) {
+    if (titles[i].querySelector('.box-pen')) continue;
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'box-pen'; b.title = 'یادداشت روی کل کادر'; b.setAttribute('aria-label', 'یادداشت روی کل کادر');
+    b.innerHTML = PEN;
+    titles[i].appendChild(b);
+  }
+})();
+function boxQuote(box) {
+  var title = box.querySelector(':scope > .box-title');
+  var r = document.createRange();
+  if (title) r.setStartAfter(title); else r.setStart(box, 0);
+  r.setEnd(box, box.childNodes.length);
+  var sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(r);
+  var q = selectedQuote();
+  sel.removeAllRanges();
+  return q;
+}
+root.addEventListener('click', function (e) {
+  var pen = e.target && e.target.closest ? e.target.closest('.box-pen') : null;
+  if (!pen) return;
+  e.preventDefault(); e.stopPropagation();
+  var q = boxQuote(pen.closest('.box'));
+  if (q) post({ type: 'menu', action: 'note', text: q.slice(0, 2000) });
+}, true);
 // Turning the page with a finger: a clear sideways drag (not a scroll, not a long press, not inside a wide table)
 // moves the page with the finger, right here in the page (no round trip to the app, so it stays smooth on slow
 // phones). Let go far enough, or flick, and the page slides out and the app opens the next or previous section.
