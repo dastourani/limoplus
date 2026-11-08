@@ -273,6 +273,8 @@ mark.hl-yellow { background: #FFE98A; } mark.hl-green { background: #BFE8CF; } m
   font: 14px/1.9 Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; white-space: pre-wrap; pointer-events: none; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
 .hl-tip.dark { background: #F3F1E7; color: #17201A; }
 mark.hl[data-body] { box-shadow: inset 0 -2px 0 rgba(23,32,26,.35); }
+.math-picked { background: rgba(245,197,24,.28); box-shadow: 0 0 0 2px #F5C518; border-radius: 4px; }
+@media (hover: hover) { .lesson:not(.compact) .math, .lesson:not(.compact) .math-block { cursor: pointer; } }
 .math-block.hlb { cursor: pointer; } .math-block.hlb-yellow { background: #FFE98A; } .math-block.hlb-green { background: #BFE8CF; }
 .math-block.hlb-blue { background: #C9DBFF; } .math-block.hlb-pink { background: #FFD0DF; }
 .lesson.dark .math-block.hlb, .lesson.sepia .math-block.hlb { color: #17201A; }
@@ -616,6 +618,35 @@ root.addEventListener('copy', function (e) {
   if (text.length > MAX_COPY) { e.preventDefault(); post({ type: 'copy_blocked' }); }
 });
 root.addEventListener('contextmenu', function (e) { if (e.target && e.target.tagName === 'IMG') e.preventDefault(); });
+// A formula is one piece: a long press on it (a click with a mouse) selects all of it, however long, so «هایلایت» and
+// «یادداشت» take the whole formula without dragging across it. A long press usually starts the phone's own word
+// selection; it fires «contextmenu» first, and stopping that leaves the formula's selection in place.
+function pickFormula(box) {
+  if (!box || !window.getSelection) return false;
+  var sel = window.getSelection(), r = document.createRange();
+  r.selectNodeContents(box);
+  sel.removeAllRanges(); sel.addRange(r);
+  var old = root.querySelector('.math-picked'); if (old) old.classList.remove('math-picked');
+  box.classList.add('math-picked');
+  reportSelection();
+  return true;
+}
+function formulaAt(t) {
+  var box = t && t.closest ? t.closest('.math, .math-block') : null;
+  // A formula already highlighted opens its note instead (the click handler above).
+  if (!box || box.closest('mark.hl') || box.hasAttribute('data-note')) return null;
+  return box;
+}
+root.addEventListener('contextmenu', function (e) { var box = formulaAt(e.target); if (box) { e.preventDefault(); pickFormula(box); } });
+if (window.matchMedia && window.matchMedia('(hover: hover)').matches) root.addEventListener('click', function (e) {
+  var box = formulaAt(e.target), sel = window.getSelection ? window.getSelection() : null;
+  // Not when the mouse just dragged a selection that ends here.
+  if (box && (!sel || sel.isCollapsed || box.contains(sel.anchorNode))) pickFormula(box);
+});
+document.addEventListener('selectionchange', function () {
+  var p = root.querySelector('.math-picked');
+  if (p && !(window.getSelection() && !window.getSelection().isCollapsed && p.contains(window.getSelection().anchorNode))) p.classList.remove('math-picked');
+});
 // Turning the page with a finger: a clear sideways drag (not a scroll, not a long press, not inside a wide table)
 // moves the page with the finger, right here in the page (no round trip to the app, so it stays smooth on slow
 // phones). Let go far enough, or flick, and the page slides out and the app opens the next or previous section.
