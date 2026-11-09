@@ -192,6 +192,11 @@ export function upgrade(ta: Upgraded, opts: { minLines?: number } = {}): EditorV
     selectionStart: { get: () => view.state.selection.main.from, configurable: true },
     selectionEnd: { get: () => view.state.selection.main.to, configurable: true },
   });
+  // A form posts the textarea's own value, not the property above: copy the text in just before it is sent.
+  const native = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!;
+  const sync = () => native.set!.call(ta, doc());
+  ta.form?.addEventListener('submit', sync, true);
+  ta.form?.addEventListener('formdata', sync, true);
   ta.setSelectionRange = (a: number | null, b: number | null) => {
     const len = view.state.doc.length;
     const from = Math.max(0, Math.min(len, a ?? 0)), to = Math.max(0, Math.min(len, b ?? from));
