@@ -75,7 +75,7 @@ Code, identifiers and commit messages are in English.
   no summary), its sections, the next chapter's introduction. Highlights store their quote with formulas as `$tex$`
   (`READER_SCRIPT` `layout()`); the Android selection menu offers «هایلایت»/«یادداشت» (`menuItems`).
 - «:::لاتین» box (label migration catalog 0020): left-to-right text, each paragraph in its own direction (`unicode-bidi: plaintext`), a
-  «بیشتر:» line hides the rest in `<details>`; `rc-ltr` in the summary; CodeMirror shows its lines LTR. English book guide and AI
+  «بیشتر:» line hides the rest in `<details>`, a «ترجمه:» line is a closed translation; `rc-ltr` in the summary; CodeMirror shows its lines LTR. English book guide and AI
   prompt: `docs/english-book.md`.
 - Text extras: `==قرمز:…==` (red/blue/green), `:::پرسش و پاسخ` (lines «پرسش:»/«پاسخ:»), `:::تمرین` (numbered, solution after
   «حل:» hidden in `<details>`), named display formulas `$$…$$ {#name}` numbered «(۳-۲)» (counted as «رابطه» in `numbering.py`).

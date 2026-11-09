@@ -153,9 +153,33 @@ function ownLines(text: string): string {
 function latinBody(body: string): string {
   const lines = body.split('\n');
   const at = lines.findIndex((l) => MORE.test(l));
-  if (at < 0) return renderPlain(ownLines(body));
+  if (at < 0) return withTranslations(body);
   const rest = [lines[at].match(MORE)![2], ...lines.slice(at + 1)].join('\n');
-  return renderPlain(ownLines(lines.slice(0, at).join('\n'))) + `<details class="ltr-more"><summary dir="rtl">بیشتر</summary>${renderPlain(ownLines(rest))}</details>`;
+  return withTranslations(lines.slice(0, at).join('\n')) + `<details class="ltr-more"><summary dir="rtl">بیشتر</summary>${withTranslations(rest)}</details>`;
+}
+
+const TRANSLATION = /^\s*ترجمه\s*[:：]\s?(.*)$/;
+
+/** A line «ترجمه: …» under an English sentence or paragraph: its Persian translation, closed until tapped, so the reader
+ * tries the English first. */
+function withTranslations(text: string): string {
+  let html = '';
+  let run: string[] = [];
+  const flush = () => {
+    if (run.length) html += renderPlain(ownLines(run.join('\n')));
+    run = [];
+  };
+  for (const line of text.split('\n')) {
+    const m = TRANSLATION.exec(line);
+    if (!m) {
+      run.push(line);
+      continue;
+    }
+    flush();
+    html += `<details class="ltr-tr" dir="rtl"><summary>ترجمه</summary>${renderPlain(m[1])}</details>`;
+  }
+  flush();
+  return html;
 }
 
 const SOLUTION = /^\s*(حل|پاسخ|جواب)\s*[:：]\s?(.*)$/;
@@ -409,6 +433,10 @@ mark.flash.fade { background: transparent; box-shadow: 0 0 0 0 rgba(255,212,59,0
 .box-ltr ul, .box-ltr ol { padding-left: 1.4em; padding-right: 0; }
 .box-ltr h3, .box-ltr h4 { margin-top: 0; }
 .rc-ltr ul, .rc-ltr .table-wrap { direction: ltr; text-align: left; } .rc-ltr ul { padding-left: 1.4em; padding-right: 0; }
+.ltr-tr { margin: -4px 0 8px; font-size: .9em; color: #56655B; }
+.ltr-tr > summary { cursor: pointer; width: max-content; margin-left: auto; font-size: .85em; color: #8A9A8F; list-style: none; }
+.ltr-tr > summary::before { content: '◂ '; } .ltr-tr[open] > summary::before { content: '▾ '; }
+.ltr-tr p { margin: 2px 0 0; text-align: right; unicode-bidi: plaintext; }
 .ltr-more { margin-top: 6px; } .ltr-more > summary { cursor: pointer; color: #56655B; font-weight: 700; width: max-content; }
 .lesson.dark .box-ltr { background: #1E2621; border-color: #33403A; border-left-color: #C9A21A; }
 .lesson.sepia .box-ltr { background: #FBF5E6; border-color: #E6D8B8; }
