@@ -128,6 +128,28 @@ export default function StatsTab() {
           </View>
         </Card>
 
+        {!!data.words?.length && (
+          <Card>
+            <Text style={[styles.cardTitle, rtl]}>لغت‌های حفظ‌شده</Text>
+            {data.words.map((w) => {
+              const pct = w.total ? Math.round((w.learned / w.total) * 100) : 0;
+              return (
+                <Pressable key={w.slug} onPress={() => router.push(`/book/${w.slug}`)} style={{ gap: 6 }}>
+                  <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
+                    <Text style={[styles.bookTitle, rtl, { flex: 1 }]}>{w.title}</Text>
+                    <Text style={styles.muted}>
+                      {toPersianDigits(w.learned)} از {toPersianDigits(w.total)} لغت
+                    </Text>
+                  </View>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${pct}%` }]} />
+                  </View>
+                </Pressable>
+              );
+            })}
+          </Card>
+        )}
+
         {data.books.length > 0 && (
           <Card>
             <Text style={[styles.cardTitle, rtl]}>پیشرفت کتاب‌ها</Text>

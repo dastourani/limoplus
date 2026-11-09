@@ -9,6 +9,7 @@ import { LemonLoader, LemonSpinner } from './LemonLoader';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radius, rtl } from '../theme';
+import { refreshAll } from '../lib/useApi';
 
 export function Screen({ children, background = colors.ground, tab = false, wide = false }: { children: ReactNode; background?: string; tab?: boolean; wide?: boolean }) {
   // Tab screens leave the bottom edge to the tab bar. «wide»: a screen with its own columns on a computer.
@@ -195,6 +196,7 @@ export function usePullRefresh(loading: boolean, reload: () => void) {
       onRefresh={() => {
         setPulled(true);
         reload();
+        refreshAll();
       }}
       colors={[colors.ink]}
       progressBackgroundColor={colors.lemon}

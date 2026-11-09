@@ -866,6 +866,22 @@ def stats(request):
         total = ContentNode.objects.filter(path__startswith=book.path, kind=ContentNode.Kind.SECTION, is_archived=False, is_published=True).count()
         books.append({"slug": book.slug, "title": book.title, "done": row["done"], "total": total})
 
+    # «N از M لغت»: books whose word cards the learner has started.
+    from .progress import WORD_PREFIX, word_counts
+
+    words = []
+    started = (
+        FlashcardReview.objects.filter(user=user, flashcard__slug__startswith=WORD_PREFIX, flashcard__is_archived=False)
+        .values_list("flashcard__node__path", flat=True)
+        .distinct()
+    )
+    roots = sorted({p[: ContentNode.steplen] for p in started})
+    for book in ContentNode.objects.filter(path__in=roots, kind=ContentNode.Kind.BOOK, is_archived=False):
+        access = AccessMap(user, book)
+        counts = word_counts(user, access, book) if access.visible(book.id) else None
+        if counts:
+            words.append({"slug": book.slug, "title": book.title, **counts})
+
     # Weakest sections: lowest accuracy with at least 3 answers.
     per_node = (
         answers.values("question__node_id", "question__node__title")
@@ -889,6 +905,7 @@ def stats(request):
             "study_days": len(day_set),
             "last_14_days": last_14,
             "books": books,
+            "words": words,
             "weak_sections": [w for w in weak if w["accuracy"] < 70],
             "improvement": _improvement(user),
             "time": _time(user),

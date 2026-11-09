@@ -35,6 +35,13 @@ async function setJson(key: string, value: unknown) {
 }
 
 export const storage = {
+  /** «درباره‌ی کتاب»: 'seen' once shown in full (folded from then on), 'open' when the learner opened it (stays open). */
+  getAbout: async (slug: string) => (await getJson<Record<string, 'seen' | 'open'>>('limo.about'))?.[slug] ?? null,
+  setAbout: async (slug: string, value: 'seen' | 'open') => {
+    const all = (await getJson<Record<string, 'seen' | 'open'>>('limo.about')) ?? {};
+    all[slug] = value;
+    await setJson('limo.about', all);
+  },
   getServerUrl: () => getJson<string>(KEYS.serverUrl),
   setServerUrl: (url: string | null) => setJson(KEYS.serverUrl, url),
   getMajor: () => getJson<{ slug: string; name: string; color: string }>(KEYS.major),

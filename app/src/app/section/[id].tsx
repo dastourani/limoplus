@@ -729,7 +729,7 @@ export default function Section() {
               style={{ flex: 1, gap: 6 }}
             >
               {!!n.quote && <QuoteView quote={n.quote} color={NOTE_COLORS.find(([c]) => c === n.color)?.[1]} maxHeight={160} />}
-              {!!n.body && <Text style={[styles.help, rtl, { color: colors.ink }]}>{n.body}</Text>}
+              {!!n.body && <Text selectable style={[styles.help, rtl, { color: colors.ink }]}>{n.body}</Text>}
               {missingNotes.some((m) => m.id === n.id) && <Text style={[styles.help, rtl]}>متن این بخش ویرایش شده و جای این هایلایت پیدا نشد.</Text>}
             </Pressable>
             <Pressable onPress={() => deleteNote(n)} hitSlop={8} style={styles.noteX} accessibilityRole="button" accessibilityLabel="حذف">

@@ -177,7 +177,7 @@ def book_detail(request, slug):
     access = AccessMap(request.user, book)
     if not access.visible(book.id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-    from apps.study.progress import section_states
+    from apps.study.progress import section_states, word_counts
 
     _states = section_states(request.user, access, request)
 
@@ -229,6 +229,8 @@ def book_detail(request, slug):
             # «آخرین به‌روزرسانی» and «تغییرات کتاب».
             "updated_on": book_updated_on(book),
             "change_count": book.changes.filter(is_hidden=False).count(),
+            # «N از M لغت»: word cards learned (Leitner box 4+), when the book has word cards.
+            "words": word_counts(request.user, access, book),
         }
     )
 

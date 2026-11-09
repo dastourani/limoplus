@@ -131,3 +131,25 @@ def chapter_state(user, access, chapter, reading=None, request=None) -> dict | N
     notes_left = sum(1 for s in sections if s.id not in read)
     state = "complete" if not tests_left and not notes_left else "tests" if tests_left else "notes"
     return {"state": state, "tests_left": tests_left, "notes_left": notes_left}
+
+
+# «N از M لغت»: word cards (id «w-…», the English book's format) whose Leitner box counts as mastered.
+WORD_PREFIX = "w-"
+
+
+def word_counts(user, access, book) -> dict | None:
+    """The book's word cards the learner has learned, out of all its visible word cards; None when it has none."""
+    from apps.catalog.models import ContentNode
+    from apps.learning.models import Flashcard
+
+    from .models import FlashcardReview
+
+    sections = [n.id for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
+    cards = Flashcard.objects.filter(node_id__in=sections, is_archived=False, slug__startswith=WORD_PREFIX)
+    total = cards.count()
+    if not total:
+        return None
+    learned = 0
+    if user.is_authenticated:
+        learned = FlashcardReview.objects.filter(user=user, flashcard__in=cards, box__gte=FlashcardReview.MASTERED_BOX).count()
+    return {"learned": learned, "total": total}

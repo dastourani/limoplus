@@ -154,7 +154,7 @@ export default function LibraryTab() {
                       </Pressable>
                     </View>
                     {!!n.quote && <QuoteView quote={n.quote} color={NOTE_COLORS[n.color] ?? NOTE_COLORS.yellow} maxHeight={160} />}
-                    {!!n.body && <Text style={[styles.body, rtl]}>{n.body}</Text>}
+                    {!!n.body && <Text selectable style={[styles.body, rtl]}>{n.body}</Text>}
                   </Card>
                 </Pressable>
               ))

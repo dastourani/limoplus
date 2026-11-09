@@ -41,6 +41,10 @@ Code, identifiers and commit messages are in English.
   preview and the «دریافت جلد» PNG through the admin-preview bundle. An uploaded `cover` image wins. Guide for the
   owner (Persian, with an AI prompt for new motifs): `docs/covers.md`.
   Books can be «به‌زودی» (`is_coming_soon`) with «خبرم کن» (`BookWaitlist`).
+- Words: «N از M لغت» = word flashcards (slug `w-…`) in Leitner box 4+ (`study/progress.py` `word_counts`), on the book page
+  (`words`) and in stats. A pull to refresh reloads every open screen (`refreshAll()` in `lib/useApi.ts`).
+  «درباره‌ی کتاب» shows in full on the first visit, then folded with «بیشتر ▾» (kept open once the learner opens it).
+  The panel's «ویرایش کل فایل» has «↑ ابتدای فایل», «↓ انتهای فایل» and «برو به بخش…» (`fileNav` in panel.js).
 - Progress is drawn as a lemon (`LemonProgress`, one wedge per item); quiz and exam share `QuizView` (single web view,
   finger-following page drag) and `usePageTurn`. Don't use «·» next to Persian digits (۰ looks like a dot).
 - `docker-compose.yml` — local Postgres + backend (mounts `content/` read-only).

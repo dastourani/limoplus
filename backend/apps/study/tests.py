@@ -35,6 +35,22 @@ class StudyTests(TestCase):
         self.override.disable()
         shutil.rmtree(self.media, ignore_errors=True)
 
+    def test_word_counts(self):
+        """«N از M لغت»: word cards (w-…) in box 4+ out of the book's word cards, on the book page and in stats."""
+        book = self.chapter.get_parent()
+        r = self.client.get(f"/api/v1/books/{book.slug}/").data
+        self.assertIsNone(r["words"])  # no word cards: nothing shown
+        w1 = Flashcard.objects.create(node=self.section, slug="w-acute", title="acute", point="حاد")
+        w2 = Flashcard.objects.create(node=self.section, slug="w-chronic", title="chronic", point="مزمن")
+        Flashcard.objects.create(node=self.section, slug="w-old", title="old", point="کهنه", is_archived=True)
+        FlashcardReview.objects.create(user=self.user, flashcard=w1, box=FlashcardReview.MASTERED_BOX)
+        FlashcardReview.objects.create(user=self.user, flashcard=w2, box=2)
+        r = self.client.get(f"/api/v1/books/{book.slug}/").data
+        self.assertEqual(r["words"], {"learned": 1, "total": 2})
+        stats = self.client.get("/api/v1/me/stats/").data
+        self.assertEqual(stats["words"], [{"slug": book.slug, "title": book.title, "learned": 1, "total": 2}])
+        self.assertEqual(APIClient().get(f"/api/v1/books/{book.slug}/").data["words"], {"learned": 0, "total": 2})
+
     def test_progress_bookmark_and_notes(self):
         r = self.client.post(f"/api/v1/nodes/{self.section.id}/progress/", {"percent": 95}, format="json")
         self.assertTrue(r.data["is_done"])

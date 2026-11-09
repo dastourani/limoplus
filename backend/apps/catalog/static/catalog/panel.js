@@ -1593,6 +1593,46 @@
   window.LimoChapterManager = Manager;
 
   // ---------- Whole-file editor ----------
+  // «ویرایش کل فایل»: «↑ ابتدای فایل», «↓ انتهای فایل» (the cursor on an empty line after the last section, ready for a
+  // pasted new section) and «برو به بخش…» (every «## …» section of the chapter, read from the text as it is now).
+  function fileNav(ta, bar) {
+    function go(at) { ta.focus(); ta.setSelectionRange(at, at); }
+    function btn(label, title, fn) {
+      return h('button', { type: 'button', title: title, onmousedown: function (e) { e.preventDefault(); }, onclick: function (e) { e.preventDefault(); fn(); } }, label);
+    }
+    var top = btn('↑ ابتدای فایل', 'رفتن به اول متن', function () { go(0); });
+    var bottom = btn('↓ انتهای فایل', 'رفتن به آخر متن، روی یک خط خالی برای چسباندن بخش تازه', function () {
+      var v = ta.value, tail = (v.match(/\n*$/) || [''])[0].length;
+      if (v.length && tail < 2) replaceRange(ta, v.length, v.length, tail ? '\n' : '\n\n');
+      go(ta.value.length);
+    });
+    var pick = h('select', { class: 'file-go', title: 'رفتن به یک بخش' });
+    function sections() {
+      var list = [], at = 0, fence = false;
+      ta.value.split('\n').forEach(function (line) {
+        if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+        var m = !fence && line.match(/^##\s+(.+?)\s*(?:\{#[^}]*\})?\s*$/);
+        if (m) list.push({ title: m[1], at: at });
+        at += line.length + 1;
+      });
+      return list;
+    }
+    function fill() {
+      pick.innerHTML = '';
+      pick.appendChild(h('option', { value: '' }, 'برو به بخش…'));
+      sections().forEach(function (x, i) { pick.appendChild(h('option', { value: String(x.at) }, fa(i + 1) + '. ' + x.title)); });
+      pick.value = '';
+    }
+    pick.addEventListener('focus', fill);
+    pick.addEventListener('mousedown', fill);
+    pick.addEventListener('change', function () { if (pick.value !== '') go(Number(pick.value)); pick.value = ''; });
+    fill();
+    bar.appendChild(h('span', { class: 'sep' }));
+    bar.appendChild(top);
+    bar.appendChild(bottom);
+    bar.appendChild(pick);
+  }
+
   window.LimoFileEditor = function (opts) {
     var ta = document.getElementById('file-text'), out = document.getElementById('file-result');
     // The same tools as the chapter manager's boxes (find and replace here is over the whole chapter).
@@ -1601,6 +1641,7 @@
     ta.parentNode.insertBefore(edWrap, ta);
     edWrap.appendChild(ta);
     addTools(ta, edBar, edHost, {});
+    fileNav(ta, edBar);
     fetch(opts.api, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) { setCtx(d.state); }).catch(function () {});
     var keeper = opts.restore ? { el: null, changed: function () {}, saved: function () {} }
       : draftKeeper(opts.api + '|file', ta.value, function () { return ta.value; }, function (text) { replaceRange(ta, 0, ta.value.length, text); });

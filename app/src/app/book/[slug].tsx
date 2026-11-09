@@ -48,7 +48,20 @@ export default function Book() {
   const { confirm, toast } = useFeedback();
   const { width } = useWindowDimensions();
   const [notify, setNotify] = useState<{ on: boolean; canCancel: boolean } | null>(null);
-  const [aboutOpen, setAboutOpen] = useState(true);
+  // «درباره‌ی کتاب»: in full the first time, then its first lines with «بیشتر ▾»; opened by the learner, it stays open.
+  const [aboutOpen, setAboutOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    setAboutOpen(null);
+    storage.getAbout(String(slug)).then((v) => {
+      setAboutOpen(v !== 'seen');
+      if (!v) storage.setAbout(String(slug), 'seen');
+    });
+  }, [slug]);
+  const toggleAbout = () => {
+    const open = !aboutOpen;
+    setAboutOpen(open);
+    storage.setAbout(String(slug), open ? 'open' : 'seen');
+  };
   // «کنکورهای سال‌های قبل»: the past exams that have tests in this book.
   const { data: past } = useApi(() => endpoints.pastExams(String(slug)), [slug, user?.id]);
   const [pastOpen, setPastOpen] = useState(false);
@@ -193,6 +206,14 @@ export default function Book() {
                     <Text style={[styles.statLabel, { color: top.label }]}>{label}</Text>
                   </View>
                 ))}
+              {!!user && !!book.words && (
+                <View style={[styles.stat, { backgroundColor: top.stat }]}>
+                  <Text style={[styles.statValue, { color: top.value }]}>
+                    {toPersianDigits(book.words.learned)} از {toPersianDigits(book.words.total)}
+                  </Text>
+                  <Text style={[styles.statLabel, { color: top.label }]}>لغت حفظ‌شده</Text>
+                </View>
+              )}
             </View>
           )}
       </Animated.View>
@@ -343,13 +364,21 @@ export default function Book() {
           )}
           {!!note && <Text style={[styles.note, rtl]}>{note}</Text>}
 
-          {!!book.about && (
+          {!!book.about && aboutOpen !== null && (
             <View style={styles.about}>
-              <Pressable onPress={() => setAboutOpen((v) => !v)} style={styles.aboutHead} accessibilityRole="button" accessibilityState={{ expanded: aboutOpen }}>
-                <Text style={[styles.aboutTitle, rtl]}>درباره‌ی کتاب</Text>
-                <Icon name="chevron-down" size={20} color={colors.muted} />
-              </Pressable>
-              {aboutOpen && <MarkdownView markdown={book.about} compact />}
+              <Text style={[styles.aboutTitle, rtl]}>درباره‌ی کتاب</Text>
+              {shortAbout(book.about) ? (
+                <MarkdownView markdown={book.about} compact />
+              ) : (
+                <>
+                  <View style={aboutOpen ? null : styles.aboutFolded}>
+                    <MarkdownView markdown={book.about} compact />
+                  </View>
+                  <Pressable onPress={toggleAbout} hitSlop={8} style={styles.aboutMore} accessibilityRole="button" accessibilityState={{ expanded: aboutOpen }}>
+                    <Text style={[styles.aboutMoreText, rtl]}>{aboutOpen ? 'کمتر ▴' : 'بیشتر ▾'}</Text>
+                  </Pressable>
+                </>
+              )}
             </View>
           )}
 
@@ -734,6 +763,10 @@ const styles = StyleSheet.create({
   pastBtn: { borderRadius: 999, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, paddingVertical: 6 },
   pastBtnMain: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   pastBtnText: { fontSize: 13, fontWeight: '800', color: colors.ink },
+  // About four lines of the compact text (16px, line height 1.9).
+  aboutFolded: { maxHeight: 122, overflow: 'hidden' },
+  aboutMore: { alignSelf: 'flex-start' },
+  aboutMoreText: { fontSize: 13, fontWeight: '700', color: colors.greenDark },
   about: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 6 },
   aboutHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   aboutTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
@@ -765,3 +798,10 @@ const styles = StyleSheet.create({
   action: { flexGrow: 1, flexBasis: '45%', backgroundColor: colors.ground, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   actionText: { fontWeight: '700', color: colors.ink, fontSize: 15 },
 });
+
+/** A short «درباره‌ی کتاب» (about three lines) is shown whole, without «بیشتر». */
+function shortAbout(md: string): boolean {
+  const lines = md.split('\n').filter((l) => l.trim());
+  const text = lines.join(' ').replace(/[#*_>`\[\]()|-]/g, '').trim();
+  return lines.length <= 3 && text.length <= 200;
+}

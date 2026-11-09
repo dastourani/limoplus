@@ -69,6 +69,8 @@ export type BookDetail = BookListItem & {
     time_seconds?: number;
     chapter_seconds?: Record<string, number>;
   } | null;
+  /** «N از M لغت»: word cards (w-…) learned (Leitner box 4+) out of the book's word cards; null without word cards. */
+  words?: { learned: number; total: number } | null;
   /** Shareable questions of this book the learner can see («تست‌های نمونه»). */
   sample_count?: number;
   /** Sent with «معرفی به دوست»: the book's own link, or the default one set in the panel (empty: none). */
@@ -386,6 +388,8 @@ export type Stats = {
   accuracy: number | null;
   cards_reviewed: number;
   cards_mastered: number;
+  /** «N از M لغت» per book whose word cards the learner has started. */
+  words?: { slug: string; title: string; learned: number; total: number }[];
   exams: number;
   streak_days: number;
   study_days: number;
