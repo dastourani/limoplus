@@ -123,7 +123,7 @@
 ## نمونه‌ی کوتاه (دو لغت)
 
 ````
-## شدت: بدتر کردن و بهتر کردن {#en-severity}
+## بدتر کردن و تسکین دادن {#en-worsen-relief}
 در این بخش فعل‌هایی هست که شدت بیماری یا علائم را بالا یا پایین می‌برند. دام اصلی طراح این است که متضاد جواب را
 کنارش می‌گذارد (exacerbate در برابر alleviate)، و شبیه در نوشتار‌هایی مثل aggravate و aggregate را.
 
@@ -132,9 +132,10 @@
 **معنی:** بدتر کردن، تشدید کردن (بیماری، علائم)
 Smoking can **exacerbate** asthma symptoms.
 ترجمه: سیگار کشیدن می‌تواند علائم آسم را **تشدید کند**.
-**Collocations:** exacerbate symptoms / pain / a condition
 **دام‌های کنکوری:** alleviate (تسکین دادن، متضاد)، aggravate (بدتر کردن، هم‌معنی)
 بیشتر:
+- **Collocations:** exacerbate symptoms / pain / a condition
+- **ریشه:** acerb = تند، تلخ
 - **Word family:** exacerbation (n.)
 - **Synonyms:** worsen, aggravate, intensify
 - **Antonyms:** alleviate, relieve, mitigate
@@ -145,9 +146,10 @@ Smoking can **exacerbate** asthma symptoms.
 **معنی:** تسکین دادن، کم کردن (درد، علائم)
 Paracetamol is used to **alleviate** mild pain.
 ترجمه: از پاراستامول برای **تسکین** دردهای خفیف استفاده می‌شود.
-**Collocations:** alleviate pain / suffering / symptoms
 **دام‌های کنکوری:** aggravate (بدتر کردن، متضاد)، agitate (آشفته کردن، شبیه در نوشتار)
 بیشتر:
+- **Collocations:** alleviate pain / suffering / symptoms
+- **ریشه:** lev = سبک (alleviate، relieve، elevate)
 - **Word family:** alleviation (n.)
 - **Synonyms:** relieve, ease, mitigate
 :::
