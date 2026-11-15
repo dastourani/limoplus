@@ -170,14 +170,14 @@ class Report(models.Model):
         FIXED = "fixed", "اصلاح شد"
         REJECTED = "rejected", "بررسی شد، درست بود"
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reports")
-    question = models.ForeignKey(Question, on_delete=models.CASCADE, null=True, blank=True, related_name="reports")
-    flashcard = models.ForeignKey(Flashcard, on_delete=models.CASCADE, null=True, blank=True, related_name="reports")
-    node = models.ForeignKey(ContentNode, on_delete=models.CASCADE, null=True, blank=True, related_name="reports")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reports", verbose_name="کاربر")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, null=True, blank=True, related_name="reports", verbose_name="تست")
+    flashcard = models.ForeignKey(Flashcard, on_delete=models.CASCADE, null=True, blank=True, related_name="reports", verbose_name="فلش‌کارت")
+    node = models.ForeignKey(ContentNode, on_delete=models.CASCADE, null=True, blank=True, related_name="reports", verbose_name="بخش")
     reason = models.CharField("دلیل", max_length=20, choices=Reason.choices)
     note = models.TextField("توضیح", blank=True)
     status = models.CharField("وضعیت", max_length=10, choices=Status.choices, default=Status.OPEN)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان")
     resolved_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

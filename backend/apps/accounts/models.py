@@ -56,6 +56,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     def full_name(self):
         return f"{self.first_name} {self.last_name}".strip()
 
+    full_name.fget.short_description = "نام"
+
 
 class OTPCode(models.Model):
     phone = models.CharField(max_length=11, db_index=True)
@@ -107,14 +109,14 @@ class RateBucket(models.Model):
 class DeviceSession(models.Model):
     """One signed-in device. At most MAX_ACTIVE_SESSIONS active per user."""
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="device_sessions")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="device_sessions", verbose_name="کاربر")
     token_hash = models.CharField(max_length=64, unique=True)
     device_name = models.CharField("دستگاه", max_length=120, blank=True)
     platform = models.CharField("سکو", max_length=20, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_seen_at = models.DateTimeField(default=timezone.now)
-    expires_at = models.DateTimeField()
-    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ورود")
+    last_seen_at = models.DateTimeField(default=timezone.now, verbose_name="آخرین استفاده")
+    expires_at = models.DateTimeField(verbose_name="انقضا")
+    revoked_at = models.DateTimeField(null=True, blank=True, verbose_name="زمان خروج")
 
     class Meta:
         verbose_name = "نشست"
@@ -152,3 +154,32 @@ class DeviceSession(models.Model):
         if self.revoked_at is None:
             self.revoked_at = timezone.now()
             self.save(update_fields=["revoked_at"])
+
+
+class PanelLoginCode(models.Model):
+    """«باز کردن وب اپ با حساب من» in the panel: a one-time code that signs a staff member into the web app without
+    an SMS. Only its keyed hash is kept; it works once, for PANEL_LOGIN_SECONDS, and only for an active staff user."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="panel_login_codes")
+    code_hash = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "کد ورود از پنل"
+        verbose_name_plural = "کدهای ورود از پنل"
+
+    @classmethod
+    def issue(cls, user) -> str:
+        code = secrets.token_urlsafe(32)
+        cls.objects.create(user=user, code_hash=_hash(code))
+        return code
+
+    @classmethod
+    def find(cls, code: str):
+        return cls.objects.select_related("user").filter(code_hash=_hash(code)).first()
+
+    @property
+    def is_usable(self) -> bool:
+        age = (timezone.now() - self.created_at).total_seconds()
+        return self.used_at is None and age <= settings.PANEL_LOGIN_SECONDS

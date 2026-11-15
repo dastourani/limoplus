@@ -179,7 +179,7 @@ class ChapterRevision(models.Model):
     note = models.CharField("توضیح", max_length=300, blank=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name="کاربر")
     created_at = models.DateTimeField("زمان", auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="زمان")
 
     class Meta:
         verbose_name = "نسخه‌ی فصل"

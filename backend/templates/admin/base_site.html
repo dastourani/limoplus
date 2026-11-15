@@ -1,0 +1,75 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrahead %}{{ block.super }}
+<style>
+  html { overflow-anchor: none; }
+  .lp-open-app { display: inline; margin: 0; }
+  .lp-open-app button { background: #F5C518; color: #1D2B23; border: 0; border-radius: 8px; padding: 3px 10px;
+    font: inherit; font-weight: 700; cursor: pointer; }
+  .lp-open-app button:hover { background: #FFD84A; }
+  /* One «وضعیت» cell (panel_display.badges) instead of rows of ✓/✗. */
+  .lp-badges { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+  .lp-badge { padding: 1px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; line-height: 20px; }
+  .lp-b-green { background: rgba(46, 158, 91, .16); color: #23864B; }
+  .lp-b-yellow { background: rgba(245, 197, 24, .25); color: #8A6A00; }
+  .lp-b-grey { background: rgba(120, 120, 120, .16); color: #6B6B6B; }
+  .lp-b-blue { background: rgba(70, 110, 220, .15); color: #3B5FC4; }
+  .lp-b-red { background: rgba(214, 69, 69, .15); color: #B33A3A; }
+  @media (prefers-color-scheme: dark) {
+    .lp-b-green { color: #6FD39A; } .lp-b-yellow { color: #F5C518; } .lp-b-grey { color: #B5B5B5; }
+    .lp-b-blue { color: #9DB4FF; } .lp-b-red { color: #FF9A9A; }
+  }
+  html[data-theme="dark"] .lp-b-green { color: #6FD39A; } html[data-theme="dark"] .lp-b-yellow { color: #F5C518; }
+  html[data-theme="dark"] .lp-b-grey { color: #B5B5B5; } html[data-theme="dark"] .lp-b-blue { color: #9DB4FF; }
+  html[data-theme="dark"] .lp-b-red { color: #FF9A9A; }
+  html[data-theme="light"] .lp-b-green { color: #23864B; } html[data-theme="light"] .lp-b-yellow { color: #8A6A00; }
+  html[data-theme="light"] .lp-b-grey { color: #6B6B6B; } html[data-theme="light"] .lp-b-blue { color: #3B5FC4; }
+  html[data-theme="light"] .lp-b-red { color: #B33A3A; }
+</style>
+<script>
+  // The side menu keeps its place: where it was scrolled to is remembered for this tab and put back on the next
+  // page; if the page's own item would then be out of sight, the menu scrolls just enough to show it.
+  (function () {
+    var KEY = "lp.nav.scroll";
+    function nav() { return document.getElementById("nav-sidebar"); }
+    function save() { var n = nav(); if (n) try { sessionStorage.setItem(KEY, String(n.scrollTop)); } catch (e) {} }
+    document.addEventListener("DOMContentLoaded", function () {
+      var n = nav();
+      if (!n) return;
+      var pageY = window.scrollY;  // moving the menu must not move the page
+      try { var y = parseInt(sessionStorage.getItem(KEY) || "", 10); if (!isNaN(y)) n.scrollTop = y; } catch (e) {}
+      var here = n.querySelector(".current-model, tr.current-model, .current-app .current-model");
+      if (here) {
+        var a = here.getBoundingClientRect(), b = n.getBoundingClientRect();
+        // Only the menu moves (scrollIntoView would also scroll the page itself).
+        if (a.top < b.top || a.bottom > b.bottom) n.scrollTop += a.top - b.top - (n.clientHeight - a.height) / 2;
+      }
+      if (window.scrollY !== pageY) window.scrollTo(0, pageY);
+      requestAnimationFrame(function () { if (window.scrollY !== pageY) window.scrollTo(0, pageY); });
+      n.addEventListener("scroll", save, { passive: true });
+      n.addEventListener("click", save, true);
+    });
+    window.addEventListener("pagehide", save);
+  })();
+</script>
+{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></div>
+{% if user.is_anonymous %}
+  {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block userlinks %}
+{% if user.is_active and user.is_staff %}
+  <form class="lp-open-app" method="post" action="{% url 'panel-open-app' %}" target="_blank">{% csrf_token %}
+    <button type="submit" title="وب اپ در زبانه‌ی تازه، با همین حساب و بدون پیامک باز می‌شود">باز کردن وب اپ با حساب من</button>
+  </form> /
+{% endif %}
+{{ block.super }}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

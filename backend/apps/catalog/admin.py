@@ -10,7 +10,8 @@ from . import bookpanel, panel
 from .drawing import DrawingError, clean_svg
 from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
-from .filters import BookFilter, ChapterFilter, YesNoFilter
+from .filters import BookFilter, BookFKFilter, ChapterFilter, YesNoFilter
+from .panel_display import badges
 from .models import (Banner, Book, BookChange, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
                      ShareSettings, Shelf, ShelfBook)
 
@@ -86,7 +87,7 @@ class BookAdmin(admin.ModelAdmin):
     form = BookForm
     change_form_template = "admin/catalog/book/change_form.html"
     change_list_template = "admin/catalog/book/change_list.html"
-    list_display = ("cover_thumb", "title", "author", "chapter_count", "price", "waiting", "is_coming_soon", "is_published", "is_archived")
+    list_display = ("cover_thumb", "title", "author", "chapter_count", "price", "waiting", "status")
     list_display_links = ("cover_thumb", "title")
     list_filter = ("is_published", "is_archived", "majors")
     search_fields = ("title", "slug", "author")
@@ -96,6 +97,15 @@ class BookAdmin(admin.ModelAdmin):
         ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "position", "is_published", "is_archived")}),
         ("اشتراک‌گذاری", {"fields": ("share_link",)}),
     )
+
+
+    @admin.display(description="وضعیت")
+    def status(self, obj):
+        return badges(
+            ("بایگانی", "grey") if obj.is_archived else (("منتشر", "green") if obj.is_published else ("پیش‌نویس", "grey")),
+            obj.is_coming_soon and ("به‌زودی", "yellow"),
+            obj.is_free and ("رایگان", "blue"),
+        )
 
     def get_queryset(self, request):
         # The «صندوق تست» has its own button above the list.
@@ -270,11 +280,19 @@ class HasImageFilter(YesNoFilter):
 class SectionAdmin(admin.ModelAdmin):
     """A searchable list of every section's notes and summary; editing happens in «مدیریت فصل»."""
 
-    list_display = ("title", "chapter_title", "group", "summary_kind", "counts", "is_free", "is_published", "is_archived", "manage")
+    list_display = ("title", "chapter_title", "group", "summary_kind", "counts", "status", "manage")
     list_filter = (BookFilter, ChapterFilter, GroupFilter, HasNotesFilter, HasSummaryFilter, HasReviewCardFilter, HasImageFilter,
                    "is_free", "is_published", "is_archived")
     search_fields = ("title", "slug", "full_body", "summary_body", "group")
     list_per_page = 50
+
+
+    @admin.display(description="وضعیت")
+    def status(self, obj):
+        return badges(
+            ("بایگانی", "grey") if obj.is_archived else (("منتشر", "green") if obj.is_published else ("پیش‌نویس", "grey")),
+            obj.is_free and ("رایگان", "blue"),
+        )
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(kind=ContentNode.Kind.SECTION).annotate(
@@ -350,7 +368,7 @@ class BookWaitlistAdmin(admin.ModelAdmin):
     """Who pressed «خبرم کن» on a coming-soon book."""
 
     list_display = ("book", "user", "is_active", "created_at")
-    list_filter = ("is_active", "book")
+    list_filter = ("is_active", BookFKFilter)
     search_fields = ("user__phone", "book__title")
 
     def get_readonly_fields(self, request, obj=None):

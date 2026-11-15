@@ -5,17 +5,38 @@ from django.contrib import admin
 from .models import ContentNode
 
 
-def _book_choices():
-    return [(str(b.pk), b.title) for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1).order_by("title")]
+def _book_choices(with_inbox=False):
+    """The books, by title. The hidden «صندوق تست» only where tests and cards are listed (it holds pasted ones)."""
+    books = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1)
+    if not with_inbox:
+        books = books.filter(is_inbox=False)
+    return [(str(b.pk), b.title) for b in books.order_by("title")]
+
+
+class BookFKFilter(admin.SimpleListFilter):
+    """«کتاب» for a model that points at its book directly (field «book»): only books, never every chapter and section."""
+
+    title = "کتاب"
+    parameter_name = "book_id"
+    field = "book"
+
+    def lookups(self, request, model_admin):
+        return _book_choices()
+
+    def queryset(self, request, queryset):
+        if self.value():
+            return queryset.filter(**{f"{self.field}_id": self.value()})
+        return queryset
 
 
 class BookFilter(admin.SimpleListFilter):
     title = "کتاب"
     parameter_name = "book"
     path_field = "path"
+    with_inbox = False
 
     def lookups(self, request, model_admin):
-        return _book_choices()
+        return _book_choices(self.with_inbox)
 
     def queryset(self, request, queryset):
         if self.value():
@@ -31,11 +52,13 @@ class ChapterFilter(admin.SimpleListFilter):
     path_field = "path"
 
     def lookups(self, request, model_admin):
+        # Chapters only once a book is chosen: a list of every chapter of every book helps nobody.
         book_id = request.GET.get("book")
+        if not book_id:
+            return []
+        book = ContentNode.objects.filter(pk=book_id).first()
         chapters = ContentNode.objects.filter(kind=ContentNode.Kind.CHAPTER)
-        if book_id:
-            book = ContentNode.objects.filter(pk=book_id).first()
-            chapters = chapters.filter(path__startswith=book.path) if book else chapters.none()
+        chapters = chapters.filter(path__startswith=book.path) if book else chapters.none()
         out = []
         for c in chapters.order_by("path"):
             book = c.book()
@@ -54,6 +77,7 @@ class ChapterFilter(admin.SimpleListFilter):
 
 class NodeBookFilter(BookFilter):
     path_field = "node__path"
+    with_inbox = True
 
 
 class NodeChapterFilter(ChapterFilter):

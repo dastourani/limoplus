@@ -20,7 +20,7 @@ class PlanAdmin(admin.ModelAdmin):
 class OrderAdmin(admin.ModelAdmin):
     """Orders are a financial record: viewable, never edited or deleted here."""
 
-    list_display = ("id", "user", "title", "amount", "status", "ref_number", "created_at", "paid_at")
+    list_display = ("user", "title", "amount", "status", "ref_number", "created_at", "paid_at")
     list_filter = ("status", "created_at")
     search_fields = ("user__phone", "ref_number", "track_id", "title")
     readonly_fields = [f.name for f in Order._meta.fields]

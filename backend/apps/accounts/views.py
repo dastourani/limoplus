@@ -12,7 +12,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from . import ratelimit
-from .models import DeviceSession, OTPCode, User
+from .models import DeviceSession, OTPCode, PanelLoginCode, User
 from .phone import InvalidPhone, normalize_phone
 from .sms import SMSError, send_sms
 
@@ -129,6 +129,31 @@ def request_otp(request):
     return Response({"sent": True, "expires_in": int(settings.OTP_LIFETIME.total_seconds())})
 
 
+def _make_room(user, replace_id):
+    """At most MAX_ACTIVE_SESSIONS devices: with the limit reached, the device named by replace_id is signed out;
+    without one, a 409 «session_limit» lists the devices to choose from. Locks the user row, so two devices signing in
+    at once cannot pass the limit. Returns None when there is room (call inside the request's transaction)."""
+    User.objects.select_for_update().filter(pk=user.pk).first()
+    active = list(DeviceSession.active_for(user).order_by("last_seen_at"))
+    limit = settings.MAX_ACTIVE_SESSIONS
+    if len(active) < limit:
+        return None
+    target = next((s for s in active if s.id == replace_id), None)
+    if target is None:
+        return _error(
+            f"حداکثر {limit} دستگاه هم‌زمان مجاز است. یکی را خارج کنید.",
+            "session_limit",
+            status.HTTP_409_CONFLICT,
+            sessions=[_session_payload(s) for s in active],
+        )
+    target.revoke()
+    # If the limit was lowered, also sign out the least recently used extras.
+    others = [s for s in active if s.id != target.id]
+    for extra in others[: max(0, len(others) - (limit - 1))]:
+        extra.revoke()
+    return None
+
+
 class VerifySerializer(serializers.Serializer):
     phone = serializers.CharField()
     code = serializers.CharField(max_length=10)
@@ -178,28 +203,47 @@ def verify_otp(request):
     if not user.is_active:
         return _error("این حساب غیرفعال شده است.", "user_inactive", status.HTTP_403_FORBIDDEN)
 
-    # Lock the user row so two devices verifying at once cannot exceed the limit.
-    User.objects.select_for_update().filter(pk=user.pk).first()
-    active = list(DeviceSession.active_for(user).order_by("last_seen_at"))
-    limit = settings.MAX_ACTIVE_SESSIONS
-    if len(active) >= limit:
-        replace_id = data.validated_data.get("replace_session_id")
-        target = next((s for s in active if s.id == replace_id), None)
-        if target is None:
-            return _error(
-                f"حداکثر {limit} دستگاه هم‌زمان مجاز است. یکی را خارج کنید.",
-                "session_limit",
-                status.HTTP_409_CONFLICT,
-                sessions=[_session_payload(s) for s in active],
-            )
-        target.revoke()
-        # If the limit was lowered, also sign out the least recently used extras.
-        others = [s for s in active if s.id != target.id]
-        for extra in others[: max(0, len(others) - (limit - 1))]:
-            extra.revoke()
+    refused = _make_room(user, data.validated_data.get("replace_session_id"))
+    if refused is not None:
+        return refused
 
     otp.consumed_at = timezone.now()
     otp.save(update_fields=["consumed_at"])
+    session, token = DeviceSession.start(user, data.validated_data["device_name"], data.validated_data["platform"])
+    return Response({"token": token, "session_id": session.id, "user": _user_payload(user)})
+
+
+class PanelLoginSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=80)
+    device_name = serializers.CharField(required=False, allow_blank=True, default="")
+    platform = serializers.CharField(required=False, allow_blank=True, default="")
+    replace_session_id = serializers.IntegerField(required=False)
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def panel_login(request):
+    """The web app's half of «باز کردن وب اپ با حساب من»: a one-time code from the panel becomes a session, like a
+    verified SMS code (the same device limit). A wrong or used code counts as a wrong guess for the IP."""
+    data = PanelLoginSerializer(data=request.data)
+    if not data.is_valid():
+        return _error("اطلاعات ارسالی کامل نیست.", "invalid_request", errors=data.errors)
+    ip_wrong_key = f"otp-wrong-ip:{_client_ip(request)}"
+    if ratelimit.count(ip_wrong_key) >= settings.OTP_WRONG_PER_IP_PER_HOUR:
+        return _too_many("تلاش‌های ناموفق زیاد است. کمی بعد دوباره تلاش کنید.")
+    found = PanelLoginCode.find(data.validated_data["code"].strip())
+    if found is not None:
+        found = PanelLoginCode.objects.select_for_update().select_related("user").get(pk=found.pk)
+    if found is None or not found.is_usable or not (found.user.is_active and found.user.is_staff):
+        ratelimit.hit(ip_wrong_key)
+        return _error("این پیوند ورود دیگر کار نمی‌کند. از پنل دوباره «باز کردن وب اپ» را بزنید.", "panel_code_invalid")
+    user = found.user
+    refused = _make_room(user, data.validated_data.get("replace_session_id"))
+    if refused is not None:
+        return refused  # the code stays usable (for its minute) so a device can be chosen and the call repeated
+    found.used_at = timezone.now()
+    found.save(update_fields=["used_at"])
     session, token = DeviceSession.start(user, data.validated_data["device_name"], data.validated_data["platform"])
     return Response({"token": token, "session_id": session.id, "user": _user_payload(user)})
 
@@ -242,3 +286,23 @@ def revoke_session(request, session_id):
         return _error("این نشست پیدا نشد.", "not_found", status.HTTP_404_NOT_FOUND)
     session.revoke()
     return Response({"revoked": True})
+
+
+def open_app(request):
+    """The panel's «باز کردن وب اپ با حساب من»: a fresh one-time code, handed to the web app in the address's fragment
+    (after «#», so it never reaches a server log or a Referer) at APP_URL/panel-login. POST only, staff only."""
+    from django.contrib.admin.views.decorators import staff_member_required
+    from django.http import HttpResponseNotAllowed, HttpResponseRedirect
+
+    @staff_member_required
+    def inner(request):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        code = PanelLoginCode.issue(request.user)
+        base = settings.APP_URL.rstrip("/")
+        response = HttpResponseRedirect(f"{base}/panel-login#{code}")
+        response["Cache-Control"] = "no-store"
+        response["Referrer-Policy"] = "no-referrer"
+        return response
+
+    return inner(request)
