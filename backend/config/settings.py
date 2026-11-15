@@ -39,9 +39,23 @@ SITE_URL = f"{SITE_SCHEME}://{SITE_DOMAIN}"
 # Address of the admin panel. On the real server use something only you know, e.g. "manage-7f3k/".
 ADMIN_URL = env("ADMIN_URL", default="admin/").strip("/") + "/"
 
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[SITE_DOMAIN.split(":")[0], "localhost", "127.0.0.1"])
-CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[SITE_URL])
-CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+
+
+def env_hosts(name, default=None):
+    """A comma-separated list from the environment. Some hosting panels turn «www.example.ir» into a Markdown link
+    («[www.example.ir](https://www.example.ir)») when it is typed in: keep only the text inside the brackets."""
+    import re
+
+    raw = env.str(name, default=None)
+    if raw is None:
+        return list(default or [])
+    raw = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", raw)
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+ALLOWED_HOSTS = env_hosts("ALLOWED_HOSTS", default=[SITE_DOMAIN.split(":")[0], "localhost", "127.0.0.1"])
+CSRF_TRUSTED_ORIGINS = env_hosts("CSRF_TRUSTED_ORIGINS", default=[SITE_URL])
+CORS_ALLOWED_ORIGINS = env_hosts("CORS_ALLOWED_ORIGINS")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -154,7 +168,7 @@ BALE_BOT_TOKEN = env("BALE_BOT_TOKEN", default="")
 BALE_CHAT_ID = env("BALE_CHAT_ID", default="")
 # The website (apps/website): the hosts where it is served at the root (e.g. limookhan.ir,www.limookhan.ir); elsewhere
 # it is at /site/. APP_URL: the web app's address for the site's «ورود» and «شروع» links (e.g. https://app.limookhan.ir).
-WEBSITE_HOSTS = env.list("WEBSITE_HOSTS", default=[])
+WEBSITE_HOSTS = env_hosts("WEBSITE_HOSTS")
 APP_URL = env("APP_URL", default="/")
 # The web version of the app (served at the root by apps.catalog.webapp); update.bat fills it.
 WEBAPP_DIR = Path(env("WEBAPP_DIR", default=str(BASE_DIR / "webapp")))
