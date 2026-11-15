@@ -144,6 +144,8 @@ STORAGES = {
 }
 MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
+# True when no web server (nginx) serves MEDIA_ROOT, e.g. on ParsPack PaaS. Point MEDIA_ROOT at a persistent disk there.
+SERVE_MEDIA = env.bool("SERVE_MEDIA", default=False)
 # The website (apps/website): the hosts where it is served at the root (e.g. limookhan.ir,www.limookhan.ir); elsewhere
 # it is at /site/. APP_URL: the web app's address for the site's «ورود» and «شروع» links (e.g. https://app.limookhan.ir).
 WEBSITE_HOSTS = env.list("WEBSITE_HOSTS", default=[])
@@ -191,9 +193,11 @@ if not DEBUG and not TESTING and SMS_BACKEND == "console":
 # Leave empty until the merchant code arrives; "zibal" is Zibal's test merchant.
 
 ZIBAL_MERCHANT = env("ZIBAL_MERCHANT", default="zibal")
-if not DEBUG and not TESTING and ZIBAL_MERCHANT == "zibal":
+# False = buying is switched off (the server runs without a real merchant code; nothing can be paid or settled).
+PAYMENTS_ENABLED = env.bool("PAYMENTS_ENABLED", default=True)
+if not DEBUG and not TESTING and PAYMENTS_ENABLED and ZIBAL_MERCHANT == "zibal":
     # The test merchant "pays" without real money; it must never run on the real server.
-    raise ImproperlyConfigured("ZIBAL_MERCHANT=zibal is Zibal's test merchant. Set the real merchant code on the server.")
+    raise ImproperlyConfigured("ZIBAL_MERCHANT=zibal is Zibal's test merchant. Set the real merchant code on the server, or PAYMENTS_ENABLED=False.")
 # Where the payment result page sends the user afterwards: the app's deep link (or the web app's address).
 APP_RETURN_URL = env("APP_RETURN_URL", default="limookhan://payment-result")
 

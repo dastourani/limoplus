@@ -1,3 +1,5 @@
+import re
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -93,6 +95,11 @@ shared = [
 
 if settings.DEBUG:
     shared += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+elif settings.SERVE_MEDIA:
+    # No nginx in front (e.g. ParsPack PaaS): Django serves the uploaded files itself.
+    from django.views.static import serve
+
+    shared += [re_path(rf"^{re.escape(settings.MEDIA_URL.lstrip('/'))}(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT})]
 
 # The website (apps/website): here under /site/; at the root on its own host (WEBSITE_HOSTS).
 urlpatterns = [*shared, path("site/", include("apps.website.urls"))]
@@ -100,7 +107,6 @@ urlpatterns = [*shared, path("site/", include("apps.website.urls"))]
 # The web version of the app at the root (anything not matched above), when WEBAPP_DIR holds a build.
 from apps.catalog.webapp import webapp  # noqa: E402
 
-import re  # noqa: E402
 
 # Not for the API, the panel, static files or media (so «/admin» still gets its slash added, and so on).
 _reserved = "|".join(re.escape(x.strip("/")) for x in ("api", "static", "media", "site", settings.ADMIN_URL) if x.strip("/"))

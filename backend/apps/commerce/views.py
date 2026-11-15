@@ -57,6 +57,7 @@ def offers(request):
             "book": {"slug": book.slug, "title": book.title, "price": book.price},
             "majors": [],
             "plans": [_plan_payload(p) for p in _plans_on_sale()],
+            "payments_enabled": settings.PAYMENTS_ENABLED,
         }
     )
 
@@ -75,6 +76,8 @@ def plans(request):
 @api_view(["POST"])
 def create_order(request):
     """Creates an order with a server-computed amount and returns the gateway URL. The client never sends prices."""
+    if not settings.PAYMENTS_ENABLED:
+        return _err("خرید هنوز فعال نشده است؛ به‌زودی باز می‌شود.", "payments_off", status.HTTP_503_SERVICE_UNAVAILABLE)
     user = request.user
     book_slug, plan_id = request.data.get("book"), request.data.get("plan")
     if book_slug and not plan_id:
@@ -147,6 +150,9 @@ RECHECK_WINDOW = timedelta(hours=2)
 
 def settle(track_id: str) -> Order | None:
     """Verifies a payment with Zibal and, if the paid amount matches, marks the order paid and grants access once."""
+    if not settings.PAYMENTS_ENABLED:
+        # Switched off (possibly with Zibal's test merchant set): never verify or grant anything.
+        return Order.objects.filter(track_id=track_id).first()
     with transaction.atomic():
         # Lock only the order row: PostgreSQL refuses FOR UPDATE on the nullable side of the joins (book, plan, major).
         order = Order.objects.select_for_update(of=("self",)).select_related("plan", "book", "major", "user").filter(track_id=track_id).first()

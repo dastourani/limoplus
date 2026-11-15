@@ -52,6 +52,22 @@ class PaymentTests(TestCase):
         self.assertEqual(order.status, Order.Status.PAID)
         self.assertEqual(self.client.get(f"/api/v1/nodes/{self.paid_section.id}/").status_code, 200)
 
+    def test_payments_off_refuses_orders_and_never_settles(self):
+        order = self._order_book()
+        with override_settings(PAYMENTS_ENABLED=False):
+            with mock.patch("apps.commerce.zibal.request_payment") as req:
+                r = self.client.post("/api/v1/orders/", {"book": "math-1"}, format="json")
+            self.assertEqual(r.status_code, 503)
+            self.assertEqual(r.data["code"], "payments_off")
+            req.assert_not_called()
+            with mock.patch("apps.commerce.zibal.verify") as verify:
+                self.client.get("/api/v1/payments/zibal/callback/?trackId=T1&success=1")
+            verify.assert_not_called()
+            self.assertFalse(self.client.get("/api/v1/offers/?book=math-1").data["payments_enabled"])
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PENDING)
+        self.assertFalse(Entitlement.objects.exists())
+
     def test_amount_mismatch_is_not_paid(self):
         order = self._order_book()
         self._callback("T1", {"result": 100, "amount": 1000})
