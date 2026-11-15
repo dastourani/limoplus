@@ -50,13 +50,15 @@ function Tab({ tab, on }: { tab: (typeof TABS)[number]; on: boolean }) {
   );
 }
 
-/** On a computer: the same four places as a menu down the right side, with the lemon and the name on top. */
+/**
+ * On a computer: a narrow rail down the right side (the lemon on top, then each place as an icon with its name under
+ * it), so the page keeps the width. The current place sits in a lemon capsule, as in the phone's bar.
+ */
 function SideNav({ path }: { path: string }) {
   return (
     <View style={styles.side} accessibilityRole="tablist">
-      <View style={styles.brand}>
-        <LemonSlice size={34} />
-        <Text style={styles.brandText}>لیموخوان</Text>
+      <View style={styles.brand} accessibilityLabel="لیموخوان">
+        <LemonSlice size={36} />
       </View>
       {TABS.map((tab) => {
         const on = path === tab.href || path.startsWith(`${tab.href}/`);
@@ -64,12 +66,21 @@ function SideNav({ path }: { path: string }) {
           <Pressable
             key={tab.href}
             accessibilityRole="tab"
+            accessibilityLabel={tab.label}
             accessibilityState={{ selected: on }}
             onPress={() => !on && router.replace(tab.href)}
-            style={({ pressed }) => [styles.sideItem, on && styles.sideOn, !on && pressed && styles.sideHover]}
+            style={styles.sideItem}
           >
-            <Icon name={tab.icon} size={21} color={colors.ink} strokeWidth={on ? 2.3 : 1.8} />
-            <Text style={[styles.sideText, on && { fontWeight: '900' }]}>{tab.label}</Text>
+            {({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => (
+              <>
+                <View style={[styles.sidePill, on ? styles.sideOn : (hovered || pressed) && styles.sideHover]}>
+                  <Icon name={tab.icon} size={22} color={colors.ink} strokeWidth={on ? 2.3 : 1.8} />
+                </View>
+                <Text style={[styles.sideText, on && { fontFamily: 'Vazirmatn_700Bold', color: colors.ink }]} numberOfLines={1}>
+                  {tab.label}
+                </Text>
+              </>
+            )}
           </Pressable>
         );
       })}
@@ -105,13 +116,13 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  side: { width: 232, backgroundColor: colors.surface, borderLeftWidth: 1, borderLeftColor: colors.line, paddingHorizontal: 14, paddingVertical: 20, gap: 4 },
-  brand: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 18, paddingHorizontal: 6 },
-  brandText: { fontSize: 20, fontWeight: '900', color: colors.ink },
-  sideItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12 },
+  side: { width: 84, backgroundColor: colors.surface, borderLeftWidth: 1, borderLeftColor: colors.line, paddingVertical: 18, gap: 10, alignItems: 'center' },
+  brand: { marginBottom: 14 },
+  sideItem: { alignItems: 'center', gap: 4, paddingVertical: 4, width: 76 },
+  sidePill: { width: 56, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   sideOn: { backgroundColor: colors.lemon },
   sideHover: { backgroundColor: colors.ground },
-  sideText: { fontSize: 15, color: colors.ink },
+  sideText: { fontSize: 12, color: colors.muted },
   bar: { flexDirection: 'row-reverse', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line },
   tab: { flex: 1, height: BAR, alignItems: 'center', justifyContent: 'center' },
   capsuleWrap: { width: 58, height: 34, alignItems: 'center', justifyContent: 'center' },
