@@ -2,8 +2,26 @@
 
 {% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
 
-{% block extrahead %}{{ block.super }}
+{% block extrahead %}{{ block.super }}{% load static %}
 <style>
+  /* Vazirmatn (with the clearer hollow zero) everywhere in the panel, and one size scale for Persian. */
+  @font-face { font-family: Vazirmatn; font-weight: 400; font-display: swap; src: url("{% static 'catalog/fonts/Vazirmatn_400Regular.ttf' %}") format("truetype"); }
+  @font-face { font-family: Vazirmatn; font-weight: 700 900; font-display: swap; src: url("{% static 'catalog/fonts/Vazirmatn_700Bold.ttf' %}") format("truetype"); }
+  :root, html[data-theme="light"], html[data-theme="dark"] { --font-family-primary: Vazirmatn, Tahoma, "Segoe UI", sans-serif; }
+  body, input, textarea, select, button { font-family: var(--font-family-primary); }
+  body { font-size: 14px; line-height: 1.7; }
+  #content h1 { font-size: 22px; font-weight: 700; line-height: 1.5; margin-bottom: 14px; }
+  #content h2 { font-size: 16px; font-weight: 700; }
+  #content h3 { font-size: 14px; font-weight: 700; }
+  .module caption, .module h2, #nav-sidebar caption { font-size: 13px; font-weight: 700; }
+  #nav-sidebar th, #nav-sidebar td { font-size: 13.5px; }
+  #result_list thead th { font-size: 12px; font-weight: 700; }
+  #result_list td, #result_list th { font-size: 13.5px; line-height: 1.75; }
+  .help, .helptext, p.help, div.help, .lp-quiet, .small, .quiet { font-size: 12px; }
+  #site-name { font-size: 20px; font-weight: 700; }
+  .breadcrumbs { font-size: 13px; }
+  #changelist-filter h2 { font-size: 14px; } #changelist-filter summary, #changelist-filter li { font-size: 13px; }
+  .button, input[type=submit], input[type=button], .submit-row input, a.button { font-weight: 700; }
   html { overflow-anchor: none; }
   .lp-open-app { display: inline; margin: 0; }
   .lp-open-app button { background: #F5C518; color: #1D2B23; border: 0; border-radius: 8px; padding: 3px 10px;
@@ -102,7 +120,7 @@
 
 {% block userlinks %}
 {% if user.is_active and user.is_staff %}
-  <form class="lp-open-app" method="post" action="{% url 'panel-open-app' %}" target="_blank" rel="noopener noreferrer">{% csrf_token %}
+  <form class="lp-open-app" method="post" action="{% url 'panel-open-app' %}" target="_blank" rel="noopener">{% csrf_token %}
     <button type="submit" title="وب اپ در زبانه‌ی تازه، با همین حساب و بدون پیامک باز می‌شود">باز کردن وب اپ با حساب من</button>
   </form> /
 {% endif %}

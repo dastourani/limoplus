@@ -63,6 +63,32 @@ def entitlement_source(obj):
     return "دستی"
 
 
+class OrderBookFilter(admin.SimpleListFilter):
+    lp_list = True
+    title = "کتاب"
+    parameter_name = "book_id"
+
+    def lookups(self, request, model_admin):
+        from apps.catalog.filters import _book_choices
+
+        return _book_choices()
+
+    def queryset(self, request, queryset):
+        return queryset.filter(book_id=self.value()) if self.value() else queryset
+
+
+class OrderPlanFilter(admin.SimpleListFilter):
+    lp_list = True
+    title = "طرح اشتراک"
+    parameter_name = "plan_id"
+
+    def lookups(self, request, model_admin):
+        return [(str(p.pk), f"{p.title} ({fa_number(p.months)} ماهه)") for p in Plan.objects.order_by("order", "price")]
+
+    def queryset(self, request, queryset):
+        return queryset.filter(plan_id=self.value()) if self.value() else queryset
+
+
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
     list_display = ("title", "scope", "months", "price", "is_active", "order")
@@ -81,7 +107,57 @@ class OrderAdmin(admin.ModelAdmin):
     """Orders are a financial record: viewable, never edited or deleted here."""
 
     list_display = ("buyer", "what", "price", "state", "made", "payment")
-    list_filter = ("status", "created_at")
+    list_filter = ("status", "created_at", OrderBookFilter, OrderPlanFilter)
+    change_list_template = "admin/commerce/order/change_list.html"
+
+    def get_urls(self):
+        from django.urls import path
+
+        site = self.admin_site.admin_view
+        return [
+            path("report/", site(self.report_view), name="commerce_order_report"),
+            path("report/csv/", site(self.report_csv), name="commerce_order_report_csv"),
+        ] + super().get_urls()
+
+    def _may_see(self, request):
+        from django.core.exceptions import PermissionDenied
+
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+
+    def report_view(self, request):
+        from django.template.response import TemplateResponse
+
+        from . import report
+
+        self._may_see(request)
+        data = report.build(request.GET.get("range", "month"), request.GET.get("from", ""), request.GET.get("to", ""))
+        context = {**self.admin_site.each_context(request), "title": "گزارش فروش", "opts": self.model._meta, **data,
+                   "from_text": request.GET.get("from", ""), "to_text": request.GET.get("to", ""),
+                   "query": request.GET.urlencode()}
+        return TemplateResponse(request, "admin/commerce/order/report.html", context)
+
+    def report_csv(self, request):
+        from django.http import HttpResponse
+
+        from . import report
+
+        self._may_see(request)
+        start, end, _ = report.period(request.GET.get("range", "month"), request.GET.get("from", ""), request.GET.get("to", ""))
+        response = HttpResponse(report.csv_file(start, end), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="limookhan-orders-{start:%Y%m%d}-{end:%Y%m%d}.csv"'
+        return response
+
+    def changelist_view(self, request, extra_context=None):
+        """Above the list: what the shown (filtered) orders add up to, paid ones only."""
+        from django.db.models import Count, Sum
+
+        response = super().changelist_view(request, extra_context)
+        cl = getattr(response, "context_data", {}).get("cl") if hasattr(response, "context_data") else None
+        if cl is not None:
+            paid = cl.queryset.filter(status=Order.Status.PAID).aggregate(n=Count("pk"), s=Sum("amount"))
+            response.context_data["lp_paid_total"] = {"n": fa_number(paid["n"]), "sum": fa_number(paid["s"] or 0)}
+        return response
     search_fields = ("user__phone", "ref_number", "track_id", "title")
     readonly_fields = [f.name for f in Order._meta.fields]
     list_select_related = ("user",)
