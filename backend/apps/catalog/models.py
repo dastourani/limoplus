@@ -154,6 +154,11 @@ class BookWaitlist(models.Model):
     cancel_count = models.PositiveSmallIntegerField("دفعات لغو", default=0)
     created_at = models.DateTimeField("زمان", auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # «خبر دادن به منتظران» in the panel (catalog/waitlist_sms.py): queued, then one SMS, never a second.
+    notify_queued_at = models.DateTimeField("در صف پیامک", null=True, blank=True, editable=False)
+    notified_at = models.DateTimeField("پیامک خبر فرستاده شد", null=True, blank=True, editable=False)
+    notify_error = models.CharField("خطای پیامک", max_length=200, blank=True, editable=False)
+    notify_text = models.CharField("متن پیامک خبر", max_length=300, blank=True, editable=False)
 
     @property
     def can_cancel(self) -> bool:

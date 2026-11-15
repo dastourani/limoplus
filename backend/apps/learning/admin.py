@@ -1,11 +1,11 @@
-from django.contrib import admin, messages
+from django.contrib import admin
 from django.db.models import Count, F, Func, IntegerField, Q
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
-from apps.catalog.panel_display import badges
+from apps.catalog.panel_display import badges, tex
 from apps.catalog.filters import NodeBookFilter, NodeChapterFilter, YesNoFilter
 
 from .models import ExamSource, Flashcard, Question, Report
@@ -26,6 +26,7 @@ class SourceNameFilter(admin.SimpleListFilter):
 
     title = "نام کنکور"
     parameter_name = "konkur"
+    lp_list = True
 
     def lookups(self, request, model_admin):
         names = sorted(set(ExamSource.objects.values_list("name", flat=True)))
@@ -39,13 +40,30 @@ class SourceNameFilter(admin.SimpleListFilter):
         return queryset
 
 
+class OneSourceFilter(admin.SimpleListFilter):
+    """«منبع» from the exam sources list (?source=<id>): the tests of exactly that exam, shown only while chosen."""
+
+    title = "منبع کنکور"
+    parameter_name = "source"
+
+    def lookups(self, request, model_admin):
+        value = request.GET.get(self.parameter_name, "")
+        source = ExamSource.objects.filter(pk=value).first() if value.isdigit() else None
+        return [(str(source.pk), str(source))] if source else []
+
+    def queryset(self, request, queryset):
+        return queryset.filter(sources__pk=self.value()).distinct() if self.value() else queryset
+
+
 class SourceYearFilter(admin.SimpleListFilter):
     title = "سال کنکور"
     parameter_name = "year"
 
     def lookups(self, request, model_admin):
+        from apps.catalog.jalali import fa_digits
+
         years = sorted(set(ExamSource.objects.values_list("year", flat=True)), reverse=True)
-        return [(str(y), str(y)) for y in years]
+        return [(str(y), fa_digits(y)) for y in years]
 
     def queryset(self, request, queryset):
         if self.value():
@@ -165,7 +183,13 @@ class HasFormulaFilter(YesNoFilter):
 
 
 class _ManagedInChapter:
-    """Lists for finding things; adding and editing happen in «مدیریت فصل», so the file rules always apply."""
+    """Lists for finding things; adding and editing happen in «مدیریت فصل», so the file rules always apply.
+    The book and chapter of each row come with the list's own query (by tree path), not one query per row."""
+
+    change_list_template = "admin/lp_tex_change_list.html"
+
+    class Media:
+        js = ("catalog/limo-preview.js", "catalog/lists.js")
 
     def has_add_permission(self, request):
         return False
@@ -173,20 +197,45 @@ class _ManagedInChapter:
     def has_delete_permission(self, request, obj=None):
         return False
 
+    def changelist_view(self, request, extra_context=None):
+        from apps.catalog.fresh import formula_macros
+
+        return super().changelist_view(request, {**(extra_context or {}), "lp_macros": formula_macros()})
+
+    def with_place(self, qs):
+        from django.db.models import OuterRef, Subquery
+        from django.db.models.functions import Substr
+
+        from apps.catalog.models import ContentNode
+
+        step = ContentNode.steplen
+        book = ContentNode.objects.filter(path=Substr(OuterRef("node__path"), 1, step))
+        chapter = ContentNode.objects.filter(path=Substr(OuterRef("node__path"), 1, 2 * step), kind=ContentNode.Kind.CHAPTER)
+        return qs.select_related("node").annotate(
+            p_book=Subquery(book.values("title")[:1]),
+            p_chapter_id=Subquery(chapter.values("pk")[:1]),
+            p_chapter_pos=Subquery(chapter.values("position")[:1]),
+            p_chapter_title=Subquery(chapter.values("title")[:1]),
+        )
+
     @admin.display(description="جا (کتاب › فصل › بخش)")
     def place(self, obj):
-        chapter = obj.node if obj.node.kind == "chapter" else obj.node.get_parent()
-        book = obj.node.book()
+        from apps.catalog.jalali import fa_digits
+
+        chapter = f"فصل {fa_digits(obj.p_chapter_pos)}" if obj.p_chapter_pos else (obj.p_chapter_title or "")
         section = obj.node.title if obj.node.kind == "section" else "مقدمه‌ی فصل"
-        return format_html(
-            '<span style="font-size:11px;color:var(--body-quiet-color)">{} › فصل {}</span><br>{}',
-            book.title if book else "بدون کتاب", (chapter.position or chapter.title) if chapter else "", section,
-        )
+        full = " › ".join(x for x in (obj.p_book or "بدون کتاب", obj.p_chapter_title or chapter, section) if x)
+        book = obj.p_book or "بدون کتاب"
+        if len(book) > 32:  # the whole name is in the tooltip; the section must stay in sight
+            book = book[:30].rstrip() + "…"
+        return format_html('<div class="lp-place lp-quiet" title="{}">{} › {} › {}</div>', full, book, chapter, section)
 
     @admin.display(description="")
     def manage(self, obj):
-        url = manager_url(obj.node, f"#{self.anchor}={obj.slug}")
-        return format_html('<a class="button" href="{}">ویرایش</a>', url) if url else "—"
+        if not getattr(obj, "p_chapter_id", None):
+            return "—"
+        url = reverse("admin:catalog_chapter_manager", args=[obj.p_chapter_id]) + f"#{self.anchor}={obj.slug}"
+        return format_html('<a class="button" href="{}">ویرایش</a>', url)
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         obj = self.model.objects.filter(pk=object_id).select_related("node").first()
@@ -197,13 +246,11 @@ class _ManagedInChapter:
         return super().change_view(request, object_id, form_url, extra_context)
 
 
-
-
 @admin.register(Question)
 class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
     anchor = "q"
-    list_display = ("short_stem", "place", "difficulty", "kind", "source_label", "answers", "open_reports", "status", "manage")
-    list_filter = (NodeBookFilter, NodeChapterFilter, SourceNameFilter, SourceYearFilter, RoleFilter, "difficulty", "kind", "domain", MeasuredFilter,
+    list_display = ("short_stem", "source_label", "level", "status", "manage")
+    list_filter = (NodeBookFilter, NodeChapterFilter, SourceNameFilter, SourceYearFilter, OneSourceFilter, RoleFilter, "difficulty", "kind", "domain", MeasuredFilter,
                    HasQuickFilter, HasAlternativeFilter, HasSimilarFilter, KeyChangedFilter, HasFlashcardsFilter, OpenReportsFilter, "is_sample",
                    "is_free", "is_archived")
     actions = ("make_sample", "unmake_sample")
@@ -221,29 +268,41 @@ class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
     list_per_page = 50
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related("node").prefetch_related("sources").annotate(
+        return self.with_place(super().get_queryset(request)).prefetch_related("sources").annotate(
             n_reports=Count("reports", filter=Q(reports__status=Report.Status.OPEN), distinct=True)
         ).order_by("node__path", "order", "id")
 
-    @admin.display(description="وضعیت")
+    @admin.display(description="وضعیت و پاسخ‌ها", ordering="answer_count")
     def status(self, obj):
-        return badges(obj.is_archived and ("بایگانی", "grey"), obj.is_sample and ("نمونه", "blue"), obj.is_extra and ("تکمیلی", "yellow"))
+        from apps.catalog.panel_display import fa_number
 
-    @admin.display(description="صورت تست")
+        tags = badges(obj.n_reports and (f"{fa_number(obj.n_reports)} گزارش باز", "red"), obj.is_archived and ("بایگانی", "grey"),
+                      obj.is_sample and ("نمونه", "blue"), obj.is_extra and ("تکمیلی", "yellow"))
+        return format_html('{}<div class="lp-quiet" style="margin-top:3px;white-space:nowrap">{}</div>', tags, self.answers(obj))
+
+    @admin.display(description="صورت تست (و جای آن)")
     def short_stem(self, obj):
-        text = " ".join(obj.stem.split())
-        return format_html('<div style="min-width:280px">{}</div>', text[:140] + ("…" if len(text) > 140 else ""))
+        return format_html('{}<div class="lp-clamp">{}</div>', self.place(obj), tex(obj.stem, 160))
+
+    @admin.display(description="سطح و نوع", ordering="difficulty")
+    def level(self, obj):
+        kind = obj.get_kind_display() if obj.kind else ""
+        return format_html('{}<br><span class="lp-quiet">{}</span>', obj.get_difficulty_display(), kind)
 
     @admin.display(description="منبع")
     def source_label(self, obj):
-        names = [str(s) for s in obj.sources.all()]
-        return "، ".join(names) or ("تألیفی" if obj.is_original else "")
+        from apps.catalog.jalali import fa_digits
+
+        items = [(f"{s.name} {fa_digits(s.year)}" if s.year else s.name, "blue") for s in obj.sources.all()]
+        return badges(*items, obj.is_original and not items and ("تألیفی", "grey"))
 
     @admin.display(description="پاسخ‌ها", ordering="answer_count")
     def answers(self, obj):
+        from apps.catalog.panel_display import fa_number
+
         if not obj.answer_count:
-            return "—"
-        return f"{obj.answer_count} ({round(100 * obj.correct_count / obj.answer_count)}٪ درست)"
+            return "بی‌پاسخ"
+        return f"{fa_number(obj.answer_count)} پاسخ، {fa_number(round(100 * obj.correct_count / obj.answer_count))}٪ درست"
 
     @admin.display(description="گزارش باز", ordering="n_reports")
     def open_reports(self, obj):
@@ -253,21 +312,26 @@ class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
 @admin.register(Flashcard)
 class FlashcardAdmin(_ManagedInChapter, admin.ModelAdmin):
     anchor = "f"
-    list_display = ("title", "short_point", "place", "status", "manage")
+    list_display = ("short_title", "short_point", "status", "manage")
     list_filter = (NodeBookFilter, NodeChapterFilter, HasFormulaFilter, LinkedToQuestionsFilter, "is_free", "is_archived")
     search_fields = ("title", "point", "slug", "formula")
     list_per_page = 50
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related("node").order_by("node__path", "order", "id")
+        return self.with_place(super().get_queryset(request)).order_by("node__path", "order", "id")
 
-    @admin.display(description="نکته")
+    @admin.display(description="عنوان (رو) و جای آن", ordering="title")
+    def short_title(self, obj):
+        return format_html('{}<div>{}</div>', self.place(obj), tex(obj.title, 80))
+
+    @admin.display(description="نکته (پشت)")
     def short_point(self, obj):
-        return obj.point[:80] + ("…" if len(obj.point) > 80 else "")
+        formula = format_html('<div class="lp-tex lp-quiet">${}$</div>', obj.formula) if obj.formula else ""
+        return format_html('<div class="lp-clamp">{}</div>{}', tex(obj.point, 120), formula)
 
     @admin.display(description="وضعیت")
     def status(self, obj):
-        return badges(obj.is_archived and ("بایگانی", "grey"), obj.formula and ("فرمول", "blue"), obj.is_free and ("رایگان", "green"))
+        return badges(obj.is_archived and ("بایگانی", "grey"), obj.is_free and ("رایگان", "green"))
 
 
 class ExamSourceNameFilter(admin.SimpleListFilter):
@@ -281,14 +345,56 @@ class ExamSourceNameFilter(admin.SimpleListFilter):
         return queryset.filter(name=self.value()) if self.value() else queryset
 
 
+class ExamYearFilter(admin.SimpleListFilter):
+    title = "سال"
+    parameter_name = "year"
+
+    def lookups(self, request, model_admin):
+        from apps.catalog.jalali import fa_digits
+
+        years = sorted(set(ExamSource.objects.values_list("year", flat=True)), reverse=True)
+        return [(str(y), fa_digits(y)) for y in years]
+
+    def queryset(self, request, queryset):
+        return queryset.filter(year=self.value()) if self.value() else queryset
+
+
 @admin.register(ExamSource)
 class ExamSourceAdmin(admin.ModelAdmin):
-    list_display = ("name", "year", "group", "booklet")
+    list_display = ("name", "shown_year", "shown_group", "shown_booklet", "n_questions")
     search_fields = ("name", "group")
-    list_filter = (ExamSourceNameFilter, "year")
+    list_filter = (ExamSourceNameFilter, ExamYearFilter)
+    ordering = ("-year", "name", "group", "booklet")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(n=Count("question", filter=Q(question__is_archived=False), distinct=True))
+
+    @admin.display(description="سال", ordering="year")
+    def shown_year(self, obj):
+        from apps.catalog.jalali import fa_digits
+
+        return fa_digits(obj.year) if obj.year else "—"
+
+    @admin.display(description="گروه/رشته", ordering="group")
+    def shown_group(self, obj):
+        return obj.group or "—"
+
+    @admin.display(description="دفترچه", ordering="booklet")
+    def shown_booklet(self, obj):
+        return obj.booklet or "—"
+
+    @admin.display(description="تست‌ها", ordering="n")
+    def n_questions(self, obj):
+        from apps.catalog.panel_display import fa_number
+
+        if not obj.n:
+            return "—"
+        url = reverse("admin:learning_question_changelist") + f"?source={obj.pk}"
+        return format_html('<a href="{}">{}</a>', url, fa_number(obj.n))
 
 
 class ReportBookFilter(admin.SimpleListFilter):
+    lp_list = True
     title = "کتاب"
     parameter_name = "book"
 
@@ -327,21 +433,77 @@ class ReportKindFilter(admin.SimpleListFilter):
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "user", "reason", "status", "question", "flashcard", "node", "manage")
+    """Reports come from learners in the app; here they are read, opened in the chapter manager and closed."""
+
+    def has_add_permission(self, request):
+        return False
+
+    list_display = ("about", "when", "state", "manage")
     list_filter = ("status", "reason", ReportBookFilter, ReportKindFilter)
-    search_fields = ("note", "user__phone")
+    search_fields = ("note", "user__phone", "question__stem", "flashcard__title", "node__title")
     raw_id_fields = ("user", "question", "flashcard", "node")
     actions = ["mark_fixed", "mark_rejected"]
+    change_list_template = "admin/lp_tex_change_list.html"
+
+    class Media:
+        js = ("catalog/limo-preview.js", "catalog/lists.js")
+
+    def changelist_view(self, request, extra_context=None):
+        from apps.catalog.fresh import formula_macros
+
+        return super().changelist_view(request, {**(extra_context or {}), "lp_macros": formula_macros()})
+
+    def get_queryset(self, request):
+        from django.db.models import OuterRef, Subquery
+        from django.db.models.functions import Coalesce, Substr
+
+        from apps.catalog.models import ContentNode
+
+        # The chapter of whatever was reported, from its tree path: no query per row for the «باز کردن» link.
+        item_path = Coalesce("question__node__path", "flashcard__node__path", "node__path")
+        chapter = ContentNode.objects.filter(path=Substr(OuterRef("item_path"), 1, 2 * ContentNode.steplen), kind=ContentNode.Kind.CHAPTER)
+        return (super().get_queryset(request).select_related("user", "question", "flashcard", "node")
+                .annotate(item_path=item_path).annotate(p_chapter_id=Subquery(chapter.values("pk")[:1])))
+
+    @admin.display(description="گزارش")
+    def about(self, obj):
+        from apps.catalog.panel_display import tex
+
+        if obj.question_id:
+            kind, text = "تست", tex(obj.question.stem, 110)
+        elif obj.flashcard_id:
+            kind, text = "فلش‌کارت", tex(obj.flashcard.title, 110)
+        elif obj.node_id:
+            kind, text = "متن درس", obj.node.title
+        else:
+            kind, text = "", ""
+        note = format_html('<div style="margin-top:3px">«{}»</div>', obj.note[:160] + ("…" if len(obj.note) > 160 else "")) if obj.note else ""
+        return format_html('<div style="min-width:240px">{} <span class="lp-quiet">{}:</span> {}{}</div>',
+                           badges((obj.get_reason_display(), "blue")), kind, text, note)
+
+    @admin.display(description="کاربر و زمان", ordering="created_at")
+    def when(self, obj):
+        from apps.catalog.jalali import jalali_datetime
+
+        return format_html('{}<div class="lp-quiet" style="white-space:nowrap">{}</div>', obj.user.phone, jalali_datetime(obj.created_at))
+
+    @admin.display(description="وضعیت", ordering="status")
+    def state(self, obj):
+        color = {Report.Status.OPEN: "red", Report.Status.FIXED: "green"}.get(obj.status, "grey")
+        return badges((obj.get_status_display(), color))
 
     @admin.display(description="")
     def manage(self, obj):
+        if not getattr(obj, "p_chapter_id", None):
+            return ""
         if obj.question_id:
-            return format_html('<a class="button" href="{}">باز کردن</a>', manager_url(obj.question.node, f"#q={obj.question.slug}"))
-        if obj.flashcard_id:
-            return format_html('<a class="button" href="{}">باز کردن</a>', manager_url(obj.flashcard.node, f"#f={obj.flashcard.slug}"))
-        if obj.node_id and obj.node.kind in ("section", "chapter"):
-            return format_html('<a class="button" href="{}">باز کردن</a>', manager_url(obj.node, f"#s={obj.node.slug if obj.node.kind == 'section' else ''}"))
-        return ""
+            anchor = f"#q={obj.question.slug}"
+        elif obj.flashcard_id:
+            anchor = f"#f={obj.flashcard.slug}"
+        else:
+            anchor = f"#s={obj.node.slug if obj.node.kind == 'section' else ''}"
+        url = reverse("admin:catalog_chapter_manager", args=[obj.p_chapter_id]) + anchor
+        return format_html('<a class="button" style="white-space:nowrap" href="{}">باز کردن</a>', url)
 
     @admin.action(description="علامت «اصلاح شد»")
     def mark_fixed(self, request, queryset):
@@ -350,3 +512,17 @@ class ReportAdmin(admin.ModelAdmin):
     @admin.action(description="علامت «بررسی شد، درست بود»")
     def mark_rejected(self, request, queryset):
         queryset.update(status=Report.Status.REJECTED, resolved_at=timezone.now())
+
+
+_each_context = admin.site.each_context
+
+
+def _each_context_with_reports(request):
+    """Every panel page knows how many error reports are open: the side menu shows it next to «گزارش‌های ایراد»."""
+    context = _each_context(request)
+    if getattr(request, "user", None) is not None and request.user.is_active and request.user.is_staff:
+        context["lp_open_reports"] = Report.objects.filter(status=Report.Status.OPEN).count()
+    return context
+
+
+admin.site.each_context = _each_context_with_reports

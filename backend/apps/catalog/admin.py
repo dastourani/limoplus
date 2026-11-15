@@ -108,8 +108,19 @@ class BookAdmin(admin.ModelAdmin):
         )
 
     def get_queryset(self, request):
-        # The «صندوق تست» has its own button above the list.
-        return super().get_queryset(request).filter(kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False)
+        # The «صندوق تست» has its own button above the list. Counts come with the list (no query per row).
+        from django.db.models import IntegerField, OuterRef, Subquery
+        from django.db.models.functions import Coalesce, Substr
+
+        chapters = (ContentNode.objects.filter(kind=ContentNode.Kind.CHAPTER, depth=2, is_archived=False)
+                    .annotate(root=Substr("path", 1, ContentNode.steplen)).filter(root=OuterRef("path"))
+                    .order_by().values("root").annotate(n=Count("pk")).values("n")[:1])
+        waiting = (BookWaitlist.objects.filter(book=OuterRef("pk"), is_active=True).order_by().values("book")
+                   .annotate(n=Count("pk")).values("n")[:1])
+        return (super().get_queryset(request).filter(kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False)
+                .prefetch_related("majors")
+                .annotate(n_chapters=Coalesce(Subquery(chapters, output_field=IntegerField()), 0),
+                          n_waiting=Coalesce(Subquery(waiting, output_field=IntegerField()), 0)))
 
     def get_readonly_fields(self, request, obj=None):
         return ("slug",) if obj else ()
@@ -155,20 +166,29 @@ class BookAdmin(admin.ModelAdmin):
     def cover_thumb(self, obj):
         if obj.cover:
             return format_html('<img src="{}" style="height:66px;border-radius:6px">', obj.cover.url)
-        major = obj.majors.order_by("order", "name").first()
+        majors = sorted(obj.majors.all(), key=lambda m: (m.order, m.name))  # prefetched with the list
+        major = majors[0] if majors else None
         return format_html(
             '<span class="lp-cover" data-title="{}" data-en="{}" data-author="{}" data-edition="{}" data-motif="{}" data-major="{}" data-strip="{}" data-drawing="{}" data-width="44"></span>',
             obj.title, obj.title_en, obj.author, obj.edition, obj.cover_motif, major.name if major else "", major.color if major else "", obj.cover_drawing,
         )
 
-    @admin.display(description="خبرم کن")
+    @admin.display(description="منتظران «خبرم کن»", ordering="n_waiting")
     def waiting(self, obj):
-        n = obj.waitlist.filter(is_active=True).count()
-        return n or ""
+        from .panel_display import fa_number
 
-    @admin.display(description="فصل‌ها")
+        n = getattr(obj, "n_waiting", None)
+        if n is None:
+            n = obj.waitlist.filter(is_active=True).count()
+        if not n:
+            return "—"
+        url = reverse("admin:catalog_bookwaitlist_changelist") + f"?book_id={obj.pk}"
+        return format_html('<a href="{}">{} نفر</a>', url, fa_number(n))
+
+    @admin.display(description="فصل‌ها", ordering="n_chapters")
     def chapter_count(self, obj):
-        return obj.get_children().filter(kind=ContentNode.Kind.CHAPTER, is_archived=False).count()
+        n = getattr(obj, "n_chapters", None)
+        return n if n is not None else obj.get_children().filter(kind=ContentNode.Kind.CHAPTER, is_archived=False).count()
 
     def changelist_view(self, request, extra_context=None):
         extra = extra_context or {}
@@ -219,6 +239,8 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
             path("inbox/", site(panel.open_inbox), name="catalog_inbox"),
             path("<int:book_id>/gift/", site(bookpanel.book_gift), name="catalog_book_gift"),
+            path("<int:book_id>/notify-waitlist/", site(lambda r, book_id: bookpanel.waitlist_notify(self.admin_site, r, book_id)),
+                 name="catalog_book_waitlist_notify"),
             path("chapter/<int:chapter_id>/", site(lambda r, chapter_id: panel.chapter_manager(self.admin_site, r, chapter_id)), name="catalog_chapter_manager"),
             path("chapter/<int:chapter_id>/api/", site(panel.chapter_api), name="catalog_chapter_api"),
             path("chapter/<int:chapter_id>/file/", site(lambda r, chapter_id: panel.chapter_file(self.admin_site, r, chapter_id)), name="catalog_chapter_file"),
@@ -280,7 +302,7 @@ class HasImageFilter(YesNoFilter):
 class SectionAdmin(admin.ModelAdmin):
     """A searchable list of every section's notes and summary; editing happens in «مدیریت فصل»."""
 
-    list_display = ("title", "chapter_title", "group", "summary_kind", "counts", "status", "manage")
+    list_display = ("section_title", "chapter_title", "summary_kind", "counts", "status", "manage")
     list_filter = (BookFilter, ChapterFilter, GroupFilter, HasNotesFilter, HasSummaryFilter, HasReviewCardFilter, HasImageFilter,
                    "is_free", "is_published", "is_archived")
     search_fields = ("title", "slug", "full_body", "summary_body", "group")
@@ -295,9 +317,19 @@ class SectionAdmin(admin.ModelAdmin):
         )
 
     def get_queryset(self, request):
+        from django.db.models import OuterRef, Subquery
+        from django.db.models.functions import Substr
+
+        step = ContentNode.steplen
+        chapter = ContentNode.objects.filter(path=Substr(OuterRef("path"), 1, 2 * step), kind=ContentNode.Kind.CHAPTER)
+        book = ContentNode.objects.filter(path=Substr(OuterRef("path"), 1, step), kind=ContentNode.Kind.BOOK)
         return super().get_queryset(request).filter(kind=ContentNode.Kind.SECTION).annotate(
             n_questions=Count("questions", filter=Q(questions__is_archived=False), distinct=True),
             n_flashcards=Count("flashcards", filter=Q(flashcards__is_archived=False), distinct=True),
+            p_chapter_id=Subquery(chapter.values("pk")[:1]),
+            p_chapter_pos=Subquery(chapter.values("position")[:1]),
+            p_chapter_title=Subquery(chapter.values("title")[:1]),
+            p_book=Subquery(book.values("title")[:1]),
         ).order_by("path")
 
     def has_add_permission(self, request):
@@ -306,18 +338,20 @@ class SectionAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-    def _chapter(self, obj):
-        return obj.get_parent()
+    @admin.display(description="بخش", ordering="title")
+    def section_title(self, obj):
+        group = format_html('<div class="lp-quiet">{}</div>', obj.group) if obj.group else ""
+        return format_html("{}{}", obj.title, group)
 
-    @admin.display(description="فصل")
+    @admin.display(description="فصل", ordering="path")
     def chapter_title(self, obj):
-        c = self._chapter(obj)
-        return f"{c.position or ''} {c.title}".strip() if c else ""
+        from .jalali import fa_digits
 
-    @admin.display(description="کتاب")
-    def book_title(self, obj):
-        b = obj.book()
-        return b.title if b else ""
+        if not getattr(obj, "p_chapter_title", None):
+            return "—"
+        head = f"فصل {fa_digits(obj.p_chapter_pos)}" if obj.p_chapter_pos else "فصل"
+        return format_html('<span style="white-space:nowrap">{}</span><div class="lp-quiet" title="{}">{}</div>',
+                           head, obj.p_book or "", obj.p_chapter_title)
 
     @admin.display(description="خلاصه")
     def summary_kind(self, obj):
@@ -325,16 +359,18 @@ class SectionAdmin(admin.ModelAdmin):
             return "—"
         return "کارت مرور" if ("در یک نگاه:" in obj.summary_body or "مهم:" in obj.summary_body) else "متن ساده"
 
-    @admin.display(description="تست / فلش‌کارت")
+    @admin.display(description="تست و فلش‌کارت")
     def counts(self, obj):
-        return f"{obj.n_questions} / {obj.n_flashcards}"
+        from .panel_display import fa_number
+
+        return format_html('<span style="white-space:nowrap">{} تست</span><div class="lp-quiet" style="white-space:nowrap">{} فلش‌کارت</div>',
+                           fa_number(obj.n_questions), fa_number(obj.n_flashcards))
 
     @admin.display(description="")
     def manage(self, obj):
-        c = self._chapter(obj)
-        if not c or c.kind != ContentNode.Kind.CHAPTER or c.book() is None:
+        if not getattr(obj, "p_chapter_id", None) or not obj.p_book:
             return ""
-        return format_html('<a class="button" href="{}#s={}">ویرایش</a>', reverse("admin:catalog_chapter_manager", args=[c.pk]), obj.slug)
+        return format_html('<a class="button" href="{}#s={}">ویرایش</a>', reverse("admin:catalog_chapter_manager", args=[obj.p_chapter_id]), obj.slug)
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         node = ContentNode.objects.filter(pk=object_id).first()
@@ -363,16 +399,57 @@ class ChapterRevisionAdmin(admin.ModelAdmin):
         return ("source",)
 
 
+class WaitNotifiedFilter(admin.SimpleListFilter):
+    title = "پیامک خبر"
+    parameter_name = "told"
+
+    def lookups(self, request, model_admin):
+        return [("yes", "فرستاده شد"), ("no", "هنوز نه")]
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(notified_at__isnull=False)
+        if self.value() == "no":
+            return queryset.filter(notified_at__isnull=True)
+        return queryset
+
+
 @admin.register(BookWaitlist)
 class BookWaitlistAdmin(admin.ModelAdmin):
-    """Who pressed «خبرم کن» on a coming-soon book."""
+    """Who pressed «خبرم کن» on a coming-soon book, and whether the SMS «منتشر شد» has gone to them."""
 
-    list_display = ("book", "user", "is_active", "created_at")
-    list_filter = ("is_active", BookFKFilter)
+    change_list_template = "admin/catalog/bookwaitlist/change_list.html"
+
+    list_display = ("book", "user", "state", "told", "created_at")
+    list_filter = ("is_active", BookFKFilter, WaitNotifiedFilter)
     search_fields = ("user__phone", "book__title")
+    list_select_related = ("book", "user")
 
     def get_readonly_fields(self, request, obj=None):
-        return ("user", "book", "is_active", "created_at")
+        return ("user", "book", "is_active", "created_at", "notified_at", "notify_error")
+
+    def changelist_view(self, request, extra_context=None):
+        """With one book chosen, the page offers «خبر دادن به منتظران» for it."""
+        book = ContentNode.objects.filter(pk=request.GET.get("book_id"), kind=ContentNode.Kind.BOOK).first() if request.GET.get("book_id", "").isdigit() else None
+        return super().changelist_view(request, {**(extra_context or {}), "lp_notify_book": book})
+
+    @admin.display(description="درخواست", ordering="is_active")
+    def state(self, obj):
+        return badges(("فعال", "green") if obj.is_active else ("لغو کرده", "grey"))
+
+    @admin.display(description="پیامک خبر", ordering="notified_at")
+    def told(self, obj):
+        from .jalali import jalali_datetime
+
+        if obj.notified_at and obj.notify_error:  # the provider did not answer clearly: maybe sent, never resent
+            return format_html('{}<div class="lp-quiet">{}</div>', badges(("نامعلوم (دوباره فرستاده نمی‌شود)", "yellow")), obj.notify_error[:80])
+        if obj.notified_at:
+            return format_html('{}<div class="lp-quiet">{}</div>', badges(("فرستاده شد", "green")), jalali_datetime(obj.notified_at))
+        if obj.notify_queued_at:
+            return badges(("در صف", "yellow"))
+        if obj.notify_error:
+            return format_html('{}<div class="lp-quiet">{}</div>', badges(("ناموفق", "red")), obj.notify_error[:80])
+        return "—"
 
     def has_add_permission(self, request):
         return False
@@ -386,6 +463,7 @@ class BannerBookFilter(admin.SimpleListFilter):
 
     title = "کتاب مخاطب"
     parameter_name = "audience"
+    lp_list = True
 
     def lookups(self, request, model_admin):
         from .filters import _book_choices
@@ -402,10 +480,36 @@ class BannerBookFilter(admin.SimpleListFilter):
 
 @admin.register(Banner)
 class BannerAdmin(admin.ModelAdmin):
-    list_display = ("title", "target", "is_active", "priority", "starts_at", "ends_at", "impressions", "clicks")
+    list_display = ("title", "target", "is_active", "priority", "period", "shown", "ctr")
     fields = ("template", "title", "subtitle", "button", "motif", "image", "target", "target_value", "link", "audience_book", "starts_at", "ends_at",
               "countdown", "priority", "is_active")
     change_form_template = "admin/catalog/banner/change_form.html"
+
+    @admin.display(description="بازه")
+    def period(self, obj):
+        from .jalali import jalali_date
+
+        if not obj.starts_at and not obj.ends_at:
+            return "همیشه"
+        return format_html('<span style="white-space:nowrap">{} تا {}</span>', jalali_date(obj.starts_at) if obj.starts_at else "…",
+                           jalali_date(obj.ends_at) if obj.ends_at else "…")
+
+    @admin.display(description="نمایش / کلیک", ordering="impressions")
+    def shown(self, obj):
+        from .panel_display import fa_number
+
+        return format_html('<span style="white-space:nowrap">{} / {}</span>', fa_number(obj.impressions), fa_number(obj.clicks))
+
+    @admin.display(description="نرخ کلیک")
+    def ctr(self, obj):
+        """Clicks per hundred views; under 100 views it says nothing yet."""
+        from .panel_display import fa_number
+
+        if obj.impressions < 100:
+            return format_html('<span class="lp-quiet">{}</span>', "کمتر از ۱۰۰ نمایش")
+        rate = 100 * obj.clicks / obj.impressions
+        color = "green" if rate >= 2 else "yellow" if rate >= 0.5 else "grey"
+        return badges((f"{fa_number(round(rate, 1))}٪", color))
 
     def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
         """The books a «کتاب تازه» banner can show, for the live preview."""
@@ -640,6 +744,19 @@ class ShareSettingsAdmin(admin.ModelAdmin):
 
     list_display = ("__str__", "default_link")
 
+    def changelist_view(self, request, extra_context=None):
+        """One row only: the menu item opens its form straight away (made empty the first time)."""
+        row = ShareSettings.objects.first() or ShareSettings.objects.create()
+        return redirect(reverse("admin:catalog_sharesettings_change", args=[row.pk]))
+
+    def response_change(self, request, obj):
+        from django.contrib import messages
+
+        if "_continue" in request.POST:
+            return super().response_change(request, obj)
+        messages.success(request, "تنظیمات اشتراک ذخیره شد.")
+        return redirect(reverse("admin:catalog_sharesettings_change", args=[obj.pk]))
+
     def has_add_permission(self, request):
         return not ShareSettings.objects.exists()
 
@@ -651,8 +768,20 @@ class ShareSettingsAdmin(admin.ModelAdmin):
 class LabelAdmin(admin.ModelAdmin):
     """«برچسب‌های متن»: boxes in the notes (:::تعریف) and parts of the summary (تعریف:). Never deleted: hide instead."""
 
-    list_display = ("name", "group", "style", "icon", "numbered", "role", "order", "is_hidden")
+    list_display = ("preview", "name", "group", "style", "icon", "numbered", "role", "order", "is_hidden")
+    list_display_links = ("name",)
     list_editable = ("group", "style", "icon", "numbered", "order", "is_hidden")
+    ordering = ("group", "order", "name")
+
+    @admin.display(description="نمونه")
+    def preview(self, obj):
+        """How the box looks, in the four looks' colours (as in the app)."""
+        colors = {"formal": ("#3B5FC4", "rgba(70,110,220,.10)"), "note": ("#23864B", "rgba(46,158,91,.10)"),
+                  "warn": ("#B4690E", "rgba(230,140,30,.12)"), "table": ("#6B6B6B", "rgba(120,120,120,.10)")}
+        line, bg = colors.get(obj.style, colors["note"])
+        return format_html('<span style="display:inline-block;min-width:76px;padding:3px 10px;border-inline-start:3px solid {};'
+                           'background:{};border-radius:6px;font-weight:700;color:{};opacity:{}">{}</span>',
+                           line, bg, line, ".45" if obj.is_hidden else "1", obj.name)
     list_filter = ("group", "style", "is_hidden")
     search_fields = ("name", "aliases")
     fieldsets = (

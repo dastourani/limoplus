@@ -1,36 +1,70 @@
 {% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}{{ block.super }}{{ lp_macros|json_script:"limo-macros" }}
+<script src="{% static 'catalog/limo-preview.js' %}"></script>
+<script src="{% static 'catalog/lists.js' %}"></script>
+<style>
+.dash-week{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:12px}
+.dash-card{background:var(--darkened-bg);border-radius:12px;padding:12px 14px}
+.dash-card b{display:block;font-size:22px;margin:4px 0 2px}
+.dash-card small{font-size:11px;font-weight:700}
+.dash-card small.green{color:#23864B}.dash-card small.red{color:#B33A3A}.dash-card small.grey{color:var(--body-quiet-color)}
+.dash-totals{display:flex;flex-wrap:wrap;gap:8px 22px;margin:0 0 22px;color:var(--body-quiet-color)}
+.dash-totals b{color:var(--body-fg);margin-inline-start:4px}
+.dash-chart{background:var(--darkened-bg);border-radius:12px;padding:10px 12px 4px}
+.dash-chart svg{width:100%;height:auto;display:block}
+.dash-legend{display:flex;gap:16px;font-size:12px;color:var(--body-quiet-color);margin:6px 2px 4px;flex-wrap:wrap}
+.dash-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-inline-end:5px;vertical-align:-1px}
+table.dash{width:100%;margin:12px 0 28px}
+table.dash td,table.dash th{white-space:nowrap}
+table.dash td.wide{white-space:normal}
+h2.dash{margin-top:26px}
+@media (prefers-color-scheme: dark){.dash-card small.green{color:#6FD39A}.dash-card small.red{color:#FF9A9A}}
+html[data-theme="dark"] .dash-card small.green{color:#6FD39A} html[data-theme="dark"] .dash-card small.red{color:#FF9A9A}
+html[data-theme="light"] .dash-card small.green{color:#23864B} html[data-theme="light"] .dash-card small.red{color:#B33A3A}
+</style>
+{% endblock %}
 
 {% block content %}
-<style>
-.dash-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:24px}
-.dash-card{background:var(--darkened-bg);border-radius:12px;padding:14px}
-.dash-card b{display:block;font-size:22px;margin-top:6px}
-.bars{display:flex;align-items:flex-end;gap:6px;height:140px;padding:8px;background:var(--darkened-bg);border-radius:12px}
-.bars div{flex:1;background:#F5C518;border-radius:6px 6px 0 0;min-height:2px;position:relative}
-.bars span{position:absolute;top:-18px;left:0;right:0;text-align:center;font-size:11px}
-table.dash{width:100%;margin:12px 0 28px}
-h2.dash{margin-top:24px}
-</style>
-<div class="dash-cards">
-  {% for label, value in cards %}<div class="dash-card">{{ label }}<b>{{ value }}</b></div>{% endfor %}
+<div class="dash-week">
+  {% for c in weekly %}<div class="dash-card">{{ c.label }}<b>{{ c.value }}</b><small class="{{ c.color }}">{{ c.text|default:"&nbsp;" }}</small></div>{% endfor %}
+</div>
+<div class="dash-totals">
+  {% for label, value, link in totals %}<span>{% if link %}<a href="{% url link %}?status__exact=open">{{ label }}</a>{% else %}{{ label }}{% endif %}<b>{{ value }}</b></span>{% endfor %}
 </div>
 
-<h2 class="dash">کاربران فعال در ۱۴ روز اخیر</h2>
-<div class="bars">{% for d in chart %}<div style="height:{{ d.bar }}%" title="{{ d.date }}"><span>{{ d.active }}</span></div>{% endfor %}</div>
+<h2 class="dash">۳۰ روز گذشته</h2>
+<div class="dash-chart">
+  <div class="dash-legend">
+    <span><i style="background:#F5C518"></i>فعال (بیشترین: {{ chart.people_peak }})</span>
+    <span><i style="background:#2E9E5B"></i>ثبت‌نام</span>
+    <span><i style="background:#466EDC;height:3px;border-radius:2px;vertical-align:3px"></i>زمان مطالعه (بیشترین: {{ chart.time_peak }})</span>
+  </div>
+  <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="نمودار ۳۰ روز گذشته">
+    <line x1="0" x2="{{ chart.width }}" y1="{{ chart.base }}" y2="{{ chart.base }}" stroke="currentColor" stroke-opacity=".15"/>
+    {% for b in chart.bars %}<rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="2" fill="{{ b.color }}"><title>{{ b.tip }}</title></rect>{% endfor %}
+    <polyline points="{{ chart.line }}" fill="none" stroke="#466EDC" stroke-width="2" stroke-linejoin="round" opacity=".85"/>
+    {% for d in chart.dots %}<circle cx="{{ d.x }}" cy="{{ d.y }}" r="3" fill="#466EDC"><title>{{ d.tip }}</title></circle>{% endfor %}
+    {% for l in chart.labels %}<text x="{{ l.x }}" y="{{ chart.label_y }}" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".6">{{ l.text }}</text>{% endfor %}
+  </svg>
+</div>
+
+<h2 class="dash">روزهایی که فعالیت داشتند</h2>
 <table class="dash">
-  <thead><tr><th>روز</th><th>فعال</th><th>ثبت‌نام</th><th>بخش خوانده‌شده</th><th>پاسخ به تست</th><th>فروش (تومان)</th></tr></thead>
-  <tbody>{% for d in chart reversed %}<tr><td>{{ d.date|date:"Y-m-d" }}</td><td>{{ d.active }}</td><td>{{ d.signups }}</td><td>{{ d.sections }}</td><td>{{ d.answers }}</td><td>{{ d.revenue }}</td></tr>{% endfor %}</tbody>
+  <thead><tr><th>روز</th><th>فعال</th><th>ثبت‌نام</th><th>زمان مطالعه</th><th>بخش خوانده‌شده</th><th>پاسخ به تست</th><th>فروش (تومان)</th></tr></thead>
+  <tbody>{% for d in table %}<tr><td>{{ d.day }}</td><td>{{ d.active }}</td><td>{{ d.signups }}</td><td>{{ d.time }}</td><td>{{ d.sections }}</td><td>{{ d.answers }}</td><td>{{ d.revenue }}</td></tr>{% empty %}<tr><td colspan="7">در ۳۰ روز گذشته فعالیتی نبوده است.</td></tr>{% endfor %}</tbody>
 </table>
 
 <h2 class="dash">کتاب‌ها</h2>
 <table class="dash">
-  <thead><tr><th>کتاب</th><th>خواننده</th><th>خریدار</th><th>فروش (تومان)</th></tr></thead>
-  <tbody>{% for b in books %}<tr><td>{{ b.title }}</td><td>{{ b.readers }}</td><td>{{ b.buyers }}</td><td>{{ b.sales }}</td></tr>{% empty %}<tr><td colspan="4">هنوز کتابی نیست.</td></tr>{% endfor %}</tbody>
+  <thead><tr><th>کتاب</th><th>خواننده</th><th>خریدار</th><th>فروش (تومان)</th><th>مطالعه در ۳۰ روز</th></tr></thead>
+  <tbody>{% for b in books %}<tr><td class="wide">{{ b.title }}</td><td>{{ b.readers }}</td><td>{{ b.buyers }}</td><td>{{ b.sales }}</td><td>{{ b.time }}</td></tr>{% empty %}<tr><td colspan="5">هنوز کتابی نیست.</td></tr>{% endfor %}</tbody>
 </table>
 
-<h2 class="dash">سخت‌ترین تست‌ها (حداقل ۱۰ پاسخ)</h2>
+<h2 class="dash">سخت‌ترین تست‌ها (دست‌کم ۱۰ پاسخ)</h2>
 <table class="dash">
-  <thead><tr><th>تست</th><th>درصد پاسخ درست</th><th>تعداد پاسخ</th></tr></thead>
-  <tbody>{% for q in hardest %}<tr><td><a href="{% url 'admin:learning_question_change' q.id %}">{{ q.text }}</a></td><td>{{ q.rate }}٪</td><td>{{ q.n }}</td></tr>{% empty %}<tr><td colspan="3">هنوز داده‌ی کافی نیست.</td></tr>{% endfor %}</tbody>
+  <thead><tr><th>تست</th><th>پاسخ درست</th><th>تعداد پاسخ</th></tr></thead>
+  <tbody>{% for q in hardest %}<tr><td class="wide"><a href="{% url 'admin:learning_question_change' q.id %}" class="lp-tex">{{ q.stem }}</a></td><td>{{ q.rate }}٪</td><td>{{ q.n }}</td></tr>{% empty %}<tr><td colspan="3">هنوز داده‌ی کافی نیست.</td></tr>{% endfor %}</tbody>
 </table>
 {% endblock %}

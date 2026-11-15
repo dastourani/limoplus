@@ -173,3 +173,50 @@ def book_gift(request, book_id):
     extra = " (این شماره هنوز ثبت‌نام نکرده بود؛ با اولین ورود کتاب را دارد)" if created else ""
     messages.success(request, f"«{book.title}» به {phone} هدیه داده شد، {how}.{extra}")
     return redirect(back)
+
+
+def waitlist_notify(admin_site, request, book_id):
+    """«خبر دادن به منتظران»: a confirmation page (how many, the text, SMS parts); on confirm, one SMS to each."""
+    from django.template.response import TemplateResponse
+
+    from . import waitlist_sms
+    from .jalali import fa_digits
+    from .models import BookWaitlist
+
+    if not (request.user.is_active and request.user.is_staff and request.user.has_perm("catalog.change_book")):
+        raise PermissionDenied
+    book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK, depth=1)
+    waiting = waitlist_sms.waiting(book)
+    count = waiting.count()
+    text = request.POST.get("text", waitlist_sms.default_text(book)).strip()
+    problems = waitlist_sms.problems(book)
+    errors = []
+    if request.method == "POST":
+        if not text:
+            errors.append("متن پیامک خالی است.")
+        elif len(text) > 300:
+            errors.append("متن پیامک بلند است (بیش از ۳۰۰ نویسه).")
+        if not count:
+            errors.append("کسی منتظر خبر نیست.")
+        if not problems and not errors:
+            n = waitlist_sms.queue(book, text)
+            messages.success(request, f"پیامک برای {fa_digits(n)} نفر در صف ارسال است؛ چند دقیقه‌ی دیگر همه فرستاده می‌شوند.")
+            return redirect(reverse("admin:catalog_bookwaitlist_changelist") + f"?book_id={book.pk}")
+    all_rows = BookWaitlist.objects.filter(book=book)
+    context = {
+        **admin_site.each_context(request),
+        "title": "خبر دادن به منتظران",
+        "book": book,
+        "count": count,
+        "told": all_rows.filter(notified_at__isnull=False).count(),
+        "queued": all_rows.filter(notify_queued_at__isnull=False, notified_at__isnull=True).count(),
+        "failed": all_rows.filter(notified_at__isnull=True).exclude(notify_error="").count(),
+        "text": text,
+        "parts": waitlist_sms.sms_parts(text),
+        "total": waitlist_sms.sms_parts(text) * count,
+        "problems": problems,
+        "errors": errors,
+        "opts": ContentNode._meta,
+    }
+    context["fa"] = {k: fa_digits(context[k]) for k in ("count", "told", "queued", "failed", "total")}
+    return TemplateResponse(request, "admin/catalog/book/waitlist_notify.html", context)

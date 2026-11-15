@@ -19,6 +19,7 @@ class BookFKFilter(admin.SimpleListFilter):
     title = "کتاب"
     parameter_name = "book_id"
     field = "book"
+    lp_list = True  # book names are long: a list, not a row of chips (templates/admin/filter.html)
 
     def lookups(self, request, model_admin):
         return _book_choices()
@@ -30,6 +31,7 @@ class BookFKFilter(admin.SimpleListFilter):
 
 
 class BookFilter(admin.SimpleListFilter):
+    lp_list = True
     title = "کتاب"
     parameter_name = "book"
     path_field = "path"
@@ -47,6 +49,7 @@ class BookFilter(admin.SimpleListFilter):
 
 
 class ChapterFilter(admin.SimpleListFilter):
+    lp_list = True
     title = "فصل"
     parameter_name = "chapter"
     path_field = "path"
