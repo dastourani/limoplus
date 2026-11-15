@@ -201,7 +201,7 @@ def zibal_callback(request):
 def order_status(request, order_id):
     order = get_object_or_404(Order, pk=order_id, user=request.user)
     recent = timezone.now() - order.created_at < RECHECK_WINDOW
-    if order.status != Order.Status.PAID and order.track_id and recent and request.query_params.get("check"):
+    if settings.PAYMENTS_ENABLED and order.status != Order.Status.PAID and order.track_id and recent and request.query_params.get("check"):
         if order.status == Order.Status.FAILED and not order.gateway_response.get("result") in (100, 201):
             Order.objects.filter(pk=order.pk, status=Order.Status.FAILED).update(status=Order.Status.PENDING)
         order = settle(order.track_id) or order
