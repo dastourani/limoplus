@@ -16,6 +16,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _jobs = None
 
 
+def on_starting(server):
+    """Before serving, every start: bring the database up to date and gather the static files (panel, website).
+    ParsPack does not run these reliably itself; both are quick when there is nothing new."""
+    for step in (["migrate", "--noinput"], ["collectstatic", "--noinput", "-v0"]):
+        done = subprocess.run([sys.executable, "manage.py", *step], cwd=HERE, check=False)
+        if done.returncode:
+            print(f"startup step failed: manage.py {' '.join(step)}", file=sys.stderr)
+
+
 def when_ready(server):
     """On the real server (NIGHTLY_JOBS=True): one separate process that does the hourly jobs
     (clean-up, nightly database backup, weekly media backup). Started once, by the master."""
