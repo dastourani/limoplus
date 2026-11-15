@@ -1,66 +1,148 @@
 {% extends "admin/base_site.html" %}
+{% block extrastyle %}{{ block.super }}
+<style>
+  .sv { max-width: 1040px; direction: rtl; }
+  .sv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 4px 0 18px; }
+  .sv-card { background: var(--body-bg); border: 1px solid var(--hairline-color); border-radius: 14px; padding: 14px 16px; }
+  .sv-card h3 { margin: 0 0 6px; font-size: 13px; color: var(--body-quiet-color); font-weight: 600; background: none; padding: 0; }
+  .sv-big { font-size: 20px; font-weight: 800; color: var(--body-fg); }
+  .sv-sub { font-size: 12px; color: var(--body-quiet-color); margin-top: 4px; }
+  .sv-bar { height: 8px; border-radius: 4px; background: var(--darkened-bg); overflow: hidden; margin-top: 10px; }
+  .sv-bar > span { display: block; height: 100%; border-radius: 4px; background: #2E9E5B; }
+  .sv-bar.warn > span { background: #E2A400; } .sv-bar.bad > span { background: #D64545; }
+  .sv-ok { color: #2E9E5B; } .sv-no { color: #D64545; }
+  .sv-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--hairline-color); margin-bottom: 14px; }
+  .sv-tabs label { padding: 9px 16px; cursor: pointer; border-radius: 10px 10px 0 0; color: var(--body-quiet-color); font-weight: 600; }
+  .sv input[name=tab] { display: none; }
+  #t1:checked ~ .sv-tabs label[for=t1], #t2:checked ~ .sv-tabs label[for=t2], #t3:checked ~ .sv-tabs label[for=t3] { background: #FDE68A; color: #1D2B23; }
+  .sv-pane { display: none; } #t1:checked ~ .p1, #t2:checked ~ .p2, #t3:checked ~ .p3 { display: block; }
+  .sv table { width: 100%; } .sv td, .sv th { vertical-align: middle; }
+  .sv-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sv-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 14px; }
+  .sv-danger { border: 1px solid #F1B5B5; background: #FFF7F7; border-radius: 14px; padding: 4px 16px; margin-top: 18px; }
+  .sv-danger summary { cursor: pointer; font-weight: 700; color: #B33A3A; padding: 10px 0; }
+  .sv-seg { display: flex; height: 14px; border-radius: 7px; overflow: hidden; margin: 8px 0 12px; background: var(--darkened-bg); }
+  .sv-seg span { display: block; height: 100%; }
+  .sv-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; }
+  .sv-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-inline-end: 5px; vertical-align: middle; }
+  .sv .hint { color: var(--body-quiet-color); }
+  @media (prefers-color-scheme: dark) { .sv-danger { background: #2A1C1C; border-color: #6B3434; } }
+</style>
+{% endblock %}
 {% block content %}
-<div class="lp" dir="rtl" style="max-width:900px">
-  <p class="hint">داده‌ی کاربران (خرید، پیشرفت، یادداشت، جواب‌ها، نمره‌ها) هرگز پاک نمی‌شود. پاک‌سازی فقط این‌ها را برمی‌دارد:
-    کدهای ورود منقضی، شمارنده‌های محدودیت ورود، نشست‌هایی که بیش از ۹۰ روز از پایانشان گذشته، فایل‌های نیمه‌کاره‌ی ورود فصل،
-    نسخه‌های فصل قدیمی‌تر از ۳۰ روز (از هر هفته یکی می‌ماند) و عکس‌هایی که بیش از یک ماه است جایی استفاده نمی‌شوند.
-    هر روز یک بار خودکار، با باز شدن پنل، اجرا می‌شود.</p>
+<div class="sv">
+  {# ——— At a glance ——— #}
+  <div class="sv-cards">
+    <div class="sv-card">
+      <h3>دیسک سرور</h3>
+      <div class="sv-big">{{ disk.percent }}٪ پر</div>
+      <div class="sv-bar{% if disk.percent >= 90 %} bad{% elif disk.percent >= 80 %} warn{% endif %}"><span style="width:{{ disk.percent }}%"></span></div>
+      <div class="sv-sub">{{ disk.used|filesizeformat }} از {{ disk.total|filesizeformat }} · {{ disk.free|filesizeformat }} خالی</div>
+    </div>
+    <div class="sv-card">
+      <h3>آخرین پشتیبان دیتابیس</h3>
+      {% if last_backup %}
+        <div class="sv-big {% if last_backup.ok %}sv-ok{% else %}sv-no{% endif %}">{% if last_backup.ok %}✓ گرفته شد{% else %}✗ ناموفق{% endif %}</div>
+        <div class="sv-sub">{{ last_backup.at }}{% if last_backup.sent %} · در بله{% endif %}</div>
+      {% else %}<div class="sv-big">هنوز نه</div>{% endif %}
+      <div class="sv-sub">بعدی: {{ next_backup }}</div>
+    </div>
+    <div class="sv-card">
+      <h3>دیتابیس</h3>
+      <div class="sv-big">{% if report.db_bytes %}{{ report.db_bytes|filesizeformat }}{% else %}—{% endif %}</div>
+      <div class="sv-sub">{{ users }} کاربر · {{ report.revisions }} نسخه‌ی فصل</div>
+    </div>
+    <div class="sv-card">
+      <h3>عکس‌ها و فایل‌ها</h3>
+      <div class="sv-big">{{ media_bytes|filesizeformat }}</div>
+      <div class="sv-sub">{{ media_files }} فایل</div>
+    </div>
+  </div>
 
-  {% if can_run %}
-  <form method="post" style="margin:12px 0">{% csrf_token %}<button class="button default" type="submit">پاک‌سازی همین حالا</button></form>
-  {% endif %}
+  <input type="radio" name="tab" id="t1" checked><input type="radio" name="tab" id="t2"><input type="radio" name="tab" id="t3">
+  <div class="sv-tabs"><label for="t1">پشتیبان‌ها</label><label for="t2">فضا</label><label for="t3">پاک‌سازی</label></div>
 
-  <h2>پشتیبان‌ها</h2>
-  <p class="hint">هر شب یک نسخه از دیتابیس و هر هفته عکس‌ها و فایل‌های تازه، خودکار
-    {% if bale_ready %}به گفت‌وگوی مدیر در بله فرستاده می‌شود.{% else %}ساخته می‌شود؛ <b>ربات بله هنوز تنظیم نشده</b>
-    (متغیرهای BALE_BOT_TOKEN و BALE_CHAT_ID)، پس فعلاً فقط نسخه‌ی دیتابیس روی همین سرور می‌ماند.{% endif %}</p>
-  {% if can_run %}
-  <form method="post" action="backup-now/" style="margin:8px 0">{% csrf_token %}
-    <button class="button" type="submit">پشتیبان همین حالا</button>
-    {% if bale_ready %}<label style="margin-inline-start:12px"><input type="checkbox" name="media" value="1"> عکس‌ها هم</label>{% endif %}
-  </form>
-  {% endif %}
-  <table>
-    <tr><th>زمان</th><th>نوع</th><th>نتیجه</th><th>حجم</th><th>توضیح</th></tr>
-    {% for b in backups %}<tr><td>{{ b.at }}</td><td>{{ b.kind }}</td>
-      <td>{% if b.ok %}✓{% if b.sent %} فرستاده شد{% endif %}{% else %}✗{% endif %}</td>
-      <td>{{ b.size|filesizeformat }}</td><td>{{ b.note }}</td></tr>
-    {% empty %}<tr><td colspan="5">هنوز پشتیبانی گرفته نشده است.</td></tr>{% endfor %}
-  </table>
+  {# ——— Backups ——— #}
+  <div class="sv-pane p1">
+    <p class="hint">هر شب یک نسخه از دیتابیس و هر هفته عکس‌ها و فایل‌های تازه، خودکار
+      {% if bale_ready %}به گفت‌وگوی مدیر در بله فرستاده می‌شود.{% else %}ساخته می‌شود؛ <b>ربات بله هنوز تنظیم نشده</b>
+      (BALE_BOT_TOKEN و BALE_CHAT_ID)، پس فعلاً فقط نسخه‌ی دیتابیس روی همین سرور می‌ماند.{% endif %}</p>
+    {% if can_run %}
+    <div class="sv-actions">
+      <form method="post" action="backup-now/">{% csrf_token %}
+        <button class="button default" type="submit">پشتیبان همین حالا</button>
+        {% if bale_ready %}<label style="margin-inline-start:8px"><input type="checkbox" name="media" value="1"> عکس‌ها هم</label>{% endif %}
+      </form>
+      {% if bale_ready %}<form method="post" action="test-bale/">{% csrf_token %}<button class="button" type="submit">آزمایش بله</button></form>{% endif %}
+    </div>
+    {% endif %}
+    <table>
+      <tr><th>زمان</th><th>نوع</th><th>نتیجه</th><th>حجم</th><th>توضیح</th></tr>
+      {% for b in backups %}<tr><td>{{ b.at }}</td><td>{{ b.kind }}</td>
+        <td>{% if b.ok %}<span class="sv-ok">✓</span>{% if b.sent %} در بله{% endif %}{% else %}<span class="sv-no">✗</span>{% endif %}</td>
+        <td>{{ b.size|filesizeformat }}</td><td>{{ b.note }}</td></tr>
+      {% empty %}<tr><td colspan="5">هنوز پشتیبانی گرفته نشده است.</td></tr>{% endfor %}
+    </table>
 
-  {% if can_run %}
-  <h2>بازگردانی از پشتیبان</h2>
-  <p class="hint">یکی از این‌ها را بفرستید:
-    یک فایل <b>zip</b> که <code>db.sqlite3</code> و/یا پوشه‌ی <code>media</code> در آن است (مثلاً از لپ‌تاپ: هر دو را از پوشه‌ی backend با هم zip کنید)،
-    یا پشتیبان دیتابیس از بله (<code>.sqlite3.gz</code>)، یا پشتیبان عکس‌ها از بله (<code>.zip</code>).<br>
-    <b>دیتابیس فعلی کامل جایگزین می‌شود</b> (یک نسخه از آن پیش از جایگزینی در پوشه‌ی backups می‌ماند). عکس‌ها فقط اضافه می‌شوند و چیزی پاک نمی‌شود.</p>
-  <form method="post" action="restore/" enctype="multipart/form-data" style="margin:8px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap">{% csrf_token %}
-    <input type="file" name="file" accept=".zip,.gz,.sqlite3" required>
-    <label><input type="checkbox" name="confirm" value="yes" required> می‌دانم داده‌ی فعلی جایگزین می‌شود</label>
-    <button class="button default" type="submit">بازگردانی</button>
-  </form>
-  {% endif %}
+    {% if can_run %}
+    <details class="sv-danger">
+      <summary>بازگردانی دیتابیس یا آوردن داده از لپ‌تاپ</summary>
+      <p class="hint"><b>دیتابیس فعلی کامل جایگزین می‌شود</b>؛ پیش از آن یک نسخه از آن در همین فهرست می‌ماند. عکس‌ها فقط اضافه می‌شوند و چیزی پاک یا رونویسی نمی‌شود.
+        برای تأیید، کلمه‌ی <b>بازگردانی</b> را بنویسید.</p>
 
-  <h2>حجم کلی</h2>
-  <table>
-    <tr><th>پایگاه داده</th><td>{% if report.db_bytes %}{{ report.db_bytes|filesizeformat }}{% else %}—{% endif %}</td></tr>
-    {% for f in report.folders %}<tr><th>پوشه‌ی {{ f.name }}</th><td>{{ f.bytes|filesizeformat }} ({{ f.files }} فایل)</td></tr>{% endfor %}
-    <tr><th>نسخه‌های فصل‌ها</th><td>{{ report.revisions }} نسخه، حدود {{ report.revision_bytes|filesizeformat }}</td></tr>
-    <tr><th>عکس‌های بی‌استفاده‌ی قدیمی</th><td>{{ report.orphans.files }} فایل، {{ report.orphans.bytes|filesizeformat }} (در پاک‌سازی بعدی برداشته می‌شوند)</td></tr>
-  </table>
+      <h4>از نسخه‌های روی همین سرور</h4>
+      <table>
+        <tr><th>نسخه</th><th>زمان</th><th>حجم</th><th></th></tr>
+        {% for f in local %}<tr><td>{% if f.before_restore %}پیش از بازگردانی{% else %}شبانه{% endif %}</td><td>{{ f.at }}</td><td>{{ f.size|filesizeformat }}</td>
+          <td class="sv-row-actions">
+            <a class="button" href="backup-file/?name={{ f.name|urlencode }}">دانلود</a>
+            <form method="post" action="restore-local/" style="display:flex;gap:6px">{% csrf_token %}
+              <input type="hidden" name="name" value="{{ f.name }}">
+              <input type="text" name="confirm" placeholder="بازگردانی" size="9" required>
+              <button class="button" type="submit">برگردان به این نسخه</button>
+            </form></td></tr>
+        {% empty %}<tr><td colspan="4">هنوز نسخه‌ای روی سرور نیست.</td></tr>{% endfor %}
+      </table>
 
-  <h2>بزرگ‌ترین جدول‌ها</h2>
-  <table>
-    <tr><th>جدول</th><th>تعداد ردیف</th><th>حجم</th></tr>
-    {% for t in report.tables %}<tr><td>{{ t.name }}</td><td>{{ t.rows }}</td><td>{% if t.bytes %}{{ t.bytes|filesizeformat }}{% else %}—{% endif %}</td></tr>{% endfor %}
-  </table>
+      <h4>از یک فایل</h4>
+      <p class="hint">یک <b>zip</b> با <code>db.sqlite3</code> و/یا پوشه‌ی <code>media</code> (از لپ‌تاپ: هر دو را از پوشه‌ی backend با هم zip کنید)،
+        یا پشتیبان دیتابیس از بله (<code>.sqlite3.gz</code>)، یا پشتیبان عکس‌ها از بله (<code>.zip</code>).</p>
+      <form method="post" action="restore/" enctype="multipart/form-data" class="sv-actions">{% csrf_token %}
+        <input type="file" name="file" accept=".zip,.gz,.sqlite3" required>
+        <input type="text" name="confirm" placeholder="بازگردانی" size="9" required>
+        <button class="button default" type="submit">بازگردانی</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
 
-  <h2>آخرین پاک‌سازی‌ها</h2>
-  <table>
-    <tr><th>زمان</th><th>کد</th><th>شمارنده</th><th>نشست</th><th>نسخه</th><th>عکس</th></tr>
-    {% for r in runs %}<tr><td>{{ r.at }}</td><td>{{ r.summary.codes }}</td><td>{{ r.summary.rate_counters }}</td><td>{{ r.summary.sessions }}</td>
-      <td>{{ r.summary.revisions }}</td><td>{{ r.summary.images }}</td></tr>
-    {% empty %}<tr><td colspan="6">هنوز اجرا نشده است.</td></tr>{% endfor %}
-  </table>
+  {# ——— Space ——— #}
+  <div class="sv-pane p2">
+    <div class="sv-seg">{% for f in space %}<span title="{{ f.label }}: {{ f.bytes|filesizeformat }}" style="width:{{ f.share }}%;background:{{ f.color }}"></span>{% endfor %}</div>
+    <div class="sv-legend">{% for f in space %}<span><i style="background:{{ f.color }}"></i>{{ f.label }}: {{ f.bytes|filesizeformat }}{% if f.files %} ({{ f.files }} فایل){% endif %}</span>{% endfor %}</div>
+    <table style="margin-top:14px">
+      <tr><th>نسخه‌های فصل‌ها</th><td>{{ report.revisions }} نسخه، حدود {{ report.revision_bytes|filesizeformat }}</td></tr>
+      <tr><th>عکس‌های بی‌استفاده‌ی قدیمی</th><td>{{ report.orphans.files }} فایل، {{ report.orphans.bytes|filesizeformat }} (در پاک‌سازی بعدی برداشته می‌شوند)</td></tr>
+    </table>
+    <h4>بزرگ‌ترین جدول‌ها</h4>
+    <table>
+      <tr><th>جدول</th><th>تعداد ردیف</th><th>حجم</th></tr>
+      {% for t in report.tables %}<tr><td>{{ t.name }}</td><td>{{ t.rows }}</td><td>{% if t.bytes %}{{ t.bytes|filesizeformat }}{% else %}—{% endif %}</td></tr>{% endfor %}
+    </table>
+  </div>
+
+  {# ——— Clean-up ——— #}
+  <div class="sv-pane p3">
+    <p class="hint">داده‌ی کاربران (خرید، پیشرفت، یادداشت، جواب‌ها، نمره‌ها) هرگز پاک نمی‌شود. پاک‌سازی شبانه فقط این‌ها را برمی‌دارد:
+      کدهای ورود منقضی، شمارنده‌های محدودیت ورود، نشست‌هایی که بیش از ۹۰ روز از پایانشان گذشته، فایل‌های نیمه‌کاره‌ی ورود فصل،
+      نسخه‌های فصل قدیمی‌تر از ۳۰ روز (از هر هفته یکی می‌ماند) و عکس‌هایی که بیش از یک ماه است جایی استفاده نمی‌شوند.</p>
+    {% if can_run %}<form method="post" style="margin:8px 0 14px">{% csrf_token %}<button class="button default" type="submit">پاک‌سازی همین حالا</button></form>{% endif %}
+    <table>
+      <tr><th>زمان</th><th>کد</th><th>شمارنده</th><th>نشست</th><th>نسخه</th><th>عکس</th></tr>
+      {% for r in runs %}<tr><td>{{ r.at }}</td><td>{{ r.summary.codes }}</td><td>{{ r.summary.rate_counters }}</td><td>{{ r.summary.sessions }}</td>
+        <td>{{ r.summary.revisions }}</td><td>{{ r.summary.images }}</td></tr>
+      {% empty %}<tr><td colspan="6">هنوز اجرا نشده است.</td></tr>{% endfor %}
+    </table>
+  </div>
 </div>
 {% endblock %}

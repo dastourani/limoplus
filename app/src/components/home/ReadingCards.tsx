@@ -8,6 +8,7 @@ import { colors, rtl, toPersianDigits } from '../../theme';
 import { BookCover } from '../BookCover';
 import { useAppearance } from '../../lib/coverTheme';
 import { LemonProgress } from '../LemonProgress';
+import { WIDE } from '../../lib/layout';
 import { GlideText } from '../GlideText';
 import { LemonSlice } from '../LemonSlice';
 import { Text } from '../Text';
@@ -33,11 +34,19 @@ function wedges(progress: number | null | undefined, sections: number) {
 
 export function ReadingCards({ items }: { items: ReadingItem[] }) {
   const { width } = useWindowDimensions();
+  // One book on a computer: the card fills the row (up to a comfortable width) instead of half of it.
+  if (items.length === 1 && width >= WIDE) {
+    return (
+      <View style={{ paddingHorizontal: 16 }}>
+        <Card r={items[0]} width={undefined} />
+      </View>
+    );
+  }
   const cardW = items.length > 1 ? Math.min(Math.round(Math.min(width, 760) * 0.82), 420) : Math.min(width, 760) - 32;
   return <HRow data={items} keyOf={(r) => r.slug} render={(r) => <Card r={r} width={cardW} />} initial={2} />;
 }
 
-function Card({ r, width }: { r: ReadingItem; width: number }) {
+function Card({ r, width }: { r: ReadingItem; width: number | undefined }) {
   const light = useAppearance() === 'light';
   const fa = (n: number | null | undefined) => (n ? toPersianDigits(n) : '');
   const next = r.next;
@@ -62,7 +71,7 @@ function Card({ r, width }: { r: ReadingItem; width: number }) {
   }
   const parts = r.book?.progress != null ? wedges(r.book.progress, r.book.section_count) : null;
   return (
-    <Pressable onPress={open} style={[styles.card, light && styles.cardLight, { width }]} accessibilityRole="button" accessibilityLabel={`${r.bookTitle}، ${sub}`}>
+    <Pressable onPress={open} style={[styles.card, light && styles.cardLight, width ? { width } : { maxWidth: 1100 }]} accessibilityRole="button" accessibilityLabel={`${r.bookTitle}، ${sub}`}>
       {r.book ? (
         <BookCover book={r.book} major={r.book.major ?? null} width={64} />
       ) : (

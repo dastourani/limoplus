@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib import admin
+from django.contrib.auth import get_user_model
 from django.db.models import Count, Q
 from django.shortcuts import redirect
 from django.urls import path, reverse
@@ -446,13 +447,29 @@ class StorageAdmin(admin.ModelAdmin):
                 f"{s['revisions']} نسخه‌ی قدیمی فصل، {s['images']} عکس بی‌استفاده.",
             )
             return redirect(request.path)
-        from .backups import bale_ready
+        from .backups import bale_ready, disk, local_backups, next_db_backup
         from .models import BackupRun
 
+        report = storage_report()
+        from .backups import backup_dir
+        from .maintenance import _folder_size
+
+        labels = {"content": "عکس‌های محتوا", "covers": "جلدها", "banners": "بنرها", "apk": "فایل‌های APK", "imports": "ورودهای نیمه‌کاره"}
+        colors = {"content": "#F5C518", "covers": "#7C9CF5", "banners": "#E58BC0", "apk": "#55B88A", "imports": "#C9C9C9"}
+        backup_bytes, backup_files = _folder_size(str(backup_dir()))
+        space = [{"label": "دیتابیس", "bytes": report["db_bytes"] or 0, "files": 0, "color": "#1D2B23"}]
+        space += [{"label": labels.get(f["name"], f["name"]), "bytes": f["bytes"], "files": f["files"], "color": colors.get(f["name"], "#999")} for f in report["folders"]]
+        space.append({"label": "پشتیبان‌ها", "bytes": backup_bytes, "files": backup_files, "color": "#A27B5C"})
+        whole = sum(x["bytes"] for x in space) or 1
+        for x in space:
+            x["share"] = round(x["bytes"] / whole * 100, 2)
         context = {
             **self.admin_site.each_context(request),
             "title": "فضای سرور",
-            "report": storage_report(),
+            "report": report,
+            "space": [x for x in space if x["bytes"]],
+            "media_bytes": sum(f["bytes"] for f in report["folders"]),
+            "media_files": sum(f["files"] for f in report["folders"]),
             "runs": [{"at": jalali_datetime(r.at), "summary": r.summary} for r in CleanupRun.objects.all()[:10]],
             "can_run": request.user.is_superuser,
             "backups": [
@@ -460,6 +477,13 @@ class StorageAdmin(admin.ModelAdmin):
                 for b in BackupRun.objects.all()[:12]
             ],
             "bale_ready": bale_ready(),
+            "disk": disk(),
+            "local": [{**b, "at": jalali_datetime(b["at"])} for b in local_backups()[:12]],
+            "next_backup": jalali_datetime(next_db_backup()),
+            "last_backup": next(
+                ({"at": jalali_datetime(b.at), "ok": b.ok, "sent": b.sent, "note": b.note} for b in BackupRun.objects.filter(kind="db")[:1]), None
+            ),
+            "users": get_user_model().objects.count(),
             "opts": self.model._meta,
         }
         return TemplateResponse(request, "admin/catalog/storage.html", context)
@@ -473,6 +497,9 @@ class StorageAdmin(admin.ModelAdmin):
             path("backup-now/", site(self.backup_now), name="catalog_backup_now"),
             # Not inside the request's transaction: the database file itself is replaced.
             path("restore/", transaction.non_atomic_requests(site(self.restore)), name="catalog_restore"),
+            path("restore-local/", transaction.non_atomic_requests(site(self.restore_local)), name="catalog_restore_local"),
+            path("backup-file/", site(self.backup_file), name="catalog_backup_file"),
+            path("test-bale/", site(self.test_bale), name="catalog_test_bale"),
         ]
         return custom + super().get_urls()
 
@@ -503,8 +530,8 @@ class StorageAdmin(admin.ModelAdmin):
         if request.method != "POST" or not request.user.is_superuser:
             raise PermissionDenied
         upload = request.FILES.get("file")
-        if not upload or request.POST.get("confirm") != "yes":
-            messages.error(request, "فایل را انتخاب کنید و تیک تأیید را بزنید.")
+        if not upload or request.POST.get("confirm", "").strip() != "بازگردانی":
+            messages.error(request, "فایل را انتخاب کنید و برای تأیید کلمه‌ی «بازگردانی» را بنویسید.")
             return redirect("..")
         try:
             done = restore_upload(upload)
@@ -517,6 +544,61 @@ class StorageAdmin(admin.ModelAdmin):
         if done["media"]:
             parts.append(f"{done['media']} عکس و فایل اضافه شد")
         messages.success(request, "؛ ".join(parts) + ". اگر از پنل بیرون رفتید، با حساب مدیرِ همان دیتابیس وارد شوید.")
+        return redirect("..")
+
+
+    def restore_local(self, request):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import redirect
+
+        from .backups import RestoreError, restore_local
+
+        if request.method != "POST" or not request.user.is_superuser:
+            raise PermissionDenied
+        if request.POST.get("confirm", "").strip() != "بازگردانی":
+            messages.error(request, "برای تأیید کلمه‌ی «بازگردانی» را بنویسید.")
+            return redirect("..")
+        try:
+            aside = restore_local(request.POST.get("name", ""))
+        except RestoreError as exc:
+            messages.error(request, str(exc))
+            return redirect("..")
+        messages.success(request, f"دیتابیس به این نسخه برگشت. نسخه‌ی پیش از آن با نام {aside} نگه داشته شد.")
+        return redirect("..")
+
+    def backup_file(self, request):
+        from django.core.exceptions import PermissionDenied
+        from django.http import FileResponse, Http404
+
+        from .backups import RestoreError, local_backup_path
+
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        try:
+            path = local_backup_path(request.GET.get("name", ""))
+        except RestoreError as exc:
+            raise Http404 from exc
+        return FileResponse(open(path, "rb"), as_attachment=True, filename=path.name)
+
+    def test_bale(self, request):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import redirect
+
+        from .backups import _safe, bale_ready, send_text
+
+        if request.method != "POST" or not request.user.is_superuser:
+            raise PermissionDenied
+        if not bale_ready():
+            messages.error(request, "ربات بله تنظیم نشده است (BALE_BOT_TOKEN و BALE_CHAT_ID).")
+            return redirect("..")
+        try:
+            send_text("✅ پیام آزمایشی از پنل لیموخوان: ربات بله درست کار می‌کند.")
+        except Exception as exc:  # noqa: BLE001
+            messages.error(request, f"پیام نرسید: {_safe(exc)}")
+            return redirect("..")
+        messages.success(request, "پیام آزمایشی در بله فرستاده شد.")
         return redirect("..")
 
 

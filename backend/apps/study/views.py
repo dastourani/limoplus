@@ -824,6 +824,28 @@ def _streak(days: set) -> int:
     return streak
 
 
+def _year(user, days) -> dict:
+    """The «days of study» grid (like GitHub's): the last 53 weeks, only the days with something done (the app fills in
+    the rest). Each day: sections, answers, cards and seconds of study; plus the longest run of days in a row."""
+    from django.db.models import Sum
+
+    from .models import StudyTime
+
+    since = timezone.localdate() - timedelta(days=370)
+    out = {}
+    for d in days.filter(date__gte=since):
+        out[d.date] = {"date": d.date, "sections": d.sections, "answers": d.answers, "cards": d.cards, "seconds": 0}
+    for day, seconds in StudyTime.objects.filter(user=user, day__gte=since).values_list("day").annotate(s=Sum("seconds")):
+        out.setdefault(day, {"date": day, "sections": 0, "answers": 0, "cards": 0, "seconds": 0})["seconds"] = seconds or 0
+    longest = run = 0
+    previous = None
+    for day in sorted(days.values_list("date", flat=True)):
+        run = run + 1 if previous and day - previous == timedelta(days=1) else 1
+        longest = max(longest, run)
+        previous = day
+    return {"since": since, "days": [out[k] for k in sorted(out)], "longest_streak": longest}
+
+
 def _time(user):
     from .time import totals
 
@@ -904,6 +926,7 @@ def stats(request):
             "streak_days": _streak(day_set),
             "study_days": len(day_set),
             "last_14_days": last_14,
+            "year": _year(user, days),
             "books": books,
             "words": words,
             "weak_sections": [w for w in weak if w["accuracy"] < 70],

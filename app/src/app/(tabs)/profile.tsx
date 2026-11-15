@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { endpoints, type Purchases } from '../../api/endpoints';
 import { LemonSlice } from '../../components/LemonSlice';
@@ -40,6 +40,8 @@ export default function Profile() {
   }, []);
 
   const [reloading, setReloading] = useState(false);
+  const [versionTaps, setVersionTaps] = useState(0);
+  const serverUnlocked = versionTaps >= 7;
   const reload = useCallback(() => {
     if (!user) return;
     setReloading(true);
@@ -154,7 +156,9 @@ export default function Profile() {
               })}
             </View>
           </View>
-          <Row label="تنظیمات سرور" onPress={() => router.push('/settings')} />
+          {/* Only for the owner, while testing: hidden on the web (always its own server) and, in the Android app,
+              until the version line below is tapped seven times. */}
+          {Platform.OS !== 'web' && serverUnlocked && <Row label="تنظیمات سرور" onPress={() => router.push('/settings')} />}
           {user?.is_staff && (
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
@@ -192,7 +196,9 @@ export default function Profile() {
             />
           </View>
         )}
-        <Text style={styles.version}>لیموخوان، نسخه‌ی {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}</Text>
+        <Text style={styles.version} onPress={() => setVersionTaps((n) => n + 1)} suppressHighlighting>
+          لیموخوان، نسخه‌ی {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}
+        </Text>
       </ScrollView>
     </Screen>
   );

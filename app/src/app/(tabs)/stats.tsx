@@ -11,6 +11,7 @@ import { Text } from '../../components/Text';
 import { Button, Card, Empty, ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { weekdayShort } from '../../lib/jalali';
+import { YearGrid } from '../../components/YearGrid';
 import { studyDuration } from '../../lib/duration';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
@@ -110,6 +111,13 @@ export default function StatsTab() {
         {!!data.time && data.time.seconds >= 60 && <StudyTimeCard time={data.time} />}
 
         {exams && exams.summary.count > 0 && <ExamsCard exams={exams} />}
+
+        {data.year && (
+          <Card>
+            <Text style={[styles.cardTitle, rtl]}>روزهای مطالعه</Text>
+            <YearGrid days={data.year.days} longest={data.year.longest_streak} studyDays={data.study_days} />
+          </Card>
+        )}
 
         <Card>
           <Text style={[styles.cardTitle, rtl]}>فعالیت ۱۴ روز اخیر</Text>

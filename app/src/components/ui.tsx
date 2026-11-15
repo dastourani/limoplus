@@ -1,7 +1,8 @@
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native';
+import { WIDE } from '../lib/layout';
 
 import { Text } from './Text';
 import { Icon, IconBadge, type IconName } from './Icon';
@@ -11,11 +12,34 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, rtl } from '../theme';
 import { refreshAll } from '../lib/useApi';
 
-export function Screen({ children, background = colors.ground, tab = false, wide = false }: { children: ReactNode; background?: string; tab?: boolean; wide?: boolean }) {
+export function Screen({
+  children,
+  background = colors.ground,
+  tab = false,
+  wide = false,
+  wideMax,
+  desktopMax,
+}: {
+  children: ReactNode;
+  background?: string;
+  tab?: boolean;
+  wide?: boolean;
+  /** «wide» only: the most it may grow to; it then sits next to the right-hand menu, not in the middle. */
+  wideMax?: number;
+  /** A tab screen on a computer that may be wider than reading width (e.g. the library's shelves). */
+  desktopMax?: number;
+}) {
   // Tab screens leave the bottom edge to the tab bar. «wide»: a screen with its own columns on a computer.
+  // On a computer, tab screens start right next to the side menu (any room left over goes to the far side).
+  const desktop = useWindowDimensions().width >= WIDE;
+  const place = wide
+    ? { maxWidth: wideMax ?? 1320, alignSelf: 'flex-end' as const }
+    : tab && desktop
+      ? { maxWidth: desktopMax ?? 900, alignSelf: 'flex-end' as const, paddingRight: 16 }
+      : null;
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: background }]} edges={tab ? ['top', 'left', 'right'] : ['top', 'bottom', 'left', 'right']}>
-      <View style={[styles.inner, wide && { maxWidth: 1320 }]}>{children}</View>
+      <View style={[styles.inner, place]}>{children}</View>
     </SafeAreaView>
   );
 }

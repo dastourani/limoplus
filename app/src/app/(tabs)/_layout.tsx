@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from '../../components/Icon';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
-import { useWide } from '../../lib/layout';
+import { useRoomy, useWide } from '../../lib/layout';
 import { colors } from '../../theme';
 
 // Right to left: home is the rightmost tab.
@@ -55,11 +55,13 @@ function Tab({ tab, on }: { tab: (typeof TABS)[number]; on: boolean }) {
  * it), so the page keeps the width. The current place sits in a lemon capsule, as in the phone's bar.
  */
 function SideNav({ path }: { path: string }) {
+  // A large screen has room: the menu opens out, icon and name side by side, with the app's name on top.
+  if (useRoomy()) return <SideMenu path={path} />;
   return (
     <View style={styles.side} accessibilityRole="tablist">
-      <View style={styles.brand} accessibilityLabel="لیموخوان">
+      <Pressable style={styles.brand} accessibilityRole="link" accessibilityLabel="لیموخوان، خانه" onPress={() => router.replace('/home')}>
         <LemonSlice size={36} />
-      </View>
+      </Pressable>
       {TABS.map((tab) => {
         const on = path === tab.href || path.startsWith(`${tab.href}/`);
         return (
@@ -81,6 +83,35 @@ function SideNav({ path }: { path: string }) {
                 </Text>
               </>
             )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function SideMenu({ path }: { path: string }) {
+  return (
+    <View style={styles.menu} accessibilityRole="tablist">
+      <Pressable style={styles.menuBrand} accessibilityRole="link" accessibilityLabel="لیموخوان، خانه" onPress={() => router.replace('/home')}>
+        <LemonSlice size={36} />
+        <Text style={styles.menuBrandText}>لیموخوان</Text>
+      </Pressable>
+      {TABS.map((tab) => {
+        const on = path === tab.href || path.startsWith(`${tab.href}/`);
+        return (
+          <Pressable
+            key={tab.href}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            onPress={() => !on && router.replace(tab.href)}
+            style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
+              styles.menuItem,
+              on ? styles.sideOn : (hovered || pressed) && styles.sideHover,
+            ]}
+          >
+            <Icon name={tab.icon} size={22} color={colors.ink} strokeWidth={on ? 2.3 : 1.8} />
+            <Text style={[styles.menuText, on && { fontFamily: 'Vazirmatn_700Bold' }]}>{tab.label}</Text>
           </Pressable>
         );
       })}
@@ -123,6 +154,11 @@ const styles = StyleSheet.create({
   sideOn: { backgroundColor: colors.lemon },
   sideHover: { backgroundColor: colors.ground },
   sideText: { fontSize: 12, color: colors.muted },
+  menu: { width: 224, backgroundColor: colors.surface, borderLeftWidth: 1, borderLeftColor: colors.line, paddingHorizontal: 14, paddingVertical: 20, gap: 4 },
+  menuBrand: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 18, paddingHorizontal: 6 },
+  menuBrandText: { fontSize: 20, fontFamily: 'Vazirmatn_800ExtraBold', color: colors.ink },
+  menuItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12 },
+  menuText: { fontSize: 15, color: colors.ink },
   bar: { flexDirection: 'row-reverse', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line },
   tab: { flex: 1, height: BAR, alignItems: 'center', justifyContent: 'center' },
   capsuleWrap: { width: 58, height: 34, alignItems: 'center', justifyContent: 'center' },
