@@ -3,7 +3,7 @@ import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { router, useFocusEffect } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FlatList, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { useWide } from '../../lib/layout';
+import { useHomeMax, useWide } from '../../lib/layout';
 
 import { endpoints, type Library, type Today, type BookListItem } from '../../api/endpoints';
 import { BannerCarousel } from '../../components/BannerCarousel';
@@ -27,6 +27,7 @@ import { colors, radius, rtl, toPersianDigits } from '../../theme';
 export default function Home() {
   const { user } = useAuth();
   const wide = useWide();
+  const homeMax = useHomeMax();
   const { width } = useWindowDimensions();
   const asLearner = useViewAsLearner();
   const { toast } = useFeedback();
@@ -305,7 +306,7 @@ export default function Home() {
     // «تازه‌های لیمو» under today's jobs: one frame that turns by itself.
     const side = new Set(['today', 'needs-review', 'banners']);
     return (
-      <Screen tab wide>
+      <Screen tab wide wideMax={homeMax}>
         {/* The books scroll; the side column stays in place and scrolls on its own when it is taller than the window. */}
         <View style={styles.wide}>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.wideMain} refreshControl={refresh}>
