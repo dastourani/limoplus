@@ -6,6 +6,7 @@ from django.template.response import TemplateResponse
 from django.utils import timezone
 
 from apps.accounts.models import DeviceSession, User
+from apps.catalog.filters import BookFKFilter
 from apps.catalog.models import ContentNode
 from apps.commerce.models import Entitlement, Order
 from apps.learning.models import Question, QuizAnswer, Report
@@ -29,15 +30,30 @@ class ReadOnlyAdmin(admin.ModelAdmin):
 @admin.register(SectionProgress)
 class SectionProgressAdmin(ReadOnlyAdmin):
     list_display = ("user", "node", "book", "percent", "is_done", "updated_at")
-    list_filter = ("is_done", "book")
+    list_filter = ("is_done", BookFKFilter)
     search_fields = ("user__phone",)
 
 
 @admin.register(ExamAttempt)
 class ExamAttemptAdmin(ReadOnlyAdmin):
-    list_display = ("user", "node", "started_at", "correct", "wrong", "blank", "score_percent", "negative_marking")
+    list_display = ("user", "node", "started_at", "result", "score")
     list_filter = ("negative_marking",)
     search_fields = ("user__phone",)
+
+    @admin.display(description="نتیجه")
+    def result(self, obj):
+        from apps.catalog.jalali import fa_digits
+
+        return fa_digits(f"{obj.correct} درست · {obj.wrong} غلط · {obj.blank} نزده") + ("" if obj.negative_marking else " (بدون نمره‌ی منفی)")
+
+    @admin.display(description="درصد", ordering="score_percent")
+    def score(self, obj):
+        from apps.catalog.panel_display import badges, fa_number
+
+        if obj.score_percent is None:
+            return badges(("ناتمام", "grey"))
+        color = "green" if obj.score_percent >= 70 else "yellow" if obj.score_percent >= 40 else "red"
+        return badges((f"{fa_number(round(obj.score_percent))}٪", color))
 
 
 @admin.register(Note)

@@ -18,16 +18,16 @@ User = settings.AUTH_USER_MODEL
 
 
 class SectionProgress(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="section_progress")
-    node = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
-    book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="section_progress", verbose_name="کاربر")
+    node = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+", verbose_name="بخش")
+    book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+", verbose_name="کتاب")
     percent = models.PositiveSmallIntegerField("درصد خوانده‌شده", default=0)
     is_done = models.BooleanField("خوانده شد", default=False)
     # Where the reader is now (not the furthest point): for «ادامه بده» on any device.
     position = models.PositiveSmallIntegerField("جای فعلی (درصد)", default=0)
     mode = models.CharField("حالت", max_length=10, default="full")
-    first_opened_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    first_opened_at = models.DateTimeField(auto_now_add=True, verbose_name="اولین باز شدن")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین تغییر")
 
     class Meta:
         verbose_name = "پیشرفت مطالعه"
@@ -57,15 +57,15 @@ class Note(models.Model):
         BLUE = "blue", "آبی"
         PINK = "pink", "صورتی"
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notes")
-    node = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notes", verbose_name="کاربر")
+    node = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+", verbose_name="بخش")
     mode = models.CharField(max_length=10, default="full")  # which text: full or summary
     quote = models.TextField("متن انتخاب‌شده", blank=True)
     body = models.TextField("یادداشت", blank=True)
-    color = models.CharField(max_length=10, choices=Color.choices, default=Color.YELLOW)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    is_archived = models.BooleanField(default=False)
+    color = models.CharField(max_length=10, choices=Color.choices, default=Color.YELLOW, verbose_name="رنگ")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین تغییر")
+    is_archived = models.BooleanField(default=False, verbose_name="بایگانی")
 
     class Meta:
         verbose_name = "یادداشت/هایلایت"
@@ -132,18 +132,18 @@ class FlashcardReview(models.Model):
 class ExamAttempt(models.Model):
     """A timed exam over a book, chapter or section. Graded on the server; optional negative marking."""
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="exam_attempts")
-    node = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="exam_attempts", verbose_name="کاربر")
+    node = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+", verbose_name="جا")
     question_ids = models.JSONField(default=list)
-    negative_marking = models.BooleanField(default=True)
-    time_limit_seconds = models.PositiveIntegerField()
-    started_at = models.DateTimeField(auto_now_add=True)
-    submitted_at = models.DateTimeField(null=True, blank=True)
-    correct = models.PositiveSmallIntegerField(default=0)
-    wrong = models.PositiveSmallIntegerField(default=0)
-    blank = models.PositiveSmallIntegerField(default=0)
-    score_percent = models.FloatField(null=True, blank=True)
-    is_archived = models.BooleanField(default=False)
+    negative_marking = models.BooleanField(default=True, verbose_name="نمره‌ی منفی")
+    time_limit_seconds = models.PositiveIntegerField(verbose_name="زمان آزمون (ثانیه)")
+    started_at = models.DateTimeField(auto_now_add=True, verbose_name="شروع")
+    submitted_at = models.DateTimeField(null=True, blank=True, verbose_name="پایان")
+    correct = models.PositiveSmallIntegerField(default=0, verbose_name="درست")
+    wrong = models.PositiveSmallIntegerField(default=0, verbose_name="غلط")
+    blank = models.PositiveSmallIntegerField(default=0, verbose_name="نزده")
+    score_percent = models.FloatField(null=True, blank=True, verbose_name="درصد")
+    is_archived = models.BooleanField(default=False, verbose_name="بایگانی")
     # «تمرکز روی اشتباه‌هایم»: how many of the questions were picked from the learner's weak ones (0 = all at random).
     focused = models.PositiveSmallIntegerField(default=0)
     # The questions as they were when the exam started (stem, choices with ids and the right one, explanations), so

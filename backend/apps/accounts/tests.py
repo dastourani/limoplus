@@ -238,3 +238,80 @@ class OtpHashSettingTests(TestCase):
         self.assertTrue(_otp_message("123456", "AbCdEfGhIjK").endswith("\nAbCdEfGhIjK"))
         with override_settings(OTP_SMS_APP_HASH=False):
             self.assertNotIn("AbCdEfGhIjK", _otp_message("123456", "AbCdEfGhIjK"))
+
+
+class PanelLoginTests(TestCase):
+    """«باز کردن وب اپ با حساب من»: panel → one-time code in the fragment → session, staff only, once, for a minute."""
+
+    def setUp(self):
+        self.staff = User.objects.create_superuser("09120000501", password="x-Strong-pass-1")
+        self.web = Client()
+        self.web.force_login(self.staff)
+        self.api = APIClient()
+
+    def _code(self):
+        with override_settings(APP_URL="https://app.example.ir"):
+            r = self.web.post("/admin/open-app/")
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r["Location"].startswith("https://app.example.ir/panel-login#"))
+        self.assertEqual(r["Cache-Control"], "no-store")
+        return r["Location"].split("#", 1)[1]
+
+    def _login(self, code, **extra):
+        return self.api.post("/api/v1/auth/panel-login/", {"code": code, "device_name": "مرورگر وب", "platform": "web", **extra}, format="json")
+
+    def test_code_signs_in_once(self):
+        from .models import PanelLoginCode
+
+        code = self._code()
+        self.assertFalse(PanelLoginCode.objects.filter(code_hash=code).exists())  # only the hash is stored
+        r = self._login(code)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data["user"]["is_staff"])
+        me = APIClient(HTTP_AUTHORIZATION=f"Bearer {r.data['token']}").get("/api/v1/me/")
+        self.assertEqual(me.data["phone"], "09120000501")
+        self.assertEqual(self._login(code).data["code"], "panel_code_invalid")  # used
+
+    def test_only_post_and_only_staff(self):
+        self.assertEqual(self.web.get("/admin/open-app/").status_code, 405)
+        anon = Client().post("/admin/open-app/")
+        self.assertEqual(anon.status_code, 302)
+        self.assertIn("/admin/login/", anon["Location"])
+        learner = User.objects.create_user("09120000502")
+        c = Client()
+        c.force_login(learner)
+        r = c.post("/admin/open-app/")
+        self.assertIn("/admin/login/", r["Location"])
+
+    def test_code_expires_and_dies_with_staff_rights(self):
+        from .models import PanelLoginCode
+
+        code = self._code()
+        PanelLoginCode.objects.update(created_at=timezone.now() - timedelta(seconds=61))
+        self.assertEqual(self._login(code).data["code"], "panel_code_invalid")
+        code = self._code()
+        User.objects.filter(pk=self.staff.pk).update(is_staff=False)
+        self.assertEqual(self._login(code).data["code"], "panel_code_invalid")
+
+    def test_wrong_codes_count_toward_the_ip_limit(self):
+        with override_settings(OTP_WRONG_PER_IP_PER_HOUR=3):
+            for _ in range(3):
+                self.assertEqual(self._login("nope").data["code"], "panel_code_invalid")
+            self.assertEqual(self._login(self._code()).status_code, 429)
+
+    def test_device_limit_keeps_the_code_for_a_choice(self):
+        DeviceSession.start(self.staff, "گوشی", "android")
+        old, _ = DeviceSession.start(self.staff, "لپ‌تاپ", "web")
+        code = self._code()
+        r = self._login(code)
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(len(r.data["sessions"]), 2)
+        r = self._login(code, replace_session_id=old.id)
+        self.assertEqual(r.status_code, 200)
+        old.refresh_from_db()
+        self.assertIsNotNone(old.revoked_at)
+
+    def test_panel_shows_the_button(self):
+        page = self.web.get("/admin/")
+        self.assertContains(page, "باز کردن وب اپ با حساب من")
+        self.assertContains(page, "lp.nav.scroll")

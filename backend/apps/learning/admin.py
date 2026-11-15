@@ -5,6 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
+from apps.catalog.panel_display import badges
 from apps.catalog.filters import NodeBookFilter, NodeChapterFilter, YesNoFilter
 
 from .models import ExamSource, Flashcard, Question, Report
@@ -201,7 +202,7 @@ class _ManagedInChapter:
 @admin.register(Question)
 class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
     anchor = "q"
-    list_display = ("short_stem", "place", "difficulty", "kind", "source_label", "answers", "open_reports", "is_sample", "is_archived", "manage")
+    list_display = ("short_stem", "place", "difficulty", "kind", "source_label", "answers", "open_reports", "status", "manage")
     list_filter = (NodeBookFilter, NodeChapterFilter, SourceNameFilter, SourceYearFilter, RoleFilter, "difficulty", "kind", "domain", MeasuredFilter,
                    HasQuickFilter, HasAlternativeFilter, HasSimilarFilter, KeyChangedFilter, HasFlashcardsFilter, OpenReportsFilter, "is_sample",
                    "is_free", "is_archived")
@@ -223,6 +224,10 @@ class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
         return super().get_queryset(request).select_related("node").prefetch_related("sources").annotate(
             n_reports=Count("reports", filter=Q(reports__status=Report.Status.OPEN), distinct=True)
         ).order_by("node__path", "order", "id")
+
+    @admin.display(description="وضعیت")
+    def status(self, obj):
+        return badges(obj.is_archived and ("بایگانی", "grey"), obj.is_sample and ("نمونه", "blue"), obj.is_extra and ("تکمیلی", "yellow"))
 
     @admin.display(description="صورت تست")
     def short_stem(self, obj):
@@ -248,7 +253,7 @@ class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
 @admin.register(Flashcard)
 class FlashcardAdmin(_ManagedInChapter, admin.ModelAdmin):
     anchor = "f"
-    list_display = ("title", "short_point", "place", "has_formula", "is_free", "is_archived", "manage")
+    list_display = ("title", "short_point", "place", "status", "manage")
     list_filter = (NodeBookFilter, NodeChapterFilter, HasFormulaFilter, LinkedToQuestionsFilter, "is_free", "is_archived")
     search_fields = ("title", "point", "slug", "formula")
     list_per_page = 50
@@ -260,9 +265,9 @@ class FlashcardAdmin(_ManagedInChapter, admin.ModelAdmin):
     def short_point(self, obj):
         return obj.point[:80] + ("…" if len(obj.point) > 80 else "")
 
-    @admin.display(description="فرمول", boolean=True)
-    def has_formula(self, obj):
-        return bool(obj.formula)
+    @admin.display(description="وضعیت")
+    def status(self, obj):
+        return badges(obj.is_archived and ("بایگانی", "grey"), obj.formula and ("فرمول", "blue"), obj.is_free and ("رایگان", "green"))
 
 
 class ExamSourceNameFilter(admin.SimpleListFilter):

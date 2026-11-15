@@ -474,6 +474,9 @@ export const endpoints = {
   requestOtp: (phone: string, appHash?: string) => api<{ sent: boolean; expires_in: number }>('auth/request-otp/', { body: { phone, app_hash: appHash }, timeoutMs: 25_000 }),
   verifyOtp: (body: { phone: string; code: string; device_name: string; platform: string; replace_session_id?: number }) =>
     api<VerifyResult>('auth/verify-otp/', { body }),
+  /** «باز کردن وب اپ با حساب من» in the panel: a one-time code instead of an SMS (staff only). */
+  panelLogin: (body: { code: string; device_name: string; platform: string; replace_session_id?: number }) =>
+    api<VerifyResult>('auth/panel-login/', { body }),
   logout: () => api<{ logged_out: boolean }>('auth/logout/', { method: 'POST' }),
   me: () => api<User>('me/'),
   updateMe: (body: Partial<Pick<User, 'first_name' | 'last_name' | 'email'>>) => api<User>('me/', { method: 'PATCH', body }),

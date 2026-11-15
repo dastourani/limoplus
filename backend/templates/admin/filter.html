@@ -1,0 +1,25 @@
+{% load i18n %}
+{% comment %}
+  The panel's list filters: a short list stays links; a long one (more than eight choices, e.g. books) becomes one
+  drop-down, so the side column does not run on for screens.
+{% endcomment %}
+<details data-filter-title="{{ title }}" open>
+  <summary>
+    {% blocktranslate with filter_title=title %} By {{ filter_title }} {% endblocktranslate %}
+  </summary>
+  {% if choices|length > 8 %}
+    <select class="lp-filter-select" aria-label="{{ title }}" onchange="if (this.value) window.location = this.value"
+            style="width:100%;margin:4px 0 10px;padding:6px;border-radius:8px;font:inherit">
+      {% for choice in choices %}
+        <option value="{{ choice.query_string|iriencode }}"{% if choice.selected %} selected{% endif %}>{{ choice.display }}</option>
+      {% endfor %}
+    </select>
+  {% else %}
+    <ul>
+    {% for choice in choices %}
+      <li{% if choice.selected %} class="selected"{% endif %}>
+      <a href="{{ choice.query_string|iriencode }}">{{ choice.display }}</a></li>
+    {% endfor %}
+    </ul>
+  {% endif %}
+</details>

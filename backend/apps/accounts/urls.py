@@ -6,6 +6,7 @@ urlpatterns = [
     path("health/", views.health, name="health"),
     path("auth/request-otp/", views.request_otp, name="request-otp"),
     path("auth/verify-otp/", views.verify_otp, name="verify-otp"),
+    path("auth/panel-login/", views.panel_login, name="panel-login"),
     path("auth/logout/", views.logout, name="logout"),
     path("me/", views.me, name="me"),
     path("me/sessions/", views.sessions, name="sessions"),

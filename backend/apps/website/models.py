@@ -49,7 +49,7 @@ class SitePage(models.Model):
     slug = models.CharField("صفحه", max_length=20, choices=Kind.choices, unique=True)
     title = models.CharField("عنوان", max_length=120)
     body = models.TextField("متن", blank=True, help_text="پاراگراف‌ها را با یک خط خالی جدا کنید. «## » اول خط: تیتر؛ «- » اول خط: فهرست.")
-    updated_at = models.DateTimeField(auto_now=True)
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین تغییر")
 
     class Meta:
         verbose_name = "صفحه‌ی سایت"

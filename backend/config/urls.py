@@ -5,6 +5,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path, re_path
 
+from apps.accounts import views as accounts_views
 from apps.catalog import search as catalog_search
 from apps.catalog import views as catalog
 from apps.commerce import views as commerce
@@ -89,6 +90,7 @@ api = [
 
 # The same on every host (config/website_urls.py uses them too).
 shared = [
+    path(f"{settings.ADMIN_URL}open-app/", accounts_views.open_app, name="panel-open-app"),
     path(settings.ADMIN_URL, admin.site.urls),
     path("api/v1/", include(api)),
 ]

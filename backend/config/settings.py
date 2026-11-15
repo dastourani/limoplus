@@ -38,6 +38,8 @@ SITE_URL = f"{SITE_SCHEME}://{SITE_DOMAIN}"
 
 # Address of the admin panel. On the real server use something only you know, e.g. "manage-7f3k/".
 ADMIN_URL = env("ADMIN_URL", default="admin/").strip("/") + "/"
+# «باز کردن وب اپ با حساب من» (panel → web app without an SMS): how long the one-time code works.
+PANEL_LOGIN_SECONDS = 60
 
 
 
@@ -95,7 +97,8 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        # backend/templates: the panel's own admin/base_site.html (before django.contrib.admin's).
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
