@@ -146,6 +146,12 @@ MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
 # True when no web server (nginx) serves MEDIA_ROOT, e.g. on ParsPack PaaS. Point MEDIA_ROOT at a persistent disk there.
 SERVE_MEDIA = env.bool("SERVE_MEDIA", default=False)
+
+# Backups (apps/catalog/backups.py): kept in BACKUP_DIR (on the server: the persistent disk) and sent to the admin's
+# chat in Bale when the bot is set. A Bale bot token from @BotFather in Bale; the chat id of the admin's chat with it.
+BACKUP_DIR = Path(env("BACKUP_DIR", default=str(BASE_DIR / "backups")))
+BALE_BOT_TOKEN = env("BALE_BOT_TOKEN", default="")
+BALE_CHAT_ID = env("BALE_CHAT_ID", default="")
 # The website (apps/website): the hosts where it is served at the root (e.g. limookhan.ir,www.limookhan.ir); elsewhere
 # it is at /site/. APP_URL: the web app's address for the site's «ورود» and «شروع» links (e.g. https://app.limookhan.ir).
 WEBSITE_HOSTS = env.list("WEBSITE_HOSTS", default=[])

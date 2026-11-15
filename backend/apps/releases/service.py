@@ -46,6 +46,6 @@ def describe(release):
         "build": release.build,
         "version_name": release.version_name,
         "notes": [line.strip() for line in release.notes.splitlines() if line.strip()],
-        "download_url": release.download_url,
+        "download_url": release.link,
         "required": release.is_required,
     }

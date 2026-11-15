@@ -8,7 +8,7 @@ from .service import clear_cache
 class AppReleaseAdmin(admin.ModelAdmin):
     list_display = ("build", "version_name", "platform", "is_required", "is_published", "created_at")
     list_filter = ("platform", "is_required", "is_published")
-    fields = ("platform", "build", "version_name", "notes", "download_url", "is_required", "is_published")
+    fields = ("platform", "build", "version_name", "notes", "apk", "download_url", "is_required", "is_published")
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)

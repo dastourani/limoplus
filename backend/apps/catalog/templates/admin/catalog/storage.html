@@ -10,6 +10,37 @@
   <form method="post" style="margin:12px 0">{% csrf_token %}<button class="button default" type="submit">پاک‌سازی همین حالا</button></form>
   {% endif %}
 
+  <h2>پشتیبان‌ها</h2>
+  <p class="hint">هر شب یک نسخه از دیتابیس و هر هفته عکس‌ها و فایل‌های تازه، خودکار
+    {% if bale_ready %}به گفت‌وگوی مدیر در بله فرستاده می‌شود.{% else %}ساخته می‌شود؛ <b>ربات بله هنوز تنظیم نشده</b>
+    (متغیرهای BALE_BOT_TOKEN و BALE_CHAT_ID)، پس فعلاً فقط نسخه‌ی دیتابیس روی همین سرور می‌ماند.{% endif %}</p>
+  {% if can_run %}
+  <form method="post" action="backup-now/" style="margin:8px 0">{% csrf_token %}
+    <button class="button" type="submit">پشتیبان همین حالا</button>
+    {% if bale_ready %}<label style="margin-inline-start:12px"><input type="checkbox" name="media" value="1"> عکس‌ها هم</label>{% endif %}
+  </form>
+  {% endif %}
+  <table>
+    <tr><th>زمان</th><th>نوع</th><th>نتیجه</th><th>حجم</th><th>توضیح</th></tr>
+    {% for b in backups %}<tr><td>{{ b.at }}</td><td>{{ b.kind }}</td>
+      <td>{% if b.ok %}✓{% if b.sent %} فرستاده شد{% endif %}{% else %}✗{% endif %}</td>
+      <td>{{ b.size|filesizeformat }}</td><td>{{ b.note }}</td></tr>
+    {% empty %}<tr><td colspan="5">هنوز پشتیبانی گرفته نشده است.</td></tr>{% endfor %}
+  </table>
+
+  {% if can_run %}
+  <h2>بازگردانی از پشتیبان</h2>
+  <p class="hint">یکی از این‌ها را بفرستید:
+    یک فایل <b>zip</b> که <code>db.sqlite3</code> و/یا پوشه‌ی <code>media</code> در آن است (مثلاً از لپ‌تاپ: هر دو را از پوشه‌ی backend با هم zip کنید)،
+    یا پشتیبان دیتابیس از بله (<code>.sqlite3.gz</code>)، یا پشتیبان عکس‌ها از بله (<code>.zip</code>).<br>
+    <b>دیتابیس فعلی کامل جایگزین می‌شود</b> (یک نسخه از آن پیش از جایگزینی در پوشه‌ی backups می‌ماند). عکس‌ها فقط اضافه می‌شوند و چیزی پاک نمی‌شود.</p>
+  <form method="post" action="restore/" enctype="multipart/form-data" style="margin:8px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap">{% csrf_token %}
+    <input type="file" name="file" accept=".zip,.gz,.sqlite3" required>
+    <label><input type="checkbox" name="confirm" value="yes" required> می‌دانم داده‌ی فعلی جایگزین می‌شود</label>
+    <button class="button default" type="submit">بازگردانی</button>
+  </form>
+  {% endif %}
+
   <h2>حجم کلی</h2>
   <table>
     <tr><th>پایگاه داده</th><td>{% if report.db_bytes %}{{ report.db_bytes|filesizeformat }}{% else %}—{% endif %}</td></tr>

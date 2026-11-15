@@ -8,6 +8,7 @@ import { colors, rtl, toPersianDigits } from '../../theme';
 import { BookCover } from '../BookCover';
 import { useAppearance } from '../../lib/coverTheme';
 import { LemonProgress } from '../LemonProgress';
+import { GlideText } from '../GlideText';
 import { LemonSlice } from '../LemonSlice';
 import { Text } from '../Text';
 import { HRow } from './HRow';
@@ -59,6 +60,7 @@ function Card({ r, width }: { r: ReadingItem; width: number }) {
     sub = next.title;
     open = () => router.push({ pathname: '/section/[id]', params: { id: String(next.id) } });
   }
+  const parts = r.book?.progress != null ? wedges(r.book.progress, r.book.section_count) : null;
   return (
     <Pressable onPress={open} style={[styles.card, light && styles.cardLight, { width }]} accessibilityRole="button" accessibilityLabel={`${r.bookTitle}، ${sub}`}>
       {r.book ? (
@@ -70,13 +72,23 @@ function Card({ r, width }: { r: ReadingItem; width: number }) {
       )}
       <View style={{ flex: 1, gap: 3 }}>
         {!!label && <Text style={[styles.label, light && { color: '#8A6A00' }, rtl]} numberOfLines={1}>{label}</Text>}
-        <Text style={[styles.title, light && { color: colors.ink }, rtl]} numberOfLines={1}>{r.bookTitle}</Text>
+        <GlideText style={[styles.title, light && { color: colors.ink }, rtl]}>{r.bookTitle}</GlideText>
         <Text style={[styles.sub, light && { color: colors.muted }, rtl]} numberOfLines={2}>{sub}</Text>
-        <View style={styles.pill}>
-          <Text style={styles.pillText}>{button}</Text>
+        {/* The button, and beside it the lemon: one wedge per section, filled as they are read. */}
+        <View style={styles.bottom}>
+          <View style={styles.pill}>
+            <Text style={styles.pillText}>{button}</Text>
+          </View>
+          {parts && (
+            <View style={styles.progress}>
+              <Text style={[styles.count, light && { color: colors.muted }]}>
+                {toPersianDigits(parts.filter((p) => p === 'done').length)} از {toPersianDigits(parts.length)}
+              </Text>
+              <LemonProgress parts={parts} size={34} />
+            </View>
+          )}
         </View>
       </View>
-      {r.book?.progress != null && <LemonProgress parts={wedges(r.book.progress, r.book.section_count)} size={42} />}
     </Pressable>
   );
 }
@@ -89,6 +101,9 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '800', color: colors.lemon },
   title: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },
   sub: { fontSize: 12, color: '#A9B6AD', lineHeight: 19 },
-  pill: { alignSelf: 'flex-end', marginTop: 4, backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 5 },
+  bottom: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+  progress: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  count: { fontSize: 11, color: '#A9B6AD' },
+  pill: { backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 5 },
   pillText: { fontSize: 12, fontWeight: '800', color: colors.ink },
 });

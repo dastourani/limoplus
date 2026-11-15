@@ -269,7 +269,7 @@ export default function Home() {
       el: (
         <View style={styles.section}>
             <SectionHeader title="تازه‌های لیمو" />
-            <BannerCarousel banners={banners.data!} onOpen={(b) => openLink(b.link, b.id)} paused={pageScrolling} frameWidth={wide ? 380 : undefined} />
+            <BannerCarousel banners={banners.data!} onOpen={(b) => openLink(b.link, b.id)} paused={pageScrolling} frameWidth={wide ? SIDE_INNER : undefined} />
           </View>
       ),
     });
@@ -306,18 +306,19 @@ export default function Home() {
     const side = new Set(['today', 'needs-review', 'banners']);
     return (
       <Screen tab wide>
-        <ScrollView contentContainerStyle={styles.wide} refreshControl={refresh}>
-          <View style={styles.wideMain}>
+        {/* The books scroll; the side column stays in place and scrolls on its own when it is taller than the window. */}
+        <View style={styles.wide}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.wideMain} refreshControl={refresh}>
             {blocks.filter((b) => !side.has(b.key)).map((b) => (
               <Fragment key={b.key}>{b.el}</Fragment>
             ))}
-          </View>
-          <View style={styles.wideSide}>
+          </ScrollView>
+          <ScrollView style={styles.wideSide} contentContainerStyle={styles.wideSideInner} showsVerticalScrollIndicator={false}>
             {blocks.filter((b) => side.has(b.key)).map((b) => (
               <Fragment key={b.key}>{b.el}</Fragment>
             ))}
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </View>
       </Screen>
     );
   }
@@ -354,10 +355,24 @@ const RIBBON: Record<'soon' | 'access' | 'free' | 'locked', { box: object; color
 };
 
 
+const SIDE_WIDTH = 380;
+const SIDE_PAD = 16;
+const SIDE_INNER = SIDE_WIDTH - 2 * SIDE_PAD - 2;
+
 const styles = StyleSheet.create({
-  wide: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 28, padding: 24 },
-  wideMain: { flex: 1, minWidth: 0, gap: 16 },
-  wideSide: { width: 380, gap: 16 },
+  wide: { flex: 1, flexDirection: 'row-reverse', gap: 40, paddingLeft: 24 },
+  wideMain: { gap: 16, paddingVertical: 24, paddingRight: 24, minWidth: 0 },
+  // A very soft, slightly warm panel: the two columns read apart without a colour that catches the eye.
+  wideSide: {
+    width: SIDE_WIDTH,
+    flexGrow: 0,
+    marginVertical: 24,
+    backgroundColor: '#F9F8EF',
+    borderWidth: 1,
+    borderColor: '#ECECE1',
+    borderRadius: radius.lg,
+  },
+  wideSideInner: { gap: 16, padding: SIDE_PAD },
   needsList: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
   needsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
   needsRowLine: { borderTopWidth: 1, borderTopColor: colors.line },

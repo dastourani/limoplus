@@ -14,7 +14,10 @@ class AppRelease(models.Model):
     build = models.PositiveIntegerField("شماره‌ی ساخت", help_text="همان عدد نسخه‌ی آزمایشی، مثلاً ۱۰ برای limoplus-test-10")
     version_name = models.CharField("نام نسخه", max_length=40, blank=True, help_text="اختیاری؛ مثلاً ۱٫۰٫۳")
     notes = models.TextField("تغییرات این نسخه", blank=True, help_text="هر خط یک مورد؛ به کاربر نشان داده می‌شود")
-    download_url = models.URLField("لینک دانلود", max_length=500)
+    download_url = models.URLField("لینک دانلود", max_length=500, blank=True, help_text="اگر فایل APK را همین‌جا آپلود کنید، خالی بگذارید.")
+    apk = models.FileField(
+        "فایل APK", upload_to="apk/", blank=True, help_text="روی همین سرور نگه داشته می‌شود تا دانلود در ایران سریع باشد."
+    )
     is_required = models.BooleanField(
         "به‌روزرسانی اجباری",
         default=False,
@@ -28,6 +31,23 @@ class AppRelease(models.Model):
         verbose_name_plural = "نسخه‌های اپ"
         ordering = ["-build"]
         constraints = [models.UniqueConstraint(fields=["platform", "build"], name="unique_release_build")]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if not self.apk and not self.download_url:
+            raise ValidationError("فایل APK را آپلود کنید یا لینک دانلود بدهید.")
+        if self.apk and not self.apk.name.lower().endswith(".apk"):
+            raise ValidationError({"apk": "فقط فایل ‎.apk"})
+
+    @property
+    def link(self):
+        """Where the app and the website send people: the uploaded file on this server, else the given link."""
+        if self.apk:
+            from django.conf import settings
+
+            return settings.SITE_URL.rstrip("/") + "/" + self.apk.url.lstrip("/")
+        return self.download_url
 
     def __str__(self):
         return f"{self.get_platform_display()} {self.build}" + (" (اجباری)" if self.is_required else "")
