@@ -1,10 +1,12 @@
-import { Vazirmatn_400Regular } from '@expo-google-fonts/vazirmatn/400Regular';
-import { Vazirmatn_700Bold } from '@expo-google-fonts/vazirmatn/700Bold';
-import { Vazirmatn_800ExtraBold } from '@expo-google-fonts/vazirmatn/800ExtraBold';
-import { Vazirmatn_900Black } from '@expo-google-fonts/vazirmatn/900Black';
+/* eslint-disable @typescript-eslint/no-require-imports */
+const Vazirmatn_400Regular = require('../../assets/fonts/Vazirmatn_400Regular.ttf');
+const Vazirmatn_700Bold = require('../../assets/fonts/Vazirmatn_700Bold.ttf');
+const Vazirmatn_800ExtraBold = require('../../assets/fonts/Vazirmatn_800ExtraBold.ttf');
+const Vazirmatn_900Black = require('../../assets/fonts/Vazirmatn_900Black.ttf');
 
 /**
- * Vazirmatn (SIL Open Font License, free for commercial use).
+ * Vazirmatn (SIL Open Font License, free for commercial use), with a clearer hollow zero (scripts/font-zero.py makes
+ * assets/fonts/ from @expo-google-fonts/vazirmatn; only ۰ and ٠ differ).
  * On Android the files are also embedded at build time by the expo-font plugin (see app.json), so the family
  * names below equal the file names, and lesson WebViews load them from file:///android_asset/fonts/.
  */

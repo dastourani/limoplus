@@ -23,10 +23,13 @@ def day_label(d, weekday=False) -> str:
     return f"{WEEKDAYS[d.weekday()]} {text}" if weekday else text
 
 
-def change(now: float, before: float) -> dict:
-    """This week against the week before: arrow, percent and colour (more is better for every number here)."""
+def change(now: float, before: float, shown_before: str | None = None) -> dict:
+    """This week against the week before: arrow, percent and colour (more is better for every number here). Nothing
+    this week is said plainly («هفته‌ی قبل: ۵») instead of a red «▼ ۱۰۰٪»."""
     if not before:
-        return {"text": "هفته‌ی قبل: ۰" if now else "", "color": "grey"}
+        return {"text": "", "color": "grey"}
+    if not now:
+        return {"text": f"هفته‌ی قبل: {shown_before or fa_number(before)}", "color": "grey"}
     pct = round(100 * (now - before) / before)
     if pct == 0:
         return {"text": "مثل هفته‌ی قبل", "color": "grey"}
@@ -36,6 +39,10 @@ def change(now: float, before: float) -> dict:
 
 def minutes(seconds) -> str:
     seconds = int(seconds or 0)
+    if not seconds:
+        return "—"
+    if seconds < 60:
+        return "کمتر از ۱ دقیقه"
     if seconds < 3600:
         return f"{fa_number(round(seconds / 60))} دقیقه"
     return f"{fa_number(round(seconds / 3600, 1))} ساعت"
@@ -80,12 +87,16 @@ def build() -> dict:
 
     this = week(today - timedelta(days=6))
     last = week(today - timedelta(days=13))
+    def num(n):
+        return fa_number(n) if n else "—"  # a lone «۰» reads like a dot
+
     weekly = [
-        {"label": "فعال در ۷ روز", "value": fa_number(this["active"]), **change(this["active"], last["active"])},
-        {"label": "ثبت‌نام در ۷ روز", "value": fa_number(this["signups"]), **change(this["signups"], last["signups"])},
-        {"label": "زمان مطالعه در ۷ روز", "value": minutes(this["seconds"]), **change(this["seconds"], last["seconds"])},
-        {"label": "پاسخ به تست در ۷ روز", "value": fa_number(this["answers"]), **change(this["answers"], last["answers"])},
-        {"label": "فروش ۷ روز (تومان)", "value": fa_number(this["revenue"]), **change(this["revenue"], last["revenue"])},
+        {"label": "فعال در ۷ روز", "value": num(this["active"]), **change(this["active"], last["active"])},
+        {"label": "ثبت‌نام در ۷ روز", "value": num(this["signups"]), **change(this["signups"], last["signups"])},
+        {"label": "زمان مطالعه در ۷ روز", "value": minutes(this["seconds"]),
+         **change(this["seconds"], last["seconds"], minutes(last["seconds"]))},
+        {"label": "پاسخ به تست در ۷ روز", "value": num(this["answers"]), **change(this["answers"], last["answers"])},
+        {"label": "فروش ۷ روز (تومان)", "value": num(this["revenue"]), **change(this["revenue"], last["revenue"])},
     ]
     totals = [
         ("کاربران", fa_number(User.objects.count()), None),
@@ -105,9 +116,9 @@ def build() -> dict:
                      "revenue": revenue.get(d, 0) or 0})
     chart = draw_chart(rows)
     table = [{
-        "day": day_label(r["date"], weekday=True), "active": fa_number(r["active"]), "signups": fa_number(r["signups"]),
-        "time": minutes(r["seconds"]) if r["seconds"] else "—", "sections": fa_number(r["sections"]),
-        "answers": fa_number(r["answers"]), "revenue": fa_number(r["revenue"]) if r["revenue"] else "—",
+        "day": day_label(r["date"], weekday=True), "active": num(r["active"]), "signups": num(r["signups"]),
+        "time": minutes(r["seconds"]), "sections": num(r["sections"]),
+        "answers": num(r["answers"]), "revenue": fa_number(r["revenue"]) if r["revenue"] else "—",
     } for r in reversed(rows) if any(r[k] for k in ("active", "signups", "sections", "answers", "cards", "seconds", "revenue"))]
 
     # Books, each number in one grouped query.
@@ -119,9 +130,9 @@ def build() -> dict:
     sales = dict(paid.filter(book__isnull=False).values("book").annotate(s=Sum("amount")).values_list("book", "s"))
     study = dict(StudyTime.objects.filter(day__gte=first).values("book").annotate(s=Sum("seconds")).values_list("book", "s"))
     book_rows = sorted(({
-        "title": b["title"], "n_readers": readers.get(b["pk"], 0), "readers": fa_number(readers.get(b["pk"], 0)),
-        "buyers": fa_number(buyers.get(b["pk"], 0)), "sales": fa_number(sales.get(b["pk"], 0) or 0),
-        "time": minutes(study.get(b["pk"])) if study.get(b["pk"]) else "—",
+        "title": b["title"], "n_readers": readers.get(b["pk"], 0), "readers": num(readers.get(b["pk"], 0)),
+        "buyers": num(buyers.get(b["pk"], 0)), "sales": num(sales.get(b["pk"], 0) or 0),
+        "time": minutes(study.get(b["pk"])),
     } for b in books), key=lambda b: -b["n_readers"])
 
     hardest = (Question.objects.filter(answer_count__gte=10, is_archived=False)

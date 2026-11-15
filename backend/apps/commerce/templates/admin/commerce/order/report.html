@@ -1,0 +1,46 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">شروع</a> › <a href="{% url 'admin:commerce_order_changelist' %}">سفارش‌ها</a> › گزارش فروش</div>{% endblock %}
+{% block content %}
+<style>
+.rp-ranges{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 14px}
+.rp-ranges a{padding:4px 12px;border-radius:999px;border:1px solid var(--hairline-color)}
+.rp-ranges a.on{background:var(--selected-row);border-color:var(--link-fg);font-weight:700}
+.rp-custom{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 18px}
+.rp-custom input{width:110px;padding:5px 8px;border-radius:8px}
+.rp-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:22px}
+.rp-card{background:var(--darkened-bg);border-radius:12px;padding:12px 14px}
+.rp-card b{display:block;font-size:21px;margin:4px 0 2px}
+.rp-card small{font-size:11px;font-weight:700}.rp-card small.green{color:#23864B}.rp-card small.red{color:#B33A3A}.rp-card small.grey{color:var(--body-quiet-color)}
+.rp-bars{display:flex;align-items:flex-end;gap:2px;height:150px;padding:10px;background:var(--darkened-bg);border-radius:12px}
+.rp-bars div{flex:1;background:#F5C518;border-radius:3px 3px 0 0;min-height:1px;position:relative}
+.rp-ticks{display:flex;gap:2px;padding:4px 10px 0;font-size:11px;color:var(--body-quiet-color)}
+.rp-ticks span{flex:1;white-space:nowrap;overflow:visible}
+table.rp{width:100%;margin:10px 0 26px} table.rp td,table.rp th{white-space:nowrap} table.rp td.wide{white-space:normal}
+h2.rp{margin-top:24px}
+</style>
+<div class="rp-ranges">
+  {% for key, label in ranges %}{% if key != "custom" %}<a href="?range={{ key }}" class="{% if choice == key %}on{% endif %}">{{ label }}</a>{% endif %}{% endfor %}
+</div>
+<form class="rp-custom" method="get">
+  <input type="hidden" name="range" value="custom">
+  <span>از</span><input name="from" value="{{ from_text|default:start }}" placeholder="۱۴۰۵/۸/۱" dir="ltr">
+  <span>تا</span><input name="to" value="{{ to_text|default:end }}" placeholder="۱۴۰۵/۸/۳۰" dir="ltr">
+  <button type="submit" class="button">نمایش</button>
+  <a class="button" href="{% url 'admin:commerce_order_report_csv' %}?{{ query }}">دریافت فایل برای اکسل</a>
+</form>
+<h2>{{ name }} <span class="lp-quiet" style="font-weight:400">({{ start }} تا {{ end }}؛ مقایسه با {{ before }})</span></h2>
+<div class="rp-cards">
+  {% for c in cards %}<div class="rp-card">{{ c.label }}<b>{{ c.value }}</b><small class="{{ c.color }}">{{ c.text|default:"&nbsp;" }}</small></div>{% endfor %}
+</div>
+<div class="rp-bars" role="img" aria-label="فروش در این بازه">{% for b in bars %}<div style="height:{{ b.height }}%" title="{{ b.tip }}"></div>{% endfor %}</div>
+<div class="rp-ticks">{% for b in bars %}<span>{% if b.tick %}{{ b.label }}{% endif %}</span>{% endfor %}</div>
+
+<h2 class="rp">به تفکیک کتاب</h2>
+<table class="rp"><thead><tr><th>کتاب</th><th>سفارش</th><th>فروش (تومان)</th><th>سهم</th></tr></thead>
+<tbody>{% for r in by_book %}<tr><td class="wide">{{ r.name }}</td><td>{{ r.n }}</td><td>{{ r.sum }}</td><td>{{ r.share }}</td></tr>{% empty %}<tr><td colspan="4">در این بازه کتابی فروخته نشده است.</td></tr>{% endfor %}</tbody></table>
+
+<h2 class="rp">به تفکیک طرح اشتراک</h2>
+<table class="rp"><thead><tr><th>طرح</th><th>سفارش</th><th>فروش (تومان)</th><th>سهم</th></tr></thead>
+<tbody>{% for r in by_plan %}<tr><td class="wide">{{ r.name }}</td><td>{{ r.n }}</td><td>{{ r.sum }}</td><td>{{ r.share }}</td></tr>{% empty %}<tr><td colspan="4">در این بازه اشتراکی فروخته نشده است.</td></tr>{% endfor %}</tbody></table>
+<p class="lp-quiet">فقط سفارش‌های پرداخت‌شده حساب شده‌اند، به زمان پرداخت. فایل اکسل همه‌ی سفارش‌های ثبت‌شده در این بازه را دارد، با وضعیتشان.</p>
+{% endblock %}
