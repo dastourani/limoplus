@@ -52,11 +52,14 @@ class BackupTests(TestCase):
     def test_restore_adds_media_and_refuses_paths_outside(self):
         upload = self._zip({"media/content/new.png": b"n", "media/../evil.txt": b"x", "backend/media/covers/c.png": b"c", "other/z.txt": b"z"})
         done = backups.restore_upload(upload)
-        self.assertEqual(done, {"db": False, "media": 2, "aside": ""})
+        self.assertEqual((done["db"], done["media"]), (False, 2))
         self.assertTrue((self.media / "content" / "new.png").exists())
         self.assertTrue((self.media / "covers" / "c.png").exists())
         self.assertFalse((self.tmp / "evil.txt").exists())
         self.assertTrue((self.media / "content" / "b" / "a.png").exists())  # nothing deleted
+        again = backups.restore_upload(self._zip({"media/content/b/a.png": b"other"}))
+        self.assertEqual((again["media"], again.get("skipped")), (0, 1))
+        self.assertEqual((self.media / "content" / "b" / "a.png").read_bytes(), b"png")  # never overwritten
 
     def test_restore_refuses_what_is_not_a_backup(self):
         for upload in (self._zip({"notes.txt": b"x"}), self._zip({"db.sqlite3": b"not a database"}), SimpleUploadedFile("x.exe", b"MZ")):
@@ -67,7 +70,7 @@ class BackupTests(TestCase):
         live, other = self.tmp / "live.sqlite3", self.tmp / "laptop.sqlite3"
         for path, value in ((live, "server"), (other, "laptop")):
             con = sqlite3.connect(path)
-            con.executescript(f"CREATE TABLE django_migrations(id); CREATE TABLE t(v); INSERT INTO t VALUES ('{value}');")
+            con.executescript(f"CREATE TABLE django_migrations(id, app, name); CREATE TABLE t(v); INSERT INTO t VALUES ('{value}');")
             con.commit()
             con.close()
         settings_dict = {**backups.connection.settings_dict, "NAME": str(live)}
@@ -99,3 +102,20 @@ class BackupTests(TestCase):
             self.assertEqual(backups.run_due(), ["db", "media"])
             self.assertEqual(backups.run_due(), [])
         self.assertEqual((db.call_count, media.call_count), (1, 1))
+
+
+class TokenTests(TestCase):
+    @override_settings(BALE_BOT_TOKEN="123:SECRET")
+    def test_errors_never_show_the_bot_token(self):
+        self.assertNotIn("SECRET", backups._safe(Exception("https://tapi.bale.ai/bot123:SECRET/sendDocument failed")))
+
+    def test_newer_database_is_refused(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        db = tmp / "x.sqlite3"
+        con = sqlite3.connect(db)
+        con.executescript("CREATE TABLE django_migrations(id, app, name); INSERT INTO django_migrations VALUES (1, 'catalog', '9999_future');")
+        con.commit()
+        con.close()
+        with self.assertRaisesMessage(backups.RestoreError, "تازه‌تر"):
+            backups._check_sqlite(db)

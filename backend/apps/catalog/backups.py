@@ -10,7 +10,8 @@ Backups of the real server, and putting one back.
   the uploaded one is copied in with SQLite's backup API, then `migrate` brings an older copy up to date.
   Pictures are added (never deleted), with every path checked to stay inside MEDIA_ROOT.
 
-`python manage.py nightly` runs what is due (gunicorn.conf.py calls it every hour when NIGHTLY_JOBS is on).
+`python manage.py nightly` runs what is due; `nightly --loop` (started by gunicorn.conf.py when NIGHTLY_JOBS is on)
+does so every hour in its own process.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import uuid
 import zipfile
 from datetime import timedelta
 from pathlib import Path
@@ -45,6 +47,14 @@ MAX_RESTORE_BYTES = 8 * 1024**3  # uncompressed total of one upload
 
 class RestoreError(Exception):
     pass
+
+
+def _safe(exc) -> str:
+    """An error's text without the Bale bot token (requests puts the whole URL in its messages)."""
+    text = str(exc)
+    if settings.BALE_BOT_TOKEN:
+        text = text.replace(settings.BALE_BOT_TOKEN, "***")
+    return text[:1000]
 
 
 def backup_dir() -> Path:
@@ -111,9 +121,11 @@ def backup_database(send=True):
     try:
         raw = _db_copy(folder / f"limookhan-db-{_stamp()}.sqlite3")
         packed = raw.with_name(raw.name + ".gz")
-        with open(raw, "rb") as src, gzip.open(packed, "wb", compresslevel=6) as dst:
-            shutil.copyfileobj(src, dst)
-        raw.unlink()
+        try:
+            with open(raw, "rb") as src, gzip.open(packed, "wb", compresslevel=6) as dst:
+                shutil.copyfileobj(src, dst)
+        finally:
+            raw.unlink(missing_ok=True)
         run.files, run.size, run.ok = [packed.name], packed.stat().st_size, True
         _prune(folder, "limookhan-db-", KEEP_DB)
         if send and bale_ready():
@@ -124,8 +136,8 @@ def backup_database(send=True):
                 send_file(packed, f"🗄 پشتیبان دیتابیس لیموخوان\n{_stamp()}\nاطلاعات کاربران در آن است؛ جای دیگری نفرستید.")
                 run.sent = True
     except Exception as exc:  # noqa: BLE001 — recorded and reported, never silent
-        log.exception("database backup failed")
-        run.note = str(exc)[:1000]
+        log.error("database backup failed: %s: %s", type(exc).__name__, _safe(exc))
+        run.note = _safe(exc)
         _report_failure("دیتابیس", exc, send)
     run.save()
     return run
@@ -155,7 +167,8 @@ def backup_media(send=True):
     from .models import BackupRun
 
     last = BackupRun.objects.filter(kind=BackupRun.Kind.MEDIA, ok=True).order_by("-at").first()
-    since = last.at if last else None
+    # A little overlap: a file put in place just as the last run scanned is taken again rather than missed.
+    since = last.at - timedelta(minutes=30) if last else None
     run = BackupRun.objects.create(kind=BackupRun.Kind.MEDIA, since=since)
     folder = backup_dir()
     try:
@@ -178,20 +191,22 @@ def backup_media(send=True):
         run.ok = True
         run.note = f"{len(files)} فایل" + ("" if since else " (اولین پشتیبان: همه‌ی فایل‌ها)")
         if send and bale_ready() and parts:
+            kept = []
             for i, p in enumerate(parts, 1):
-                if p.stat().st_size > PART_LIMIT + 5 * 1024 * 1024:  # one file bigger than a part
-                    send_text(f"⚠️ بخش {i} پشتیبان عکس‌ها برای بله بزرگ است؛ روی سرور مانده: {p.name}")
+                if p.stat().st_size > PART_LIMIT + 5 * 1024 * 1024:  # one file bigger than a part: it stays here
+                    send_text(f"⚠️ بخش {i} پشتیبان عکس‌ها برای بله بزرگ است؛ روی سرور در پوشه‌ی backups مانده: {p.name}")
+                    kept.append(p.name)
                     continue
                 send_file(p, f"🖼 پشتیبان عکس‌ها و فایل‌های لیموخوان\n{_stamp()} — بخش {i} از {len(parts)}")
-            run.sent = True
-        # Parts stay on the server only until sent; the disk holds the media themselves anyway.
-        if run.sent:
-            for p in parts:
-                p.unlink(missing_ok=True)
+                p.unlink(missing_ok=True)  # sent: the disk holds the media themselves anyway
+            run.sent = not kept
+            if kept:
+                run.note += f"؛ روی سرور مانده: {', '.join(kept)}"
+        _prune(folder, "limookhan-media-", 20)
     except Exception as exc:  # noqa: BLE001
-        log.exception("media backup failed")
+        log.error("media backup failed: %s: %s", type(exc).__name__, _safe(exc))
         run.ok = False
-        run.note = str(exc)[:1000]
+        run.note = _safe(exc)
         _report_failure("عکس‌ها", exc, send)
     run.save()
     return run
@@ -206,9 +221,9 @@ def _prune(folder: Path, prefix: str, keep: int) -> None:
 def _report_failure(what: str, exc: Exception, send: bool) -> None:
     if send and bale_ready():
         try:
-            send_text(f"❌ پشتیبان {what} لیموخوان انجام نشد: {str(exc)[:300]}")
-        except Exception:  # noqa: BLE001
-            log.exception("could not report the failed backup to Bale")
+            send_text(f"❌ پشتیبان {what} لیموخوان انجام نشد: {_safe(exc)[:300]}")
+        except Exception as again:  # noqa: BLE001
+            log.error("could not report the failed backup to Bale: %s", _safe(again))
 
 
 def run_due(now=None, force=False) -> list[str]:
@@ -242,11 +257,33 @@ def _check_sqlite(path: Path) -> None:
             raise RestoreError("این فایل دیتابیس SQLite نیست.")
     con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
-        con.execute("SELECT count(*) FROM django_migrations").fetchone()
+        applied = {(a, n) for a, n in con.execute("SELECT app, name FROM django_migrations")}
         if con.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise RestoreError("فایل دیتابیس خراب است.")
     except sqlite3.DatabaseError as exc:
         raise RestoreError("این فایل دیتابیس لیموخوان نیست.") from exc
+    finally:
+        con.close()
+    # A copy from a newer version of the code (migrations this server does not have) would break: refuse it.
+    from django.db.migrations.loader import MigrationLoader
+
+    known = set(MigrationLoader(None, ignore_no_migrations=True).disk_migrations)
+    ours = {app for app, _ in known}
+    unknown = sorted(f"{a}.{n}" for a, n in applied if a in ours and (a, n) not in known)
+    if unknown:
+        raise RestoreError("این دیتابیس از نسخه‌ی تازه‌تر برنامه است (" + "، ".join(unknown[:3]) + ")؛ اول کد سرور را به‌روز کنید.")
+
+
+def _match_page_size(path: Path, live: str) -> None:
+    """SQLite cannot copy into a database in WAL mode with another page size: give the upload the live one."""
+    with sqlite3.connect(live) as con:
+        size = con.execute("PRAGMA page_size").fetchone()[0]
+    con = sqlite3.connect(str(path))
+    try:
+        if con.execute("PRAGMA page_size").fetchone()[0] != size:
+            con.execute("PRAGMA journal_mode=DELETE")
+            con.execute(f"PRAGMA page_size={int(size)}")
+            con.execute("VACUUM")
     finally:
         con.close()
 
@@ -256,24 +293,33 @@ def _restore_db(path: Path) -> str:
         raise RestoreError("بازگردانی دیتابیس از این صفحه فقط برای SQLite است.")
     _check_sqlite(path)
     live = str(connection.settings_dict["NAME"])
-    aside = backup_dir() / f"before-restore-{_stamp()}.sqlite3"
+    aside = backup_dir() / f"before-restore-{timezone.localtime().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.sqlite3"
     connection.close()
-    src_live, copy = sqlite3.connect(live), sqlite3.connect(str(aside))
     try:
-        src_live.backup(copy)
-    finally:
-        copy.close()
-        src_live.close()
+        _match_page_size(path, live)
+        src_live, copy = sqlite3.connect(live), sqlite3.connect(str(aside))
+        try:
+            src_live.backup(copy)
+        finally:
+            copy.close()
+            src_live.close()
+    except sqlite3.Error as exc:
+        raise RestoreError(f"آماده‌سازی بازگردانی نشد؛ دیتابیس فعلی دست نخورد ({exc}).") from exc
     source, dest = sqlite3.connect(str(path)), sqlite3.connect(live, timeout=60)
     try:
         source.backup(dest)
+    except sqlite3.Error as exc:
+        raise RestoreError(f"جایگزینی نشد ({exc}). نسخه‌ی قبلی در backups/{aside.name} است.") from exc
     finally:
         dest.close()
         source.close()
     from django.core.management import call_command
 
-    call_command("migrate", interactive=False, verbosity=0)
-    _prune(backup_dir(), "before-restore-", 3)
+    try:
+        call_command("migrate", interactive=False, verbosity=0)
+    except Exception as exc:  # noqa: BLE001
+        raise RestoreError(f"دیتابیس جایگزین شد ولی به‌روزرسانی ساختارش خطا داد ({exc}). نسخه‌ی قبلی در backups/{aside.name} است.") from exc
+    _prune(backup_dir(), "before-restore-", 10)
     return aside.name
 
 
@@ -305,10 +351,14 @@ def restore_upload(uploaded) -> dict:
                 out.write(chunk)
         if name.endswith(".gz"):
             db = tmp / "db.sqlite3"
+            room = min(MAX_RESTORE_BYTES, int(shutil.disk_usage(backup_dir()).free * 0.8))
             try:
                 with gzip.open(raw, "rb") as src, open(db, "wb") as dst:
-                    shutil.copyfileobj(src, dst, 1024 * 1024)
-            except OSError as exc:
+                    while chunk := src.read(1024 * 1024):
+                        dst.write(chunk)
+                        if dst.tell() > room:
+                            raise RestoreError("فایل بازشده بیش از حد بزرگ است یا جای دیسک کافی نیست.")
+            except (OSError, EOFError) as exc:
                 raise RestoreError("فایل gz خراب است.") from exc
             result["aside"] = _restore_db(db)
             result["db"] = True
@@ -332,20 +382,24 @@ def restore_upload(uploaded) -> dict:
                     raise RestoreError("در zip نه db.sqlite3 پیدا شد و نه پوشه‌ی media.")
                 if len(db_entries) > 1:
                     raise RestoreError("در zip بیش از یک فایل دیتابیس هست.")
-                for entry, rel in media_entries:
-                    if (entry.external_attr >> 16) & 0o170000 == 0o120000:  # a symlink
-                        continue
-                    target = Path(safe_join(str(settings.MEDIA_ROOT), rel))
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    with archive.open(entry) as src, open(target, "wb") as dst:
-                        shutil.copyfileobj(src, dst, 1024 * 1024)
-                    result["media"] += 1
+                # The database first: if it is refused, nothing at all has changed.
                 if db_entries:
                     db = tmp / "db.sqlite3"
                     with archive.open(db_entries[0]) as src, open(db, "wb") as dst:
                         shutil.copyfileobj(src, dst, 1024 * 1024)
                     result["aside"] = _restore_db(db)
                     result["db"] = True
+                for entry, rel in media_entries:
+                    if (entry.external_attr >> 16) & 0o170000 == 0o120000:  # a symlink
+                        continue
+                    target = Path(safe_join(str(settings.MEDIA_ROOT), rel))
+                    if target.exists():  # only added, never overwritten (content pictures are named by their content)
+                        result["skipped"] = result.get("skipped", 0) + 1
+                        continue
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with archive.open(entry) as src, open(target, "wb") as dst:
+                        shutil.copyfileobj(src, dst, 1024 * 1024)
+                    result["media"] += 1
         else:
             raise RestoreError("فقط فایل ‎.zip یا ‎.sqlite3 یا ‎.sqlite3.gz")
     return result
