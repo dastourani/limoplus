@@ -6,7 +6,7 @@ name: Deploy branch
 
 on:
   push:
-    branches: [main, deploy-branch]  # TEMP: deploy-branch for a test run
+    branches: [main]
   workflow_dispatch:
 
 permissions:
