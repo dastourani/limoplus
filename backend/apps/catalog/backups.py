@@ -318,6 +318,13 @@ def run_due(now=None, force=False) -> list[str]:
     if bale_ready() and (force or last_media is None or (now - last_media.at > MEDIA_EVERY and night)):
         backup_media()
         done.append("media")
+    try:
+        from .waitlist_sms import retry_stuck
+
+        if retry_stuck():
+            done.append("waitlist-sms")
+    except Exception as exc:  # noqa: BLE001
+        log.error("waitlist SMS retry failed: %s", _safe(exc))
     return done
 
 

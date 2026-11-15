@@ -485,7 +485,8 @@ class ReviewCycleTests(TestCase):
         self.client.get("/api/v1/me/reviews/")
         review = ChapterReview.objects.get(user=self.user, chapter=self.chapter)
         self.assertEqual(review.finished_by, "auto")
-        self.assertEqual((review.due_on - review.finished_at.date()).days, 1)
+        # Local (Tehran) days, as the app counts them: the UTC date is a day behind after local midnight.
+        self.assertEqual((review.due_on - timezone.localtime(review.finished_at).date()).days, 1)
         self.assertTrue(FlashcardReview.objects.filter(user=self.user).exists(), "the chapter's cards join the Leitner box")
 
     def test_button_finishes_and_the_day_one_review_runs_in_fives(self):

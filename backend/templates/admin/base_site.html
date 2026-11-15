@@ -27,6 +27,33 @@
   html[data-theme="light"] .lp-b-green { color: #23864B; } html[data-theme="light"] .lp-b-yellow { color: #8A6A00; }
   html[data-theme="light"] .lp-b-grey { color: #6B6B6B; } html[data-theme="light"] .lp-b-blue { color: #3B5FC4; }
   html[data-theme="light"] .lp-b-red { color: #B33A3A; }
+  /* Lists: formulas drawn inside Persian text (lists.js), the place of an item on one line. */
+  .lp-tex .lp-f { unicode-bidi: isolate; display: inline-block; direction: ltr; }
+  .lp-tex math { font-size: 1.05em; }
+  .lp-place { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px;
+    margin-bottom: 2px; }
+  #changelist-filter .lp-filter-row { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 15px 8px; margin: 0; }
+  #changelist-filter .lp-filter-row li { list-style: none; margin: 0; padding: 0; border: 0; }
+  #changelist-filter .lp-filter-row a { display: block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--hairline-color); }
+  #changelist-filter .lp-filter-row li.selected a { background: var(--selected-row); border-color: var(--link-fg); }
+  /* «خلاصه» on a user's page (accounts/overview.py). */
+  .lp-ov { margin: 4px 0 8px; }
+  .lp-ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; }
+  .lp-ov-card { border: 1px solid var(--hairline-color); border-radius: 12px; padding: 10px 14px; background: var(--body-bg); }
+  .lp-ov-card h3 { margin: 0 0 8px; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; color: var(--body-fg); background: none; padding: 0; }
+  .lp-ov-more { font-size: 12px; font-weight: 400; }
+  .lp-ov-table { width: 100%; border: 0; }
+  .lp-ov-table td { padding: 5px 4px; border-bottom: 1px solid var(--hairline-color); vertical-align: top; }
+  .lp-ov-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .lp-ov-stat { background: var(--darkened-bg); border-radius: 10px; padding: 8px 10px; }
+  .lp-ov-stat b { display: block; font-size: 15px; }
+  .lp-ov-stat span { color: var(--body-quiet-color); font-size: 11px; }
+  .lp-ov-links { margin: 0 0 12px; }
+  .field-overview > div > label, .field-overview .flex-container > label { display: none; }
+  .field-overview .readonly { margin: 0; padding: 0; width: 100%; }
+  .lp-nav-count { margin-inline-start: 6px; font-size: 10px; line-height: 16px; padding: 0 7px; }
+  .lp-quiet { color: var(--body-quiet-color); }
+  .lp-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-width: 260px; }
 </style>
 <script>
   // The side menu keeps its place: where it was scrolled to is remembered for this tab and put back on the next
@@ -48,6 +75,16 @@
       }
       if (window.scrollY !== pageY) window.scrollTo(0, pageY);
       requestAnimationFrame(function () { if (window.scrollY !== pageY) window.scrollTo(0, pageY); });
+      {% if lp_open_reports %}
+      var rep = n.querySelector('a[href$="/learning/report/"]');
+      if (rep) {
+        var b = document.createElement("span");
+        b.className = "lp-badge lp-b-red lp-nav-count";
+        b.textContent = "{{ lp_open_reports }}".replace(/[0-9]/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹"[d]; });
+        b.title = "گزارش‌های باز";
+        rep.appendChild(b);
+      }
+      {% endif %}
       n.addEventListener("scroll", save, { passive: true });
       n.addEventListener("click", save, true);
     });

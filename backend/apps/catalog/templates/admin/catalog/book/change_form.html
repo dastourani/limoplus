@@ -3,6 +3,7 @@
 {% block object-tools-items %}
   {% if original %}
     <li><a href="{% url 'admin:catalog_book_export' original.pk %}">دریافت کل کتاب (ZIP)</a></li>
+    {% if original.waitlist.exists %}<li><a href="{% url 'admin:catalog_book_waitlist_notify' original.pk %}">خبر دادن به منتظران «خبرم کن»</a></li>{% endif %}
   {% endif %}
   {{ block.super }}
 {% endblock %}

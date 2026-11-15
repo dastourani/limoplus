@@ -77,3 +77,46 @@ def badges(*items):
     if not shown:
         return "—"
     return format_html('<span class="lp-badges">{}</span>', format_html_join("", '<span class="lp-badge {}">{}</span>', shown))
+
+
+def short_text(text: str, limit: int = 140) -> str:
+    """Lesson text on one line for a list: images and markup marks dropped, at most `limit` characters, never cut
+    inside a $…$ formula (the cut moves to just before it), «…» when shortened."""
+    import re
+
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text or "")  # images
+    text = re.sub(r"\[\[#?([^|\]]*)(?:\|[^\]]*)?\]\]", r"\1", text)  # [[#name|text]] links: their name
+    text = re.sub(r"^\s*(:::[^\n]*|#+\s*)", " ", text, flags=re.M)  # box lines and headings
+    text = text.replace("**", "").replace("==", "")
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    cut = limit
+    # Where does each formula start and end? A cut inside one goes back to its start.
+    for m in re.finditer(r"\$\$.+?\$\$|\$[^$]+\$", text):
+        if m.start() < cut < m.end():
+            cut = m.start() if m.start() > limit // 3 else min(m.end(), len(text))
+            break
+    return text[:cut].rstrip() + "…"
+
+
+def tex(text: str, limit: int = 140):
+    """A list cell with formulas: plain text that the panel's lists.js draws with the app's own renderer."""
+    from django.utils.html import format_html
+
+    short = short_text(text, limit)
+    if "$" not in short:
+        return short
+    return format_html('<span class="lp-tex">{}</span>', short)
+
+
+def fa_duration(seconds) -> str:
+    """«۳ ساعت ۵ دقیقه», «۱۲ دقیقه», «کمتر از یک دقیقه»; «—» for nothing."""
+    seconds = int(seconds or 0)
+    if seconds <= 0:
+        return "—"
+    hours, minutes = seconds // 3600, (seconds % 3600) // 60
+    if not hours and not minutes:
+        return "کمتر از یک دقیقه"
+    parts = ([f"{fa_number(hours)} ساعت"] if hours else []) + ([f"{fa_number(minutes)} دقیقه"] if minutes else [])
+    return " و ".join(parts)
