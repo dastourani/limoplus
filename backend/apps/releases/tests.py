@@ -58,3 +58,25 @@ class MissingTableTests(TestCase):
             r = APIClient().get("/api/v1/majors/", HTTP_X_APP_PLATFORM="android", HTTP_X_APP_BUILD="10")
             self.assertEqual(r.status_code, 200)
             self.assertEqual(APIClient().get("/api/v1/app/version/?platform=android&build=10").json()["status"], "ok")
+
+
+class UploadedApkTests(TestCase):
+    def test_uploaded_apk_is_the_download_link(self):
+        import shutil
+        import tempfile
+
+        from django.core.exceptions import ValidationError
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, True)
+        with override_settings(MEDIA_ROOT=media, SITE_URL="https://api.example.ir"):
+            r = AppRelease(build=12, apk=SimpleUploadedFile("limookhan-12.apk", b"PK"))
+            r.full_clean()
+            r.save()
+            self.assertTrue(r.link.startswith("https://api.example.ir/media/apk/limookhan-12"))
+            with self.assertRaises(ValidationError):
+                AppRelease(build=13).full_clean()
+            with self.assertRaises(ValidationError):
+                AppRelease(build=14, apk=SimpleUploadedFile("x.zip", b"PK")).full_clean()

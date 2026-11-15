@@ -301,6 +301,30 @@ class CleanupRun(models.Model):
         ordering = ["-at"]
 
 
+class BackupRun(models.Model):
+    """One backup: the database (nightly) or the pictures and files added since the last one (weekly), kept on the
+    server's disk and sent to the admin's chat in Bale. The panel's «فضای سرور» page lists them."""
+
+    class Kind(models.TextChoices):
+        DB = "db", "پایگاه داده"
+        MEDIA = "media", "عکس‌ها و فایل‌ها"
+
+    kind = models.CharField("نوع", max_length=10, choices=Kind.choices)
+    at = models.DateTimeField("زمان", auto_now_add=True)
+    ok = models.BooleanField("موفق", default=False)
+    files = models.JSONField("فایل‌ها", default=list, help_text="نام فایل‌های ساخته‌شده")
+    size = models.BigIntegerField("حجم", default=0)
+    sent = models.BooleanField("فرستاده شد", default=False)
+    note = models.TextField("توضیح", blank=True)
+    # For media: files changed after this moment went into this backup (the next one starts from `at`).
+    since = models.DateTimeField("از زمان", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "پشتیبان"
+        verbose_name_plural = "پشتیبان‌ها"
+        ordering = ["-at"]
+
+
 class ShareSettings(models.Model):
     """One row: the link sent when a book has none of its own."""
 

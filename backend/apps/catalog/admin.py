@@ -446,15 +446,78 @@ class StorageAdmin(admin.ModelAdmin):
                 f"{s['revisions']} نسخه‌ی قدیمی فصل، {s['images']} عکس بی‌استفاده.",
             )
             return redirect(request.path)
+        from .backups import bale_ready
+        from .models import BackupRun
+
         context = {
             **self.admin_site.each_context(request),
             "title": "فضای سرور",
             "report": storage_report(),
             "runs": [{"at": jalali_datetime(r.at), "summary": r.summary} for r in CleanupRun.objects.all()[:10]],
             "can_run": request.user.is_superuser,
+            "backups": [
+                {"at": jalali_datetime(b.at), "kind": b.get_kind_display(), "ok": b.ok, "sent": b.sent, "size": b.size, "note": b.note}
+                for b in BackupRun.objects.all()[:12]
+            ],
+            "bale_ready": bale_ready(),
             "opts": self.model._meta,
         }
         return TemplateResponse(request, "admin/catalog/storage.html", context)
+
+
+    def get_urls(self):
+        from django.db import transaction
+
+        site = self.admin_site.admin_view
+        custom = [
+            path("backup-now/", site(self.backup_now), name="catalog_backup_now"),
+            # Not inside the request's transaction: the database file itself is replaced.
+            path("restore/", transaction.non_atomic_requests(site(self.restore)), name="catalog_restore"),
+        ]
+        return custom + super().get_urls()
+
+    def backup_now(self, request):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import redirect
+
+        from .backups import backup_database, backup_media, bale_ready
+
+        if request.method != "POST" or not request.user.is_superuser:
+            raise PermissionDenied
+        db = backup_database()
+        msg = "پشتیبان دیتابیس " + ("ساخته شد" if db.ok else f"ساخته نشد: {db.note}") + ("، و در بله فرستاده شد" if db.sent else "")
+        if request.POST.get("media") and bale_ready():
+            media = backup_media()
+            msg += "؛ پشتیبان عکس‌ها " + (f"فرستاده شد ({media.note})" if media.sent else f"انجام نشد {media.note}")
+        (messages.success if db.ok else messages.error)(request, msg + ".")
+        return redirect("..")
+
+    def restore(self, request):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import redirect
+
+        from .backups import RestoreError, restore_upload
+
+        if request.method != "POST" or not request.user.is_superuser:
+            raise PermissionDenied
+        upload = request.FILES.get("file")
+        if not upload or request.POST.get("confirm") != "yes":
+            messages.error(request, "فایل را انتخاب کنید و تیک تأیید را بزنید.")
+            return redirect("..")
+        try:
+            done = restore_upload(upload)
+        except RestoreError as exc:
+            messages.error(request, str(exc))
+            return redirect("..")
+        parts = []
+        if done["db"]:
+            parts.append(f"دیتابیس جایگزین شد (نسخه‌ی قبلی با نام {done['aside']} در پوشه‌ی backups نگه داشته شد)")
+        if done["media"]:
+            parts.append(f"{done['media']} عکس و فایل اضافه شد")
+        messages.success(request, "؛ ".join(parts) + ". اگر از پنل بیرون رفتید، با حساب مدیرِ همان دیتابیس وارد شوید.")
+        return redirect("..")
 
 
 _admin_index = admin.site.index
