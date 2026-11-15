@@ -47,6 +47,8 @@ Code, identifiers and commit messages are in English.
   The panel's «ویرایش کل فایل» has «↑ ابتدای فایل», «↓ انتهای فایل» and «برو به بخش…» (`fileNav` in panel.js).
 - Progress is drawn as a lemon (`LemonProgress`, one wedge per item); quiz and exam share `QuizView` (single web view,
   finger-following page drag) and `usePageTurn`. Don't use «·» next to Persian digits (۰ looks like a dot).
+- Real server: ParsPack PaaS deploys the branch «deploy», made by `.github/workflows/deploy.yml` on every push to main
+  (backend tests, web build into `backend/webapp`, force-pushed). Setup and variables: `docs/deploy-parspack.md`.
 - `docker-compose.yml` — local Postgres + backend (mounts `content/` read-only).
 - `content/samples/` — sample book in the chapter format; `python manage.py load_samples` loads it.
 - `docs/content-format.md` — the chapter Markdown format (Persian) and the prompt for AI content writers.
