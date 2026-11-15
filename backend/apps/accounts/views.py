@@ -225,7 +225,9 @@ class PanelLoginSerializer(serializers.Serializer):
 @permission_classes([AllowAny])
 def panel_login(request):
     """The web app's half of «باز کردن وب اپ با حساب من»: a one-time code from the panel becomes a session, like a
-    verified SMS code (the same device limit). A wrong or used code counts as a wrong guess for the IP."""
+    verified SMS code (the same device limit). A wrong or used code counts as a wrong guess for the IP (the same
+    counter as wrong SMS codes). Sessions made this way are ordinary sessions: revoke them in «نشست‌ها» if staff
+    rights are taken away."""
     data = PanelLoginSerializer(data=request.data)
     if not data.is_valid():
         return _error("اطلاعات ارسالی کامل نیست.", "invalid_request", errors=data.errors)

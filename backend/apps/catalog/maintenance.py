@@ -27,11 +27,13 @@ PENDING_IMPORT_HOURS = 24
 
 
 def cleanup_temporary(now=None) -> dict:
-    from apps.accounts.models import DeviceSession, OTPCode, RateBucket
+    from apps.accounts.models import DeviceSession, OTPCode, PanelLoginCode, RateBucket
     from apps.study.models import FlashcardReviewOp, StudyTimeReport
 
     now = now or timezone.now()
     codes = OTPCode.objects.filter(expires_at__lt=now - timedelta(days=1)).delete()[0]
+    # One-time panel → web app codes live a minute; a day later they are only clutter.
+    codes += PanelLoginCode.objects.filter(created_at__lt=now - timedelta(days=1)).delete()[0]
     buckets = RateBucket.objects.filter(window_start__lt=now - timedelta(days=2)).delete()[0]
     old = now - timedelta(days=TEMP_SESSION_DAYS)
     sessions = DeviceSession.objects.filter(revoked_at__lt=old).delete()[0] + DeviceSession.objects.filter(

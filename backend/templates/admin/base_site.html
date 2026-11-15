@@ -65,7 +65,7 @@
 
 {% block userlinks %}
 {% if user.is_active and user.is_staff %}
-  <form class="lp-open-app" method="post" action="{% url 'panel-open-app' %}" target="_blank">{% csrf_token %}
+  <form class="lp-open-app" method="post" action="{% url 'panel-open-app' %}" target="_blank" rel="noopener noreferrer">{% csrf_token %}
     <button type="submit" title="وب اپ در زبانه‌ی تازه، با همین حساب و بدون پیامک باز می‌شود">باز کردن وب اپ با حساب من</button>
   </form> /
 {% endif %}
