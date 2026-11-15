@@ -132,12 +132,14 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# WhiteNoise serves the panel's and the website's static files when there is no nginx in front (e.g. ParsPack PaaS).
+# The hashed (manifest) storage needs `collectstatic` first, so it is used only on the real server.
 STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+        if DEBUG or TESTING
+        else "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
 MEDIA_URL = "media/"
