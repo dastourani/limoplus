@@ -1,0 +1,53 @@
+# Builds the web version of the app on every change to it (a few minutes, far quicker than an APK) and keeps the
+# latest build on the branch «web-build». update.bat on the laptop takes it from there, and the laptop's server shows
+# it at its root, for trying changes in a browser or on a phone on the same Wi-Fi.
+name: Web version
+
+on:
+  push:
+    branches: [main, feature/full-app]
+    paths: ["app/**", ".github/workflows/web-build.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One after another; a build in progress is never cancelled.
+concurrency:
+  group: web-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the web version
+        # No server address: served by the laptop's server, the app talks to the server it came from.
+        run: |
+          echo "EXPO_PUBLIC_API_URL=" > .env
+          npx expo export -p web --output-dir dist
+
+      - name: Keep it on the branch «web-build» (only the latest build)
+        run: |
+          cd dist
+          echo "${GITHUB_SHA}" > build-commit.txt
+          git init -q
+          git checkout -q -b web-build
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -q -m "Web build of ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" web-build

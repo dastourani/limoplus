@@ -25,7 +25,10 @@ class DeviceSessionAuthentication(authentication.BaseAuthentication):
             session.last_seen_at = now
             session.save(update_fields=["last_seen_at"])
         request.device_session = session
-        return session.user, session
+        user = session.user
+        # Staff can look at the app as a learner sees it (locks, prices, free labels); nothing else changes.
+        user.view_as_learner = user.is_staff and request.META.get("HTTP_X_VIEW_AS") == "learner"
+        return user, session
 
     def authenticate_header(self, request):
         return self.keyword

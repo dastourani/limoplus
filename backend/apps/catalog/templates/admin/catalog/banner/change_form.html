@@ -1,0 +1,6 @@
+{% extends "admin/change_form.html" %}
+{% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
+{% block content %}
+{{ block.super }}
+{{ banner_books|json_script:"lp-banner-books" }}
+{% endblock %}

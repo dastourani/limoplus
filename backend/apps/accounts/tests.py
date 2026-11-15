@@ -2,7 +2,7 @@ from datetime import timedelta
 from unittest import mock
 
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -66,6 +66,33 @@ class OTPFlowTests(TestCase):
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.data["code"], "cooldown")
         self.assertIsNone(code)
+
+    def test_sms_carries_app_hash_and_fits_one_sms(self):
+        with mock.patch("apps.accounts.views.send_sms") as send:
+            self.client.post("/api/v1/auth/request-otp/", {"phone": self.phone, "app_hash": "FA+9qCX9VSu"}, format="json")
+        text = send.call_args[0][1]
+        self.assertTrue(text.startswith("لیموخوان"))
+        self.assertTrue(text.endswith("\nFA+9qCX9VSu"))
+        self.assertLessEqual(len(text), 70)
+
+    def test_bad_app_hash_is_ignored(self):
+        with mock.patch("apps.accounts.views.send_sms") as send:
+            self.client.post("/api/v1/auth/request-otp/", {"phone": self.phone, "app_hash": "<script>"}, format="json")
+        self.assertNotIn("script", send.call_args[0][1])
+
+    def test_hourly_limit_says_when_to_try_again(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        for minutes_ago in (50, 40, 30, 20, 10):
+            otp, _ = OTPCode.issue(self.phone)
+            OTPCode.objects.filter(pk=otp.pk).update(created_at=timezone.now() - timedelta(minutes=minutes_ago))
+        response, code = self._request_code()
+        self.assertEqual(response.status_code, 429)
+        self.assertIsNone(code)
+        self.assertIn("۱۰ دقیقه", response.data["message"])
+        self.assertTrue(540 <= response.data["retry_after"] <= 601)
 
     def test_wrong_code_counts_attempts_and_locks(self):
         _, code = self._request_code()
@@ -189,3 +216,25 @@ class OTPFlowTests(TestCase):
 
     def test_health_is_public(self):
         self.assertEqual(self.client.get("/api/v1/health/").status_code, 200)
+
+
+class AdminLoginThrottleTests(TestCase):
+    def test_password_guessing_is_blocked(self):
+        User.objects.create_superuser("09120000009", password="Right-Pass-123")
+        c = Client()
+        for _ in range(5):
+            r = c.post("/admin/login/", {"username": "09120000009", "password": "wrong"})
+            self.assertEqual(r.status_code, 200)
+        r = c.post("/admin/login/", {"username": "09120000009", "password": "Right-Pass-123"})
+        self.assertEqual(r.status_code, 429)
+
+
+class OtpHashSettingTests(TestCase):
+    def test_hash_line_can_be_turned_off(self):
+        from django.test import override_settings
+
+        from .views import _otp_message
+
+        self.assertTrue(_otp_message("123456", "AbCdEfGhIjK").endswith("\nAbCdEfGhIjK"))
+        with override_settings(OTP_SMS_APP_HASH=False):
+            self.assertNotIn("AbCdEfGhIjK", _otp_message("123456", "AbCdEfGhIjK"))

@@ -1,0 +1,1 @@
+<div class="faq">{% for f in faq %}<details{% if forloop.first %} open{% endif %}><summary>{{ f.question }}</summary><p>{{ f.answer|linebreaksbr }}</p></details>{% endfor %}</div>

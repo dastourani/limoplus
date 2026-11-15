@@ -76,8 +76,12 @@ class ParserTests(TestCase):
         messages = " | ".join(str(e) for e in chapter.errors)
         self.assertIn("دقیقاً یک گزینه", messages)
         self.assertIn("سطح «خیلی سخت»", messages)
-        self.assertIn("«missing»", messages)
         self.assertTrue(all(e.line for e in chapter.errors))
+        # A flashcard not in the file may be in another chapter of the book; only the database can tell.
+        Major.objects.create(slug="economics", name="اقتصاد")
+        chapter, _ = import_file("x.md", GOOD.replace("فلش‌کارت: card1", "فلش‌کارت: missing").encode(), dry_run=True)
+        missing = [e for e in chapter.errors if "«missing»" in str(e)]
+        self.assertTrue(missing and missing[0].line, chapter.errors)
 
     def test_missing_front_matter_and_unclosed_block(self):
         self.assertTrue(parse_chapter("## no front matter").errors)
@@ -145,6 +149,20 @@ class ImportTests(TestCase):
         # Restoring the section brings the same row back.
         import_file("c.md", GOOD.encode(), publish=True)
         self.assertFalse(ContentNode.objects.get(id=section_two).is_archived)
+
+    def test_choices_keep_their_ids_when_reordered_and_new_text_is_a_new_choice(self):
+        import_file("c.md", GOOD.encode(), publish=True)
+        ids = {c.text: c.id for c in Question.objects.get(slug="q1").choices.all()}
+        moved = GOOD.replace("- [ ] سه\n- [x] چهار\n- [ ] پنج", "- [x] چهار\n- [ ] پنج\n- [ ] شش")
+        self.assertNotEqual(moved, GOOD)
+        chapter, _ = import_file("c.md", moved.encode(), publish=True)
+        self.assertEqual(chapter.errors, [])
+        now = list(Question.objects.get(slug="q1").choices.order_by("order"))
+        self.assertEqual([c.text for c in now], ["چهار", "پنج", "شش"])
+        self.assertEqual(now[0].id, ids["چهار"])
+        self.assertTrue(now[0].is_correct)
+        self.assertEqual(now[1].id, ids["پنج"])
+        self.assertNotIn(now[2].id, ids.values())
 
     def test_zip_images_are_stored_and_rewritten(self):
         text = GOOD.replace("متن دوم.", "![نمودار](images/g.svg)")
@@ -265,3 +283,183 @@ class ReadApiTests(TestCase):
 
         banner = Banner.objects.get(pk=items[0]["id"])
         self.assertEqual((banner.impressions, banner.clicks), (1, 1))
+
+
+class GroupsAndGlossaryTests(TestCase):
+    def setUp(self):
+        Major.objects.create(slug="economics", name="اقتصاد")
+
+    def test_group_lines_label_sections_and_terms_feed_the_glossary(self):
+        text = GOOD.replace("## بخش اول {#one}", "# مبانی\n\n## بخش اول {#one}").replace(
+            ":::خلاصه\nخلاصه‌ی بخش.\n:::",
+            ":::خلاصه\nدر یک نگاه: جمع اعداد.\nمهم:\n- جمع جابه‌جایی است [[جزوه]]\nواژه:\n- جمع | Addition | به هم افزودن دو عدد\n- ضرب | Multiplication\n:::",
+        ).replace("## بخش دوم {#two}", "# کاربردها\n\n## بخش دوم {#two}")
+        chapter, result = import_file("c.md", text.encode(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        one = ContentNode.objects.get(slug="one")
+        self.assertEqual(one.group, "مبانی")
+        self.assertEqual(ContentNode.objects.get(slug="two").group, "کاربردها")
+
+        client = APIClient()
+        book = client.get("/api/v1/books/test-book/").json()
+        self.assertEqual([s["group"] for s in book["chapters"][0]["sections"]], ["مبانی", "کاربردها"])
+        terms = client.get("/api/v1/books/test-book/glossary/").json()["terms"]
+        self.assertEqual([t["fa"] for t in terms], ["جمع", "ضرب"])
+        self.assertEqual(terms[0]["en"], "Addition")
+        self.assertEqual(terms[1]["meaning"], "")
+
+    def test_banner_destinations(self):
+        from .models import Banner
+
+        cases = [("book", "bushberg", "book/bushberg"), ("buy", "bushberg", "buy/bushberg"), ("review", "", "review"),
+                 ("exam", "12", "exam/12"), ("url", "https://example.com", "https://example.com"), ("url", "javascript:alert(1)", "")]
+        for target, value, link in cases:
+            self.assertEqual(Banner(title="b", target=target, target_value=value).resolved_link(), link)
+        self.assertEqual(Banner(title="b", link="book/x").resolved_link(), "book/x")
+
+
+class LabelTests(TestCase):
+    """«برچسب‌های متن»: boxes in the notes and parts of the summary, managed in admin."""
+
+    def setUp(self):
+        Major.objects.create(slug="economics", name="اقتصاد")
+        from .labels import forget
+
+        forget()
+
+    def tearDown(self):
+        from .labels import forget
+
+        forget()
+
+    def test_starting_list_and_summary_parts_in_written_order(self):
+        from .labels import find
+        from .models import Label
+        from .summary import parse_summary, parse_terms
+
+        self.assertGreaterEqual(Label.objects.count(), 20, "the migration creates the starting list")
+        self.assertEqual(find("مثال‌نقض")["name"], "مثال نقض", "half-space and space are the same name")
+        self.assertEqual(find("تله‌ها")["name"], "تله")
+        parsed = parse_summary("پیش‌متن\nدر یک نگاه: کوتاه\nقضیه:\n- اول [[x]]\nتعریف: - دوم\nقضیه:\n- سوم\nواژه:\n- حد | Limit | نزدیکی")
+        self.assertEqual(parsed["lead"], "پیش‌متن")
+        self.assertEqual(parsed["glance"], "کوتاه")
+        self.assertEqual([(l["name"], items) for l, items in parsed["parts"]],
+                         [("قضیه", ["اول [[x]]", "سوم"]), ("تعریف", ["دوم"]), ("واژه", ["حد | Limit | نزدیکی"])])
+        self.assertEqual(parse_terms("واژه‌نامه:\n- حد | Limit"), [{"fa": "حد", "en": "Limit", "meaning": ""}])
+        self.assertIsNone(parse_summary("فقط متن: بدون برچسب شناخته‌شده"))
+
+    def test_any_label_is_a_box_in_the_notes_and_new_labels_come_from_admin(self):
+        from .labels import forget
+        from .models import Label
+
+        text = GOOD.replace("متن دوم.", "متن دوم.\n\n:::مثال نقض\nتابع علامت.\n:::\n\n:::برهان\nچون…\n:::")
+        chapter = parse_chapter(text)
+        self.assertTrue(any("«برهان» شناخته نشد" in e for e in [str(x) for x in chapter.errors]), chapter.errors)
+        Label.objects.create(name="برهان", group="ریاضی و علوم", style="formal")
+        forget()
+        chapter, _ = import_file("c.md", text.encode(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        two = ContentNode.objects.get(slug="two")
+        self.assertIn(":::مثال نقض", two.full_body)
+        data = APIClient().get(f"/api/v1/nodes/{two.id}/").json()
+        self.assertIn("برهان", [l["name"] for l in data["labels"]], "the app gets the panel's list with the section")
+        self.assertEqual(next(l for l in data["labels"] if l["name"] == "واژه")["columns"], ["فارسی", "English", "معنی"])
+
+
+class NumberingTests(TestCase):
+    """«مثال ۳-۵»: numbered over the chapter, with links «[[#name]]» from the notes and from test explanations."""
+
+    def setUp(self):
+        Major.objects.create(slug="economics", name="اقتصاد")
+        from .labels import forget
+
+        forget()
+
+    def test_examples_are_counted_over_the_chapter_and_links_resolve(self):
+        text = GOOD.replace("عنوان: فصل یک", "عنوان: فصل یک\nفصل: 3").replace(
+            "متن جزوه با فرمول $x^2$.", "متن.\n\n:::مثال\nیک\n:::\n\n:::مثال {#sin-h}\nدو\n:::\n\n:::نکته\nبی‌شماره\n:::"
+        ).replace("متن دوم.", "متن دوم، طبق [[#sin-h]].\n\n:::مثال\nسه\n:::\n\n:::نمودار {#g1}\nشکل\n:::").replace(
+            "توضیح: جمع ساده.", "توضیح: جمع ساده، مثل [[#sin-h]]."
+        )
+        chapter, _ = import_file("c.md", text.encode(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        client = APIClient()
+        one, two = ContentNode.objects.get(slug="one"), ContentNode.objects.get(slug="two")
+        n1 = client.get(f"/api/v1/nodes/{one.id}/").json()["numbering"]
+        n2 = client.get(f"/api/v1/nodes/{two.id}/").json()["numbering"]
+        self.assertEqual(n1["chapter"], 3)
+        self.assertEqual(n1["start"], {})
+        self.assertEqual(n2["start"], {"مثال": 2}, "the second section goes on from the first")
+        self.assertEqual(n2["refs"]["sin-h"], {"text": "مثال ۳-۲", "node": one.id})
+        self.assertEqual(n2["refs"]["g1"], {"text": "نمودار ۳-۱", "node": two.id})
+        q = Question.objects.get(slug="q1")
+        r = client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": q.choices.first().id}, format="json").json()
+        self.assertIn(f"[[#sin-h|مثال ۳-۲|{one.id}]]", r["explanation"], "explanations come with the place filled in")
+
+    def test_box_names_are_unique_in_a_chapter(self):
+        text = GOOD.replace("متن دوم.", "متن دوم.\n\n:::مثال {#a}\nیک\n:::\n\n:::مثال {#a}\nدو\n:::")
+        self.assertTrue(any("«a» دو بار" in str(e) for e in parse_chapter(text).errors))
+
+
+class BookSourceAndChapterTests(TestCase):
+    def setUp(self):
+        Major.objects.create(slug="economics", name="اقتصاد")
+        Major.objects.create(slug="biomedical-engineering", name="مهندسی پزشکی")
+
+    def test_textbook_source_without_a_year_round_trips(self):
+        from .exporter import export_chapter
+
+        text = GOOD.replace("منبع: کنکور ارشد اقتصاد ۱۴۰۱، سؤال ۲۳\nمنبع: کنکور دکتری اقتصاد 1399", "منبع: کتاب ایساک مارون")
+        chapter, _ = import_file("c.md", text.encode(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        q = Question.objects.get(slug="q1")
+        self.assertEqual([str(s.source) for s in q.questionsource_set.all()], ["کتاب ایساک مارون"])
+        self.assertFalse(q.is_original)
+        self.assertIn("منبع: کتاب ایساک مارون\n", export_chapter(ContentNode.objects.get(slug="ch1")))
+
+    def test_the_limits_chapter_file_imports_cleanly(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        path = Path(settings.BASE_DIR).parent / "content" / "books" / "math-1" / "01-limits" / "chapter.md"
+        chapter, _ = import_file("chapter.md", path.read_bytes(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        self.assertEqual(Question.objects.filter(node__path__startswith=ContentNode.objects.get(slug="limits").path).count(), 48)
+        self.assertEqual(Question.objects.filter(is_extra=True).count(), 24)
+        client = APIClient()
+        node = ContentNode.objects.get(slug="rafe-sefr-sefr")
+        refs = client.get(f"/api/v1/nodes/{node.id}/").json()["numbering"]["refs"]
+        self.assertEqual(refs["hopital"]["text"], "قضیه", "a box that is not numbered is linked by its label")
+        self.assertEqual(refs["telescopi"]["text"], "مثال ۱-۱")
+
+
+class BoxesTests(TestCase):
+    def test_all_boxes_of_a_label_in_reading_order(self):
+        Major.objects.create(slug="economics", name="اقتصاد")
+        text = GOOD.replace("عنوان: فصل یک", "عنوان: فصل یک\nفصل: 2").replace(
+            "متن جزوه با فرمول $x^2$.", "متن.\n\n:::مثال {#a}\nیک\n:::\n\n:::نکته\nن\n:::"
+        ).replace("متن دوم.", "متن دوم.\n\n:::مثال\nدو\n:::")
+        chapter, _ = import_file("c.md", text.encode(), publish=True)
+        self.assertFalse(chapter.errors, chapter.errors)
+        book = ContentNode.objects.get(slug="test-book")
+        client = APIClient()
+        data = client.get(f"/api/v1/nodes/{book.id}/boxes/").json()
+        self.assertEqual({l["name"]: l["count"] for l in data["labels"]}, {"مثال": 2, "نکته": 1})
+        data = client.get(f"/api/v1/nodes/{book.id}/boxes/?label=مثال").json()
+        self.assertEqual([(b["title"], b["body"], b["name"]) for b in data["boxes"]], [("مثال ۲-۱", "یک", "a"), ("مثال ۲-۲", "دو", "")])
+        self.assertEqual(data["boxes"][1]["section_id"], ContentNode.objects.get(slug="two").id)
+
+
+class LabelIconTests(TestCase):
+    def test_icons_seeded_and_sent(self):
+        from apps.catalog.labels import all_labels, forget
+
+        from .models import Label
+
+        self.assertEqual(Label.objects.get(name="تعریف").icon, "book-open")
+        Label.objects.filter(name="نکته").update(icon="")
+        forget()
+        icons = {l["name"]: l["icon"] for l in all_labels()}
+        self.assertEqual(icons["تعریف"], "book-open")
+        self.assertEqual(icons["نکته"], "")  # turned off in the panel: no icon

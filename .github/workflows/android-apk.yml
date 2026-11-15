@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: android-apk
-  cancel-in-progress: true
+  cancel-in-progress: false  # never cancel a build in progress; the next one waits
 
 jobs:
   build:
@@ -41,7 +41,11 @@ jobs:
 
       - name: Default server address for test builds
         # Can be changed later in the app (Settings). Set a repository variable EXPO_PUBLIC_API_URL to change the default.
-        run: echo "EXPO_PUBLIC_API_URL=${{ vars.EXPO_PUBLIC_API_URL || 'http://192.168.1.100:8000' }}" > .env
+        run: |
+          echo "EXPO_PUBLIC_API_URL=${{ vars.EXPO_PUBLIC_API_URL || 'http://192.168.1.100:8000' }}" > .env
+          # The build number lets the server offer newer versions and turn away versions marked as too old.
+          echo "EXPO_PUBLIC_APP_BUILD=${{ github.run_number }}" >> .env
+          node -e "const f='app.json',j=require('./'+f);j.expo.android=j.expo.android||{};j.expo.android.versionCode=${{ github.run_number }};j.expo.version='1.0.${{ github.run_number }}';require('fs').writeFileSync(f,JSON.stringify(j,null,2))"
 
       - name: Generate the Android project
         run: npx expo prebuild --platform android --no-install
@@ -71,8 +75,8 @@ jobs:
 
       - name: Name the APKs
         run: |
-          cp android/app/build/outputs/apk/release/app-arm64-v8a-release.apk "limoplus-test-${{ github.run_number }}-arm64.apk"
-          cp android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "limoplus-test-${{ github.run_number }}-32bit.apk"
+          cp android/app/build/outputs/apk/release/app-arm64-v8a-release.apk "limookhan-test-${{ github.run_number }}-arm64.apk"
+          cp android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "limookhan-test-${{ github.run_number }}-32bit.apk"
 
       - name: Publish on the Releases page
         uses: softprops/action-gh-release@v2
@@ -86,5 +90,5 @@ jobs:
             - `-32bit.apk`: گوشی‌هایی با اندروید ۳۲ بیتی، مثل Galaxy A03 و مدل‌های ارزان.
             اگر یکی نصب نشد، دیگری را امتحان کنید. بعد از نصب، از «تنظیمات سرور» آدرس سرور را وارد کنید.
           files: |
-            app/limoplus-test-${{ github.run_number }}-arm64.apk
-            app/limoplus-test-${{ github.run_number }}-32bit.apk
+            app/limookhan-test-${{ github.run_number }}-arm64.apk
+            app/limookhan-test-${{ github.run_number }}-32bit.apk

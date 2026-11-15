@@ -1,29 +1,29 @@
 {
   "expo": {
-    "name": "لیمو پلاس",
-    "slug": "limoplus",
+    "name": "لیموخوان",
+    "slug": "limookhan",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ir.limoplus.app"
+      "bundleIdentifier": "ir.limookhan.app"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#F6F7F2",
+        "backgroundColor": "#17201A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "ir.limoplus.app"
+      "package": "ir.limookhan.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "limoplus",
+    "scheme": "limookhan",
     "plugins": [
       "expo-router",
       [
@@ -43,6 +43,29 @@
             "./node_modules/@expo-google-fonts/vazirmatn/800ExtraBold/Vazirmatn_800ExtraBold.ttf",
             "./node_modules/@expo-google-fonts/vazirmatn/900Black/Vazirmatn_900Black.ttf"
           ]
+        }
+      ],
+      [
+        "expo-localization",
+        {
+          "supportsRTL": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-lemon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#17201A"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
         }
       ]
     ],

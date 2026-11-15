@@ -1,0 +1,79 @@
+﻿kind,root,meaning,use,words,note
+جزء پزشکی,hem/hemat/emia,خون,فهرست اصلی,6,hem و hemat و پسوند emia با خون ارتباط دارند؛ chemotherapy و chemical shift artifact و ischemic از همین جزء نیستند.
+جزء پزشکی,-gram/-graph,ثبت، تصویر,فهرست اصلی,5,graph ثبت یا ترسیم؛ gram حاصل ثبت است؛ مثال‌های تصویربرداری مناسب‌اند.
+جزء پزشکی,vas/vascul,رگ,فهرست اصلی,4,cardiovascular و neurovascular درست؛ invasive از vadere است نه ریشه رگ.
+جزء پزشکی,immun,ایمنی,فهرست اصلی,3,سه مثال مرتبط و روشن.
+جزء پزشکی,neur,عصب,فهرست اصلی,3,واژه‌های neuro و neural مربوط به عصب‌اند.
+جزء پزشکی,hypo,کمتر از حد,فهرست اصلی,3,hypotension و hypofractionation مقدار پایین را نشان می‌دهند؛ hypothesize به معنی کم بودن نیست.
+جزء پزشکی,cardi,قلب,فهرست اصلی,2,cardiovascular و myocardial با قلب مرتبط‌اند؛ myo نیز عضله است.
+جزء پزشکی,toxi,سم,فهرست اصلی,2,سمی بودن و سمیت.
+جزء پزشکی,hyper,بیش از حد,فهرست اصلی,2,افزایش بیش از حد در مثال‌ها روشن است.
+جزء پزشکی,-logy,دانش,فهرست اصلی,2,مطالعه و دانش؛ مثال‌های درست.
+جزء پزشکی,a/an (نبود),بدون,فهرست اصلی,2,anomaly و atrophy از پیشوند نفی یونانی استفاده می‌کنند؛ با an حرف تعریف اشتباه نشود.
+جزء پزشکی,mono/uni,یک,فهرست اصلی,2,یک یا یکنواخت بودن را به‌خوبی نشان می‌دهند.
+جزء پزشکی,nephr/ren,کلیه,فهرست اصلی,1,renal درست است؛ برای nephr شاهد مستقلی در فهرست نیست.
+جزء پزشکی,-scopy,دیدن,فهرست اصلی,1,fluoroscopy مشاهده یا بررسی با تصویر.
+جزء پزشکی,-genic/-genesis,پدیدآورنده,فهرست اصلی,1,pathogenesis فرایند ایجاد بیماری است.
+جزء پزشکی,-oma,تومور,فهرست اصلی,1,glioma نام تومور است؛ پسوند در همه واژه‌ها الزاماً بدخیمی نمی‌رساند.
+جزء پزشکی,intra,درون,فهرست اصلی,1,intracranial درون جمجمه.
+جزء پزشکی,-trophy,رشد، تغذیه,فهرست اصلی,1,atrophy نشان‌دهنده فقدان یا کاهش تغذیه و رشد بافت است.
+ریشه,fac/fect/fic,ساختن، کردن,فهرست اصلی,15,significant و infection و effectiveness مرتبط؛ artifact و specificity نیز از ساخت‌های متفاوت‌اند؛ مثال‌ها جدا بازبینی شوند.
+ریشه,gen,زاییدن، پدید آوردن,فهرست اصلی,15,genetic و generate و congenital مناسب؛ emergency و negligence و cogent مرتبط نیستند.
+ریشه,sist/stat/stan,ایستادن,فهرست اصلی,14,persist و consist و resistant و substantiate مثال‌های مفیدند؛ تعدادی صورت‌های دورترند.
+ریشه,ten/tain/tin,نگه داشتن,فهرست اصلی,11,contain و maintain و sustain و retain روشن؛ competent و tentative از ریشه‌های دیگری‌اند.
+ریشه,pos/pon,گذاشتن,فهرست اصلی,11,expose و propose و postpone و postulate نمونه‌های درست؛ PET ریشه pos را توضیح نمی‌دهد.
+ریشه,vert/vers,چرخاندن,فهرست اصلی,11,adverse و inverse و transverse از چرخش می‌آیند؛ nevertheless و sievert شاهد آموزشی نیستند.
+ریشه,vent/ven,آمدن,فهرست اصلی,8,prevent و intervention و advent مناسب؛ effectiveness و fervent نامربوط‌اند.
+ریشه,mit/miss,فرستادن,فهرست اصلی,8,remission و transmit و emission مرتبط؛ conformity و calamity و infirmity نامربوط‌اند.
+ریشه,val,ارزش، قوت,فهرست اصلی,8,evaluate و validate و invaluable مناسب؛ prevalence ریشه valere دارد، b-value نامرتبط است.
+ریشه,pli/plic/ply,تا کردن، پیچیدن,فهرست اصلی,7,imply و complicate و replicate از ریشه تا کردن؛ comply به ریشه دیگری پیوند دارد؛ amplify نامرتبط است.
+ریشه,cogn/gno,دانستن,فهرست اصلی,7,diagnose و cognitive و prognosis مناسب؛ ignore از ریشه ندانستن مرتبط است.
+ریشه,sens/sent,حس کردن,فهرست اصلی,6,sensitive و sensible و consensus نمونه‌های مرتبط هستند؛ present with از praeesse نیست، از praesentare است و مسیر متفاوت دارد.
+ریشه,vit/viv,زندگی,فهرست اصلی,6,survival و revive و in vivo درست؛ longevity و sensitivity و radiosensitivity شاهد این ریشه نیستند.
+ریشه,spec/spect/spic,دیدن,فهرست اصلی,6,irrespective و specificity مرتبط؛ SPECT مخفف است نه تجزیه ریشه‌ای همین خانواده و speckle نامرتبط.
+ریشه,duc/duct,بردن، هدایت,فهرست اصلی,5,reduce و induce و conduct و transducer مناسب.
+ریشه,fer,بردن، آوردن,فهرست اصلی,5,suffer و indifferent و proliferate با ferre مرتبط؛ fervent از fervere نامرتبط است.
+ریشه,mot/mov,حرکت,فهرست اصلی,5,promote و motion درست؛ chemotherapy نامرتبط.
+ریشه,ced/ceed/cess,رفتن، پیش رفتن,فهرست اصلی,5,procedure و precede و recede مرتبط؛ convinced و displaced نامرتبط.
+ریشه,tend/tens,کشیدن، گستردن,فهرست اصلی,5,intensify و extensive و hypertension مرتبط؛ تفاوت دو ریشه tendere و tenere در مثال‌ها بررسی شود.
+ریشه,lev,سبک، بالا بردن,فهرست اصلی,4,alleviate و relieve و elevate مرتبط؛ irrelevant ریشه lev ندارد.
+ریشه,ben/bene,خوب,فهرست اصلی,4,beneficial و benign و benevolent درست.
+ریشه,log,سخن، علم,فهرست اصلی,4,psychological و physiological و etiology درست.
+ریشه,flu/flux,جاری شدن,فهرست اصلی,4,affluent و fluctuate از fluere؛ influenza مسیر تاریخی پیچیده دارد و fluoroscopy برای یادگیری این ریشه مناسب نیست.
+ریشه,cept/ceiv,گرفتن,فهرست اصلی,4,perceive و susceptible مرتبط؛ نام susceptibility در تصویربرداری معنای تخصصی دارد.
+ریشه,fus,ریختن,فهرست اصلی,4,perfusion و diffusion انتقال یا پخش را روشن می‌کنند.
+ریشه,ject,انداختن,فهرست اصلی,3,objective و subjective و projectile از ریشه پرتاب کردن مرتبط‌اند.
+ریشه,clud/clus,بستن,فهرست اصلی,3,conclusive و inconclusive و excluded درست.
+ریشه,tenu,نازک,فهرست اصلی,3,attenuate و extenuate نازک یا کم شدن را نشان می‌دهند.
+ریشه,scrib/script,نوشتن,فهرست اصلی,2,prescribe و prescription روشن.
+ریشه,press,فشار,فهرست اصلی,2,suppress و depression از فشار دادن.
+ریشه,psych,روان,فهرست اصلی,2,psychological و psychiatric هر دو مربوط به روان.
+ریشه,tract,کشیدن,فهرست اصلی,2,contract و tractography از trahere کشیدن.
+ریشه,dict,گفتن,فهرست اصلی,2,contradict و dictionary مربوط به گفتن.
+ریشه,sequ/secu,پیروی,فهرست اصلی,2,consequently و subsequent از پیروی کردن.
+ریشه,vis/vid,دیدن,فهرست اصلی,2,vision و visual از دیدن.
+ریشه,rupt,شکستن,فهرست اصلی,2,rupture و abrupt روشن.
+ریشه,chron,زمان,فهرست اصلی,1,chronic مربوط به زمان و دیرپایی.
+ریشه,grav,سنگین,فقط در کارت (دام),1,aggravate از gravis سنگین است اما تنها یک نمونه در داده دارد.
+ریشه,mort,مرگ,فهرست اصلی,1,mortality و مرگ ارتباط مستقیم دارند.
+ریشه,acerb,تلخ، تند,فقط در کارت (دام),1,exacerbate از acerbus تند و تلخ؛ تنها مثال.
+ریشه,ampl,بزرگ، فراخ,فقط در کارت (دام),1,amplify از amplوس بزرگ؛ تنها یک مثال.
+ریشه,mit (نرم),نرم، ملایم,فقط در کارت (دام),1,mitigate از mitis ملایم؛ با mit/miss فرستادن یکی نیست.
+ریشه,melior,بهتر,فقط در کارت (دام),1,ameliorate از melior بهتر؛ فقط یک مثال.
+پیشوند عمومی,con/com/col,با هم,فهرست اصلی,52,همراهی و با هم بودن در contribute و complicate و conflict؛ همه نمونه‌ها به معنای واحد ساده برنمی‌گردند.
+پیشوند عمومی,ad/ac/ag/al/at,به سوی,فهرست اصلی,43,adopt و aggravate و accelerate دارای پیشوند اشتقاقی‌اند؛ although و alcohol نامربوط.
+پیشوند عمومی,re,دوباره، عقب,فهرست اصلی,38,recover و restore و reinforce کاربرد بازگشت یا تکرار؛ reduce و result معنی دوباره ندارند.
+پیشوند عمومی,de,پایین، جدا,فهرست اصلی,31,decrease و deprive و deterioration کاربرد کاهش/دوری؛ despite و detect را نباید با معنی ساده پیشوند آموزش داد.
+پیشوند عمومی,ex/e,بیرون,فهرست اصلی,28,expose و emerge و eradicate مرتبط؛ elderly و elevate و eliminate از شاخه‌ها و ریشه‌های متفاوت‌اند.
+پیشوند عمومی,pre,پیش,فهرست اصلی,15,prevent و predispose و preceding دارای مفهوم پیش؛ prevalence و pregnancy دقیقاً همین معنای شفاف را ندارند.
+پیشوند عمومی,pro,جلو,فهرست اصلی,14,promote و propose و prolong و prognosis مرتبط؛ prone و prosperous تجزیه‌پذیری آموزشی متفاوتی دارند.
+پیشوند عمومی,dis,جدا، نفی,فهرست اصلی,11,disorder و disability و discrepancy تا حدی نفی/جدایی؛ disease را نباید صرفاً نداشتن ease ترجمه کرد.
+پیشوند عمومی,under,زیر، کم,فهرست اصلی,10,underestimate و underweight و undermine مفاهیم کم یا زیر را نشان می‌دهند؛ undertake به صورت جداگانه آموزش داده شود.
+پیشوند عمومی,anti/contra/counter,ضد,فهرست اصلی,8,antibiotics و antibodies و counteract و contradict معتبر؛ contract از con + trahere است.
+پیشوند عمومی,per,سراسر,فهرست اصلی,7,perforate و persist و permanent مرتبط؛ personal از persona است.
+پیشوند عمومی,sub,زیر,فهرست اصلی,6,subside و sublethal و subsequent از مفهوم زیر/پس؛ substantial را به سادگی «زیر» ترجمه نکنید.
+پیشوند عمومی,trans,از میان,فهرست اصلی,5,transmit و transverse و transducer کاربرد گذر/عبور.
+پیشوند عمومی,post,پس,فهرست اصلی,3,postpone و post-traumatic مربوط به پس؛ postulate نمونه سرراست نیست.
+پیشوند عمومی,inter,میان,فهرست اصلی,2,intervention و interventional میان یا مداخله.
+پیشوند عمومی,over,بیش,فهرست اصلی,2,overweight و overfitting زیاده‌روی.
+پیشوند عمومی,mal,بد,فهرست اصلی,1,malignant از malus بد؛ شاهد کم ولی بسیار پرکاربرد پزشکی.

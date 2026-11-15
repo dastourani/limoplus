@@ -1,3 +1,4 @@
+import { View } from 'react-native';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 
 const SEGMENTS = 9;
@@ -21,7 +22,9 @@ function segment(i: number) {
 /** A cut lemon seen from above: rind, pith and juicy segments. Drawn as vectors so it stays sharp at any size. */
 export function LemonSlice({ size = 150 }: { size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="-100 -100 200 200" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    // Hidden from screen readers on a View: on the web an Svg would hand these props to the DOM as unknown attributes.
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width: size, height: size }}>
+    <Svg width={size} height={size} viewBox="-100 -100 200 200">
       <Circle r={98} fill="#F5C518" />
       <Circle r={98} fill="none" stroke="#E0AE0B" strokeWidth={3} />
       <Circle r={86} fill="#FFF7D6" />
@@ -36,5 +39,6 @@ export function LemonSlice({ size = 150 }: { size?: number }) {
       </G>
       <Circle r={9} fill="#FFF7D6" />
     </Svg>
+    </View>
   );
 }

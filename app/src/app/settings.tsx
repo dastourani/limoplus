@@ -7,8 +7,8 @@ import { Text, TextInput } from '../components/Text';
 import { ApiError } from '../api/client';
 import { endpoints } from '../api/endpoints';
 import { Button, Header, Screen } from '../components/ui';
-import { getApiUrl, getDefaultApiUrl, setApiUrlOverride } from '../config';
-import { colors, radius, rtl } from '../theme';
+import { APP_BUILD, getApiUrl, getDefaultApiUrl, setApiUrlOverride } from '../config';
+import { colors, radius, rtl, toPersianDigits } from '../theme';
 
 /** Test builds: point the app at a server, e.g. the laptop running the backend on the same Wi-Fi. */
 export default function Settings() {
@@ -67,18 +67,19 @@ export default function Settings() {
           برای تست روی گوشی: سرور را روی لپ‌تاپ اجرا کنید، گوشی و لپ‌تاپ در یک Wi‑Fi باشند، و آدرس IP لپ‌تاپ را با پورت ۸۰۰۰ وارد کنید.
         </Text>
         {status && <Text style={[styles.status, rtl, { color: status.ok ? colors.greenDark : colors.redDark }]}>{status.text}</Text>}
-        <Button label={busy ? 'در حال بررسی…' : 'آزمایش اتصال'} variant="outline" onPress={test} disabled={busy} />
+        <Button label="آزمایش اتصال" variant="outline" onPress={test} loading={busy} />
         <Button label="ذخیره" onPress={save} />
         <Button label="برگشت به آدرس پیش‌فرض" variant="outline" onPress={reset} />
+        <Text style={[styles.help, { textAlign: 'center' }]}>نسخه‌ی برنامه: {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}</Text>
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { padding: 20, gap: 12 },
-  label: { fontSize: 14, fontWeight: '800', color: colors.ink },
-  input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: radius.sm, padding: 14, fontSize: 16, textAlign: 'left', writingDirection: 'ltr' },
+  page: { padding: 16, gap: 12 },
+  label: { fontSize: 15, fontWeight: '700', color: colors.ink },
+  input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: radius.sm, padding: 14, fontSize: 15, textAlign: 'left', writingDirection: 'ltr' },
   help: { fontSize: 13, color: colors.muted, lineHeight: 24 },
-  status: { fontSize: 14, fontWeight: '700' },
+  status: { fontSize: 15, fontWeight: '700' },
 });

@@ -1,0 +1,12 @@
+{% extends "website/base.html" %}
+{% block title %}کتاب‌های لیموخوان{% endblock %}
+{% block description %}فهرست کتاب‌های لیموخوان بر اساس رشته: خلاصه، درسنامه، تست و فلش‌کارت.{% endblock %}
+{% block main %}
+<section class="sec wrap">
+  <div class="sechead"><div><h1 class="h2">کتاب‌ها</h1><p class="sub">فصل اول هر کتاب رایگان است</p></div>
+    {% if majors|length > 1 %}<div class="chips" data-filter><button class="chip on" data-major="">همه</button>{% for m in majors %}<button class="chip" data-major="{{ m.slug }}">{{ m.name }}</button>{% endfor %}</div>{% endif %}
+  </div>
+  <div class="shelf grid">{% for c in books %}{% include "website/_book.html" %}{% empty %}<p class="sub">هنوز کتابی منتشر نشده است.</p>{% endfor %}</div>
+</section>
+{% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

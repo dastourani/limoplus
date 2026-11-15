@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from apps.catalog.models import ContentNode
 
@@ -19,7 +20,7 @@ class ExamSource(models.Model):
         unique_together = [("name", "year", "group", "booklet")]
 
     def __str__(self):
-        return f"{self.name} {self.year}"
+        return f"{self.name} {self.year}" if self.year else self.name
 
 
 class Flashcard(models.Model):
@@ -30,8 +31,12 @@ class Flashcard(models.Model):
     title = models.CharField("عنوان (رو)", max_length=160)
     point = models.TextField("نکته (پشت)")
     formula = models.CharField("فرمول (LaTeX)", max_length=300, blank=True)
+    order = models.PositiveIntegerField("ترتیب در بخش", default=0)
     is_free = models.BooleanField("رایگان", default=False)
     is_archived = models.BooleanField("بایگانی", default=False)
+    # «تازه»: when it was added (empty for cards older than this field); «به‌روز شده»: the panel's «مطلب تازه».
+    added_at = models.DateTimeField("زمان افزوده شدن", null=True, blank=True, default=timezone.now, editable=False)
+    refreshed_at = models.DateTimeField("به‌روزرسانی مهم", null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = "فلش‌کارت"
@@ -62,15 +67,34 @@ class Question(models.Model):
     slug = models.SlugField("شناسه در فایل محتوا", max_length=120, allow_unicode=True)
     stem = models.TextField("صورت سؤال (Markdown)")
     explanation = models.TextField("پاسخ تشریحی")
-    quick_solution = models.TextField("راه‌حل سریع (تستی)", blank=True)
-    alternative_view = models.TextField("زاویه‌ی دیگر", blank=True)
+    # Old fields, copied into «solutions» by migration 0011 and no longer used (kept so the migration can be undone).
+    quick_solution = models.TextField("راه‌حل سریع (قدیمی)", blank=True, editable=False)
+    alternative_view = models.TextField("زاویه‌ی دیگر (قدیمی)", blank=True, editable=False)
+    # Any number of extra solutions, each with the title the panel gives it: [{"title": "راه‌حل تستی", "body": "…"}].
+    solutions = models.JSONField("راه‌حل‌ها", default=list, blank=True)
     difficulty = models.CharField("سطح اعلام‌شده", max_length=10, choices=Difficulty.choices)
     domain = models.CharField("حوزه", max_length=12, choices=Domain.choices, blank=True)
     kind = models.CharField("نوع", max_length=10, choices=Kind.choices, blank=True)
     estimated_seconds = models.PositiveSmallIntegerField("زمان تخمینی (ثانیه)", null=True, blank=True)
+    order = models.PositiveIntegerField("ترتیب در بخش", default=0)
     is_original = models.BooleanField("تألیفی", default=False)
     sources = models.ManyToManyField(ExamSource, through="QuestionSource", blank=True, verbose_name="منابع کنکور")
     flashcards = models.ManyToManyField(Flashcard, blank=True, related_name="questions", verbose_name="فلش‌کارت‌های مرتبط")
+    # «مشابه:» in the file: the same test that came back in another exam with a change. One way (the file that says it);
+    # the app shows both ways (similar_to and similar_from).
+    similar_to = models.ManyToManyField("self", symmetrical=False, blank=True, related_name="similar_from", verbose_name="تست‌های مشابه")
+    # Set in the panel, not in the file: up to ten per book may be shared as an image from the app.
+    is_sample = models.BooleanField("نمونه‌ی قابل اشتراک", default=False)
+    # «ترتیب گزینه‌ها: ثابت» in the file: the app never shuffles these choices (e.g. «گزینه‌های ۱ و ۳»).
+    fixed_order = models.BooleanField("ترتیب گزینه‌ها ثابت", default=False)
+    # «تست تکمیلی»: in the chapter's question bank (more practice, exams, reviews), not among the section's own tests,
+    # so it never counts toward the section's progress circle.
+    is_extra = models.BooleanField("تست تکمیلی", default=False, help_text="در بانک تست؛ در دایره‌ی پیشرفت بخش حساب نمی‌شود.")
+    # Set by the importer when the right choice moves to another choice: the app shows «اصلاح‌شده».
+    key_changed_at = models.DateTimeField("تاریخ اصلاح پاسخ‌نامه", null=True, blank=True, editable=False)
+    added_at = models.DateTimeField("زمان افزوده شدن", null=True, blank=True, default=timezone.now, editable=False)
+    refreshed_at = models.DateTimeField("به‌روزرسانی مهم", null=True, blank=True, editable=False)
+    key_change_note = models.CharField("شرح اصلاح پاسخ‌نامه", max_length=400, blank=True, editable=False)
     is_free = models.BooleanField("رایگان", default=False)
     is_archived = models.BooleanField("بایگانی", default=False)
     # Filled by the system from real answers (after enough attempts).
@@ -84,6 +108,18 @@ class Question(models.Model):
 
     def __str__(self):
         return self.stem[:60]
+
+    @property
+    def keeps_order(self) -> bool:
+        """True if the app must show the choices as written (set in the file, or a choice refers to other choices)."""
+        from .order import refers_to_choices
+
+        return self.fixed_order or refers_to_choices(c.text for c in self.choices.all())
+
+    def correction(self) -> dict | None:
+        if not self.key_changed_at:
+            return None
+        return {"at": self.key_changed_at, "note": self.key_change_note}
 
     @property
     def measured_difficulty(self):
@@ -170,6 +206,8 @@ class QuizAnswer(models.Model):
     choice_order = models.PositiveSmallIntegerField()
     was_correct = models.BooleanField()
     answered_at = models.DateTimeField(auto_now_add=True)
+    # "Start the tests again" archives earlier answers for practice; history and statistics keep them.
+    is_archived = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "پاسخ"

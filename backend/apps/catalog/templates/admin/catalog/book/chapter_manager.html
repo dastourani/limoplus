@@ -1,0 +1,21 @@
+{% extends "admin/base_site.html" %}
+{% block nav-sidebar %}{% endblock %}
+{% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">مدیریت</a> ›
+  <a href="{% url 'admin:catalog_book_changelist' %}">کتاب‌ها</a> ›
+  {% if book.is_inbox %}<a href="{% url 'admin:catalog_inbox' %}">{{ book.title }}</a>{% else %}<a href="{% url 'admin:catalog_book_change' book.pk %}">{{ book.title }}</a>{% endif %} ›
+  {{ chapter.title }}
+</div>
+{% endblock %}
+{% block content_title %}{% endblock %}
+{% block content %}
+{% csrf_token %}
+<div id="content-main" class="lp"><div id="cm-root">در حال باز کردن فصل…</div></div>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    new LimoChapterManager(document.getElementById('cm-root'), "{{ api_url|escapejs }}");
+  });
+</script>
+{% endblock %}

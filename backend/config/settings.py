@@ -1,5 +1,5 @@
 """
-LimoPlus backend settings.
+LimooKhan backend settings.
 
 Every value that differs between your computer and the real server comes from
 `backend/.env` (see `.env.example`). Nothing secret or host-specific is written
@@ -36,6 +36,9 @@ SITE_DOMAIN = env("SITE_DOMAIN", default="localhost:8000")
 SITE_SCHEME = env("SITE_SCHEME", default="http" if DEBUG else "https")
 SITE_URL = f"{SITE_SCHEME}://{SITE_DOMAIN}"
 
+# Address of the admin panel. On the real server use something only you know, e.g. "manage-7f3k/".
+ADMIN_URL = env("ADMIN_URL", default="admin/").strip("/") + "/"
+
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[SITE_DOMAIN.split(":")[0], "localhost", "127.0.0.1"])
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[SITE_URL])
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
@@ -52,6 +55,10 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.catalog",
     "apps.learning",
+    "apps.study",
+    "apps.commerce",
+    "apps.releases",
+    "apps.website",
 ]
 
 MIDDLEWARE = [
@@ -64,6 +71,9 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.accounts.middleware.SimpleCorsMiddleware",
+    "apps.accounts.middleware.AdminLoginThrottleMiddleware",
+    "apps.releases.middleware.MinimumAppVersionMiddleware",
+    "apps.website.middleware.WebsiteHostMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -95,6 +105,13 @@ if env.str("DATABASE_URL", default="").strip():
 else:
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
+if DATABASES["default"]["ENGINE"].endswith("sqlite3"):
+    # SQLite (the laptop server): the app sends several requests at once. Each request takes the write lock when it
+    # starts and others wait for it (up to 20 s) instead of failing with «database is locked»; WAL lets reads go on
+    # while one request writes. PostgreSQL on the real server needs none of this.
+    DATABASES["default"].setdefault("OPTIONS", {}).update(
+        {"timeout": 20, "transaction_mode": "IMMEDIATE", "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;"}
+    )
 
 AUTH_USER_MODEL = "accounts.User"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -115,16 +132,26 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# WhiteNoise serves the panel's and the website's static files when there is no nginx in front (e.g. ParsPack PaaS).
+# The hashed (manifest) storage needs `collectstatic` first, so it is used only on the real server.
 STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+        if DEBUG or TESTING
+        else "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
 MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
+# True when no web server (nginx) serves MEDIA_ROOT, e.g. on ParsPack PaaS. Point MEDIA_ROOT at a persistent disk there.
+SERVE_MEDIA = env.bool("SERVE_MEDIA", default=False)
+# The website (apps/website): the hosts where it is served at the root (e.g. limookhan.ir,www.limookhan.ir); elsewhere
+# it is at /site/. APP_URL: the web app's address for the site's «ورود» and «شروع» links (e.g. https://app.limookhan.ir).
+WEBSITE_HOSTS = env.list("WEBSITE_HOSTS", default=[])
+APP_URL = env("APP_URL", default="/")
+# The web version of the app (served at the root by apps.catalog.webapp); update.bat fills it.
+WEBAPP_DIR = Path(env("WEBAPP_DIR", default=str(BASE_DIR / "webapp")))
 
 # --- API --------------------------------------------------------------------
 
@@ -155,6 +182,9 @@ SMS_BACKEND = env("SMS_BACKEND", default="console")
 RAYGAN_USERNAME = env("RAYGAN_USERNAME", default="")
 RAYGAN_PASSWORD = env("RAYGAN_PASSWORD", default="")
 RAYGAN_SENDER_NUMBER = env("RAYGAN_SENDER_NUMBER", default="")
+# Adds the Android app's hash line to the login SMS so the phone reads the code by itself. Turn off if the SMS
+# provider or operator holds back messages with it.
+OTP_SMS_APP_HASH = env.bool("OTP_SMS_APP_HASH", default=True)
 
 if not DEBUG and not TESTING and SMS_BACKEND == "console":
     raise ImproperlyConfigured("SMS_BACKEND=console is for development only. Set SMS_BACKEND=raygan on the server.")
@@ -163,6 +193,13 @@ if not DEBUG and not TESTING and SMS_BACKEND == "console":
 # Leave empty until the merchant code arrives; "zibal" is Zibal's test merchant.
 
 ZIBAL_MERCHANT = env("ZIBAL_MERCHANT", default="zibal")
+# False = buying is switched off (the server runs without a real merchant code; nothing can be paid or settled).
+PAYMENTS_ENABLED = env.bool("PAYMENTS_ENABLED", default=True)
+if not DEBUG and not TESTING and PAYMENTS_ENABLED and ZIBAL_MERCHANT == "zibal":
+    # The test merchant "pays" without real money; it must never run on the real server.
+    raise ImproperlyConfigured("ZIBAL_MERCHANT=zibal is Zibal's test merchant. Set the real merchant code on the server, or PAYMENTS_ENABLED=False.")
+# Where the payment result page sends the user afterwards: the app's deep link (or the web app's address).
+APP_RETURN_URL = env("APP_RETURN_URL", default="limookhan://payment-result")
 
 # --- Security on the real server --------------------------------------------
 

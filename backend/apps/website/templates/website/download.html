@@ -1,0 +1,32 @@
+{% extends "website/base.html" %}{% load site_icons %}
+{% block title %}دانلود لیموخوان{% endblock %}
+{% block description %}دانلود لیموخوان برای اندروید، و نسخه‌ی وب برای آیفون و کامپیوتر.{% endblock %}
+{% block main %}
+<section class="sec wrap center"><h1 class="h1">لیموخوان را نصب کن</h1><p class="sub">روی اندروید اپ کامل؛ روی آیفون و کامپیوتر نسخه‌ی وب، با همان حساب</p></section>
+<section class="wrap grid2">
+  <div class="feat big"><div class="head">{% icon "smartphone" 30 %}<h2>اندروید</h2></div><p class="sub">اندروید ۷ به بالا</p>
+    <div class="stores">
+      {% if s.bazaar_url %}<a class="store" href="{{ s.bazaar_url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دریافت از</small><b>کافه‌بازار</b></span></a>{% endif %}
+      {% if s.myket_url %}<a class="store" href="{{ s.myket_url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دریافت از</small><b>مایکت</b></span></a>{% endif %}
+      {% if apk %}<a class="store" href="{{ apk.url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دانلود مستقیم</small><b>فایل APK</b></span></a>{% endif %}
+      {% if not apk and not s.bazaar_url and not s.myket_url %}<p class="sub">لینک دانلود به‌زودی اینجا می‌آید.</p>{% endif %}
+    </div>
+    {% if apk.version %}<p class="mut small">نسخه‌ی {{ apk.version }}</p>{% endif %}
+  </div>
+  <div class="feat big"><div class="head">{% icon "monitor-smartphone" 30 %}<h2>آیفون و کامپیوتر</h2></div><p class="sub">بدون نصب، در مرورگر؛ روی آیفون مثل یک اپ به صفحه‌ی اصلی اضافه می‌شود</p>
+    <a class="btn lemon" href="{{ app_url }}">{% icon "book-open" 18 %}باز کردن نسخه‌ی وب</a>
+    <div class="grid3 steps">
+      <div><span class="n">۱</span><div class="box"><span class="url" dir="ltr">Safari</span></div><b>در سافاری باز کن</b></div>
+      <div><span class="n">۲</span><div class="box">{% icon "share-2" 40 %}</div><b>دکمه‌ی اشتراک‌گذاری</b></div>
+      <div><span class="n">۳</span><div class="box">{% include "website/_lemon.html" with size=56 %}</div><b>«افزودن به صفحه‌ی اصلی»</b></div>
+    </div>
+  </div>
+</section>
+<section class="sec wrap"><h2>بعد از نصب</h2>
+  <div class="grid3">
+    <div class="feat"><div class="bign">۱</div><b>رشته‌ات را انتخاب کن</b><p>کتاب‌های همان رشته بالای صفحه می‌آیند.</p></div>
+    <div class="feat"><div class="bign">۲</div><b>با شماره‌ی موبایل وارد شو</b><p>رمز لازم نیست؛ یک کد پیامکی کافی است.</p></div>
+    <div class="feat"><div class="bign">۳</div><b>از فصل اول شروع کن</b><p>فصل اول همه‌ی کتاب‌ها رایگان است.</p></div>
+  </div>
+</section>
+{% endblock %}

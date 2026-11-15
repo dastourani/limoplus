@@ -18,6 +18,7 @@ class SMSError(Exception):
 
 
 def send_sms(phone: str, text: str) -> None:
+    """Raises SMSError when the message could not be handed to the provider."""
     backend = settings.SMS_BACKEND
     if backend == "console":
         log.warning("SMS (console) to %s: %s", phone, text)
@@ -50,4 +51,5 @@ def _send_raygan(phone: str, text: str) -> None:
     # RayganSMS answers with a message id (a positive number) on success.
     if response.status_code != 200 or not body.lstrip("-").isdigit() or int(body) <= 0:
         log.error("RayganSMS rejected the message: HTTP %s, body %r", response.status_code, body[:200])
-        raise SMSError("RayganSMS rejected the message")
+        raise SMSError(f"RayganSMS rejected the message (answer: {body[:60]})")
+    log.warning("RayganSMS accepted the message to %s (id %s)", phone, body)

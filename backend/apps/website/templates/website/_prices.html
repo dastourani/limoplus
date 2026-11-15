@@ -1,0 +1,11 @@
+{% load site_icons %}<h2 class="center">قیمت‌ها</h2><p class="sub center">فصل اول هر کتاب رایگان است؛ بعد هر کدام را خواستی</p>
+<div class="grid3 prices">
+  <div class="feat"><b>خرید یک کتاب</b><div class="price">{% if min_price %}از {{ min_price }}{% else %}به‌زودی{% endif %}</div>
+    <ul class="checks small"><li>{% icon "check" 16 3 %}همیشه مال توست</li><li>{% icon "check" 16 3 %}همه‌ی فصل‌ها، تست‌ها و فلش‌کارت‌ها</li><li>{% icon "check" 16 3 %}دانلود برای بدون اینترنت</li></ul></div>
+  {% for p in plans %}
+  <div class="feat star"><span class="badge">پیشنهاد ما</span><b>{{ p.title }}</b><div class="price">{{ p.price }}</div>
+    <ul class="checks small"><li>{% icon "check" 16 3 %}همه‌ی کتاب‌ها، {{ p.months }} ماه</li><li>{% icon "check" 16 3 %}کتاب‌های تازه هم اضافه می‌شوند</li><li>{% icon "check" 16 3 %}هر وقت خواستی تمدید نکن</li></ul></div>
+  {% endfor %}
+  <div class="feat"><b>رایگان</b><div class="price">۰ تومان</div>
+    <ul class="checks small"><li>{% icon "check" 16 3 %}فصل اول همه‌ی کتاب‌ها</li><li>{% icon "check" 16 3 %}تست‌های نمونه</li><li>{% icon "check" 16 3 %}آمار و مرور روزانه</li></ul></div>
+</div>
