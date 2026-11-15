@@ -86,15 +86,24 @@ class BackupTests(TestCase):
     def test_panel_restore_is_for_superusers_only(self):
         staff = User.objects.create_user("09120000009", is_staff=True)
         self.client.force_login(staff)
-        r = self.client.post("/admin/catalog/cleanuprun/restore/", {"confirm": "yes", "file": self._zip({"media/a.png": b"a"})})
+        r = self.client.post("/admin/catalog/cleanuprun/restore/", {"confirm": "بازگردانی", "file": self._zip({"media/a.png": b"a"})})
         self.assertEqual(r.status_code, 403)
         boss = User.objects.create_superuser("09120000010", password="x-strong-pass-1")
         self.client.force_login(boss)
         r = self.client.post("/admin/catalog/cleanuprun/restore/", {"confirm": "yes", "file": self._zip({"media/a.png": b"a"})})
+        self.assertFalse((self.media / "a.png").exists())  # the word was not typed
+        r = self.client.post("/admin/catalog/cleanuprun/restore/", {"confirm": "بازگردانی", "file": self._zip({"media/a.png": b"a"})})
         self.assertEqual(r.status_code, 302)
         self.assertTrue((self.media / "a.png").exists())
+        # A server copy can be downloaded only by its listed name.
+        (Path(backups.backup_dir()) / "limookhan-db-20260101-0300.sqlite3.gz").write_bytes(b"x")
+        self.assertEqual(self.client.get("/admin/catalog/cleanuprun/backup-file/?name=limookhan-db-20260101-0300.sqlite3.gz").status_code, 200)
+        self.assertEqual(self.client.get("/admin/catalog/cleanuprun/backup-file/?name=../db.sqlite3").status_code, 404)
+        with mock.patch.object(backups, "send_text") as send:
+            self.client.post("/admin/catalog/cleanuprun/test-bale/")
+        send.assert_called_once()
         page = self.client.get("/admin/catalog/cleanuprun/")
-        self.assertContains(page, "بازگردانی از پشتیبان")
+        self.assertContains(page, "بازگردانی دیتابیس یا آوردن داده از لپ‌تاپ")
 
     def test_due_logic_backs_up_once_a_night(self):
         with mock.patch.object(backups, "backup_database", side_effect=lambda: BackupRun.objects.create(kind="db", ok=True)) as db, \

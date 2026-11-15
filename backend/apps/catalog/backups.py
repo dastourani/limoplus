@@ -226,6 +226,75 @@ def _report_failure(what: str, exc: Exception, send: bool) -> None:
             log.error("could not report the failed backup to Bale: %s", _safe(again))
 
 
+def local_backups() -> list[dict]:
+    """Database copies kept on this server (nightly ones and the copies made before each restore), newest first."""
+    folder = backup_dir()
+    files = [p for p in folder.iterdir() if p.is_file() and (p.name.startswith("limookhan-db-") or p.name.startswith("before-restore-"))]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return [
+        {"name": p.name, "size": p.stat().st_size, "at": timezone.datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.get_current_timezone()),
+         "before_restore": p.name.startswith("before-restore-")}
+        for p in files
+    ]
+
+
+def local_backup_path(name: str) -> Path:
+    """Only a file from local_backups() (never a path given by the request)."""
+    for item in local_backups():
+        if item["name"] == name:
+            return backup_dir() / item["name"]
+    raise RestoreError("این پشتیبان روی سرور پیدا نشد.")
+
+
+def restore_local(name: str) -> str:
+    path = local_backup_path(name)
+    with tempfile.TemporaryDirectory(dir=backup_dir()) as tmp:
+        db = Path(tmp) / "db.sqlite3"
+        if path.name.endswith(".gz"):
+            with gzip.open(path, "rb") as src, open(db, "wb") as dst:
+                shutil.copyfileobj(src, dst, 1024 * 1024)
+        else:
+            shutil.copyfile(path, db)
+        return _restore_db(db)
+
+
+def disk() -> dict:
+    """Room on the disk that holds the database and the pictures."""
+    usage = shutil.disk_usage(backup_dir())
+    return {"total": usage.total, "used": usage.used, "free": usage.free, "percent": round(usage.used / usage.total * 100) if usage.total else 0}
+
+
+DISK_WARN = 80
+
+
+def check_disk() -> None:
+    """Once a day, a message in Bale when the disk is over DISK_WARN percent full."""
+    info = disk()
+    if info["percent"] < DISK_WARN or not bale_ready():
+        return
+    marker = backup_dir() / ".disk-warned"
+    today = timezone.localdate().isoformat()
+    if marker.exists() and marker.read_text() == today:
+        return
+    send_text(f"⚠️ دیسک سرور لیموخوان {info['percent']}٪ پر است ({info['free'] // 1048576} مگابایت خالی). فضای دیسک را در پارس‌پک بیشتر کنید.")
+    marker.write_text(today)
+
+
+def next_db_backup(now=None):
+    """Roughly when the next nightly database backup happens (Tehran time), for the panel."""
+    from .models import BackupRun
+
+    now = timezone.localtime(now or timezone.now())
+    last = BackupRun.objects.filter(kind=BackupRun.Kind.DB, ok=True).order_by("-at").first()
+    if last is None or now - last.at > DB_LATE:
+        return now
+    earliest = timezone.localtime(last.at + DB_EVERY)
+    start = earliest if earliest.hour in NIGHT_HOURS else earliest.replace(hour=NIGHT_HOURS[0], minute=0)
+    if start < earliest:
+        start += timedelta(days=1)
+    return start
+
+
 def run_due(now=None, force=False) -> list[str]:
     """What the hourly job does: the nightly clean-up, the nightly database backup, the weekly media backup."""
     from .maintenance import run_if_due
@@ -234,6 +303,10 @@ def run_due(now=None, force=False) -> list[str]:
     now = now or timezone.now()
     done = []
     run_if_due()
+    try:
+        check_disk()
+    except Exception as exc:  # noqa: BLE001
+        log.error("disk check failed: %s", _safe(exc))
     last_db = BackupRun.objects.filter(kind=BackupRun.Kind.DB, ok=True).order_by("-at").first()
     age = now - last_db.at if last_db else None
     night = timezone.localtime(now).hour in NIGHT_HOURS

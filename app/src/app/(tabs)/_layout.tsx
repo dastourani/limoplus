@@ -59,9 +59,9 @@ function SideNav({ path }: { path: string }) {
   if (useRoomy()) return <SideMenu path={path} />;
   return (
     <View style={styles.side} accessibilityRole="tablist">
-      <View style={styles.brand} accessibilityLabel="لیموخوان">
+      <Pressable style={styles.brand} accessibilityRole="link" accessibilityLabel="لیموخوان، خانه" onPress={() => router.replace('/home')}>
         <LemonSlice size={36} />
-      </View>
+      </Pressable>
       {TABS.map((tab) => {
         const on = path === tab.href || path.startsWith(`${tab.href}/`);
         return (
@@ -93,10 +93,10 @@ function SideNav({ path }: { path: string }) {
 function SideMenu({ path }: { path: string }) {
   return (
     <View style={styles.menu} accessibilityRole="tablist">
-      <View style={styles.menuBrand}>
+      <Pressable style={styles.menuBrand} accessibilityRole="link" accessibilityLabel="لیموخوان، خانه" onPress={() => router.replace('/home')}>
         <LemonSlice size={36} />
         <Text style={styles.menuBrandText}>لیموخوان</Text>
-      </View>
+      </Pressable>
       {TABS.map((tab) => {
         const on = path === tab.href || path.startsWith(`${tab.href}/`);
         return (

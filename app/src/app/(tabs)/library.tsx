@@ -88,7 +88,7 @@ export default function LibraryTab() {
 
   if (!user) {
     return (
-      <Screen tab>
+      <Screen tab desktopMax={1600}>
         <Text style={[styles.title, rtl]}>کتابخانه‌ی من</Text>
         <Empty
           icon="library-big"
@@ -101,7 +101,7 @@ export default function LibraryTab() {
   }
 
   return (
-    <Screen tab>
+    <Screen tab desktopMax={1600}>
       <Text style={[styles.title, rtl]}>کتابخانه‌ی من</Text>
       <View style={styles.tabs}>
         {TABS.map(([key, label]) => (

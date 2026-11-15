@@ -196,7 +196,7 @@ def storage_report() -> dict:
             c.execute("SELECT pg_database_size(current_database())")
             db_bytes = c.fetchone()[0]
     folders = []
-    for top in ("content", "covers", "banners", "imports"):
+    for top in ("content", "covers", "banners", "apk", "imports"):
         size, files = _folder_size(os.path.join(settings.MEDIA_ROOT, top))
         folders.append({"name": top, "bytes": size, "files": files})
     revisions = ChapterRevision.objects.count()

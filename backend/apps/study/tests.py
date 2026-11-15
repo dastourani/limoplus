@@ -245,6 +245,10 @@ class StudyTests(TestCase):
         self.assertEqual(s["sections_done"], 1)
         self.assertEqual(s["streak_days"], 1)
         self.assertEqual(s["books"][0]["done"], 1)
+        # The year grid: today with one section, and the longest run.
+        self.assertEqual(len(s["year"]["days"]), 1)
+        self.assertEqual(s["year"]["days"][0]["sections"], 1)
+        self.assertEqual(s["year"]["longest_streak"], 1)
 
     def test_offline_bundle_only_readable_sections(self):
         data = self.client.get("/api/v1/books/math-1/offline/").data

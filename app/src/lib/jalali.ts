@@ -66,3 +66,10 @@ export function whenShort(value: string | Date): string {
   const time = toPersianDigits(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
   return day === 'امروز' || day === 'دیروز' ? `${day}، ${time}` : day;
 }
+
+/** The Jalali month's name and day for a date: ['آبان', 12]. */
+export function jalaliMonthDay(value: string | Date): [string, number] {
+  const d = parse(value);
+  const [, m, day] = toJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  return [MONTHS[m - 1], day];
+}
