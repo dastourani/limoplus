@@ -1,6 +1,6 @@
 from django.http import JsonResponse
 
-from .service import describe, latest, min_build
+from .service import abis_of, describe, latest, min_build
 
 EXEMPT = ("/api/v1/app/version/",)
 
@@ -23,7 +23,7 @@ class MinimumAppVersionMiddleware:
                     {
                         "code": "update_required",
                         "message": "این نسخه‌ی برنامه دیگر پشتیبانی نمی‌شود. لطفاً نسخه‌ی جدید را نصب کنید.",
-                        "latest": describe(latest(platform)),
+                        "latest": describe(latest(platform), abis_of(request)),
                     },
                     status=426,
                 )

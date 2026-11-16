@@ -39,13 +39,19 @@ def clear_cache():
         cache.delete(_KEY.format(platform))
 
 
-def describe(release):
+def abis_of(request) -> list[str]:
+    """The phone's processor types, sent by the Android app (X-App-Abi, or ?abi= on app/version/), best first."""
+    raw = request.headers.get("X-App-Abi", "") or request.GET.get("abi", "")
+    return [a for a in raw.split(",") if a][:6]
+
+
+def describe(release, abis=None):
     if not release:
         return None
     return {
         "build": release.build,
         "version_name": release.version_name,
         "notes": [line.strip() for line in release.notes.splitlines() if line.strip()],
-        "download_url": release.link,
+        "download_url": release.link_for(abis),
         "required": release.is_required,
     }

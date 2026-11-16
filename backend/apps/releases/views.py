@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from .service import describe, latest, min_build
+from .service import abis_of, describe, latest, min_build
 
 
 @api_view(["GET"])
@@ -20,4 +20,4 @@ def app_version(request):
             status = "required"
         elif newest and int(build) < newest.build:
             status = "optional"
-    return Response({"status": status, "min_build": floor, "latest": describe(newest)})
+    return Response({"status": status, "min_build": floor, "latest": describe(newest, abis_of(request))})
