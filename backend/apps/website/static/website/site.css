@@ -44,6 +44,7 @@ img, svg { max-width: 100%; }
 .hero h1 { font-size: 46px; font-weight: 900; line-height: 1.5; margin-top: 14px; }
 .lead { font-size: 18px; color: #C9D3CC; line-height: 2; margin: 16px 0 26px; max-width: 600px; }
 .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.stores-row { margin-top: 10px; } .apk-light a { font-weight: 700; }
 .ticks { display: flex; gap: 22px; margin-top: 24px; color: #C9D3CC; font-size: 14px; flex-wrap: wrap; }
 .ticks span { display: inline-flex; gap: 6px; align-items: center; } .ticks .i { color: var(--lemon); }
 .hero.small { padding-bottom: 40px; }

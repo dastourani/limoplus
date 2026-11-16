@@ -80,3 +80,37 @@ class UploadedApkTests(TestCase):
                 AppRelease(build=13).full_clean()
             with self.assertRaises(ValidationError):
                 AppRelease(build=14, apk=SimpleUploadedFile("x.zip", b"PK")).full_clean()
+
+
+class ThreeFilesTests(TestCase):
+    """One universal APK, plus two lighter ones; the app's update and the 426 notice get the one that fits the phone."""
+
+    def setUp(self):
+        cache.clear()
+        AppRelease.objects.create(build=20, download_url="https://x.ir/all.apk", url_arm64="https://x.ir/64.apk",
+                                  url_32="https://x.ir/32.apk", is_required=True)
+        cache.clear()
+
+    def url(self, **headers):
+        return APIClient().get("/api/v1/app/version/?platform=android&build=19", **headers).json()["latest"]["download_url"]
+
+    def test_file_per_phone(self):
+        self.assertEqual(self.url(), "https://x.ir/all.apk")  # old builds send nothing
+        self.assertEqual(self.url(HTTP_X_APP_ABI="arm64-v8a,armeabi-v7a,armeabi"), "https://x.ir/64.apk")
+        self.assertEqual(self.url(HTTP_X_APP_ABI="armeabi-v7a,armeabi"), "https://x.ir/32.apk")
+        self.assertEqual(self.url(HTTP_X_APP_ABI="x86_64"), "https://x.ir/all.apk")
+        r = APIClient().get("/api/v1/majors/", HTTP_X_APP_PLATFORM="android", HTTP_X_APP_BUILD="19", HTTP_X_APP_ABI="armeabi-v7a")
+        self.assertEqual(r.status_code, 426)
+        self.assertEqual(r.json()["latest"]["download_url"], "https://x.ir/32.apk")
+
+    def test_missing_light_file_falls_back(self):
+        AppRelease.objects.filter(build=20).update(url_32="")
+        self.assertEqual(self.url(HTTP_X_APP_ABI="armeabi-v7a"), "https://x.ir/all.apk")
+
+    def test_website_shows_all_three(self):
+        page = self.client.get("/site/download/")
+        if page.status_code == 404:
+            self.skipTest("website not at /site/ here")
+        self.assertContains(page, "https://x.ir/all.apk")
+        self.assertContains(page, "https://x.ir/64.apk")
+        self.assertContains(page, "https://x.ir/32.apk")

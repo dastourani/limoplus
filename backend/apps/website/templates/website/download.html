@@ -8,10 +8,14 @@
     <div class="stores">
       {% if s.bazaar_url %}<a class="store" href="{{ s.bazaar_url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دریافت از</small><b>کافه‌بازار</b></span></a>{% endif %}
       {% if s.myket_url %}<a class="store" href="{{ s.myket_url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دریافت از</small><b>مایکت</b></span></a>{% endif %}
-      {% if apk %}<a class="store" href="{{ apk.url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دانلود مستقیم</small><b>فایل APK</b></span></a>{% endif %}
+      {% if apk %}<a class="store" href="{{ apk.url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دانلود مستقیم، روی همه‌ی گوشی‌ها</small><b>فایل APK</b></span></a>{% endif %}
       {% if not apk and not s.bazaar_url and not s.myket_url %}<p class="sub">لینک دانلود به‌زودی اینجا می‌آید.</p>{% endif %}
     </div>
     {% if apk.version %}<p class="mut small">نسخه‌ی {{ apk.version }}</p>{% endif %}
+    {% if apk.arm64 or apk.bit32 %}<p class="mut small apk-light">اینترنتت کم است؟ نسخه‌ی سبک‌تر:
+      {% if apk.arm64 %}<a href="{{ apk.arm64 }}">۶۴ بیتی</a> (بیشتر گوشی‌های چند سال اخیر){% endif %}{% if apk.arm64 and apk.bit32 %}، {% endif %}
+      {% if apk.bit32 %}<a href="{{ apk.bit32 }}">۳۲ بیتی</a> (گوشی‌های ارزان‌تر، مثل Galaxy A03){% endif %}.
+      اگر مطمئن نیستی، همان دکمه‌ی بالا را بزن؛ اگر نسخه‌ی سبک نصب نشد، دیگری را امتحان کن. به‌روزرسانی‌های بعدی را خود اپ درست می‌گیرد.</p>{% endif %}
   </div>
   <div class="feat big"><div class="head">{% icon "monitor-smartphone" 30 %}<h2>آیفون و کامپیوتر</h2></div><p class="sub">بدون نصب، در مرورگر؛ روی آیفون مثل یک اپ به صفحه‌ی اصلی اضافه می‌شود</p>
     <a class="btn lemon" href="{{ app_url }}">{% icon "book-open" 18 %}باز کردن نسخه‌ی وب</a>

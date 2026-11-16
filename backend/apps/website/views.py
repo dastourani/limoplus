@@ -99,7 +99,10 @@ def _apk(s: SiteSettings) -> dict | None:
     from apps.releases.models import AppRelease
 
     r = AppRelease.objects.filter(is_published=True).order_by("-build").first()
-    return {"url": r.link, "version": r.version_name or fa(r.build), "date": r.created_at} if r else None
+    if not r:
+        return None
+    return {"url": r.link or r.link_arm64 or r.link_32, "arm64": r.link_arm64, "bit32": r.link_32,
+            "version": r.version_name or fa(r.build), "date": r.created_at}
 
 
 def _plans():

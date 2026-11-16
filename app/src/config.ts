@@ -1,3 +1,4 @@
+import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 
 import { storage } from './lib/storage';
@@ -6,6 +7,8 @@ import { storage } from './lib/storage';
 export const APP_BUILD = Number(process.env.EXPO_PUBLIC_APP_BUILD ?? 0) || 0;
 /** Only the Android app names its build to the server; the web version is always the latest. */
 export const APP_PLATFORM = Platform.OS === 'android' && APP_BUILD > 0 ? 'android' : null;
+/** The phone's processor types, best first (e.g. «arm64-v8a,armeabi-v7a»): the server gives updates as the APK that fits. */
+export const APP_ABIS = APP_PLATFORM ? (Device.supportedCpuArchitectures ?? []).join(',') : '';
 
 /**
  * Server address. The default comes from app/.env (EXPO_PUBLIC_API_URL) — never written in code.

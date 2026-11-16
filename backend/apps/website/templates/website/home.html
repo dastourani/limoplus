@@ -11,6 +11,10 @@
         <a class="btn lemon" href="{% url 'website:download' %}">{% icon "download" 18 %}دانلود برای اندروید</a>
         <a class="btn ghost" href="{{ app_url }}">{% icon "book-open" 18 %}خواندن در مرورگر (آیفون و کامپیوتر)</a>
       </div>
+      {% if s.bazaar_url or s.myket_url %}<div class="cta stores-row">
+        {% if s.bazaar_url %}<a class="btn ghost" href="{{ s.bazaar_url }}">{% icon "download" 18 %}کافه‌بازار</a>{% endif %}
+        {% if s.myket_url %}<a class="btn ghost" href="{{ s.myket_url }}">{% icon "download" 18 %}مایکت</a>{% endif %}
+      </div>{% endif %}
       <div class="ticks"><span>{% icon "circle-check" 16 %}فصل اول هر کتاب رایگان</span><span>{% icon "circle-check" 16 %}بدون اینترنت هم کار می‌کند</span></div>
     </div>
     {% include "website/_phone.html" %}

@@ -18,7 +18,7 @@ class SimpleCorsMiddleware:
             response = self.get_response(request)
         if allowed:
             response["Access-Control-Allow-Origin"] = origin
-            response["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-App-Platform, X-App-Build, X-View-As"
+            response["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-App-Platform, X-App-Build, X-App-Abi, X-View-As"
             response["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
             response["Vary"] = "Origin"
         return response
