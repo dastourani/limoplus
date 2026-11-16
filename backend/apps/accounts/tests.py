@@ -30,7 +30,7 @@ class OTPFlowTests(TestCase):
         self.client = APIClient()
 
     def _request_code(self, phone=None):
-        with mock.patch("apps.accounts.views.send_sms") as send:
+        with mock.patch("apps.accounts.sms.send_sms") as send:
             response = self.client.post("/api/v1/auth/request-otp/", {"phone": phone or self.phone}, format="json")
         code = None
         if send.called:
@@ -68,7 +68,7 @@ class OTPFlowTests(TestCase):
         self.assertIsNone(code)
 
     def test_sms_carries_app_hash_and_fits_one_sms(self):
-        with mock.patch("apps.accounts.views.send_sms") as send:
+        with mock.patch("apps.accounts.sms.send_sms") as send:
             self.client.post("/api/v1/auth/request-otp/", {"phone": self.phone, "app_hash": "FA+9qCX9VSu"}, format="json")
         text = send.call_args[0][1]
         self.assertTrue(text.startswith("لیموخوان"))
@@ -76,7 +76,7 @@ class OTPFlowTests(TestCase):
         self.assertLessEqual(len(text), 70)
 
     def test_bad_app_hash_is_ignored(self):
-        with mock.patch("apps.accounts.views.send_sms") as send:
+        with mock.patch("apps.accounts.sms.send_sms") as send:
             self.client.post("/api/v1/auth/request-otp/", {"phone": self.phone, "app_hash": "<script>"}, format="json")
         self.assertNotIn("script", send.call_args[0][1])
 
@@ -115,7 +115,7 @@ class OTPFlowTests(TestCase):
     def test_sms_failure_does_not_leave_a_code(self):
         from .sms import SMSError
 
-        with mock.patch("apps.accounts.views.send_sms", side_effect=SMSError("down")):
+        with mock.patch("apps.accounts.sms.send_sms", side_effect=SMSError("down")):
             response = self.client.post("/api/v1/auth/request-otp/", {"phone": self.phone}, format="json")
         self.assertEqual(response.status_code, 502)
         self.assertFalse(OTPCode.objects.exists())
@@ -175,7 +175,7 @@ class OTPFlowTests(TestCase):
         with override_settings(OTP_REQUESTS_PER_IP_PER_HOUR=3):
             statuses = []
             for i in range(5):
-                with mock.patch("apps.accounts.views.send_sms"):
+                with mock.patch("apps.accounts.sms.send_sms"):
                     r = self.client.post(
                         "/api/v1/auth/request-otp/",
                         {"phone": f"0912000000{i}"},
@@ -199,7 +199,7 @@ class OTPFlowTests(TestCase):
     def test_wrong_guesses_limited_per_ip_across_phones(self):
         with override_settings(OTP_WRONG_PER_IP_PER_HOUR=2):
             for phone in ["09120000001", "09120000002", "09120000003"]:
-                with mock.patch("apps.accounts.views.send_sms"):
+                with mock.patch("apps.accounts.sms.send_sms"):
                     self.client.post("/api/v1/auth/request-otp/", {"phone": phone}, format="json")
             r1 = self.client.post("/api/v1/auth/verify-otp/", {"phone": "09120000001", "code": "999999"}, format="json")
             r2 = self.client.post("/api/v1/auth/verify-otp/", {"phone": "09120000002", "code": "999999"}, format="json")
@@ -315,3 +315,51 @@ class PanelLoginTests(TestCase):
         page = self.web.get("/admin/")
         self.assertContains(page, "باز کردن وب اپ با حساب من")
         self.assertContains(page, "lp.nav.scroll")
+
+
+@override_settings(SMS_BACKEND="raygan", RAYGAN_ACCESS_HASH="hash-1", RAYGAN_OTP_PATTERN_ID="pattern-1")
+class PatternSMSTests(TestCase):
+    """Login codes through RayganSMS's approved pattern (service line, no promotional permit needed)."""
+
+    def setUp(self):
+        cache.clear()
+
+    def answer(self, text, status_code=200):
+        return mock.Mock(status_code=status_code, text=text)
+
+    def test_login_code_goes_through_the_pattern(self):
+        with mock.patch("apps.accounts.sms.requests.post", return_value=self.answer("604871999")) as post, \
+                mock.patch("apps.accounts.sms._send_raygan") as line:
+            response = self.client.post("/api/v1/auth/request-otp/", {"phone": "09121234567"}, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        line.assert_not_called()
+        url, data = post.call_args.args[0], post.call_args.kwargs["data"]
+        self.assertIn("SendPatternCodeWithUrl", url)
+        self.assertEqual((data["AccessHash"], data["PatternId"], data["Mobile"]), ("hash-1", "pattern-1", "09121234567"))
+        self.assertTrue(data["token1"].isdigit() and len(data["token1"]) == 6)
+
+    def test_answers(self):
+        from .sms import SMSError, SMSNotSent, _send_raygan_pattern
+
+        for body, expected in (("3003", SMSNotSent), ("2003", SMSNotSent), ("5002", SMSError), ("0", SMSError), ("ok", SMSError)):
+            with mock.patch("apps.accounts.sms.requests.post", return_value=self.answer(body)):
+                with self.assertRaises(expected) as caught:
+                    _send_raygan_pattern("09121234567", "123456")
+                if expected is SMSError:
+                    self.assertNotIsInstance(caught.exception, SMSNotSent)
+        with mock.patch("apps.accounts.sms.requests.post", return_value=self.answer("2726")):
+            _send_raygan_pattern("09121234567", "123456")
+
+    def test_a_refused_code_is_not_kept(self):
+        with mock.patch("apps.accounts.sms.requests.post", return_value=self.answer("3003")):
+            response = self.client.post("/api/v1/auth/request-otp/", {"phone": "09121234567"}, content_type="application/json")
+        self.assertEqual(response.status_code, 502)
+        from .models import OTPCode
+
+        self.assertFalse(OTPCode.objects.exists())
+
+    @override_settings(RAYGAN_OTP_PATTERN_ID="")
+    def test_without_a_pattern_the_line_is_used(self):
+        with mock.patch("apps.accounts.sms.send_sms") as line:
+            self.client.post("/api/v1/auth/request-otp/", {"phone": "09121234567"}, content_type="application/json")
+        self.assertIn("کد ورود", line.call_args.args[1])

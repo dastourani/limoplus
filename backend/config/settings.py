@@ -208,6 +208,9 @@ SMS_BACKEND = env("SMS_BACKEND", default="console")
 RAYGAN_USERNAME = env("RAYGAN_USERNAME", default="")
 RAYGAN_PASSWORD = env("RAYGAN_PASSWORD", default="")
 RAYGAN_SENDER_NUMBER = env("RAYGAN_SENDER_NUMBER", default="")
+# Login codes through RayganSMS's approved pattern (accounts/sms.py): both set = codes go that way.
+RAYGAN_ACCESS_HASH = env("RAYGAN_ACCESS_HASH", default="")
+RAYGAN_OTP_PATTERN_ID = env("RAYGAN_OTP_PATTERN_ID", default="")
 # Adds the Android app's hash line to the login SMS so the phone reads the code by itself. Turn off if the SMS
 # provider or operator holds back messages with it.
 OTP_SMS_APP_HASH = env.bool("OTP_SMS_APP_HASH", default=True)

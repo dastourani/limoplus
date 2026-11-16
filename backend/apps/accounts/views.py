@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from . import ratelimit
 from .models import DeviceSession, OTPCode, PanelLoginCode, User
 from .phone import InvalidPhone, normalize_phone
-from .sms import SMSError, send_sms
+from .sms import SMSError, send_login_code
 
 log = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ def request_otp(request):
 
     # Sent after the code is committed, so a code the user receives always exists.
     try:
-        send_sms(phone, _otp_message(code, request.data.get("app_hash")))
+        send_login_code(phone, code, _otp_message(code, request.data.get("app_hash")))
     except SMSError as exc:
         log.error("Login SMS to %s failed: %s", phone, exc)
         otp.delete()
