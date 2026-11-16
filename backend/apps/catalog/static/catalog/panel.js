@@ -747,10 +747,12 @@
   Manager.prototype.fromHash = function () {
     var m = location.hash.match(/^#([sqf])=([^&]*)(.*)$/);
     if (!m || !this.state) return false;
-    var key = m[1], slug = decodeURIComponent(m[2]);
+    // A hand-edited or cut link must not stop the page.
+    function safeDecode(x) { try { return decodeURIComponent(x); } catch (e) { return x; } }
+    var key = m[1], slug = safeDecode(m[2]);
     // A learner's report: «&m=summary» opens the summary, «&find=…» selects the reported words in the text.
     var extra = {};
-    m[3].split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) extra[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); });
+    m[3].split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) extra[kv.slice(0, i)] = safeDecode(kv.slice(i + 1)); });
     if (key === 's') {
       this.sel = slug; this.open = null;
       this.tab = extra.m === 'summary' && slug ? 'summary' : 'notes';
@@ -789,8 +791,7 @@
     for (var i = 0; i < src.length; i++) {
       var c = src[i];
       if (drop.test(c)) continue;
-      if (/\s/.test(c)) { if (norm && norm[norm.length - 1] === ' ') continue; c = ' '; }
-      if (c === '\u200c') c = ' ';
+      if (/\s/.test(c) || c === '\u200c') { if (norm && norm[norm.length - 1] === ' ') continue; c = ' '; }
       norm += c; map.push(i);
     }
     var q = quote.replace(/[*_=~`#>]/g, '').replace(/[\s\u200c]+/g, ' ').trim();

@@ -2,7 +2,7 @@ import math
 import random
 from datetime import timedelta
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count, F, Max, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -275,23 +275,33 @@ def _report(request, **target):
     reason = request.data.get("reason")
     if reason not in Report.Reason.values:
         reason = Report.Reason.OTHER
-    note = str(request.data.get("note", "")).strip()
+    note = str(request.data.get("note") or "").strip()
     if len(note) > NOTE_MAX:
         return Response({"detail": f"توضیح حداکثر {NOTE_MAX} نویسه است."}, status=status.HTTP_400_BAD_REQUEST)
     if reason == Report.Reason.OTHER and len(note) < OTHER_NOTE_MIN:
         return Response({"detail": "برای «سایر» در چند کلمه بنویس چه اشکالی دیدی."}, status=status.HTTP_400_BAD_REQUEST)
-    quote = str(request.data.get("quote", "")).strip()[:QUOTE_MAX]
+    quote = str(request.data.get("quote") or "").strip()[:QUOTE_MAX]
     mode = request.data.get("mode") if request.data.get("mode") in ("full", "summary") else ""
-    box = str(request.data.get("box", "")).strip()[:80]
-    report = Report.objects.filter(user=request.user, status=Report.Status.OPEN, quote=quote, **target).first()
+    box = str(request.data.get("box") or "").strip()[:80]
+    # The lesson text can have many reports (one per quote); a test or a card has one per learner, opened again if it
+    # was closed.
+    mine = Report.objects.filter(user=request.user, **target)
+    report = mine.filter(status=Report.Status.OPEN, quote=quote).first() if "node" in target else mine.first()
     if report:
-        report.reason, report.note, report.mode, report.box = reason, note or report.note, mode or report.mode, box or report.box
-        report.save(update_fields=["reason", "note", "mode", "box"])
+        report.reason, report.note = reason, note or report.note
+        report.mode, report.box, report.quote = mode or report.mode, box or report.box, quote or report.quote
+        if report.status != Report.Status.OPEN:
+            report.status, report.resolved_at, report.thanked_at = Report.Status.OPEN, None, None
+        report.save(update_fields=["reason", "note", "mode", "box", "quote", "status", "resolved_at", "thanked_at"])
     else:
         today = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
         if Report.objects.filter(user=request.user, created_at__gte=today).count() >= REPORTS_PER_DAY:
             return Response({"detail": f"امروز {REPORTS_PER_DAY} گزارش فرستاده‌ای؛ ممنون! بقیه را فردا بفرست."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-        report = Report.objects.create(user=request.user, reason=reason, note=note, quote=quote, mode=mode, box=box, **target)
+        try:
+            with transaction.atomic():
+                report = Report.objects.create(user=request.user, reason=reason, note=note, quote=quote, mode=mode, box=box, **target)
+        except IntegrityError:  # the same test or card sent twice at once
+            report = mine.first()
     return Response({"reported": True, "status": report.get_status_display()})
 
 
@@ -304,7 +314,7 @@ def reports_fixed(request):
     for r in fixed:
         what = r.quote or (r.question and r.question.stem) or (r.flashcard and r.flashcard.title) or (r.node and r.node.title) or ""
         out.append({"id": r.id, "about": what[:80]})
-    Report.objects.filter(pk__in=[r.pk for r in fixed]).update(thanked_at=timezone.now())
+    Report.objects.filter(pk__in=[r.pk for r in fixed], thanked_at__isnull=True).update(thanked_at=timezone.now())
     return Response({"fixed": out})
 
 

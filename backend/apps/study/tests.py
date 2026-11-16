@@ -142,6 +142,18 @@ class StudyTests(TestCase):
             self.assertEqual(self.client.post(url, {**ok, "quote": f"تکه {i}"}, format="json").status_code, 200)
         self.assertEqual(self.client.post(url, {**ok, "quote": "یکی بیشتر"}, format="json").status_code, 429)
 
+    def test_a_closed_test_report_can_be_sent_again(self):
+        from apps.learning.models import Report
+
+        q = Question.objects.filter(node__path__startswith=self.chapter.path).first()
+        url = f"/api/v1/questions/{q.id}/report/"
+        self.client.post(url, {"reason": "typo"}, format="json")
+        Report.objects.update(status=Report.Status.FIXED, resolved_at=timezone.now(), thanked_at=timezone.now())
+        r = self.client.post(url, {"reason": "formula", "note": None}, format="json")
+        self.assertEqual(r.status_code, 200)
+        report = Report.objects.get(user=self.user, question=q)
+        self.assertEqual((report.status, report.reason, report.note, report.thanked_at), ("open", "formula", "", None))
+
     def test_panel_shows_the_quote_and_opens_at_it(self):
         from django.test import Client
 
