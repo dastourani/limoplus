@@ -65,6 +65,24 @@ export default function Home() {
   // «قفسه‌ها»: one row per subject, set in the panel; books on no shelf come last.
   const books = useApi(() => endpoints.shelves(), [user?.id, asLearner]);
   const banners = useApi(() => endpoints.banners(), [user?.id]);
+  // «اصلاح شد، ممنون»: the learner's reports fixed in the panel since last time (each said once).
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      endpoints
+        .reportsFixed()
+        .then(({ fixed }) => {
+          if (!fixed.length) return;
+          const first = fixed[0].about.replace(/\$[^$]*\$/g, '…').slice(0, 50);
+          toast(
+            fixed.length === 1
+              ? `اشکالی که گزارش دادی («${first}») اصلاح شد. ممنون!`
+              : `${toPersianDigits(fixed.length)} اشکالی که گزارش دادی اصلاح شد. ممنون!`,
+          );
+        })
+        .catch(() => undefined);
+    }, [user, toast]),
+  );
   // «قوانین به‌روز شد»: a site page with an important change the learner has not opened since.
   const [changedPage, setChangedPage] = useState<SitePageItem | null>(null);
   useFocusEffect(

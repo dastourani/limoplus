@@ -497,6 +497,7 @@ export default function Quiz() {
       <ReportSheet
         visible={reportOpen}
         onClose={() => setReportOpen(false)}
+        kind="question"
         onSend={(reason, note) => endpoints.reportQuestion(q.id, reason, note)}
         onDone={() => setReported((r) => [...r, q.id])}
       />

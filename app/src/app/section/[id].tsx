@@ -5,8 +5,7 @@ import { AccessibilityInfo, Animated, Easing, Platform, Pressable, StyleSheet, V
 import { ApiError } from '../../api/client';
 import { endpoints, type NodeDetail, type Note } from '../../api/endpoints';
 import { MarkdownView, type MarkdownViewHandle, type ReaderEvent } from '../../components/MarkdownView';
-import { ReportSheet } from '../../components/ReportSheet';
-import { ReportButton } from '../../components/Tags';
+import { ReportSheet, type ReportKind } from '../../components/ReportSheet';
 import { Text, TextInput } from '../../components/Text';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, ErrorState, Header, Loading, Screen, Sheet } from '../../components/ui';
@@ -99,8 +98,17 @@ export default function Section() {
   const [noteSheet, setNoteSheet] = useState<{ note?: Note; quote?: string } | null>(null);
   const [noteText, setNoteText] = useState('');
   const [notesOpen, setNotesOpen] = useState(false);
-  const [reportOpen, setReportOpen] = useState(false);
-  const [reported, setReported] = useState(false);
+  // «گزارش اشکال» on the lesson: the selected words (or a picture, or a summary part) and where they are.
+  const [report, setReport] = useState<{ quote: string; box: string; kind: ReportKind } | null>(null);
+  const [selectionBox, setSelectionBox] = useState('');
+  const openReport = (quote: string, box: string, kind?: ReportKind) => {
+    if (!quote) {
+      flash('اول متنی را که اشکال دارد انتخاب کن.');
+      return;
+    }
+    if (!requireLogin(user, 'برای گزارش اشکال وارد شوید.')) return;
+    setReport({ quote, box, kind: kind ?? (/لاتین|ترجمه/.test(box) ? 'latin' : 'text') });
+  };
   const progress = useRef({ sent: 0, done: false });
 
   const { toast: flash, confirm } = useFeedback();
@@ -334,11 +342,16 @@ export default function Section() {
       if (node) router.push(`/flashcards/${node.id}`);
     } else if (e.type === 'term') {
       setTerm(terms.find((t) => t.fa === e.fa) ?? null);
-    } else if (e.type === 'selection') setSelection(e.text.trim());
+    } else if (e.type === 'selection') {
+      setSelection(e.text.trim());
+      setSelectionBox(e.box ?? '');
+    } else if (e.type === 'media') openReport(e.text || (e.kind === 'image' ? 'عکس' : 'نمودار'), [e.box, e.kind === 'image' ? 'عکس' : 'نمودار'].filter(Boolean).join(' › '), 'media');
+    else if (e.type === 'flag') openReport(e.text, e.box ?? '');
     else if (e.type === 'menu') {
       // The phone's own selection menu.
       const quote = e.text.trim() || selection;
-      if (!quote) flash('متنی انتخاب نشده است.');
+      if (e.action === 'report') openReport(quote, e.box ?? selectionBox);
+      else if (!quote) flash('متنی انتخاب نشده است.');
       else if (e.action === 'highlight') addHighlight('yellow', quote);
       else {
         setNoteText('');
@@ -616,6 +629,9 @@ export default function Section() {
             >
               <Text style={styles.selNoteText}>یادداشت</Text>
             </Pressable>
+            <Pressable onPress={() => openReport(selection, selectionBox)} style={styles.selNote} accessibilityRole="button">
+              <Text style={styles.selNoteText}>گزارش اشکال</Text>
+            </Pressable>
           </View>
         )}
       </View>
@@ -741,26 +757,20 @@ export default function Section() {
             </Pressable>
           </View>
         ))}
-        <View style={{ paddingVertical: 8 }}>
-          <ReportButton
-            reported={reported}
-            label="گزارش اشکال در متن این بخش"
-            onPress={() => {
-              setNotesOpen(false);
-              if (requireLogin(user, 'برای گزارش اشکال وارد شوید.')) setReportOpen(true);
-            }}
-          />
-        </View>
+        {/* Reports start from the text itself, so the panel knows exactly where. */}
+        <Text style={[styles.help, rtl, { paddingVertical: 8 }]}>
+          اشکالی در متن دیدی؟ همان قسمت را انتخاب کن و «گزارش اشکال» را بزن. برای عکس و نمودار، انگشت را رویش نگه دار (با موس: کلیک راست). هر قسمت چکیده هم یک پرچم کوچک دارد.
+        </Text>
       </Sheet>
 
       <ReportSheet
-        visible={reportOpen}
-        onClose={() => setReportOpen(false)}
-        onSend={(reason, text) => endpoints.reportNode(node.id, reason, text)}
-        onDone={() => {
-          setReported(true);
-          flash('گزارش داده شد. ممنون!');
-        }}
+        visible={!!report}
+        onClose={() => setReport(null)}
+        kind={report?.kind}
+        quote={report?.quote}
+        where={[mode === 'summary' ? 'چکیده' : 'درسنامه', report?.box].filter(Boolean).join('، ')}
+        onSend={(reason, text) => endpoints.reportNode(node.id, reason, text, { quote: report?.quote, mode, box: report?.box })}
+        onDone={() => flash('گزارش داده شد. ممنون! وقتی اصلاح شد خبرت می‌کنیم.')}
       />
       </View>
       </View>

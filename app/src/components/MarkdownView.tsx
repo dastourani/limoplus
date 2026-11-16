@@ -14,9 +14,14 @@ export type ReaderEvent =
   | { type: 'scroll'; percent: number }
   /** «مثال ۳-۵» whose box is in another section (or in the notes, from the summary). */
   | { type: 'ref'; name: string; node: string }
-  | { type: 'selection'; text: string }
-  /** «هایلایت» or «یادداشت» chosen in the phone's own selection menu, with the selected quote. */
-  | { type: 'menu'; action: 'highlight' | 'note'; text: string }
+  /** box: where the words are («تعریف»، «لاتین › ترجمه»…), for «گزارش اشکال». */
+  | { type: 'selection'; text: string; box?: string }
+  /** «هایلایت»، «یادداشت» or «گزارش اشکال» chosen in the phone's own selection menu, with the selected quote. */
+  | { type: 'menu'; action: 'highlight' | 'note' | 'report'; text: string; box?: string }
+  /** A picture or plot held (right-clicked): report a mistake in it. */
+  | { type: 'media'; kind: 'image' | 'plot'; text: string; box?: string }
+  /** The flag of a summary part: report a mistake in that part. */
+  | { type: 'flag'; text: string; box?: string }
   | { type: 'copy_blocked' }
   | { type: 'note'; id: number }
   | { type: 'highlights'; missing: number[] }
@@ -69,6 +74,7 @@ export type MarkdownViewHandle = { clearSelection: () => void };
 const SELECTION_MENU = [
   { key: 'highlight', label: 'هایلایت' },
   { key: 'note', label: 'یادداشت' },
+  { key: 'report', label: 'گزارش اشکال' },
 ];
 
 const HEIGHT_SCRIPT = `

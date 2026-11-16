@@ -440,7 +440,7 @@ class ReportAdmin(admin.ModelAdmin):
 
     list_display = ("about", "when", "state", "manage")
     list_filter = ("status", "reason", ReportBookFilter, ReportKindFilter)
-    search_fields = ("note", "user__phone", "question__stem", "flashcard__title", "node__title")
+    search_fields = ("note", "quote", "user__phone", "question__stem", "flashcard__title", "node__title")
     raw_id_fields = ("user", "question", "flashcard", "node")
     actions = ["mark_fixed", "mark_rejected"]
     change_list_template = "admin/lp_tex_change_list.html"
@@ -474,12 +474,16 @@ class ReportAdmin(admin.ModelAdmin):
         elif obj.flashcard_id:
             kind, text = "فلش‌کارت", tex(obj.flashcard.title, 110)
         elif obj.node_id:
-            kind, text = "متن درس", obj.node.title
+            where = "، ".join(x for x in (obj.get_mode_display() if obj.mode else "", obj.box) if x)
+            kind, text = f"متن درس ({where})" if where else "متن درس", obj.node.title
         else:
             kind, text = "", ""
-        note = format_html('<div style="margin-top:3px">«{}»</div>', obj.note[:160] + ("…" if len(obj.note) > 160 else "")) if obj.note else ""
-        return format_html('<div style="min-width:240px">{} <span class="lp-quiet">{}:</span> {}{}</div>',
-                           badges((obj.get_reason_display(), "blue")), kind, text, note)
+        # What the learner selected, then what they wrote.
+        quote = format_html('<div class="lp-quote" style="margin-top:4px;padding:4px 8px;border-right:3px solid #F2C200;background:#FFFBEA">{}</div>',
+                            tex(obj.quote, 300)) if obj.quote else ""
+        note = format_html('<div style="margin-top:3px">توضیح: «{}»</div>', obj.note[:200]) if obj.note else ""
+        return format_html('<div style="min-width:240px">{} <span class="lp-quiet">{}:</span> {}{}{}</div>',
+                           badges((obj.get_reason_display(), "blue")), kind, text, quote, note)
 
     @admin.display(description="کاربر و زمان", ordering="created_at")
     def when(self, obj):
@@ -501,7 +505,14 @@ class ReportAdmin(admin.ModelAdmin):
         elif obj.flashcard_id:
             anchor = f"#f={obj.flashcard.slug}"
         else:
+            from urllib.parse import quote as q
+
             anchor = f"#s={obj.node.slug if obj.node.kind == 'section' else ''}"
+            if obj.mode:
+                anchor += f"&m={obj.mode}"
+            if obj.quote:
+                # The chapter manager opens the text and selects these words.
+                anchor += f"&find={q(obj.quote[:300], safe='')}"
         url = reverse("admin:catalog_chapter_manager", args=[obj.p_chapter_id]) + anchor
         return format_html('<a class="button" style="white-space:nowrap" href="{}">باز کردن</a>', url)
 

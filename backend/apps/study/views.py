@@ -263,16 +263,49 @@ def due_flashcards(request):
 # --- Reports -------------------------------------------------------------------------------------------------------------
 
 
+REPORTS_PER_DAY = 20
+NOTE_MAX = 200
+OTHER_NOTE_MIN = 10
+QUOTE_MAX = 1000
+
+
 def _report(request, **target):
+    """One report. Rules: a known reason; a note of at most 200 characters, and at least 10 when the reason is «سایر»;
+    at most 20 new reports a day. The same words reported again while still open update that report instead."""
     reason = request.data.get("reason")
     if reason not in Report.Reason.values:
         reason = Report.Reason.OTHER
-    note = str(request.data.get("note", ""))[:1000]
-    report, created = Report.objects.get_or_create(user=request.user, **target, defaults={"reason": reason, "note": note})
-    if not created and report.status == Report.Status.OPEN:
-        report.reason, report.note = reason, note or report.note
-        report.save(update_fields=["reason", "note"])
+    note = str(request.data.get("note", "")).strip()
+    if len(note) > NOTE_MAX:
+        return Response({"detail": f"توضیح حداکثر {NOTE_MAX} نویسه است."}, status=status.HTTP_400_BAD_REQUEST)
+    if reason == Report.Reason.OTHER and len(note) < OTHER_NOTE_MIN:
+        return Response({"detail": "برای «سایر» در چند کلمه بنویس چه اشکالی دیدی."}, status=status.HTTP_400_BAD_REQUEST)
+    quote = str(request.data.get("quote", "")).strip()[:QUOTE_MAX]
+    mode = request.data.get("mode") if request.data.get("mode") in ("full", "summary") else ""
+    box = str(request.data.get("box", "")).strip()[:80]
+    report = Report.objects.filter(user=request.user, status=Report.Status.OPEN, quote=quote, **target).first()
+    if report:
+        report.reason, report.note, report.mode, report.box = reason, note or report.note, mode or report.mode, box or report.box
+        report.save(update_fields=["reason", "note", "mode", "box"])
+    else:
+        today = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        if Report.objects.filter(user=request.user, created_at__gte=today).count() >= REPORTS_PER_DAY:
+            return Response({"detail": f"امروز {REPORTS_PER_DAY} گزارش فرستاده‌ای؛ ممنون! بقیه را فردا بفرست."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        report = Report.objects.create(user=request.user, reason=reason, note=note, quote=quote, mode=mode, box=box, **target)
     return Response({"reported": True, "status": report.get_status_display()})
+
+
+@api_view(["POST"])
+def reports_fixed(request):
+    """«اصلاح شد، ممنون»: the learner's reports fixed since last asked (marked as told, so each is said once)."""
+    fixed = list(Report.objects.filter(user=request.user, status=Report.Status.FIXED, thanked_at__isnull=True)
+                 .select_related("question", "flashcard", "node").order_by("resolved_at")[:10])
+    out = []
+    for r in fixed:
+        what = r.quote or (r.question and r.question.stem) or (r.flashcard and r.flashcard.title) or (r.node and r.node.title) or ""
+        out.append({"id": r.id, "about": what[:80]})
+    Report.objects.filter(pk__in=[r.pk for r in fixed]).update(thanked_at=timezone.now())
+    return Response({"fixed": out})
 
 
 @api_view(["POST"])

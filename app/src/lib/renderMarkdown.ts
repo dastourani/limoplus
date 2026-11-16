@@ -326,6 +326,10 @@ mark.hl[data-body] { box-shadow: inset 0 -2px 0 rgba(23,32,26,.35); }
   opacity: .55; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; -webkit-user-select: none; user-select: none; }
 .box-pen:hover, .box-pen:active { opacity: 1; background: rgba(0,0,0,.06); }
 .box-pen svg { width: 17px; height: 17px; }
+.rc-flag { margin-inline-start: auto; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: #B7A7A0;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.rc-flag:hover, .rc-flag:active { color: #9E2F2A; background: rgba(0,0,0,.05); }
+.rc-flag svg { width: 14px; height: 14px; }
 .math-picked { background: rgba(245,197,24,.28); box-shadow: 0 0 0 2px #F5C518; border-radius: 4px; }
 @media (hover: hover) { .lesson:not(.compact) .math, .lesson:not(.compact) .math-block { cursor: pointer; } }
 .math-block.hlb { cursor: pointer; } .math-block.hlb-yellow { background: #FFE98A; } .math-block.hlb-green { background: #BFE8CF; }
@@ -664,13 +668,36 @@ root.__setTerms = function (list) {
 // so the selection is also checked after a touch ends and twice a second while the page is open.
 var selTimer = null, lastSent = null;
 root.__lastQuote = ''; root.__lastQuoteAt = 0;
+// Where a selection is, for «گزارش اشکال»: the box's name (or the summary part's), and in a Latin box «ترجمه» or «بیشتر».
+function boxOfNode(n) {
+  var el = n && (n.nodeType === 1 ? n : n.parentNode);
+  if (!el || !el.closest) return '';
+  var parts = [], box = el.closest('.box'), part = el.closest('.rc-part');
+  if (box) {
+    var t = box.querySelector(':scope > .box-title span');
+    parts.push(box.classList.contains('box-ltr') ? 'لاتین' : t ? t.textContent.trim() : 'کادر');
+  } else if (part) {
+    var h = part.querySelector(':scope > h4');
+    parts.push(h ? h.textContent.trim() : '');
+  }
+  if (el.closest('.ltr-tr')) parts.push('ترجمه');
+  else if (el.closest('.ltr-more')) parts.push('بیشتر');
+  if (el.closest('.ex-sol')) parts.push('حل');
+  return parts.filter(Boolean).join(' › ').slice(0, 80);
+}
+function selectionBox() {
+  var sel = window.getSelection ? window.getSelection() : null;
+  return sel && sel.rangeCount && !sel.isCollapsed ? boxOfNode(sel.getRangeAt(0).commonAncestorContainer) : '';
+}
+root.__lastBox = '';
 function reportSelection() {
   if (!root.isConnected) return;
   var q = selectedQuote().slice(0, 2000);
-  if (q) { root.__lastQuote = q; root.__lastQuoteAt = Date.now(); }
+  var b = q ? selectionBox() : '';
+  if (q) { root.__lastQuote = q; root.__lastQuoteAt = Date.now(); root.__lastBox = b; }
   if (q === lastSent) return;
   lastSent = q;
-  post({ type: 'selection', text: q });
+  post({ type: 'selection', text: q, box: b });
 }
 function soon() { clearTimeout(selTimer); selTimer = setTimeout(function () { snapToFormulas(); reportSelection(); }, 250); }
 document.addEventListener('selectionchange', soon);
@@ -679,8 +706,10 @@ document.addEventListener('mouseup', soon);
 var selPoll = setInterval(function () { if (!root.isConnected) { clearInterval(selPoll); return; } reportSelection(); }, 500);
 // The phone's own selection menu («هایلایت», «یادداشت»): that menu closes the selection, so the last quote is used.
 root.__menu = function (action, fallback) {
-  var q = selectedQuote() || (Date.now() - root.__lastQuoteAt < 4000 ? root.__lastQuote : '') || norm(fallback || '').trim();
-  post({ type: 'menu', action: action, text: q.slice(0, 2000) });
+  var now = selectedQuote();
+  var recent = Date.now() - root.__lastQuoteAt < 4000;
+  var q = now || (recent ? root.__lastQuote : '') || norm(fallback || '').trim();
+  post({ type: 'menu', action: action, text: q.slice(0, 2000), box: now ? selectionBox() : recent ? root.__lastBox : '' });
 };
 root.addEventListener('copy', function (e) {
   var text = (window.getSelection() || '').toString();
@@ -766,6 +795,49 @@ root.addEventListener('click', function (e) {
   var q = boxQuote(pen.closest('.box'));
   if (q) post({ type: 'menu', action: 'note', text: q.slice(0, 2000) });
 }, true);
+// «گزارش اشکال» for a picture or a plot: hold it (a right click with a mouse). Each summary part has a small flag.
+var FLAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></svg>';
+(function () {
+  if (root.classList.contains('compact')) return;
+  var heads = root.querySelectorAll('.rc-part > h4');
+  for (var i = 0; i < heads.length; i++) {
+    if (heads[i].querySelector('.rc-flag')) continue;
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'rc-flag'; b.title = 'گزارش اشکال'; b.setAttribute('aria-label', 'گزارش اشکال در این قسمت');
+    b.innerHTML = FLAG;
+    heads[i].appendChild(b);
+  }
+})();
+root.addEventListener('click', function (e) {
+  var flag = e.target && e.target.closest ? e.target.closest('.rc-flag') : null;
+  if (!flag) return;
+  e.preventDefault(); e.stopPropagation();
+  var part = flag.closest('.rc-part'), head = part.querySelector(':scope > h4');
+  var r = document.createRange(), sel = window.getSelection();
+  r.setStartAfter(head); r.setEnd(part, part.childNodes.length);
+  sel.removeAllRanges(); sel.addRange(r);
+  var q = selectedQuote();
+  sel.removeAllRanges();
+  post({ type: 'flag', text: q.slice(0, 1000), box: (head.textContent || '').trim().slice(0, 80) });
+}, true);
+var mediaSent = 0, mediaHold = null;
+function mediaAt(t) {
+  var el = t && t.closest ? t.closest('img, .plot') : null;
+  return el && root.contains(el) ? el : null;
+}
+function postMedia(el) {
+  if (Date.now() - mediaSent < 1200) return;
+  mediaSent = Date.now();
+  var img = el.tagName === 'IMG', box = el.closest('.box'), title = box && box.querySelector(':scope > .box-title span');
+  var what = img ? el.getAttribute('alt') || 'عکس' : (title && title.textContent.trim()) || 'نمودار';
+  post({ type: 'media', kind: img ? 'image' : 'plot', text: what.slice(0, 300), box: boxOfNode(el) });
+}
+root.addEventListener('contextmenu', function (e) { var el = mediaAt(e.target); if (el) { e.preventDefault(); postMedia(el); } });
+root.addEventListener('touchstart', function (e) {
+  var el = mediaAt(e.target); clearTimeout(mediaHold);
+  if (el) mediaHold = setTimeout(function () { postMedia(el); }, 650);
+}, { passive: true });
+['touchend', 'touchmove', 'touchcancel'].forEach(function (k) { root.addEventListener(k, function () { clearTimeout(mediaHold); }, { passive: true }); });
 // Turning the page with a finger: a clear sideways drag (not a scroll, not a long press, not inside a wide table)
 // moves the page with the finger, right here in the page (no round trip to the app, so it stays smooth on slow
 // phones). Let go far enough, or flick, and the page slides out and the app opens the next or previous section.

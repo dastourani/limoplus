@@ -443,7 +443,9 @@ export type OfflineBundle = {
   downloaded_at: string;
   valid_until: string;
 };
-export type ReportReason = 'wrong_answer' | 'formula' | 'unclear' | 'typo' | 'other';
+export type ReportReason = 'wrong_answer' | 'explanation' | 'formula' | 'unclear' | 'typo' | 'translation' | 'image' | 'other';
+/** Where a report on the lesson text points: the selected words, notes or summary, and the box. */
+export type ReportPlace = { quote?: string; mode?: 'full' | 'summary'; box?: string };
 
 export const endpoints = {
   majors: () => api<Major[]>('majors/'),
@@ -517,7 +519,10 @@ export const endpoints = {
   dueFlashcards: () => api<{ count: number; flashcards: DueFlashcard[] }>('me/flashcards/due/'),
   reportQuestion: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`questions/${id}/report/`, { body: { reason, note } }),
   reportFlashcard: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`flashcards/${id}/report/`, { body: { reason, note } }),
-  reportNode: (id: number, reason: ReportReason, note: string) => api<{ reported: boolean }>(`nodes/${id}/report/`, { body: { reason, note } }),
+  reportNode: (id: number, reason: ReportReason, note: string, place: ReportPlace = {}) =>
+    api<{ reported: boolean }>(`nodes/${id}/report/`, { body: { reason, note, ...place } }),
+  /** «اصلاح شد، ممنون»: reports fixed since last asked (each told once). */
+  reportsFixed: () => api<{ fixed: { id: number; about: string }[] }>('me/reports/fixed/', { method: 'POST' }),
   startExam: (
     nodeId: number,
     body: { count: number; negative_marking: boolean; minutes?: number; focus_mistakes?: boolean; konkur_only?: boolean; years?: number[]; source?: number; only_studied?: boolean },

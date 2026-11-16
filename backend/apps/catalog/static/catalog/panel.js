@@ -745,10 +745,18 @@
     });
   };
   Manager.prototype.fromHash = function () {
-    var m = location.hash.match(/^#([sqf])=(.*)$/);
+    var m = location.hash.match(/^#([sqf])=([^&]*)(.*)$/);
     if (!m || !this.state) return false;
     var key = m[1], slug = decodeURIComponent(m[2]);
-    if (key === 's') { this.sel = slug; this.tab = 'notes'; this.open = null; }
+    // A learner's report: «&m=summary» opens the summary, «&find=…» selects the reported words in the text.
+    var extra = {};
+    m[3].split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) extra[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); });
+    if (key === 's') {
+      this.sel = slug; this.open = null;
+      this.tab = extra.m === 'summary' && slug ? 'summary' : 'notes';
+      if (extra.m === 'summary') this.summaryMode = 'raw';
+      this.find = extra.find || null;
+    }
     else {
       var all = [this.state.intro].concat(this.state.sections);
       for (var i = 0; i < all.length; i++) {
@@ -772,6 +780,41 @@
     var s = this.state;
     if (this.sel === '') return s.intro;
     return s.sections.filter(function (x) { return x.slug === this.sel; }, this)[0] || s.sections[0] || s.intro;
+  };
+  // Selects a learner's reported words in a text box. The quote is the text as read (no ** or ==, formulas as $tex$),
+  // so both are compared without Markdown marks and with spaces folded; failing the whole, its start is tried.
+  function findInSource(src, quote) {
+    var drop = /[*_=~`#>]/;
+    var norm = '', map = [];
+    for (var i = 0; i < src.length; i++) {
+      var c = src[i];
+      if (drop.test(c)) continue;
+      if (/\s/.test(c)) { if (norm && norm[norm.length - 1] === ' ') continue; c = ' '; }
+      if (c === '\u200c') c = ' ';
+      norm += c; map.push(i);
+    }
+    var q = quote.replace(/[*_=~`#>]/g, '').replace(/[\s\u200c]+/g, ' ').trim();
+    var tries = [q, q.slice(0, 80), q.slice(0, 40), q.slice(0, 20)];
+    for (var t = 0; t < tries.length; t++) {
+      if (tries[t].length < 6) break;
+      var at = norm.indexOf(tries[t]);
+      if (at >= 0) return [map[at], map[at + tries[t].length - 1] + 1];
+    }
+    return null;
+  }
+  Manager.prototype.selectFind = function (ta) {
+    var self = this, quote = this.find;
+    if (!quote) return;
+    setTimeout(function () {
+      // The page may have been drawn again meanwhile: the newest box takes it.
+      if (!ta.isConnected || self.find !== quote) return;
+      self.find = null;
+      var r = findInSource(ta.value, quote);
+      if (!r) { toast(['متن گزارش‌شده پیدا نشد (شاید قبلاً اصلاح شده): «' + quote.slice(0, 120) + '»'], 'err'); return; }
+      ta.focus();
+      ta.setSelectionRange(r[0], r[1]);
+      if (ta.scrollIntoView) ta.scrollIntoView({ block: 'center' });
+    }, 300);
   };
   Manager.prototype.go = function (slug, tab) {
     if (!this.guard()) return;
@@ -1058,6 +1101,7 @@
     }, 'ذخیره‌ی درسنامه', { fresh: true });
     ed = new MdEditor(ta, { variant: 'notes', labels: true, uploadUrl: this.api, fileUrl: this.fileUrl(), draft: this.draftKey('notes:' + s.slug),
       onChange: function () { self.dirty = 'درسنامه'; bar.mark(true); } });
+    this.selectFind(ta);
     body.appendChild(bar.el);
     if (s.missing_phrases.length) body.appendChild(h('div', { class: 'msg warn' }, 'این عبارت‌های پرش چکیده در درسنامه پیدا نمی‌شوند: ' + s.missing_phrases.join('، ')));
   };
@@ -1143,6 +1187,7 @@
       h('button', { class: 'btn small' + (mode === 'raw' ? ' primary' : ''), type: 'button', onclick: function () { if (mode !== 'raw') { self.summaryMode = 'raw'; mode = 'raw'; draw(); backToRaw(); } } }, 'متن خام'),
       h('span', { class: 'hint' }, 'هر دو یکی‌اند؛ فرم همان متن خام را می‌سازد.'));
     var rawTa = h('textarea', { rows: 16, oninput: changed });
+    setTimeout(function () { if (mode === 'raw') self.selectFind(rawTa); }, 0);
     rawTa.value = raw;
     // A draft comes back as raw text (the form is drawn from it when switching back).
     keeper = draftKeeper(this.draftKey('summary:' + s.slug), raw, current, function (text) {

@@ -159,10 +159,13 @@ class Report(models.Model):
     """A learner's report of a mistake in a question, flashcard or text."""
 
     class Reason(models.TextChoices):
-        WRONG_ANSWER = "wrong_answer", "جواب غلط"
+        WRONG_ANSWER = "wrong_answer", "جواب یا مطلب نادرست"
+        EXPLANATION = "explanation", "پاسخ تشریحی نادرست"
         FORMULA = "formula", "فرمول نادرست"
         UNCLEAR = "unclear", "مبهم"
         TYPO = "typo", "غلط تایپی"
+        TRANSLATION = "translation", "ترجمه‌ی نادرست"
+        IMAGE = "image", "عکس یا نمودار نادرست"
         OTHER = "other", "سایر"
 
     class Status(models.TextChoices):
@@ -176,9 +179,16 @@ class Report(models.Model):
     node = models.ForeignKey(ContentNode, on_delete=models.CASCADE, null=True, blank=True, related_name="reports", verbose_name="بخش")
     reason = models.CharField("دلیل", max_length=20, choices=Reason.choices)
     note = models.TextField("توضیح", blank=True)
+    # A report on the lesson text is made by selecting the words (or holding a picture): what was selected, in which
+    # mode (notes or summary) and in which box («تعریف»، «لاتین › ترجمه»، «عکس»…).
+    quote = models.TextField("متن انتخاب‌شده", blank=True)
+    mode = models.CharField("حالت", max_length=10, blank=True, choices=[("full", "درسنامه"), ("summary", "چکیده")])
+    box = models.CharField("کادر", max_length=80, blank=True)
     status = models.CharField("وضعیت", max_length=10, choices=Status.choices, default=Status.OPEN)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان")
     resolved_at = models.DateTimeField(null=True, blank=True)
+    # When the learner was told «اصلاح شد، ممنون» in the app (once).
+    thanked_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "گزارش ایراد"
