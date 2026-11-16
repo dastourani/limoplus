@@ -32,6 +32,8 @@ def session_state(session):
         return badges((f"خارج شده {jalali_date(session.revoked_at)}", "grey"))
     if session.expires_at <= timezone.now():
         return badges(("منقضی", "grey"))
+    if not session.is_active:  # unused for SESSION_IDLE: signed out by itself
+        return badges(("بی‌استفاده، خارج شد", "grey"))
     return badges(("فعال", "green"))
 
 
@@ -235,7 +237,8 @@ class SessionStateFilter(admin.SimpleListFilter):
         return [("active", "فعال"), ("out", "خارج شده یا منقضی")]
 
     def queryset(self, request, queryset):
-        live = Q(revoked_at__isnull=True, expires_at__gt=timezone.now())
+        now = timezone.now()
+        live = Q(revoked_at__isnull=True, expires_at__gt=now, last_seen_at__gt=now - settings.SESSION_IDLE)
         if self.value() == "active":
             return queryset.filter(live)
         if self.value() == "out":
