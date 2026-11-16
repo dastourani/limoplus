@@ -152,7 +152,7 @@ def answer(request, question_id):
             )
         StudyDay.touch(request.user, "answers")
 
-    related = [f for f in question.flashcards.filter(is_archived=False) if _usable(access, f)]
+    related = [f for f in question.flashcards.filter(is_archived=False).order_by("node__path", "order", "id") if _usable(access, f)]
     # A wrong answer brings its key points back: up to three linked cards join today's review («مرور امروز»).
     queued = 0
     if request.user.is_authenticated and not picked.is_correct and related:
