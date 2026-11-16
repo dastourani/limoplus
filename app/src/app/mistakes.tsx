@@ -15,7 +15,7 @@ import { requireLogin, useAuth } from '../lib/auth';
 import { jalaliDate } from '../lib/jalali';
 import { colors, rtl, toPersianDigits } from '../theme';
 
-/** «دفترچه‌ی اشتباهات»: questions got wrong (or blank in an exam), with the learner's reason. One right answer moves a
+/** «اشتباهات من»: questions got wrong (or blank in an exam), with the learner's reason. One right answer moves a
  * question to «نیازمند تثبیت»; a right answer on a later day takes it out. */
 export default function MistakesScreen() {
   const { user } = useAuth();
@@ -68,11 +68,13 @@ export default function MistakesScreen() {
   if (!user) {
     return (
       <Screen>
-        <Header title="دفترچه‌ی اشتباهات" />
-        <Empty icon="notebook-pen" title="برای دفترچه‌ی اشتباهات وارد شوید" text="تست‌هایی که غلط می‌زنی این‌جا جمع می‌شوند تا دوباره تمرینشان کنی." />
-        <View style={{ padding: 16 }}>
-          <Button label="ورود" onPress={() => requireLogin(user, 'برای دفترچه‌ی اشتباهات وارد شوید.')} />
-        </View>
+        <Header title="اشتباهات من" />
+        <Empty
+          icon="notebook-pen"
+          title="برای دیدن «اشتباهات من» وارد شوید"
+          text="تست‌هایی که غلط می‌زنی این‌جا جمع می‌شوند تا دوباره تمرینشان کنی."
+          action={<Button label="ورود" onPress={() => requireLogin(user, 'برای دیدن «اشتباهات من» وارد شوید.')} />}
+        />
       </Screen>
     );
   }
@@ -81,7 +83,7 @@ export default function MistakesScreen() {
     <Screen>
       <PageHeader
         icon="notebook-pen"
-        title="دفترچه‌ی اشتباهات"
+        title="اشتباهات من"
         status={
           data && data.count
             ? [data.open ? `${toPersianDigits(data.open)} منتظر جبران` : '', data.settling ? `${toPersianDigits(data.settling)} نیازمند تثبیت` : ''].filter(Boolean).join('، ')
@@ -95,8 +97,8 @@ export default function MistakesScreen() {
       ) : !data || (data.count === 0 && !book) ? (
         <Empty
           icon="circle-check"
-          title="دفترچه خالی است"
-          text="تست‌های غلط و بی‌پاسخت این‌جا جمع می‌شوند. هر کدام را دو بار، با چند روز فاصله، درست جواب بدهی، از دفترچه بیرون می‌رود."
+          title="اشتباهی نمانده"
+          text="تست‌های غلط و بی‌پاسخت این‌جا جمع می‌شوند. هر کدام را دو بار، با چند روز فاصله، درست جواب بدهی، از این فهرست بیرون می‌رود."
         />
       ) : (
         <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
@@ -110,7 +112,7 @@ export default function MistakesScreen() {
             <Pressable onPress={() => setHelp(true)} style={styles.helpRow} accessibilityRole="button">
               <Icon name="circle-alert" size={16} color={colors.lemon} />
               <Text style={[styles.topText, rtl, { flex: 1, color: '#E4E9E2' }]}>
-                هر تست را یک بار درست بزنی به «تثبیت» می‌رود؛ {toPersianDigits(data.settle_days)} روز بعد اگر باز درست زدی، از دفترچه بیرون می‌رود. توضیح بیشتر ←
+                هر تست را یک بار درست بزنی به «تثبیت» می‌رود؛ {toPersianDigits(data.settle_days)} روز بعد اگر باز درست زدی، از این فهرست بیرون می‌رود. توضیح بیشتر ←
               </Text>
             </Pressable>
             {data.due > 0 ? (
@@ -163,7 +165,7 @@ export default function MistakesScreen() {
               )}
               {m.reason === 'forgot' && <Text style={[styles.tip, rtl]}>فلش‌کارت‌های این تست به «مرور کارت‌ها» اضافه شد.</Text>}
               {m.reason === 'careless' && (
-                <Text style={[styles.tip, rtl]}>بلد بودی؛ برای همین زودتر (یک روز بعد از جواب درست) از دفترچه بیرون می‌رود.</Text>
+                <Text style={[styles.tip, rtl]}>بلد بودی؛ برای همین زودتر (یک روز بعد از جواب درست) از این فهرست بیرون می‌رود.</Text>
               )}
               {m.reason === 'time' && (
                 <Text style={[styles.tip, rtl]}>
@@ -188,7 +190,7 @@ export default function MistakesScreen() {
           {data.items.length > shown && <Button label="بیشتر" variant="outline" onPress={() => setShown((n) => n + 20)} />}
         </ScrollView>
       )}
-      <Sheet visible={help} onClose={() => setHelp(false)} title="دفترچه چطور کار می‌کند؟">
+      <Sheet visible={help} onClose={() => setHelp(false)} title="«اشتباهات من» چطور کار می‌کند؟">
         <Text style={[styles.helpText, rtl]}>
           هر تستی که غلط بزنی یا در آزمون بی‌جواب بگذاری این‌جا می‌آید و دو مرحله دارد:
         </Text>
@@ -199,7 +201,7 @@ export default function MistakesScreen() {
         <Text style={[styles.helpText, rtl]}>
           <Text style={{ fontWeight: '900' }}>۲. نیازمند تثبیت: </Text>
           یک بار درست زده‌ای، ولی شاید فقط جواب یادت مانده بود. {toPersianDigits(data?.settle_days ?? 3)} روز بعد دوباره پرسیده می‌شود؛ اگر باز درست
-          زدی، از دفترچه بیرون می‌رود. (برای «بی‌دقتی» یک روز بعد.)
+          زدی، از این فهرست بیرون می‌رود. (برای «بی‌دقتی» یک روز بعد.)
         </Text>
         <Text style={[styles.helpText, rtl]}>هر بار دوباره غلط بزنی، تست به مرحله‌ی ۱ برمی‌گردد و علت را دوباره می‌پرسیم.</Text>
         <Text style={[styles.helpText, rtl]}>

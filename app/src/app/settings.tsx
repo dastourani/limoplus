@@ -60,11 +60,12 @@ export default function Settings() {
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
-          placeholder="http://192.168.1.20:8000"
+          placeholder={getDefaultApiUrl() || 'https://'}
           style={styles.input}
         />
         <Text style={[styles.help, rtl]}>
-          برای تست روی گوشی: سرور را روی لپ‌تاپ اجرا کنید، گوشی و لپ‌تاپ در یک Wi‑Fi باشند، و آدرس IP لپ‌تاپ را با پورت ۸۰۰۰ وارد کنید.
+          نشانی سرور اپ. به‌طور پیش‌فرض سرور اصلی لیموخوان است ({getDefaultApiUrl() || '—'}) و لازم نیست چیزی را عوض کنید.
+          فقط برای آزمایش یک سرور دیگر است؛ با تغییر آن از حسابتان خارج می‌شوید.
         </Text>
         {status && <Text style={[styles.status, rtl, { color: status.ok ? colors.greenDark : colors.redDark }]}>{status.text}</Text>}
         <Button label="آزمایش اتصال" variant="outline" onPress={test} loading={busy} />

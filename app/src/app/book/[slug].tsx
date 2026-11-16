@@ -2,6 +2,7 @@ import { accessLabel } from '../../lib/access';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, LayoutAnimation, Platform, Pressable, ScrollView, Share, StyleSheet, UIManager, useWindowDimensions, View } from 'react-native';
+import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from 'react-native-svg';
 
 import { ApiError } from '../../api/client';
 import { endpoints, type ChapterSummary, type NodeSummary, type ReviewItem } from '../../api/endpoints';
@@ -48,17 +49,16 @@ export default function Book() {
   const { confirm, toast } = useFeedback();
   const { width } = useWindowDimensions();
   const [notify, setNotify] = useState<{ on: boolean; canCancel: boolean } | null>(null);
-  // «درباره‌ی کتاب»: in full the first time, then its first lines with «بیشتر ▾»; opened by the learner, it stays open.
+  // «درباره‌ی کتاب»: three lines that fade out, with «ادامه‌ی معرفی ▾» (or a tap on the text); opened by the learner,
+  // it stays open on later visits.
   const [aboutOpen, setAboutOpen] = useState<boolean | null>(null);
   useEffect(() => {
     setAboutOpen(null);
-    storage.getAbout(String(slug)).then((v) => {
-      setAboutOpen(v !== 'seen');
-      if (!v) storage.setAbout(String(slug), 'seen');
-    });
+    storage.getAbout(String(slug)).then((v) => setAboutOpen(v === 'open'));
   }, [slug]);
   const toggleAbout = () => {
     const open = !aboutOpen;
+    if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.create(260, 'easeInEaseOut', 'opacity'));
     setAboutOpen(open);
     storage.setAbout(String(slug), open ? 'open' : 'seen');
   };
@@ -371,11 +371,26 @@ export default function Book() {
                 <MarkdownView markdown={book.about} compact />
               ) : (
                 <>
-                  <View style={aboutOpen ? null : styles.aboutFolded}>
+                  <View style={[styles.aboutBody, aboutOpen ? styles.aboutBodyOpen : styles.aboutFolded]}>
                     <MarkdownView markdown={book.about} compact />
+                    {!aboutOpen && (
+                      <>
+                        {/* The last line fades into the card; a tap anywhere on the text opens it. */}
+                        <Svg pointerEvents="none" style={styles.aboutFade} width="100%" height={44}>
+                          <Defs>
+                            <SvgGradient id="aboutFade" x1="0" y1="0" x2="0" y2="1">
+                              <Stop offset="0" stopColor={colors.surface} stopOpacity={0} />
+                              <Stop offset="1" stopColor={colors.surface} stopOpacity={1} />
+                            </SvgGradient>
+                          </Defs>
+                          <Rect x="0" y="0" width="100%" height="44" fill="url(#aboutFade)" />
+                        </Svg>
+                        <Pressable onPress={toggleAbout} style={StyleSheet.absoluteFill} accessibilityLabel="ادامه‌ی معرفی" />
+                      </>
+                    )}
                   </View>
-                  <Pressable onPress={toggleAbout} hitSlop={8} style={styles.aboutMore} accessibilityRole="button" accessibilityState={{ expanded: aboutOpen }}>
-                    <Text style={[styles.aboutMoreText, rtl]}>{aboutOpen ? 'کمتر ▴' : 'بیشتر ▾'}</Text>
+                  <Pressable onPress={toggleAbout} style={styles.aboutMore} accessibilityRole="button" accessibilityState={{ expanded: aboutOpen }}>
+                    <Text style={[styles.aboutMoreText, rtl]}>{aboutOpen ? 'بستن معرفی ▴' : 'ادامه‌ی معرفی ▾'}</Text>
                   </Pressable>
                 </>
               )}
@@ -764,9 +779,12 @@ const styles = StyleSheet.create({
   pastBtnMain: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   pastBtnText: { fontSize: 13, fontWeight: '800', color: colors.ink },
   // About four lines of the compact text (16px, line height 1.9).
-  aboutFolded: { maxHeight: 122, overflow: 'hidden' },
-  aboutMore: { alignSelf: 'flex-start' },
-  aboutMoreText: { fontSize: 13, fontWeight: '700', color: colors.greenDark },
+  aboutBody: { overflow: 'hidden', ...(Platform.OS === 'web' ? ({ transitionProperty: 'max-height', transitionDuration: '260ms' } as object) : null) },
+  aboutFolded: { maxHeight: 92 }, // three lines of the compact text (16px × 1.9)
+  aboutBodyOpen: { maxHeight: 4000 },
+  aboutFade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  aboutMore: { height: 44, borderRadius: 12, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
+  aboutMoreText: { fontSize: 14, fontWeight: '700', color: colors.greenDark },
   about: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 6 },
   aboutHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   aboutTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },

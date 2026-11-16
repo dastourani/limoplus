@@ -207,7 +207,7 @@ export type Today = {
   /** Chapter and book reviews due today (at most two), and how many more wait. */
   reviews?: ReviewItem[];
   reviews_waiting?: number;
-  /** «کارهای امروز» tiles, in order; a job done today is gone. */
+  /** «برنامه‌ی امروز» tiles, in order; a job done today is gone. */
   tasks?: TodayTask[];
   /** «نیاز به مرور»: sections with wrong answers still open, or finished long ago (at most three). */
   needs_review?: { items: NeedsReviewItem[]; total: number };
@@ -372,6 +372,8 @@ export type Library = {
     book_slug: string;
     book_title: string;
     last_section: { id: number; title: string };
+    /** The section's chapter: «فصل ۳: مشتق» on the continue card. */
+    chapter?: { number: number | null; title: string } | null;
     percent?: number;
     updated_at: string;
     book?: BookListItem;

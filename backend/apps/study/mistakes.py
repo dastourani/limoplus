@@ -1,5 +1,5 @@
 """
-«دفترچه‌ی اشتباهات»: every question the learner got wrong (or left blank in an exam).
+«اشتباهات من»: every question the learner got wrong (or left blank in an exam).
 
 A question goes through two steps before it leaves the notebook, because one right answer may only mean the learner
 remembers the answer:
@@ -250,7 +250,7 @@ def mistake_questions(request):
 def mistake_reason(request, question_id):
     question = get_object_or_404(Question, pk=question_id, is_archived=False)
     if not in_notebook(entry_for(request.user, question.pk)):
-        return Response({"code": "not_a_mistake", "message": "این تست در دفترچه‌ی اشتباهات شما نیست."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"code": "not_a_mistake", "message": "این تست در «اشتباهات من» نیست."}, status=status.HTTP_404_NOT_FOUND)
     reason = str(request.data.get("reason") or "")
     if reason and reason not in MistakeNote.Reason.values:
         return Response({"code": "invalid_reason", "message": "علت انتخاب‌شده معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
@@ -340,7 +340,7 @@ def _continue(request):
 
 @api_view(["GET"])
 def today(request):
-    """«کارهای امروز»: one tile per job, in this order: the chapter reviews due (at most two), the flashcards due (fewer
+    """«برنامه‌ی امروز»: one tile per job, in this order: the chapter reviews due (at most two), the flashcards due (fewer
     after a break), and five questions from the mistakes notebook. A job done today leaves the list.
     Kept for five minutes per learner, and worked out again at once after anything they do (reviews.recheck)."""
     from django.core.cache import cache

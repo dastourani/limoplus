@@ -5,7 +5,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react
 import { endpoints, type Purchases } from '../../api/endpoints';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
-import { APP_BUILD } from '../../config';
+import { APP_BUILD, getApiUrl, getDefaultApiUrl } from '../../config';
 import { useFeedback } from '../../components/Feedback';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Card, Screen, usePullRefresh, Chip } from '../../components/ui';
@@ -41,6 +41,16 @@ export default function Profile() {
 
   const [reloading, setReloading] = useState(false);
   const [versionTaps, setVersionTaps] = useState(0);
+  // A test server set in «تنظیمات سرور» is said plainly, so the app is never quietly on another server.
+  const [otherServer, setOtherServer] = useState<string | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS === 'web') return;
+      getApiUrl()
+        .then((u) => setOtherServer(getDefaultApiUrl() && u !== getDefaultApiUrl() ? u : null))
+        .catch(() => undefined);
+    }, []),
+  );
   const serverUnlocked = versionTaps >= 7;
   const reload = useCallback(() => {
     if (!user) return;
@@ -57,6 +67,11 @@ export default function Profile() {
   return (
     <Screen tab>
       <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
+        {!!otherServer && (
+          <Pressable onPress={() => router.push('/settings')} style={styles.testServer} accessibilityRole="button">
+            <Text style={[styles.testServerText, rtl]}>به سرور آزمایشی وصل است: {otherServer}. برای برگشت به سرور اصلی بزنید.</Text>
+          </Pressable>
+        )}
         <Text style={[styles.pageTitle, rtl]}>حساب من</Text>
         <View style={styles.hero}>
           <View style={styles.avatar}>
@@ -89,7 +104,7 @@ export default function Profile() {
           {user && <Row label="دستگاه‌های من" onPress={() => router.push('/devices')} />}
           <Row label="کتاب‌های آفلاین" onPress={() => router.push('/offline')} />
           <View style={styles.row}>
-            <Text style={[styles.rowLabel, rtl]}>صدای جشن‌ها</Text>
+            <Text style={[styles.rowLabel, rtl]}>صدای آفرین</Text>
             <Switch
               value={sound}
               onValueChange={async (on) => {
@@ -98,7 +113,7 @@ export default function Profile() {
                 if (on) play('pop');
               }}
               trackColor={{ true: colors.green }}
-              accessibilityLabel="صدای جشن‌ها"
+              accessibilityLabel="صدای آفرین"
             />
           </View>
           <View style={styles.row}>
@@ -199,12 +214,19 @@ export default function Profile() {
         <Text style={styles.version} onPress={() => setVersionTaps((n) => n + 1)} suppressHighlighting>
           لیموخوان، نسخه‌ی {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}
         </Text>
+        {Platform.OS !== 'web' && versionTaps >= 4 && (
+          <Text style={[styles.version, { marginTop: -8 }]}>
+            {serverUnlocked ? '«تنظیمات سرور» باز شد: بالاتر، پیش از «نمایش مثل کاربر عادی».' : `${toPersianDigits(7 - versionTaps)} ضربه‌ی دیگر`}
+          </Text>
+        )}
       </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  testServer: { backgroundColor: colors.lemonSoft, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: colors.lemon },
+  testServerText: { fontSize: 13, color: colors.ink },
   pageTitle: { fontSize: 22, fontWeight: '800', color: colors.ink, marginTop: -4, marginBottom: -4 },
   rowHint: { fontSize: 12, color: colors.muted, marginTop: 2 },
   page: { padding: 16, gap: 16 },

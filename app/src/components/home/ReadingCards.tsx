@@ -23,7 +23,15 @@ export type ReadingNext = {
   chapter_number: number | null;
   finished_chapter_number: number | null;
 };
-export type ReadingItem = { slug: string; bookTitle: string; id: number; title: string; book?: BookListItem; next?: ReadingNext | null };
+export type ReadingItem = {
+  slug: string;
+  bookTitle: string;
+  id: number;
+  title: string;
+  book?: BookListItem;
+  next?: ReadingNext | null;
+  chapter?: { number: number | null; title: string } | null;
+};
 
 /** One wedge per section of the book, as everywhere else (LemonProgress groups them past 24). */
 function wedges(progress: number | null | undefined, sections: number) {
@@ -69,6 +77,8 @@ function Card({ r, width }: { r: ReadingItem; width: number | undefined }) {
     sub = next.title;
     open = () => router.push({ pathname: '/section/[id]', params: { id: String(next.id) } });
   }
+  // «فصل ۳: مشتق» above the section's name (not at a chapter's end, which says so itself).
+  const chapter = !next?.new_chapter && r.chapter ? `فصل ${fa(r.chapter.number)}: ${r.chapter.title}`.replace('فصل : ', '') : '';
   const parts = r.book?.progress != null ? wedges(r.book.progress, r.book.section_count) : null;
   return (
     <Pressable onPress={open} style={[styles.card, light && styles.cardLight, width ? { width } : { maxWidth: 1100 }]} accessibilityRole="button" accessibilityLabel={`${r.bookTitle}، ${sub}`}>
@@ -82,6 +92,7 @@ function Card({ r, width }: { r: ReadingItem; width: number | undefined }) {
       <View style={{ flex: 1, gap: 3 }}>
         {!!label && <Text style={[styles.label, light && { color: '#8A6A00' }, rtl]} numberOfLines={1}>{label}</Text>}
         <GlideText style={[styles.title, light && { color: colors.ink }, rtl]}>{r.bookTitle}</GlideText>
+        {!!chapter && <Text style={[styles.chapter, light && { color: colors.ink }, rtl]} numberOfLines={1}>{chapter}</Text>}
         <Text style={[styles.sub, light && { color: colors.muted }, rtl]} numberOfLines={2}>{sub}</Text>
         {/* The button, and beside it the lemon: one wedge per section, filled as they are read. */}
         <View style={styles.bottom}>
@@ -110,6 +121,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '800', color: colors.lemon },
   title: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },
   sub: { fontSize: 12, color: '#A9B6AD', lineHeight: 19 },
+  chapter: { fontSize: 12, fontWeight: '700', color: '#DCE5DF' },
   bottom: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
   progress: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   count: { fontSize: 11, color: '#A9B6AD' },

@@ -363,3 +363,25 @@ class PatternSMSTests(TestCase):
         with mock.patch("apps.accounts.sms.send_sms") as line:
             self.client.post("/api/v1/auth/request-otp/", {"phone": "09121234567"}, content_type="application/json")
         self.assertIn("کد ورود", line.call_args.args[1])
+
+
+class SessionIdleAndSwitchTests(TestCase):
+    def test_a_month_unused_session_no_longer_counts_or_works(self):
+        user = User.objects.create_user("09120000501")
+        old, token = DeviceSession.start(user, "old phone")
+        DeviceSession.objects.filter(pk=old.pk).update(last_seen_at=timezone.now() - timedelta(days=31))
+        DeviceSession.start(user, "new phone")
+        self.assertEqual(DeviceSession.active_for(user).count(), 1)
+        c = APIClient()
+        c.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(c.get("/api/v1/me/").status_code, 401)
+
+    def test_many_new_devices_are_marked_in_the_panel(self):
+        boss = User.objects.create_superuser("09120000502", password="x-Strong-pass-1")
+        user = User.objects.create_user("09120000503")
+        for i in range(5):
+            DeviceSession.start(user, f"phone {i}")
+        self.client.force_login(boss)
+        page = self.client.get("/admin/accounts/user/?devices=many").content.decode()
+        self.assertIn("09120000503", page)
+        self.assertIn("تعویض زیاد دستگاه", page)

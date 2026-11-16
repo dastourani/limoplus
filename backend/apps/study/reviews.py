@@ -124,7 +124,7 @@ def start_cycle(user, access, chapter, by="auto") -> ChapterReview:
 
 def recheck(user) -> None:
     """Something that changes the learner's day happened (a section read, a question answered, a card or review done):
-    look again for finished chapters, and work out «کارهای امروز» afresh."""
+    look again for finished chapters, and work out «برنامه‌ی امروز» afresh."""
     from django.core.cache import cache
 
     cache.delete(f"limo.review_sync.{user.pk}")
