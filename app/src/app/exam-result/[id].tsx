@@ -14,6 +14,9 @@ import { seeded } from '../../lib/shuffle';
 import { useApi } from '../../lib/useApi';
 import { colors, radius, rtl, toPersianDigits } from '../../theme';
 import { HelpTip } from '../../components/HelpTip';
+import { ReportSheet } from '../../components/ReportSheet';
+import { ReportButton } from '../../components/Tags';
+import { requireLogin, useAuth } from '../../lib/auth';
 
 const KEYS = ['الف', 'ب', 'ج', 'د', 'ه', 'و'];
 
@@ -23,6 +26,9 @@ export default function ExamResult() {
   const shown = useRef(false);
   const { data, error, loading, retry } = useApi(() => endpoints.exam(Number(id)), [id]);
   const [open, setOpen] = useState<number | null>(null);
+  const [reporting, setReporting] = useState<number | null>(null);
+  const [reportedIds, setReportedIds] = useState<number[]>([]);
+  const { user } = useAuth();
   const [filter, setFilter] = useState<'all' | 'wrong'>('all');
 
   // Right after finishing an exam: a moment that matches the score (big when it went well, a banner when it was
@@ -183,6 +189,12 @@ export default function ExamResult() {
                       <Text style={styles.link}>این نکته در جزوه ←</Text>
                     </Pressable>
                   )}
+                  {/* In an exam, mistakes are reported here, after it is over. */}
+                  <ReportButton
+                    reported={reportedIds.includes(q.id)}
+                    label="گزارش اشکال در این تست"
+                    onPress={() => requireLogin(user, 'برای گزارش اشکال وارد شوید.') && setReporting(q.id)}
+                  />
                 </View>
               ) : (
                 <Pressable onPress={() => setOpen(q.id)}>
@@ -192,6 +204,13 @@ export default function ExamResult() {
             </Card>
           );
         })}
+        <ReportSheet
+          visible={reporting !== null}
+          onClose={() => setReporting(null)}
+          kind="question"
+          onSend={(reason, note) => endpoints.reportQuestion(reporting!, reason, note)}
+          onDone={() => setReportedIds((x) => [...x, reporting!])}
+        />
         <Button label="آزمون دوباره" variant={data.wrong + data.blank > 0 ? 'outline' : 'primary'} onPress={() => router.replace(`/exam/${data.node_id}`)} />
       </ScrollView>
     </Screen>

@@ -120,6 +120,62 @@ class StudyTests(TestCase):
         self.client.post(f"/api/v1/questions/{q.id}/report/", {"reason": "typo"}, format="json")  # no duplicate
         self.assertEqual(self.client.get(f"/api/v1/nodes/{self.chapter.id}/practice/").data["reported"], [q.id])
 
+    def test_text_reports_keep_the_quote_and_follow_the_rules(self):
+        from apps.learning.models import Report
+
+        url = f"/api/v1/nodes/{self.section.id}/report/"
+        ok = {"reason": "typo", "quote": "حد تابع $x^2$", "mode": "summary", "box": "تعریف"}
+        self.assertEqual(self.client.post(url, ok, format="json").status_code, 200)
+        r = Report.objects.get(user=self.user, node=self.section)
+        self.assertEqual((r.quote, r.mode, r.box), ("حد تابع $x^2$", "summary", "تعریف"))
+        # The same words again: the open report is updated; other words: a second report.
+        self.client.post(url, {**ok, "reason": "formula"}, format="json")
+        self.client.post(url, {**ok, "quote": "جمله‌ی دیگر"}, format="json")
+        self.assertEqual(Report.objects.filter(user=self.user, node=self.section).count(), 2)
+        self.assertEqual(Report.objects.get(pk=r.pk).reason, "formula")
+        # Note at most 200; «سایر» needs ten characters.
+        self.assertEqual(self.client.post(url, {**ok, "note": "x" * 201}, format="json").status_code, 400)
+        self.assertEqual(self.client.post(url, {"reason": "other", "note": "کوتاه"}, format="json").status_code, 400)
+        self.assertEqual(self.client.post(url, {"reason": "other", "note": "این جمله ناقص است"}, format="json").status_code, 200)
+        # Twenty new reports a day.
+        for i in range(17):
+            self.assertEqual(self.client.post(url, {**ok, "quote": f"تکه {i}"}, format="json").status_code, 200)
+        self.assertEqual(self.client.post(url, {**ok, "quote": "یکی بیشتر"}, format="json").status_code, 429)
+
+    def test_a_closed_test_report_can_be_sent_again(self):
+        from apps.learning.models import Report
+
+        q = Question.objects.filter(node__path__startswith=self.chapter.path).first()
+        url = f"/api/v1/questions/{q.id}/report/"
+        self.client.post(url, {"reason": "typo"}, format="json")
+        Report.objects.update(status=Report.Status.FIXED, resolved_at=timezone.now(), thanked_at=timezone.now())
+        r = self.client.post(url, {"reason": "formula", "note": None}, format="json")
+        self.assertEqual(r.status_code, 200)
+        report = Report.objects.get(user=self.user, question=q)
+        self.assertEqual((report.status, report.reason, report.note, report.thanked_at), ("open", "formula", "", None))
+
+    def test_panel_shows_the_quote_and_opens_at_it(self):
+        from django.test import Client
+
+        self.client.post(f"/api/v1/nodes/{self.section.id}/report/", {"reason": "typo", "quote": "غلط در جمله", "mode": "full", "box": "تعریف"}, format="json")
+        admin = User.objects.create_superuser("09120000090", password="Pass-12345")
+        c = Client()
+        c.force_login(admin)
+        page = c.get("/admin/learning/report/").content.decode()
+        self.assertIn("غلط در جمله", page)
+        self.assertIn("درسنامه، تعریف", page)
+        self.assertIn("&amp;m=full&amp;find=", page)
+
+    def test_fixed_reports_are_told_once(self):
+        from apps.learning.models import Report
+
+        self.client.post(f"/api/v1/nodes/{self.section.id}/report/", {"reason": "typo", "quote": "غلطی در متن"}, format="json")
+        url = "/api/v1/me/reports/fixed/"
+        self.assertEqual(self.client.post(url).data["fixed"], [])
+        Report.objects.update(status=Report.Status.FIXED, resolved_at=timezone.now())
+        self.assertEqual([x["about"] for x in self.client.post(url).data["fixed"]], ["غلطی در متن"])
+        self.assertEqual(self.client.post(url).data["fixed"], [])
+
     def test_exam_focus_on_mistakes_takes_up_to_half_from_them(self):
         qs = list(Question.objects.filter(node__path__startswith=self.chapter.path, is_archived=False))
         self.assertGreaterEqual(len(qs), 5)

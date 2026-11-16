@@ -281,11 +281,14 @@ export function FlashcardDeck({
               <Text style={styles.testsText}>تست‌های این نکته ({toPersianDigits(card!.question_ids!.length)})</Text>
             </Pressable>
           )}
-          <ReportButton
-            reported={reported.includes(card!.id)}
-            label="گزارش اشکال در این کارت"
-            onPress={() => requireLogin(user, 'برای گزارش اشکال وارد شوید.') && setReportOpen(true)}
-          />
+          {/* On the back only: the point is read before it is judged. */}
+          {flipped && (
+            <ReportButton
+              reported={reported.includes(card!.id)}
+              label="گزارش اشکال در این کارت"
+              onPress={() => requireLogin(user, 'برای گزارش اشکال وارد شوید.') && setReportOpen(true)}
+            />
+          )}
         </View>
       </View>
       <View style={styles.bar}>
@@ -304,6 +307,7 @@ export function FlashcardDeck({
       <ReportSheet
         visible={reportOpen}
         onClose={() => setReportOpen(false)}
+        kind="flashcard"
         onSend={(reason, note) => endpoints.reportFlashcard(card!.id, reason, note)}
         onDone={() => setReported((r) => [...r, card!.id])}
       />

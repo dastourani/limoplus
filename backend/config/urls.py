@@ -61,6 +61,7 @@ api = [
     path("questions/<int:question_id>/report/", study.report_question),
     path("flashcards/<int:flashcard_id>/report/", study.report_flashcard),
     path("nodes/<int:node_id>/report/", study.report_node),
+    path("me/reports/fixed/", study.reports_fixed),
     path("nodes/<int:node_id>/exams/", study.start_exam),
     path("nodes/<int:node_id>/exam-info/", study.exam_info),
     path("exams/<int:attempt_id>/", study.exam_detail),
