@@ -11,6 +11,8 @@ import { Icon, IconBadge } from '../../components/Icon';
 import { Button, ErrorState, Header, Loading, Screen, Sheet } from '../../components/ui';
 import { Watermark } from '../../components/Watermark';
 import { useFeedback } from '../../components/Feedback';
+import { copyLater } from '../../lib/clipboard';
+import { MAX_COPY_CHARS } from '../../lib/renderMarkdown';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { useGuestNudge } from '../../lib/guestNudge';
 import { useStudyTimer } from '../../lib/studyTime';
@@ -352,13 +354,15 @@ export default function Section() {
       const quote = e.text.trim() || selection;
       if (e.action === 'report') openReport(quote, e.box ?? selectionBox);
       else if (!quote) flash('متنی انتخاب نشده است.');
+      else if (e.action === 'copy') copyText(quote);
       else if (e.action === 'highlight') addHighlight('yellow', quote);
       else {
         setNoteText('');
         setNoteSheet({ quote });
       }
     }
-    else if (e.type === 'copy_blocked') flash(Platform.OS === 'web' ? 'کپی متن درس مجاز نیست.' : 'کپی متن طولانی مجاز نیست.');
+    else if (e.type === 'copy') copyText(e.text);
+    else if (e.type === 'copy_blocked') flash('کپی متن طولانی مجاز نیست.', toNotes(e.text || selection));
     else if (e.type === 'highlights') setMissing(e.missing);
     else if (e.type === 'note') {
       const n = notes.find((x) => x.id === e.id);
@@ -384,6 +388,37 @@ export default function Section() {
     () => notes.filter((n) => n.quote && n.mode === mode).map((n) => ({ id: n.id, quote: n.quote, color: n.color, body: n.body })),
     [notes, mode],
   );
+
+  // «به یادداشت‌هایم»: instead of a copy, the text is kept as a highlight in the learner's notes (not counted).
+  const toNotes = (quote: string) => (quote ? { label: 'به یادداشت‌هایم', onPress: () => addHighlight('yellow', quote) } : undefined);
+
+  /** Copy a piece of the lesson: the server counts it (30 a day) and gives it back with an invisible fingerprint.
+   * Called right inside the copy event or tap: browsers only allow writing to the clipboard there. */
+  const copyText = (quote: string) => {
+    if (!node || !quote) return;
+    if (quote.length > MAX_COPY_CHARS) {
+      flash('کپی متن طولانی مجاز نیست.', toNotes(quote));
+      return;
+    }
+    if (!requireLogin(user, 'برای کپی متن وارد شوید.')) return;
+    if (offline) {
+      flash('کپی متن فقط با اینترنت ممکن است.', toNotes(quote));
+      return;
+    }
+    let done: { used: number; limit: number } | null = null;
+    const text = endpoints.copyText(node.id, quote, mode).then((r) => {
+      done = r;
+      return r.text;
+    });
+    copyLater(text)
+      .then(() => {
+        const r = done!;
+        flash(`کپی شد؛ امروز ${toPersianDigits(r.used)} از ${toPersianDigits(r.limit)}`);
+        setSelection('');
+        reader.current?.clearSelection();
+      })
+      .catch((err) => flash(err instanceof ApiError ? err.message : 'کپی نشد.', toNotes(quote)));
+  };
 
   const addHighlight = async (color: string, quote = selection) => {
     if (!node || !quote || !requireLogin(user, 'برای هایلایت و یادداشت وارد شوید؛ روی همه‌ی دستگاه‌هایتان می‌ماند.')) return;
@@ -628,6 +663,9 @@ export default function Section() {
               style={styles.selNote}
             >
               <Text style={styles.selNoteText}>یادداشت</Text>
+            </Pressable>
+            <Pressable onPress={() => copyText(selection)} style={styles.selNote} accessibilityRole="button">
+              <Text style={styles.selNoteText}>کپی</Text>
             </Pressable>
             <Pressable onPress={() => openReport(selection, selectionBox)} style={styles.selNote} accessibilityRole="button">
               <Text style={styles.selNoteText}>گزارش اشکال</Text>

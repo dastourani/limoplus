@@ -77,17 +77,16 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
     requestAnimationFrame(() => handler.current?.({ type: 'ready' }));
   }, [compact, html]);
 
-  // In a browser the lesson cannot be copied at all (the phone app has no copy in its selection menu either): copy and
-  // cut are refused, the browser's own menu and dragging text out are off, and printing shows a notice instead.
+  // In a browser, copying goes through the reader script (counted and fingerprinted, like «کپی» in the phone app); cut,
+  // the browser's own menu and dragging text out are off, and printing shows a notice instead.
   useEffect(() => {
     const el = root.current;
     if (compact || !el) return;
     const refuse = (e: Event) => {
       e.preventDefault();
       e.stopPropagation();
-      if (e.type === 'copy' || e.type === 'cut') handler.current?.({ type: 'copy_blocked' });
     };
-    const events = ['copy', 'cut', 'contextmenu', 'dragstart'];
+    const events = ['cut', 'contextmenu', 'dragstart'];
     events.forEach((n) => el.addEventListener(n, refuse, true));
     if (!document.getElementById('limo-no-print')) {
       const style = document.createElement('style');

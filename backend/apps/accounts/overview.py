@@ -28,6 +28,17 @@ def _stat(label, value):
     return format_html('<div class="lp-ov-stat"><b>{}</b><span>{}</span></div>', value, label)
 
 
+def _risk_stat(user):
+    """«امتیاز خطر» from apps.guard (copies of lesson text, fingerprints found, device changes)."""
+    from apps.guard.core import risk_of
+
+    r = risk_of(user)
+    color = {"high": "red", "mid": "yellow", "low": "green"}[r["level"]]
+    value = format_html('<a href="{}">{}</a>', reverse("admin:guard_tracker_changelist"),
+                        badges((f"{fa_number(r['score'])} از ۱۰۰", color)))
+    return _stat("امتیاز خطر (کپی)", value)
+
+
 def user_overview(user):
     from apps.commerce.admin import entitlement_left, entitlement_scope, entitlement_source, toman, when
     from apps.commerce.models import Entitlement, Order
@@ -74,6 +85,7 @@ def user_overview(user):
         _stat("آزمون‌ها", fa_number(exams["n"]) + (f" (میانگین {fa_number(round(exams['avg']))}٪)" if exams["avg"] is not None else "")),
         _stat("فلش‌کارت‌های در جعبه", fa_number(FlashcardReview.objects.filter(user=user).count())),
         _stat("یادداشت و هایلایت", fa_number(Note.objects.filter(user=user, is_archived=False).count())),
+        _risk_stat(user),
     ]
     study_card = _card("مطالعه", format_html('<div class="lp-ov-stats">{}</div>', format_html_join("", "{}", ((x,) for x in stats))))
 

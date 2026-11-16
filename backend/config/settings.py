@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     "apps.commerce",
     "apps.releases",
     "apps.website",
+    "apps.guard",
 ]
 
 MIDDLEWARE = [

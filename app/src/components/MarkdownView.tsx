@@ -17,12 +17,15 @@ export type ReaderEvent =
   /** box: where the words are («تعریف»، «لاتین › ترجمه»…), for «گزارش اشکال». */
   | { type: 'selection'; text: string; box?: string }
   /** «هایلایت»، «یادداشت» or «گزارش اشکال» chosen in the phone's own selection menu, with the selected quote. */
-  | { type: 'menu'; action: 'highlight' | 'note' | 'report'; text: string; box?: string }
+  | { type: 'menu'; action: 'copy' | 'highlight' | 'note' | 'report'; text: string; box?: string }
   /** A picture or plot held (right-clicked): report a mistake in it. */
   | { type: 'media'; kind: 'image' | 'plot'; text: string; box?: string }
   /** The flag of a summary part: report a mistake in that part. */
   | { type: 'flag'; text: string; box?: string }
-  | { type: 'copy_blocked' }
+  /** Copy (Ctrl+C or «کپی» in the menu): the app asks the server and puts the fingerprinted text on the clipboard. */
+  | { type: 'copy'; text: string }
+  /** Too long to copy: offered «به یادداشت‌هایم» instead. */
+  | { type: 'copy_blocked'; text?: string }
   | { type: 'note'; id: number }
   | { type: 'highlights'; missing: number[] }
   | { type: 'jump'; q: string }
@@ -72,6 +75,7 @@ type Props = {
 export type MarkdownViewHandle = { clearSelection: () => void };
 
 const SELECTION_MENU = [
+  { key: 'copy', label: 'کپی' },
   { key: 'highlight', label: 'هایلایت' },
   { key: 'note', label: 'یادداشت' },
   { key: 'report', label: 'گزارش اشکال' },
@@ -176,7 +180,7 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
             if (compact && (message.value ?? 0) > 0) setHeight(message.value!);
           } else onEvent?.(message as unknown as ReaderEvent);
         }}
-        // The phone's selection menu offers the app's own actions (copying a lesson is limited anyway).
+        // The phone's selection menu offers the app's own actions; «کپی» goes through the app (counted, fingerprinted).
         menuItems={compact ? undefined : SELECTION_MENU}
         onCustomMenuSelection={(event) => {
           const { key, selectedText } = event.nativeEvent;

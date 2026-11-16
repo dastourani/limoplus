@@ -164,6 +164,10 @@ export const QUIZ_CSS = `
 /** Runs inside the question page as a function body with (root, post). */
 export const QUIZ_SCRIPT = `
 var state = null, tab = 0;
+// Tests, choices and explanations are never copied (lesson text can be, counted and fingerprinted).
+['copy', 'cut', 'contextmenu', 'dragstart', 'selectstart'].forEach(function (n) {
+  root.addEventListener(n, function (e) { e.preventDefault(); }, true);
+});
 root.addEventListener('click', function (e) {
   var t = e.target;
   var choice = t.closest && t.closest('.choice');

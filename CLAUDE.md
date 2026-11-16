@@ -20,7 +20,7 @@ Code, identifiers and commit messages are in English.
 - App screens: `app/src/app/` (Expo Router). Tabs in `(tabs)/` (custom RTL bar): home, library (reading,
   bookmarks, notes), stats, profile. Others: welcome (major), login → verify (OTP; session-limit chooser) →
   edit-profile, devices, book (progress, buy, offline download), section (summary/full, highlights and notes,
-  bookmark, night mode, font size, watermark, copy limit, offline fallback), quiz (practice, resume, reset,
+  bookmark, night mode, font size, watermark, counted copy, offline fallback), quiz (practice, resume, reset,
   report), exam (timed, negative marking) and exam-result, exams (history), flashcards (Leitner, report, share as
   image), buy/[slug] and payment-result (deep link `limookhan://payment-result`), offline, settings (server address).
   Guests can read free parts; `requireLogin()` sends them to login when a feature needs an account.
@@ -107,6 +107,14 @@ Code, identifiers and commit messages are in English.
   covers and formulas drawn in the browser by `catalog/limo-preview.js`. Editable in the panel: «تنظیمات سایت», «صفحه‌های
   سایت», «پرسش‌های پرتکرار». On `WEBSITE_HOSTS` the site is at the root (`config/website_urls.py`, chosen by
   `WebsiteHostMiddleware`); elsewhere at `/site/`. Its links to the app go to `APP_URL`.
+- Copy protection (`apps/guard`): lesson text is copied only through the app (`POST nodes/<id>/copy/`; web: the copy event,
+  Android: «کپی» in the selection menu, both via `lib/clipboard`), 30 a day, at most `MAX_COPY_CHARS`; too long, over quota or
+  offline offers «به یادداشت‌هایم» (a highlight). Each `CopyEvent` is a pointer (section, `ChapterRevision`, offsets, hash);
+  the text is kept zlib-packed only when the pointer does not give it back. Pointed revisions are never pruned or overwritten.
+  The copied text carries an invisible fingerprint (`guard/fingerprint.py`; never U+200C). Panel «ردیاب متن» finds who copied
+  a pasted text, lists the risk score (also on the user page) and has the «هشدارهای بله» switch (off by default; instant
+  alerts + a nightly summary with device changes, `guard/alerts.py`). Tests, choices and explanations cannot be copied
+  (`QUIZ_SCRIPT`); share-as-image only for `is_sample` tests.
 - Access rules live only in `apps/catalog/access.py` (`AccessMap`): visible = node and all ancestors published and
   not archived; readable = visible and (staff, or free node/ancestor, or owned / covered by an active subscription — `owns_book`).
   Every content endpoint must use it.
