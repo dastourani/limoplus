@@ -8,7 +8,7 @@ export function ScoreTrend({ scores, height = 54 }: { scores: number[]; height?:
   return (
     <View style={[styles.trend, { height }]} accessibilityLabel={`روند نمره‌ها: ${scores.map((s) => toPersianDigits(Math.round(s))).join('، ')}`}>
       {scores.map((s, i) => (
-        <View key={i} style={[styles.bar, { height: Math.max(3, (Math.max(0, s) / 100) * height), opacity: i === scores.length - 1 ? 1 : 0.55 }]} />
+        <View key={i} style={[styles.bar, { height: Math.max(3, (Math.max(0, s) / 100) * height), backgroundColor: i === scores.length - 1 ? '#E0B000' : colors.lemon, opacity: i === scores.length - 1 ? 1 : 0.6 }]} />
       ))}
     </View>
   );

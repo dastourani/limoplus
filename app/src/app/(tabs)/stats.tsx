@@ -90,21 +90,21 @@ export default function StatsTab() {
       <View style={{ height: 20 }} />
       <Section icon="gauge" title="در یک نگاه" help={HELP.glance}>
         <View style={styles.tiles}>
-          <Glance accent icon="flame" label="روز پشت‌سرهم" value={data.streak_days} />
-          <Glance icon="target" label="دقت تست‌ها" value={data.accuracy} format={(n) => `${toPersianDigits(Math.round(n))}٪`} />
-          <Glance icon="book-open" label="بخش خوانده‌شده" value={data.sections_done} />
-          <Glance icon="circle-check" label="تست زده‌شده" value={data.answers} />
-          <Glance icon="layers" label="کارت به‌خاطرسپرده" value={data.cards_mastered} />
-          <Glance icon="trophy" label="آزمون داده‌شده" value={data.exams} />
+          <Glance accent icon="flame" order={0} label="روز پشت‌سرهم" value={data.streak_days} />
+          <Glance icon="target" order={1} label="دقت تست‌ها" value={data.accuracy} format={(n) => `${toPersianDigits(Math.round(n))}٪`} />
+          <Glance icon="book-open" order={2} label="بخش خوانده‌شده" value={data.sections_done} />
+          <Glance icon="circle-check" order={3} label="تست زده‌شده" value={data.answers} />
+          <Glance icon="layers" order={4} label="کارت به‌خاطرسپرده" value={data.cards_mastered} />
+          <Glance icon="trophy" order={5} label="آزمون داده‌شده" value={data.exams} />
         </View>
       </Section>
       <Section icon="calendar" title="این هفته" help={HELP.week}>
         <WeekCard
           seconds={week.seconds}
           rows={[
-            { label: 'زمان', now: week.seconds ? studyDuration(week.seconds) : '—', up: up(week.seconds, before.seconds) },
-            { label: 'تست', now: week.answers ? toPersianDigits(week.answers) : '—', up: up(week.answers, before.answers) },
-            { label: 'بخش', now: week.sections ? toPersianDigits(week.sections) : '—', up: up(week.sections, before.sections) },
+            { label: 'زمان', now: week.seconds ? studyDuration(week.seconds) : '—', before: before.seconds ? studyDuration(before.seconds) : '—', up: up(week.seconds, before.seconds) },
+            { label: 'تست', now: week.answers ? toPersianDigits(week.answers) : '—', before: toPersianDigits(before.answers), up: up(week.answers, before.answers) },
+            { label: 'بخش', now: week.sections ? toPersianDigits(week.sections) : '—', before: toPersianDigits(before.sections), up: up(week.sections, before.sections) },
           ]}
         />
       </Section>
@@ -296,7 +296,7 @@ function buildInsights(data: Stats, week: { seconds: number; answers: number }, 
       kicker: 'بهترین ساعت',
       text: (
         <>
-          بیشتر تست‌هایت را بین <Strong>{`${toPersianDigits(b.from)} تا ${toPersianDigits(b.to)}`}</Strong> می‌زنی.
+          بیشتر تست‌هایت را بین ساعت <Strong>{`${toPersianDigits(b.from)} تا ${toPersianDigits(b.to)}`}</Strong> می‌زنی.
         </>
       ),
     });

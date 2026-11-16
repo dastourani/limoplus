@@ -167,6 +167,25 @@ class ListContentTests(Base):
         self.assertIn("جواب غلط است", page)
         self.assertIn(f"/admin/catalog/book/chapter/{self.ch1.pk}/#q=q1", page)
 
+    def test_report_on_an_archived_section(self):
+        live = Report.objects.create(user=self.learner, question=self.question(1), reason=Report.Reason.choices[0][0], note="زنده")
+        gone = Report.objects.create(user=self.learner, node=self.sec2, reason=Report.Reason.choices[0][0], quote="متن قدیمی")
+        self.sec2.is_archived = True
+        self.sec2.save(update_fields=["is_archived"])
+        _, page = self.queries("/admin/learning/report/")
+        self.assertEqual(page.count("بخش بایگانی‌شده</span>"), 1)
+        self.assertIn(f"/admin/catalog/book/chapter/{self.ch2.pk}/#s=s2&amp;gone=1&amp;r=", page)
+        # The filter picks only reports of archived sections, to close them all at once.
+        _, page = self.queries("/admin/learning/report/?gone=yes")
+        self.assertIn("متن قدیمی", page)
+        self.assertNotIn("زنده", page)
+        response = self.client.post("/admin/learning/report/?gone=yes", {"action": "mark_rejected", "_selected_action": [gone.pk]})
+        self.assertEqual(response.status_code, 302)
+        gone.refresh_from_db()
+        live.refresh_from_db()
+        self.assertEqual(gone.status, Report.Status.REJECTED)
+        self.assertEqual(live.status, Report.Status.OPEN)
+
     def test_share_settings_opens_the_form(self):
         response = self.client.get("/admin/catalog/sharesettings/")
         row = ShareSettings.objects.get()
