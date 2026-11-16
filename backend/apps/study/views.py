@@ -1,3 +1,4 @@
+import math
 import random
 from datetime import timedelta
 
@@ -865,6 +866,41 @@ def _improvement(user):
     return improvement(user)
 
 
+
+
+def _insights(user, books) -> dict:
+    """For the stats page's cards: when each book in progress will be finished at the pace of the last 14 days, and
+    the learner's best time of day (from the tests answered in the last 60 days)."""
+    today = timezone.localdate()
+    since = timezone.now() - timedelta(days=14)
+    step = ContentNode.steplen
+    recent: dict[str, int] = {}
+    for path in SectionProgress.objects.filter(user=user, is_done=True, updated_at__gte=since, node__kind=ContentNode.Kind.SECTION) \
+            .values_list("node__path", flat=True):
+        recent[path[:step]] = recent.get(path[:step], 0) + 1
+    slugs = {b.path: b.slug for b in ContentNode.objects.filter(depth=1, path__in=list(recent))}
+    forecast = []
+    for b in books:
+        left = b["total"] - b["done"]
+        path = next((p for p, sl in slugs.items() if sl == b["slug"]), "")
+        pace = recent.get(path, 0) / 14  # sections a day
+        if left > 0 and pace > 0:
+            days_left = math.ceil(left / pace)
+            if days_left <= 365:
+                forecast.append({"slug": b["slug"], "title": b["title"], "left": left, "days": days_left,
+                                 "finish_on": today + timedelta(days=days_left)})
+    forecast.sort(key=lambda f: f["days"])
+
+    best = None
+    hours = [timezone.localtime(t).hour for t in QuizAnswer.objects.filter(
+        user=user, answered_at__gte=timezone.now() - timedelta(days=60)).values_list("answered_at", flat=True)[:5000]]
+    if len(hours) >= 20:
+        windows = [sum(1 for h in hours if h // 2 == w) for w in range(12)]
+        w = max(range(12), key=lambda i: windows[i])
+        best = {"from": w * 2, "to": w * 2 + 2, "share": round(100 * windows[w] / len(hours))}
+    return {"forecast": forecast[:3], "best_hours": best}
+
+
 @api_view(["GET"])
 def stats(request):
     user = request.user
@@ -943,6 +979,7 @@ def stats(request):
             "study_days": len(day_set),
             "last_14_days": last_14,
             "year": _year(user, days),
+            "insights": _insights(user, books),
             "books": books,
             "words": words,
             "weak_sections": [w for w in weak if w["accuracy"] < 70],

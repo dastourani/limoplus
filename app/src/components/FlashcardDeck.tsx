@@ -26,6 +26,7 @@ import { ReportButton } from './Tags';
 import { Text } from './Text';
 import { Button, Header, Screen } from './ui';
 import { Watermark } from './Watermark';
+import { HelpTip } from './HelpTip';
 
 const DEFAULT_HINTS: GradeHints = { again: 0, hard: 1, good: 1, easy: 3 };
 const GRADES: { grade: Grade; label: string; color: string; soft: string }[] = [
@@ -177,7 +178,7 @@ export function FlashcardDeck({
   if (done) {
     return (
       <Screen>
-        <Header title={title} />
+        <Header title={title} right={<HelpTip title="جعبه‌های مرور" text="کارت‌ها در شش جعبه‌اند (روش لایتنر). کارت تازه در جعبه‌ی ۱ است. «خوب» یک جعبه و «آسان» دو جعبه جلو می‌برد و کارت دیرتر برمی‌گردد: جعبه‌ی ۲ فردا، ۳ سه روز بعد، ۴ یک هفته، ۵ دو هفته، ۶ یک ماه. «سخت» در همان جعبه می‌ماند و فردا برمی‌گردد؛ «دوباره» به جعبه‌ی ۱ برمی‌گردد. کارت از جعبه‌ی ۴ به بعد «به‌خاطرسپرده» حساب می‌شود." />} />
         <View style={styles.done}>
           <LemonProgress parts={parts} size={150} />
           {puzzle && user && (

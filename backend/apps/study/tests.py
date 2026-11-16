@@ -250,6 +250,16 @@ class StudyTests(TestCase):
         self.assertEqual(s["year"]["days"][0]["sections"], 1)
         self.assertEqual(s["year"]["longest_streak"], 1)
 
+    def test_insights_forecast_and_best_hours(self):
+        self.client.post(f"/api/v1/nodes/{self.section.id}/progress/", {"done": True}, format="json")
+        s = self.client.get("/api/v1/me/stats/").data
+        forecast = s["insights"]["forecast"]
+        book = s["books"][0]
+        if book["total"] > book["done"]:
+            self.assertEqual(forecast[0]["left"], book["total"] - book["done"])
+            self.assertEqual(forecast[0]["days"], (book["total"] - book["done"]) * 14)  # one section in 14 days
+        self.assertIsNone(s["insights"]["best_hours"])  # too few answers to say
+
     def test_book_progress_never_passes_100(self):
         """Read chapter introductions and a section archived later are not counted: done ≤ total, always."""
         from apps.study.models import SectionProgress
@@ -840,6 +850,16 @@ class StudyTimeTests(TestCase):
         self.assertEqual(mine["time_seconds"], 3200 + 900)
         self.assertEqual(mine["chapter_seconds"][str(self.chapter.id)], 3200 + 900)
         self.assertEqual(self.client.get("/api/v1/me/stats/").data["time"]["week_seconds"], 4100)
+
+    def test_today_has_this_week_and_the_week_before(self):
+        from datetime import timedelta
+
+        from .models import StudyTime
+
+        d = timezone.localdate()
+        for ago, sec in ((0, 600), (6, 300), (7, 900), (13, 100), (14, 5000)):
+            StudyTime.objects.create(user=self.user, node=self.section, book=self.chapter.get_parent(), day=d - timedelta(days=ago), kind="read", seconds=sec)
+        self.assertEqual(self.client.get("/api/v1/me/today/").data["week"], {"seconds": 900, "before": 1000})
 
     def test_a_report_sent_twice_counts_once(self):
         from .models import StudyTime

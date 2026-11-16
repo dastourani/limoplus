@@ -29,6 +29,7 @@ import { studyDuration } from '../../lib/duration';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
 import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
+import { HelpTip } from '../../components/HelpTip';
 
 export default function Book() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -211,7 +212,10 @@ export default function Book() {
                   <Text style={[styles.statValue, { color: top.value }]}>
                     {toPersianDigits(book.words.learned)} از {toPersianDigits(book.words.total)}
                   </Text>
-                  <Text style={[styles.statLabel, { color: top.label }]}>لغت حفظ‌شده</Text>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
+                    <Text style={[styles.statLabel, { color: top.label }]}>لغت حفظ‌شده</Text>
+                    <HelpTip size={18} title="لغت حفظ‌شده" text="فلش‌کارت‌های لغت این کتاب که به جعبه‌ی ۴ یا بالاتر مرور رسیده‌اند، یعنی چند بار پشت‌سرهم بلدشان بوده‌ای." />
+                  </View>
                 </View>
               )}
             </View>
@@ -246,9 +250,12 @@ export default function Book() {
             <View style={[styles.cta, styles.ctaRow]}>
               <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={54} />
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[styles.ctaSmall, rtl]}>
-                  {user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش تمام‌شده` : 'برای ذخیره‌ی پیشرفت وارد شو'}
-                </Text>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.ctaSmall, rtl]}>
+                    {user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش تمام‌شده` : 'برای ذخیره‌ی پیشرفت وارد شو'}
+                  </Text>
+                  {!!user && <HelpTip size={18} title="لیموی پیشرفت" text="هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای." />}
+                </View>
                 <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{last ? last.title : 'از اول کتاب شروع کن'}</Text>
               </View>
               <Pressable onPress={() => (last ? router.push(`/section/${last.id}`) : startFree())} style={styles.ctaButton} accessibilityRole="button">
@@ -403,6 +410,7 @@ export default function Book() {
                 <Text style={[styles.aboutTitle, rtl]}>
                   کنکورهای سال‌های قبل ({toPersianDigits(past.exams.length)} کنکور، {toPersianDigits(past.total)} تست)
                 </Text>
+                <HelpTip title="آمادگی برای کنکورها" text="لیموی کنار هر کنکور «آمادگی» توست: چند درصد تست‌های آن کنکور از فصل‌هایی است که تمامشان کرده‌ای. هر چه پرتر، آن کنکور را راحت‌تر می‌توانی بزنی." />
                 <Icon name="chevron-down" size={20} color={colors.muted} />
               </Pressable>
               {pastOpen && (
