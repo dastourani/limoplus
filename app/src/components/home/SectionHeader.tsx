@@ -4,11 +4,14 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { colors, rtl } from '../../theme';
+import { IconBadge, type IconName } from '../Icon';
 import { Text } from '../Text';
 
-export function SectionHeader({ title, sub, side }: { title: string; sub?: string | null; side?: ReactNode }) {
+/** The same look as the stats page: an icon in a lemon circle beside the title (when given). */
+export function SectionHeader({ title, sub, side, icon }: { title: string; sub?: string | null; side?: ReactNode; icon?: IconName }) {
   return (
     <View style={styles.row}>
+      {!!icon && <IconBadge name={icon} size={30} />}
       <View style={{ flex: 1, gap: 1 }}>
         <Text style={[styles.title, rtl]} accessibilityRole="header">
           {title}
@@ -22,7 +25,7 @@ export function SectionHeader({ title, sub, side }: { title: string; sub?: strin
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-  title: { fontSize: 18, fontWeight: '900', color: colors.ink },
+  title: { fontSize: 17, fontWeight: '900', color: colors.ink },
   sub: { fontSize: 12, color: colors.muted },
   side: { fontSize: 12, color: colors.muted },
 });

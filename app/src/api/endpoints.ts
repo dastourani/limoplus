@@ -211,6 +211,8 @@ export type Today = {
   tasks?: TodayTask[];
   /** «نیاز به مرور»: sections with wrong answers still open, or finished long ago (at most three). */
   needs_review?: { items: NeedsReviewItem[]; total: number };
+  /** Study seconds in the last 7 days and the 7 before (the greeting's line). */
+  week?: { seconds: number; before: number };
 };
 export type NeedsReviewItem = { id: number; title: string; book_title: string; book_slug: string; reason: 'mistakes' | 'old'; mistakes: number; days: number; question_ids?: number[] };
 export type TodayTask =
@@ -402,6 +404,11 @@ export type Stats = {
   weak_sections: { id: number; title: string; answers: number; accuracy: number }[];
   /** Of the questions got wrong in the last `days` days: answered right later, and settled. */
   improvement?: { days: number; wrong: number; fixed: number; settled: number };
+  /** The stats page's cards: finish dates at the recent pace, and the best time of day for tests. */
+  insights?: {
+    forecast: { slug: string; title: string; left: number; days: number; finish_on: string }[];
+    best_hours: { from: number; to: number; share: number } | null;
+  };
   /** «زمان مطالعه» in exact seconds (rounded only when shown). */
   time?: StudyTimeTotals;
 };

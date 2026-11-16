@@ -21,6 +21,7 @@ import { examSizes } from '../../lib/examSizes';
 import { seeded } from '../../lib/shuffle';
 import { type QuizViewState } from '../../lib/quizHtml';
 import { colors, rtl, toPersianDigits } from '../../theme';
+import { HelpTip } from '../../components/HelpTip';
 
 /** Sent when the number of questions could not be learned: the server gives all there are (it never gives more). */
 const ALL_THERE_ARE = 100;
@@ -258,6 +259,7 @@ export default function Exam() {
               )}
               <View style={styles.switchRow}>
                 <Text style={[styles.label, rtl, { flex: 1 }]}>نمره‌ی منفی (هر ۳ غلط، ۱ درست را خنثی می‌کند)</Text>
+                <HelpTip title="نمره‌ی منفی" text="در آزمون با نمره‌ی منفی، هر پاسخ غلط یک‌سوم نمره‌ی یک پاسخ درست را کم می‌کند (مثل کنکور). پس اگر مطمئن نیستی، بی‌پاسخ گذاشتن بهتر از حدس است. نمره = (درست − غلط÷۳) ÷ همه‌ی تست‌ها." />
                 <Switch value={negative} onValueChange={setNegative} trackColor={{ true: colors.green }} />
               </View>
             </Card>
@@ -302,6 +304,7 @@ export default function Exam() {
             </View>
             <View style={styles.switchRow}>
               <Text style={[styles.label, rtl, { flex: 1 }]}>نمره‌ی منفی (هر ۳ غلط، ۱ درست را خنثی می‌کند)</Text>
+                <HelpTip title="نمره‌ی منفی" text="در آزمون با نمره‌ی منفی، هر پاسخ غلط یک‌سوم نمره‌ی یک پاسخ درست را کم می‌کند (مثل کنکور). پس اگر مطمئن نیستی، بی‌پاسخ گذاشتن بهتر از حدس است. نمره = (درست − غلط÷۳) ÷ همه‌ی تست‌ها." />
               <Switch value={negative} onValueChange={setNegative} trackColor={{ true: colors.green }} />
             </View>
             {/* Up to half of the questions from the learner's own mistakes; off by default so a plain exam shows the true level. */}

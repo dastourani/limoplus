@@ -5,10 +5,11 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { FlatList, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useHomeMax, useWide } from '../../lib/layout';
 
-import { endpoints, type Library, type Today, type BookListItem } from '../../api/endpoints';
+import { endpoints, type Library, type Today, type BookListItem, type TodayTask } from '../../api/endpoints';
+import { studyDuration } from '../../lib/duration';
 import { BannerCarousel } from '../../components/BannerCarousel';
 import { BookCover } from '../../components/BookCover';
-import { Icon, IconBadge } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
 import { ErrorState, Loading, Screen, usePullRefresh, Chip } from '../../components/ui';
@@ -166,7 +167,7 @@ export default function Home() {
           <LemonSlice size={36} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.hello, rtl]}>سلام{user?.first_name ? ` ${user.first_name}` : ''}!</Text>
-            <Text style={[styles.muted, rtl]}>امروز کدام لیمو را می‌خوانی؟</Text>
+            <Text style={[styles.muted, rtl]}>{greetLine(today?.week)}</Text>
           </View>
           <Pressable onPress={() => router.push('/search')} style={styles.searchButton} accessibilityRole="button" accessibilityLabel="جست‌وجو">
             <Icon name="search" size={22} color={colors.ink} />
@@ -192,7 +193,7 @@ export default function Home() {
       key: 'reading',
       el: (
         <View style={styles.section}>
-            <SectionHeader title="ادامه‌ی خواندن" side={reading.length > 1 ? `${toPersianDigits(reading.length)} کتاب` : undefined} />
+            <SectionHeader icon="book-open" title="ادامه‌ی خواندن" side={reading.length > 1 ? `${toPersianDigits(reading.length)} کتاب` : undefined} />
             <ReadingCards items={reading} />
             {!user && (
               // A guest's place lives only on this device: a separate, quiet link to keep it everywhere.
@@ -203,69 +204,79 @@ export default function Home() {
           </View>
       ),
     });
-  if (user && today)
+  if (user && today && (today.tasks?.length || today.needs_review?.items.length || today.comeback))
     blocks.push({
       key: 'today',
       el: (
         <View style={styles.section}>
-            <SectionHeader
-              title="برنامه‌ی امروز"
-              sub={
-                today.tasks?.length
-                  ? `${toPersianDigits(today.tasks.length)} کار، حدود ${toPersianDigits(today.minutes)} دقیقه`
-                  : null
-              }
-              side={
-                <Pressable onPress={() => router.push('/quick')} style={styles.quick} accessibilityRole="button" accessibilityLabel="فقط ۵ دقیقه وقت دارم">
-                  <Icon name="timer" size={15} color={colors.ink} />
-                  <Text style={styles.quickText}>۵ دقیقه وقت دارم</Text>
-                </Pressable>
-              }
-            />
+          <SectionHeader
+            icon="list-checks"
+            title="برنامه‌ی امروز"
+            sub={today.tasks?.length ? `${toPersianDigits(today.tasks.length)} کار، حدود ${toPersianDigits(today.minutes)} دقیقه` : null}
+            side={
+              <Pressable onPress={() => router.push('/quick')} style={styles.quick} accessibilityRole="button" accessibilityLabel="فقط ۵ دقیقه وقت دارم">
+                <Icon name="timer" size={15} color={colors.ink} />
+                <Text style={styles.quickText}>۵ دقیقه وقت دارم</Text>
+              </Pressable>
+            }
+          />
+          {/* One card for the day: the planned jobs, then the sections that want another look. */}
+          <View style={styles.planCard}>
+            <PlanProgress tasks={today.tasks ?? []} />
             {today.comeback && (
               <Text style={[styles.note, rtl]}>
                 خوش برگشتی! {toPersianDigits(today.away_days)} روز نبودی؛ یک شروع کوتاه برایت چیدیم، نه همه‌ی کارهای عقب‌افتاده.
               </Text>
             )}
             <TodayTiles tasks={today.tasks ?? []} onError={() => toast('شروع مرور ممکن نشد؛ دوباره امتحان کن.')} />
+            {!!today.needs_review?.items.length && (
+              <View style={styles.needsList}>
+                <Text style={[styles.planSub, rtl]}>یک نگاه دوباره</Text>
+                {today.needs_review.items.map((item, i) => (
+                  <Pressable
+                    key={item.id}
+                    onPress={() =>
+                      // Wrong answers: just those tests; a section read long ago: the section itself.
+                      item.reason === 'mistakes' && item.question_ids?.length
+                        ? router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: String(item.id), ids: item.question_ids.join(',') } })
+                        : router.push(`/section/${item.id}`)
+                    }
+                    style={[styles.needsRow, i > 0 && styles.needsRowLine]}
+                    accessibilityRole="button"
+                  >
+                    <Icon name={item.reason === 'mistakes' ? 'notebook-pen' : 'rotate-ccw'} size={18} color={item.reason === 'mistakes' ? colors.red : colors.muted} />
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={[styles.needsTitle, rtl]} numberOfLines={1}>{item.title}</Text>
+                      <Text style={[styles.needsSub, rtl]} numberOfLines={1}>
+                        {item.reason === 'mistakes' ? `${toPersianDigits(item.mistakes)} تست غلط مانده` : `${toPersianDigits(item.days)} روز پیش خواندی`}
+                        {`، ${item.book_title}`}
+                      </Text>
+                    </View>
+                    <Icon name="chevron-left" size={18} color={colors.muted} />
+                  </Pressable>
+                ))}
+              </View>
+            )}
             {!!today.reviews_waiting && (
               <Text style={[styles.note, rtl]}>{toPersianDigits(today.reviews_waiting)} مرور دیگر هم منتظر است؛ فردا نوبت آن‌هاست.</Text>
             )}
           </View>
+        </View>
       ),
     });
-  if (user && today?.needs_review?.items.length)
+  if (!user)
     blocks.push({
-      key: 'needs-review',
+      key: 'welcome',
       el: (
-        <View style={styles.section}>
-          <SectionHeader title="نیاز به مرور" sub="بخش‌هایی که یک نگاه دوباره می‌خواهند" />
-          <View style={styles.needsList}>
-            {today.needs_review.items.map((item, i) => (
-              <Pressable
-                key={item.id}
-                onPress={() =>
-                  // Wrong answers: just those tests; a section read long ago: the section itself.
-                  item.reason === 'mistakes' && item.question_ids?.length
-                    ? router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: String(item.id), ids: item.question_ids.join(',') } })
-                    : router.push(`/section/${item.id}`)
-                }
-                style={[styles.needsRow, i > 0 && styles.needsRowLine]}
-                accessibilityRole="button"
-              >
-                <Icon name={item.reason === 'mistakes' ? 'notebook-pen' : 'rotate-ccw'} size={18} color={item.reason === 'mistakes' ? colors.red : colors.muted} />
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={[styles.needsTitle, rtl]} numberOfLines={1}>{item.title}</Text>
-                  <Text style={[styles.needsSub, rtl]} numberOfLines={1}>
-                    {item.reason === 'mistakes'
-                      ? `${toPersianDigits(item.mistakes)} تست غلط مانده`
-                      : `${toPersianDigits(item.days)} روز پیش خواندی`}
-                    {`، ${item.book_title}`}
-                  </Text>
-                </View>
-                <Icon name="chevron-left" size={18} color={colors.muted} />
-              </Pressable>
-            ))}
+        // A guest: no plan or progress yet; one friendly way in instead.
+        <View style={[styles.planCard, styles.welcome]}>
+          <LemonSlice size={40} />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={[styles.welcomeTitle, rtl]}>خوش آمدی! یک بخش رایگان را بخوان.</Text>
+            <Text style={[styles.needsSub, rtl]}>با ورود، برنامه‌ی روزانه، مرورها و پیشرفتت این‌جا می‌آید.</Text>
+            <Pressable onPress={() => router.push('/login')} accessibilityRole="link">
+              <Text style={[styles.guestLinkText, rtl]}>ورود یا ثبت‌نام ←</Text>
+            </Pressable>
           </View>
         </View>
       ),
@@ -275,7 +286,7 @@ export default function Home() {
       key: 'banners',
       el: (
         <View style={styles.section}>
-            <SectionHeader title="تازه‌های لیمو" />
+            <SectionHeader icon="sparkles" title="تازه‌های لیمو" />
             <BannerCarousel banners={banners.data!} onOpen={(b) => openLink(b.link, b.id)} paused={pageScrolling} frameWidth={wide ? SIDE_INNER : undefined} />
           </View>
       ),
@@ -289,7 +300,7 @@ export default function Home() {
         key: `shelf-${shelf.id ?? 'rest'}`,
         el: (
           <View style={styles.section}>
-            <SectionHeader title={shelf.title} side={`${toPersianDigits(shelf.books.length)} کتاب`} />
+            <SectionHeader icon="library-big" title={shelf.title} side={`${toPersianDigits(shelf.books.length)} کتاب`} />
             <HRow data={shelf.books} keyOf={(b) => b.slug} render={bookTile} gap={14} />
           </View>
         ),
@@ -299,7 +310,7 @@ export default function Home() {
     el: (
         <View style={styles.soon}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flex: 1 }}>
-            <IconBadge name="sparkles" size={32} />
+            <Icon name="sparkles" size={16} color={colors.muted} />
             <Text style={[styles.soonText, rtl, { flex: 1 }]}>دستیار هوش مصنوعی برای رفع اشکال</Text>
           </View>
           <Chip label="به‌زودی" color="#6B5200" background={colors.lemonSoft} />
@@ -310,7 +321,7 @@ export default function Home() {
   // A computer: today's jobs and «نیاز به مرور» in a column beside the books.
   if (wide) {
     // «تازه‌های لیمو» under today's jobs: one frame that turns by itself.
-    const side = new Set(['today', 'needs-review', 'banners']);
+    const side = new Set(['today', 'welcome', 'banners']);
     return (
       <Screen tab wide wideMax={homeMax}>
         {/* The books scroll; the side column stays in place and scrolls on its own when it is taller than the window. */}
@@ -368,6 +379,12 @@ const SIDE_INNER = SIDE_WIDTH - 2 * SIDE_PAD - 2;
 
 const styles = StyleSheet.create({
   guestLink: { paddingHorizontal: 16, paddingTop: 2, alignSelf: 'stretch' },
+  planCard: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 10 },
+  planTrack: { height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden', flexDirection: 'row-reverse' },
+  planFill: { backgroundColor: colors.green, borderRadius: 3 },
+  planSub: { fontSize: 12, fontWeight: '800', color: colors.muted, marginTop: 4 },
+  welcome: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  welcomeTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   guestLinkText: { fontSize: 12, color: colors.greenDark, fontWeight: '700' },
   wide: { flex: 1, flexDirection: 'row-reverse', gap: 40, paddingLeft: 24 },
   wideMain: { gap: 16, paddingVertical: 24, paddingRight: 24, minWidth: 0 },
@@ -382,7 +399,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   wideSideInner: { gap: 16, padding: SIDE_PAD },
-  needsList: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
+  needsList: { gap: 0 },
   needsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
   needsRowLine: { borderTopWidth: 1, borderTopColor: colors.line },
   needsTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
@@ -406,6 +423,36 @@ const styles = StyleSheet.create({
   ribbonSoon: { backgroundColor: colors.ink, color: colors.ground },
   ribbonOwned: { backgroundColor: '#3FB8A9', flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
   ribbonOwnedText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, padding: 12 },
-  soonText: { color: colors.muted, fontSize: 13 },
+  soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
+  soonText: { color: colors.muted, fontSize: 12 },
 });
+
+/** «این هفته ۲ ساعت خواندی ▲»: the last 7 days against the 7 before; the old question when there is little to say. */
+function greetLine(week?: { seconds: number; before: number }) {
+  if (!week || week.seconds < 600) return 'امروز کدام لیمو را می‌خوانی؟';
+  const arrow = week.seconds > week.before * 1.1 ? ' ▲' : '';
+  return `این هفته ${studyDuration(week.seconds)} خواندی${arrow}`;
+}
+
+/** «۲ از ۵ انجام شد» with a thin bar: questions and cards done today out of all planned today. */
+function PlanProgress({ tasks }: { tasks: TodayTask[] }) {
+  let done = 0;
+  let total = 0;
+  for (const t of tasks) {
+    const d = t.done ?? 0;
+    done += d;
+    total += t.kind === 'review' ? Math.max(t.questions, d) : t.count + d;
+  }
+  if (!total || !done) return null;
+  const pct = Math.min(100, Math.round((done / total) * 100));
+  return (
+    <View style={{ gap: 4 }}>
+      <Text style={[styles.planSub, rtl, { marginTop: 0 }]}>
+        {toPersianDigits(done)} از {toPersianDigits(total)} انجام شد
+      </Text>
+      <View style={styles.planTrack}>
+        <View style={[styles.planFill, { width: `${pct}%` }]} />
+      </View>
+    </View>
+  );
+}

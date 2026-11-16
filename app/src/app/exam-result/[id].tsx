@@ -13,6 +13,7 @@ import { jalaliDate, jalaliDateTime } from '../../lib/jalali';
 import { seeded } from '../../lib/shuffle';
 import { useApi } from '../../lib/useApi';
 import { colors, radius, rtl, toPersianDigits } from '../../theme';
+import { HelpTip } from '../../components/HelpTip';
 
 const KEYS = ['الف', 'ب', 'ج', 'د', 'ه', 'و'];
 
@@ -100,7 +101,10 @@ export default function ExamResult() {
         {/* «به تفکیک فصل»: where the score came from, the weakest chapter and practice for it. */}
         {(data.by_chapter?.length ?? 0) > 1 && (
           <Card>
-            <Text style={[styles.chTitle, rtl]}>به تفکیک فصل</Text>
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+              <Text style={[styles.chTitle, rtl, { flex: 1 }]}>به تفکیک فصل</Text>
+              <HelpTip title="به تفکیک فصل" text="درصد هر فصل جداگانه حساب شده است (با نمره‌ی منفی اگر روشن بوده). فصلی که درصدش از همه کمتر است «ضعیف‌ترین فصل» نشان داده می‌شود؛ از همان‌جا می‌توانی تست‌هایش را تمرین کنی." />
+            </View>
             {data.by_chapter!.map((c) => (
               <View key={c.chapter_id} style={[styles.chRow, c.weakest && styles.chWeak]}>
                 <LemonProgress value={c.percent / 100} segments={Math.min(12, Math.max(2, c.total))} size={30} />

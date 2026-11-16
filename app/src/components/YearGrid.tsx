@@ -93,7 +93,8 @@ export function YearGrid({ days, longest, studyDays }: { days: Day[]; longest: n
           {/* Oldest week on the right, this week on the left; a phone's scroller starts at the left, so it opens on now. */}
           <View style={{ flexDirection: 'row-reverse', gap }}>
             {weeks.map((w) => (
-              <View key={key(w.start)} style={{ gap }}>
+              // A thin line where a month starts (the older weeks are on its right).
+              <View key={key(w.start)} style={[{ gap }, !!w.month && styles.monthStart]}>
                 {/* The month's name hangs over the next columns without widening this one. */}
                 <View style={{ width: cell, height: 15, overflow: 'visible' }}>
                   {!!w.month && <Text style={styles.month}>{w.month}</Text>}
@@ -125,8 +126,8 @@ export function YearGrid({ days, longest, studyDays }: { days: Day[]; longest: n
       <Text style={[styles.info, rtl]}>{describe(picked ? new Date(`${picked}T12:00:00`) : new Date(), picked ? pickedDay : byDate.get(latest))}</Text>
       <View style={styles.foot}>
         <Text style={[styles.muted, rtl]}>
-          {toPersianDigits(inYear)} روز مطالعه در یک سال گذشته · طولانی‌ترین زنجیره: {toPersianDigits(longest)} روز
-          {studyDays > inYear ? ` · همه‌ی روزها: ${toPersianDigits(studyDays)}` : ''}
+          {toPersianDigits(inYear)} روز مطالعه در یک سال گذشته؛ طولانی‌ترین زنجیره: {toPersianDigits(longest)} روز
+          {studyDays > inYear ? `؛ همه‌ی روزها: ${toPersianDigits(studyDays)}` : ''}
         </Text>
         <View style={styles.legend}>
           <Text style={styles.muted}>کم</Text>
@@ -146,6 +147,7 @@ const styles = StyleSheet.create({
   rowName: { fontSize: 10, color: colors.muted, textAlign: 'center' },
   month: { position: 'absolute', right: 0, width: 56, maxWidth: 56, fontSize: 10, color: colors.muted, textAlign: 'right', flexWrap: 'nowrap' },
   cell: { borderRadius: 3 },
+  monthStart: { borderRightWidth: 1, borderRightColor: '#CBD3C6', paddingRight: 2, marginRight: -1 },
   cellOn: { borderWidth: 1.5, borderColor: colors.ink },
   info: { fontSize: 13, color: colors.ink },
   foot: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },

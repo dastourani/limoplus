@@ -397,8 +397,26 @@ def _today_data(request) -> dict:
             "minutes": minutes,
             # «نیاز به مرور»: sections with wrong answers still open, or finished long ago (apps/study/needs.py).
             "needs_review": needs_review(request),
+            # The greeting's one line: «این هفته ۲ ساعت خواندی ▲» (last 7 days against the 7 before).
+            "week": _week_seconds(request.user),
         }
     )
+
+
+def _week_seconds(user):
+    from django.db.models import Sum
+
+    from .models import StudyTime
+
+    today_ = timezone.localdate()
+    rows = StudyTime.objects.filter(user=user, day__gt=today_ - timedelta(days=14)).values("day").annotate(s=Sum("seconds")).order_by()
+    now = before = 0
+    for r in rows:
+        if r["day"] > today_ - timedelta(days=7):
+            now += r["s"]
+        else:
+            before += r["s"]
+    return {"seconds": now, "before": before}
 
 
 NOTEBOOK_DAILY = 5
