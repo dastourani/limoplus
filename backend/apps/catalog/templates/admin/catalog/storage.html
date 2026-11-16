@@ -106,9 +106,10 @@
 
       <h4>از یک فایل</h4>
       <p class="hint">یک <b>zip</b> با <code>db.sqlite3</code> و/یا پوشه‌ی <code>media</code> (از لپ‌تاپ: هر دو را از پوشه‌ی backend با هم zip کنید)،
-        یا پشتیبان دیتابیس از بله (<code>.sqlite3.gz</code>)، یا پشتیبان عکس‌ها از بله (<code>.zip</code>).</p>
+        یا پشتیبان دیتابیس از بله (<code>.sqlite3.gz</code>)، یا پشتیبان عکس‌ها از بله (<code>.zip</code>).
+        پشتیبان بزرگ دیتابیس در بله چند تکه است (<code>…part1of3</code>): تکه‌ها را یکی‌یکی، به هر ترتیبی، بارگذاری کنید؛ با رسیدن تکه‌ی آخر بازگردانی انجام می‌شود.</p>
       <form method="post" action="restore/" enctype="multipart/form-data" class="sv-actions">{% csrf_token %}
-        <input type="file" name="file" accept=".zip,.gz,.sqlite3" required>
+        <input type="file" name="file" required>
         <input type="text" name="confirm" placeholder="بازگردانی" size="9" required>
         <button class="button default" type="submit">بازگردانی</button>
       </form>

@@ -19,6 +19,7 @@ from __future__ import annotations
 import gzip
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -129,18 +130,46 @@ def backup_database(send=True):
         run.files, run.size, run.ok = [packed.name], packed.stat().st_size, True
         _prune(folder, "limookhan-db-", KEEP_DB)
         if send and bale_ready():
+            caption = f"🗄 پشتیبان دیتابیس لیموخوان\n{_stamp()}\nاطلاعات کاربران در آن است؛ جای دیگری نفرستید."
             if run.size > PART_LIMIT:
-                send_text(f"⚠️ پشتیبان دیتابیس لیموخوان ({run.size // 1048576} مگابایت) برای بله بزرگ است؛ روی سرور در پوشه‌ی backups مانده: {packed.name}")
-                run.note = "بزرگ‌تر از سقف بله"
+                # Bigger than Bale takes: sent in pieces; «بازگردانی» in the panel takes the pieces one by one and joins them.
+                pieces = split_file(packed, PART_LIMIT)
+                try:
+                    for i, piece in enumerate(pieces, 1):
+                        send_file(piece, f"{caption}\nتکه‌ی {i} از {len(pieces)}: برای بازگردانی همه‌ی تکه‌ها را یکی‌یکی بارگذاری کنید.")
+                finally:
+                    for piece in pieces:
+                        piece.unlink(missing_ok=True)
+                run.note = f"{len(pieces)} تکه"
             else:
-                send_file(packed, f"🗄 پشتیبان دیتابیس لیموخوان\n{_stamp()}\nاطلاعات کاربران در آن است؛ جای دیگری نفرستید.")
-                run.sent = True
+                send_file(packed, caption)
+            run.sent = True
     except Exception as exc:  # noqa: BLE001 — recorded and reported, never silent
         log.error("database backup failed: %s: %s", type(exc).__name__, _safe(exc))
         run.note = _safe(exc)
         _report_failure("دیتابیس", exc, send)
     run.save()
     return run
+
+
+PIECE = re.compile(r"^(?P<base>.+\.sqlite3\.gz)\.part(?P<n>\d{1,3})of(?P<m>\d{1,3})$")
+
+
+def split_file(path: Path, size: int) -> list[Path]:
+    """`name.sqlite3.gz.part1of3`, … : plain byte pieces of the file, next to it."""
+    total = path.stat().st_size
+    count = max(1, -(-total // size))
+    pieces = []
+    with open(path, "rb") as src:
+        for i in range(1, count + 1):
+            piece = path.with_name(f"{path.name}.part{i}of{count}")
+            with open(piece, "wb") as out:
+                left = size
+                while left and (chunk := src.read(min(left, 1024 * 1024))):
+                    out.write(chunk)
+                    left -= len(chunk)
+            pieces.append(piece)
+    return pieces
 
 
 def _media_files(since):
@@ -419,8 +448,71 @@ def _is_db_name(name: str) -> bool:
     return base.endswith(".sqlite3") and name.replace("\\", "/").count("/") <= 1
 
 
+def _take_piece(uploaded, match) -> Path | None:
+    """Keeps one piece of a split database backup in backups/incoming/<name>/. Returns the joined .gz once every
+    piece is there (the pieces are then removed), else None."""
+    base, n, m = match["base"], int(match["n"]), int(match["m"])
+    if not 1 <= n <= m <= 200 or "/" in base or "\\" in base or base.startswith("."):
+        raise RestoreError("نام تکه درست نیست.")
+    incoming = backup_dir() / "incoming"
+    incoming.mkdir(parents=True, exist_ok=True)
+    old = timezone.now().timestamp() - 24 * 3600
+    for stale in incoming.iterdir():  # sets left unfinished for a day are dropped
+        if stale.stat().st_mtime < old:
+            shutil.rmtree(stale, ignore_errors=True) if stale.is_dir() else stale.unlink(missing_ok=True)
+    folder = incoming / base
+    folder.mkdir(exist_ok=True)
+    if any(not x.name.endswith(f"of{m}") for x in folder.iterdir()):
+        shutil.rmtree(folder)  # pieces of another split of this name: start this set afresh
+        folder.mkdir()
+    with open(folder / f"part{n}of{m}", "wb") as out:
+        for chunk in uploaded.chunks():
+            out.write(chunk)
+    missing = [i for i in range(1, m + 1) if not (folder / f"part{i}of{m}").exists()]
+    if missing:
+        return None
+    joined = folder.parent / f"joined-{base}"
+    try:
+        with open(joined, "wb") as out:
+            for i in range(1, m + 1):
+                with open(folder / f"part{i}of{m}", "rb") as src:
+                    shutil.copyfileobj(src, out, 1024 * 1024)
+    except OSError as exc:
+        joined.unlink(missing_ok=True)
+        raise RestoreError("جای دیسک برای کنار هم گذاشتن تکه‌ها کافی نیست.") from exc
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    return joined
+
+
+class _Joined:
+    """The joined pieces, handed to restore_upload like an uploaded file."""
+
+    def __init__(self, path: Path):
+        self.path, self.name = path, path.name
+
+    def chunks(self):
+        with open(self.path, "rb") as src:
+            while chunk := src.read(1024 * 1024):
+                yield chunk
+
+
 def restore_upload(uploaded) -> dict:
-    """Puts an uploaded backup back. Returns what was done; raises RestoreError with a message for the panel."""
+    """Puts an uploaded backup back. Returns what was done; raises RestoreError with a message for the panel.
+    A piece of a split database backup (…sqlite3.gz.part2of3) is kept until all pieces are there; meanwhile the
+    result says which are still missing («waiting»)."""
+    match = PIECE.match(uploaded.name.rsplit("/", 1)[-1].lower())
+    if match:
+        joined = _take_piece(uploaded, match)
+        if joined is None:
+            folder = backup_dir() / "incoming" / match["base"]
+            m = int(match["m"])
+            missing = [i for i in range(1, m + 1) if not (folder / f"part{i}of{m}").exists()]
+            return {"db": False, "media": 0, "aside": "", "waiting": missing, "pieces": m}
+        try:
+            return restore_upload(_Joined(joined))
+        finally:
+            joined.unlink(missing_ok=True)
     result = {"db": False, "media": 0, "aside": ""}
     name = uploaded.name.lower()
     with tempfile.TemporaryDirectory(dir=backup_dir()) as tmp:

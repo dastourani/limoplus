@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.accounts.phone import InvalidPhone, normalize_phone
-from apps.accounts.sms import SMSError, send_sms
+from apps.accounts.sms import SMSError, _send_raygan_pattern, pattern_ready, send_sms
 from apps.accounts.views import _otp_message
 
 SAMPLE_HASH = "AbCdEfGhIjK"
@@ -29,6 +29,14 @@ class Command(BaseCommand):
         self.stdout.write(f"SMS_BACKEND = {settings.SMS_BACKEND}")
         if settings.SMS_BACKEND != "raygan":
             self.stdout.write(self.style.WARNING("پیامک واقعی فرستاده نمی‌شود؛ در .env بنویسید SMS_BACKEND=raygan و سرور را دوباره اجرا کنید."))
+        if pattern_ready():
+            try:
+                _send_raygan_pattern(phone, "123456")
+                self.stdout.write(self.style.SUCCESS("کد ورود با الگو (کد ۱۲۳۴۵۶): رایگان اس‌ام‌اس پذیرفت. کد ورود اپ از همین راه می‌رود."))
+            except SMSError as exc:
+                self.stdout.write(self.style.ERROR(f"کد ورود با الگو: ارسال نشد — {exc}"))
+        else:
+            self.stdout.write(self.style.WARNING("الگوی کد ورود تنظیم نشده (RAYGAN_ACCESS_HASH و RAYGAN_OTP_PATTERN_ID)؛ کدها با خط عادی می‌روند."))
         tests = [
             ("۱ (بدون خط آخر)", "لیموخوان\nکد ورود: 111111\nاین کد را به کسی ندهید"),
             ("۲ (با خط کد اپ)", "لیموخوان\nکد ورود: 222222\nاین کد را به کسی ندهید\n" + SAMPLE_HASH),

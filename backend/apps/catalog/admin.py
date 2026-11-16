@@ -660,6 +660,13 @@ class StorageAdmin(admin.ModelAdmin):
         except RestoreError as exc:
             messages.error(request, str(exc))
             return redirect("..")
+        if done.get("waiting"):
+            from .jalali import fa_digits
+
+            left = "، ".join(fa_digits(i) for i in done["waiting"])
+            messages.info(request, f"این تکه نگه داشته شد. تکه‌های مانده از {fa_digits(done['pieces'])}: {left}. "
+                                   "هر وقت همه رسید، بازگردانی خودکار انجام می‌شود.")
+            return redirect("..")
         parts = []
         if done["db"]:
             parts.append(f"دیتابیس جایگزین شد (نسخه‌ی قبلی با نام {done['aside']} در پوشه‌ی backups نگه داشته شد)")

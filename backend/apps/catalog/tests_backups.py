@@ -128,3 +128,47 @@ class TokenTests(TestCase):
         con.close()
         with self.assertRaisesMessage(backups.RestoreError, "تازه‌تر"):
             backups._check_sqlite(db)
+
+
+class SplitBackupTests(BackupTests):
+    """A database backup bigger than Bale takes goes in pieces; the panel joins them back, piece by piece."""
+
+    def test_big_backup_is_sent_in_pieces_and_restored_from_them(self):
+        live, other = self.tmp / "live.sqlite3", self.tmp / "laptop.sqlite3"
+        for path, value in ((live, "server"), (other, "laptop")):
+            con = sqlite3.connect(path)
+            con.executescript("CREATE TABLE django_migrations(id, app, name); CREATE TABLE t(v);")
+            con.executemany("INSERT INTO t VALUES (?)", [(value + os.urandom(64).hex(),) for _ in range(2000)])
+            con.commit()
+            con.close()
+        settings_dict = {**backups.connection.settings_dict, "NAME": str(other)}
+        sent = []
+        with mock.patch.object(backups.connection, "settings_dict", settings_dict), mock.patch.object(backups.connection, "vendor", "sqlite"), \
+                mock.patch.object(backups, "PART_LIMIT", 40_000), \
+                mock.patch.object(backups, "send_file", side_effect=lambda p, c: sent.append((p.name, p.read_bytes(), c))):
+            run = backups.backup_database()
+        self.assertTrue(run.sent and len(sent) >= 3)
+        self.assertTrue(all(name.endswith(f"of{len(sent)}") for name, _, _ in sent))
+        self.assertIn("تکه‌ی ۱ از", sent[0][2].replace("1", "۱"))
+        self.assertFalse(list(Path(backups.backup_dir()).glob("*.part*")))  # pieces are not left on the server
+
+        settings_dict = {**backups.connection.settings_dict, "NAME": str(live)}
+        with mock.patch.object(backups.connection, "settings_dict", settings_dict), mock.patch.object(backups.connection, "vendor", "sqlite"), \
+                mock.patch.object(backups.connection, "close"), mock.patch("django.core.management.call_command"):
+            order = list(reversed(sent))  # any order
+            for i, (name, data, _) in enumerate(order):
+                done = backups.restore_upload(SimpleUploadedFile(name, data))
+                if i < len(order) - 1:
+                    self.assertTrue(done["waiting"])
+                    self.assertFalse(done["db"])
+        self.assertTrue(done["db"])
+        self.assertTrue(sqlite3.connect(live).execute("SELECT v FROM t").fetchone()[0].startswith("laptop"))
+        self.assertFalse((Path(backups.backup_dir()) / "incoming").exists() and any((Path(backups.backup_dir()) / "incoming").iterdir()))
+
+    def test_pieces_of_different_backups_do_not_mix(self):
+        backups.restore_upload(SimpleUploadedFile("limookhan-db-x.sqlite3.gz.part1of3", b"a"))
+        # Another split of the same name starts afresh (the old pieces are dropped, not mixed in).
+        done = backups.restore_upload(SimpleUploadedFile("limookhan-db-x.sqlite3.gz.part2of2", b"b"))
+        self.assertEqual(done["waiting"], [1])
+        with self.assertRaises(backups.RestoreError):
+            backups.restore_upload(SimpleUploadedFile("limookhan-db-x.sqlite3.gz.part5of3", b"b"))
