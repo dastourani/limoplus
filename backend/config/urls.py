@@ -15,6 +15,7 @@ from apps.study import mistakes
 from apps.study import reviews
 from apps.study import time as study_time
 from apps.study import views as study
+from apps.website import api as website_api
 
 admin.site.site_header = "پنل مدیریت لیموخوان"
 admin.site.site_title = "لیموخوان"
@@ -42,6 +43,9 @@ api = [
     path("nodes/<int:node_id>/flashcards/", learning.node_flashcards),
     path("questions/<int:question_id>/answer/", learning.answer),
     path("app/version/", releases.app_version),
+    path("app/pages/", website_api.app_pages),
+    path("app/pages/<str:slug>/", website_api.site_page),
+    path("app/help/<int:page_id>/", website_api.help_page),
     path("banners/", catalog.banners),
     path("banners/<int:banner_id>/click/", catalog.banner_click),
     # The learner's own data

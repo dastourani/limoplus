@@ -61,6 +61,13 @@ export default function Login() {
         <Text style={[styles.help, rtl]}>یک کد ۶ رقمی برایتان پیامک می‌شود. اگر حساب ندارید، همین‌جا ساخته می‌شود.</Text>
         {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}
         <Button label="دریافت کد" onPress={send} disabled={!valid} loading={busy} />
+        <Text style={[styles.terms, rtl]}>
+          با ورود،{' '}
+          <Text style={styles.termsLink} onPress={() => router.push('/page/terms')} accessibilityRole="link">قوانین</Text>
+          {' و '}
+          <Text style={styles.termsLink} onPress={() => router.push('/page/privacy')} accessibilityRole="link">حریم خصوصی</Text>
+          {' را می‌پذیرید.'}
+        </Text>
         <Button label="فعلاً بدون ورود ادامه می‌دهم" variant="outline" onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} />
       </ScrollView>
       </KeyboardAvoidingView>
@@ -69,6 +76,8 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
+  terms: { fontSize: 12, color: colors.muted, textAlign: 'center' },
+  termsLink: { color: colors.greenDark, textDecorationLine: 'underline' },
   page: { padding: 24, gap: 12 },
   reason: { backgroundColor: colors.lemonSoft, color: '#6B5200', borderRadius: radius.sm, padding: 12, fontSize: 15, lineHeight: 24 },
   label: { fontSize: 15, fontWeight: '700', color: colors.ink },

@@ -194,6 +194,10 @@ export type MistakeItem = {
   seconds?: number | null;
   solutions?: string[];
 };
+/** «حساب من» › «راهنما» and «قوانین» (panel: «صفحه‌های راهنما»، «صفحه‌های سایت»). */
+export type SitePageItem = { slug: string; title: string; updated_at: string; important_at: string | null };
+export type SitePageDetail = SitePageItem & { body: string };
+export type AppPages = { help: { id: number; title: string }[]; pages: SitePageItem[] };
 export type Today = {
   away_days: number;
   /** Back after a few days away: a short start instead of everything that piled up. */
@@ -533,6 +537,9 @@ export const endpoints = {
   myExams: () => api<ExamSummary[]>('me/exams/'),
   examPage: (page: number, book = '') => api<ExamPage>(`me/exams/?page=${page}${book ? `&book=${encodeURIComponent(book)}` : ''}`),
   library: () => api<Library>('me/library/'),
+  appPages: () => api<AppPages>('app/pages/'),
+  sitePage: (slug: string) => api<SitePageDetail>(`app/pages/${slug}/`),
+  helpPage: (id: number) => api<{ id: number; title: string; body: string; updated_at: string }>(`app/help/${id}/`),
   formulaCommands: () => api<{ macros: Record<string, string> }>('formula-commands/'),
   bookChanges: (slug: string) => api<BookChanges>(`books/${slug}/changes/`),
   appVersion: (platform: string, build: number) => api<AppVersion>(`app/version/?platform=${platform}&build=${build}`),

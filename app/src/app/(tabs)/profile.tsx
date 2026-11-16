@@ -2,7 +2,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
-import { endpoints, type Purchases } from '../../api/endpoints';
+import { endpoints, type AppPages, type Purchases } from '../../api/endpoints';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
 import { APP_BUILD, getApiUrl, getDefaultApiUrl } from '../../config';
@@ -12,15 +12,17 @@ import { Button, Card, Screen, usePullRefresh, Chip } from '../../components/ui'
 import { useAuth } from '../../lib/auth';
 import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { jalaliDate } from '../../lib/jalali';
+import { changedPages } from '../../lib/pages';
 import { play, setSoundEnabled, soundEnabled } from '../../lib/sound';
 import { setCoverTheme, useCoverTheme } from '../../lib/coverTheme';
 import { storage } from '../../lib/storage';
 import { colors, rtl, toPersianDigits } from '../../theme';
 
-function Row({ label, value, onPress, danger }: { label: string; value?: string; onPress: () => void; danger?: boolean }) {
+function Row({ label, value, onPress, danger, badge }: { label: string; value?: string; onPress: () => void; danger?: boolean; badge?: string }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.ground }]} accessibilityRole="button">
       <Text style={[styles.rowLabel, rtl, danger && { color: colors.redDark }]}>{label}</Text>
+      {!!badge && <Chip label={badge} color="#6B5200" background={colors.lemonSoft} />}
       {value ? <Text style={styles.rowValue}>{value}</Text> : <Icon name="chevron-left" size={20} color={colors.muted} />}
     </Pressable>
   );
@@ -52,11 +54,19 @@ export default function Profile() {
     }, []),
   );
   const serverUnlocked = versionTaps >= 7;
+  const [pages, setPages] = useState<AppPages | null>(null);
+  const [changed, setChanged] = useState<Set<string>>(new Set());
   const reload = useCallback(() => {
-    if (!user) return;
     setReloading(true);
     Promise.all([
-      endpoints.purchases().then(setPurchases).catch(() => undefined),
+      user ? endpoints.purchases().then(setPurchases).catch(() => undefined) : null,
+      endpoints
+        .appPages()
+        .then(async (p) => {
+          setPages(p);
+          setChanged(new Set((await changedPages(p.pages)).map((x) => x.slug)));
+        })
+        .catch(() => undefined),
     ]).finally(() => setReloading(false));
   }, [user]);
   useFocusEffect(reload);
@@ -132,7 +142,6 @@ export default function Profile() {
               accessibilityLabel="متن درس تراز باشد"
             />
           </View>
-          <Row label="لیموها چه می‌گویند؟" onPress={() => router.push('/lemons')} />
           {/* «ظاهر اپ»: two little covers; the chosen one has a lemon border and a tick. */}
           <View style={[styles.row, { flexDirection: 'column', alignItems: 'stretch', gap: 10 }]}>
             <View>
@@ -185,6 +194,30 @@ export default function Profile() {
           )}
         </View>
 
+        {/* «راهنما»: the lemons guide, then the pages written in the panel; «قوانین»: site pages ticked «نمایش در اپ». */}
+        <Text style={[styles.groupTitle, rtl]}>راهنما</Text>
+        <View style={styles.group}>
+          <Row label="لیموها چه می‌گویند؟" onPress={() => router.push('/lemons')} />
+          {pages?.help.map((h) => (
+            <Row key={h.id} label={h.title} onPress={() => router.push({ pathname: '/help/[id]', params: { id: String(h.id) } })} />
+          ))}
+        </View>
+        {!!pages?.pages.length && (
+          <>
+            <Text style={[styles.groupTitle, rtl]}>قوانین</Text>
+            <View style={styles.group}>
+              {pages.pages.map((p) => (
+                <Row
+                  key={p.slug}
+                  label={p.title}
+                  badge={changed.has(p.slug) ? 'به‌روز شد' : undefined}
+                  onPress={() => router.push({ pathname: '/page/[slug]', params: { slug: p.slug } })}
+                />
+              ))}
+            </View>
+          </>
+        )}
+
         <View style={styles.soon}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flex: 1 }}>
             <IconBadge name="sparkles" size={32} />
@@ -236,6 +269,7 @@ const styles = StyleSheet.create({
   phone: { fontSize: 15, color: '#C9D0C6' },
   cardTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   line: { fontSize: 15, color: colors.muted },
+  groupTitle: { fontSize: 13, fontWeight: '800', color: colors.muted, marginBottom: -8, paddingHorizontal: 4 },
   group: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
   row: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.line },
   rowLabel: { fontSize: 15, fontWeight: '700', color: colors.ink },
