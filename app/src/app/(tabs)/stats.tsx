@@ -116,7 +116,7 @@ export default function StatsTab() {
       {data.year && (
         <Section icon="calendar" title="عادت مطالعه" help={HELP.year}>
           <View style={styles.card}>
-            <YearGrid days={data.year.days} longest={data.year.longest_streak} studyDays={data.study_days} />
+            <YearGrid days={data.year.days} longest={data.year.longest_streak} longestFrom={data.year.longest_from} longestTo={data.year.longest_to} studyDays={data.study_days} />
           </View>
         </Section>
       )}
@@ -228,8 +228,8 @@ function Invite({ icon, title, text }: { icon: IconName; title: string; text: st
 const HELP = {
   glance: 'روز پشت‌سرهم: چند روز پیاپی تا امروز درس خوانده‌ای (خواندن، تست یا فلش‌کارت). دقت تست‌ها: درصد پاسخ‌های درست در تمرین و آزمون. کارت به‌خاطرسپرده: فلش‌کارتی که به جعبه‌ی ۴ یا بالاتر رسیده است.',
   week: 'هفت روز اخیر، تا امروز. فلش‌ها نسبت به هفت روز پیش از آن است. هدف هفتگی را خودت می‌گذاری: حلقه را بزن.',
-  trend: 'هر ستون یک روز است، از اولین روز مطالعه تا امروز (امروز سمت چپ). با دکمه‌های بالا انتخاب کن ستون‌ها چه را نشان دهند. روی هر روز بزن تا عددهایش را ببینی.',
-  year: 'هر مربع یک روز از یک سال اخیر است؛ هر ستون یک هفته (شنبه بالا). هر چه بیشتر خوانده باشی، رنگ پررنگ‌تر است. خط‌های نازک مرز ماه‌هاست.',
+  trend: 'هر ستون یک روز است، از اولین روز مطالعه تا امروز (امروز سمت چپ). ستون زرد: زمان مطالعه؛ خط: تعداد تست؛ نقطه‌ی سبز: بخش‌های تمام‌شده. هر کدام اندازه‌ی خودش را دارد؛ «تا …» در برچسب بالا یعنی بلندترین روزش چقدر بوده. با زدن برچسب، آن را روشن یا خاموش کن. روی هر روز بزن تا عددهایش را ببینی.',
+  year: 'هر مربع یک روز از یک سال اخیر است؛ هر ستون یک هفته (شنبه بالا). هر چه بیشتر خوانده باشی، رنگ پررنگ‌تر است. خط‌های نازک مرز ماه‌هاست. نقطه‌ی تیره: روزی که آزمون داده‌ای. قاب طلایی: طولانی‌ترین زنجیره‌ی روزهای پشت‌سرهم. قاب سیاه: امروز. روی هر روز بزن (یا موس را ببر) تا جزئیاتش زیر جدول بیاید.',
   time: 'زمانی که در اپ درس خوانده‌ای. وقتی دو دقیقه به صفحه دست نزنی، شمردن می‌ایستد.',
   books: 'بخشی خوانده‌شده حساب می‌شود که تا آخرش رفته باشی. فقط بخش‌های منتشرشده‌ی فعلی کتاب شمرده می‌شوند؛ تست‌ها و فلش‌کارت‌ها جدا حساب می‌شوند.',
   improvement: 'تست‌هایی که غلط زدی و بعداً درست جواب دادی. «تثبیت‌شده» یعنی چند روز بعد هم باز درست زده‌ای.',
@@ -274,12 +274,16 @@ function buildInsights(data: Stats, week: { seconds: number; answers: number }, 
   }
   if (before.seconds >= 600 && week.seconds !== before.seconds) {
     const pct = Math.round((Math.abs(week.seconds - before.seconds) / before.seconds) * 100);
+    // Almost nothing yet this week (under 10 minutes, or under a quarter of last week): no percentage, just a nudge.
+    const little = week.seconds < 600 || week.seconds < before.seconds / 4;
     out.push({
       key: 'week',
       kicker: 'این هفته',
       text:
         week.seconds > before.seconds ? (
           <>این هفته <Strong>{`${toPersianDigits(pct)}٪`}</Strong> بیشتر از هفته‌ی قبل خواندی. ▲</>
+        ) : little ? (
+          <>این هفته هنوز کم خوانده‌ای؛ <Strong>امروز</Strong> شروع کن.</>
         ) : (
           <>این هفته {toPersianDigits(pct)}٪ کمتر از هفته‌ی قبل خواندی؛ <Strong>امروز</Strong> جبرانش کن.</>
         ),

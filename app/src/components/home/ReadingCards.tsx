@@ -40,8 +40,18 @@ function wedges(progress: number | null | undefined, sections: number) {
   return Array.from({ length: n }, (_, i) => (i < done ? ('done' as const) : ('empty' as const)));
 }
 
-export function ReadingCards({ items }: { items: ReadingItem[] }) {
+export function ReadingCards({ items, stacked }: { items: ReadingItem[]; stacked?: boolean }) {
   const { width } = useWindowDimensions();
+  // «همه»: every book being read, one card under another.
+  if (stacked) {
+    return (
+      <View style={{ paddingHorizontal: 16, gap: 12 }}>
+        {items.map((r) => (
+          <Card key={r.slug} r={r} width={undefined} />
+        ))}
+      </View>
+    );
+  }
   // One book on a computer: the card fills the row (up to a comfortable width) instead of half of it.
   if (items.length === 1 && width >= WIDE) {
     return (

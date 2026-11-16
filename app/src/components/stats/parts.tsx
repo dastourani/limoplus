@@ -3,7 +3,7 @@
  *  green for what went well, a quiet grey-green for a second series, red only for a fall. */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewInstance } from 'react-native';
 import Svg, { Circle, Line, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 
 import { jalaliMonthDay } from '../../lib/jalali';
@@ -76,22 +76,52 @@ export function Glance({ icon, label, value, format, accent }: { icon: IconName;
 
 export type Insight = { key: string; kicker: string; text: ReactNode };
 
-/** «کارت‌های بینش»: one at a time, swiped sideways, dots below; the first one changes from day to day. */
+/** «کارت‌های بینش»: one at a time, turning by itself slowly (like the banners; it waits while a pointer is over it or
+ *  a finger has just moved it), swiped sideways or picked with the dots; the first one changes from day to day. */
 export function InsightCards({ items }: { items: Insight[] }) {
   const { width } = useWindowDimensions();
   const [w, setW] = useState(Math.min(width, 760) - 32);
   const [index, setIndex] = useState(0);
-  if (!items.length) return null;
+  const scroller = useRef<ScrollViewInstance>(null);
+  const holdUntil = useRef(0);
+  const hovering = useRef(false);
+  const reduce = useReducedMotion();
+  const count = items.length;
+  useEffect(() => {
+    if (count < 2 || reduce) return;
+    const id = setInterval(() => {
+      if (hovering.current || Date.now() < holdUntil.current) return;
+      setIndex((i) => {
+        const next = (i + 1) % count;
+        scroller.current?.scrollTo({ x: next * w, animated: true });
+        return next;
+      });
+    }, 7000);
+    return () => clearInterval(id);
+  }, [count, w, reduce]);
+  if (!count) return null;
   const day = Math.floor(Date.now() / 86_400_000);
-  const ordered = items.map((_, i) => items[(i + day) % items.length]);
+  const ordered = items.map((_, i) => items[(i + day) % count]);
+  const go = (i: number) => {
+    holdUntil.current = Date.now() + 15_000;
+    setIndex(i);
+    scroller.current?.scrollTo({ x: i * w, animated: true });
+  };
   return (
-    <View onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+    <Pressable
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      onHoverIn={() => (hovering.current = true)}
+      onHoverOut={() => (hovering.current = false)}
+      accessible={false}
+      style={{ cursor: 'auto' } as object}
+    >
       <ScrollView
+        ref={scroller}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
+        onScrollBeginDrag={() => (holdUntil.current = Date.now() + 15_000)}
         onMomentumScrollEnd={(e) => setIndex(Math.round(Math.abs(e.nativeEvent.contentOffset.x) / Math.max(1, w)))}
-        onScroll={(e) => setIndex(Math.round(Math.abs(e.nativeEvent.contentOffset.x) / Math.max(1, w)))}
         scrollEventThrottle={64}
       >
         {ordered.map((it) => (
@@ -104,11 +134,13 @@ export function InsightCards({ items }: { items: Insight[] }) {
       {ordered.length > 1 && (
         <View style={styles.dots}>
           {ordered.map((it, i) => (
-            <View key={it.key} style={[styles.dot, i === index && styles.dotOn]} />
+            <Pressable key={it.key} onPress={() => go(i)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`کارت ${toPersianDigits(i + 1)}`}>
+              <View style={[styles.dot, i === index && styles.dotOn]} />
+            </Pressable>
           ))}
         </View>
       )}
-    </View>
+    </Pressable>
   );
 }
 
@@ -189,17 +221,27 @@ export function WeekCard({ seconds, rows }: { seconds: number; rows: { label: st
 
 export type TrendDay = { date: string; seconds: number; answers: number; sections: number };
 type Measure = 'seconds' | 'answers' | 'sections';
-const MEASURES: [Measure, string][] = [
-  ['seconds', 'زمان'],
-  ['answers', 'تست'],
-  ['sections', 'بخش'],
+/** The three series, each on its own scale: time as bars, tests as a line, sections as dots. */
+const SERIES: { m: Measure; label: string; mark: string; color: string }[] = [
+  { m: 'seconds', label: 'زمان', mark: '▮', color: colors.lemon },
+  { m: 'answers', label: 'تست', mark: '—', color: SECOND },
+  { m: 'sections', label: 'بخش', mark: '●', color: colors.green },
 ];
+const amount = (m: Measure, n: number) =>
+  m === 'seconds' ? studyDuration(n) : `${toPersianDigits(n)} ${m === 'answers' ? 'تست' : 'بخش'}`;
+const dayName = (date: string) => {
+  const [month, day] = jalaliMonthDay(date);
+  return `${toPersianDigits(day)} ${month}`;
+};
 
-/** «روند»: one bar a day from the first day of study to today, scrolled sideways (opens on today, at the left);
- *  a tap on a day says its numbers. Bars: the chosen measure; the line: tests (or time, when tests are the bars). */
+/** «روند»: one column a day from the first day of study to today (today at the left), scrolled sideways. Time is the
+ *  bars, tests the line and sections the dots; the legend on top says which is which and turns each on or off, with
+ *  the most of each (every series has its own height). Weeks are shaded in turn, a dashed line marks the daily average
+ *  of time, a small lemon sits on the best day, and a tap (or the pointer) on a day shows its numbers above it. */
 export function TrendChart({ days }: { days: TrendDay[] }) {
-  const [measure, setMeasure] = useState<Measure>('seconds');
+  const [on, setOn] = useState<Record<Measure, boolean>>({ seconds: true, answers: true, sections: false });
   const [picked, setPicked] = useState<number | null>(null);
+  const [boxW, setBoxW] = useState(320);
   const reduce = useReducedMotion();
   const grow = useRef(new Animated.Value(reduce ? 1 : 0)).current;
   useEffect(() => {
@@ -212,58 +254,122 @@ export function TrendChart({ days }: { days: TrendDay[] }) {
     return () => grow.removeListener(id);
   }, [grow]);
 
-  const lineOf: Measure = measure === 'answers' ? 'seconds' : 'answers';
-  const slot = 18;
-  const h = 130;
-  const top = 10;
+  const peak = (m: Measure) => Math.max(1, ...days.map((d) => d[m]));
+  const peaks = { seconds: peak('seconds'), answers: peak('answers'), sections: peak('sections') };
+  // Few days: wider columns to fill the card; many: 18 px and a scroll.
+  const slot = Math.min(40, Math.max(18, Math.floor(boxW / Math.max(1, days.length))));
+  const h = 150;
+  const top = 34; // room for the bubble's arrow and the lemon
   const inner = h - top - 22;
-  const peak = Math.max(1, ...days.map((d) => d[measure]));
-  const linePeak = Math.max(1, ...days.map((d) => d[lineOf]));
   const width = Math.max(days.length * slot, 1);
-  // Newest at the left: day i (oldest first) sits at the right end.
-  const x = (i: number) => width - (i + 1) * slot;
-  const points = days.map((d, i) => `${x(i) + slot / 2},${top + inner - (inner * d[lineOf]) / linePeak}`).join(' ');
-  const show = (d: TrendDay) =>
-    `${toPersianDigits(jalaliMonthDay(d.date)[1])} ${jalaliMonthDay(d.date)[0]}: ${studyDuration(d.seconds)}، ${toPersianDigits(d.answers)} تست، ${toPersianDigits(d.sections)} بخش`;
+  const x = (i: number) => width - (i + 1) * slot; // newest at the left
+  const y = (m: Measure, v: number) => top + inner - (inner * v * scale) / peaks[m];
+  const best = days.reduce((b, d, i) => (d.seconds > (days[b]?.seconds ?? 0) ? i : b), 0);
+  // Weeks start on Saturday; every other week is shaded.
+  const weekOf = (date: string) => Math.floor((Date.parse(`${date}T12:00:00Z`) / 86_400_000 + 5) / 7);
+  const last30 = days.slice(-30);
+  const sum = (m: Measure) => last30.reduce((n, d) => n + d[m], 0);
+  // The daily average of the last 30 days (days without study count as zero).
+  const avg = sum('seconds') / Math.max(1, last30.length);
+  const toggle = (m: Measure) =>
+    setOn((o) => {
+      const next = { ...o, [m]: !o[m] };
+      return Object.values(next).some(Boolean) ? next : o; // at least one stays on
+    });
+  const p = picked !== null ? days[picked] : null;
+
   return (
-    <View style={styles.card}>
-      <View style={styles.switch}>
-        {MEASURES.map(([m, label]) => (
-          <Pressable key={m} onPress={() => setMeasure(m)} style={[styles.switchItem, measure === m && styles.switchOn]} accessibilityRole="button" accessibilityState={{ selected: measure === m }}>
-            <Text style={[styles.switchText, measure === m && { color: colors.ink }]}>{label}</Text>
+    <View style={styles.card} onLayout={(e) => setBoxW(e.nativeEvent.layout.width - 28)}>
+      <Text style={[styles.trendSum, rtl]}>
+        {toPersianDigits(Math.min(30, days.length))} روز اخیر: {studyDuration(sum('seconds'))}، {toPersianDigits(sum('answers'))} تست،{' '}
+        {toPersianDigits(sum('sections'))} بخش
+      </Text>
+      <View style={styles.legend}>
+        {SERIES.map((s) => (
+          <Pressable
+            key={s.m}
+            onPress={() => toggle(s.m)}
+            style={[styles.legendItem, !on[s.m] && { opacity: 0.45 }]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: on[s.m] }}
+          >
+            <Text style={[styles.legendMark, { color: s.color }]}>{s.mark}</Text>
+            <Text style={styles.legendText}>{s.label}</Text>
+            <Text style={styles.legendMax}>تا {amount(s.m, peaks[s.m])}</Text>
           </Pressable>
         ))}
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <Svg width={width} height={h}>
-          <Line x1={0} x2={width} y1={top + inner} y2={top + inner} stroke={colors.line} strokeWidth={1} />
-          {days.map((d, i) => {
-            const bh = (inner * d[measure] * scale) / peak;
-            return (
-              <Rect
-                key={d.date}
-                x={x(i) + 3}
-                y={top + inner - bh}
-                width={slot - 6}
-                height={Math.max(bh, d[measure] ? 2 : 0)}
-                rx={3}
-                fill={picked === i ? colors.greenDark : colors.lemon}
-                onPress={() => setPicked(i)}
+        <View style={{ width, height: h }}>
+          <Svg width={width} height={h}>
+            {days.map((d, i) =>
+              weekOf(d.date) % 2 ? <Rect key={`w${d.date}`} x={x(i)} y={top - 6} width={slot} height={inner + 6} fill="#F5F3EA" /> : null,
+            )}
+            <Line x1={0} x2={width} y1={top + inner} y2={top + inner} stroke={colors.line} strokeWidth={1} />
+            {on.seconds &&
+              days.map((d, i) => {
+                const bh = top + inner - y('seconds', d.seconds);
+                return (
+                  <Rect
+                    key={d.date}
+                    x={x(i) + slot * 0.18}
+                    y={top + inner - bh}
+                    width={slot * 0.64}
+                    height={Math.max(bh, d.seconds ? 2 : 0)}
+                    rx={3}
+                    fill={picked === i ? '#C99A00' : colors.lemon}
+                  />
+                );
+              })}
+            {on.seconds && avg > 0 && (
+              <Line x1={0} x2={width} y1={y('seconds', avg)} y2={y('seconds', avg)} stroke="#C99A00" strokeWidth={1} strokeDasharray="4 4" opacity={0.8} />
+            )}
+            {on.answers && (
+              <Polyline
+                points={days.map((d, i) => `${x(i) + slot / 2},${y('answers', d.answers)}`).join(' ')}
+                fill="none"
+                stroke={SECOND}
+                strokeWidth={2}
+                strokeLinejoin="round"
               />
-            );
-          })}
-          <Polyline points={points} fill="none" stroke={SECOND} strokeWidth={2} strokeLinejoin="round" opacity={scale} />
-          {days.map((d, i) => {
-            const [month, day] = jalaliMonthDay(d.date);
-            if (day !== 1 && i !== days.length - 1) return null;
-            return (
-              <SvgLabel key={`l${d.date}`} x={x(i) + slot / 2} y={h - 6} text={day === 1 ? month : 'امروز'} />
-            );
-          })}
-        </Svg>
+            )}
+            {on.sections &&
+              days.map((d, i) =>
+                d.sections ? <Circle key={`s${d.date}`} cx={x(i) + slot / 2} cy={y('sections', d.sections)} r={3.5} fill={colors.green} /> : null,
+              )}
+            {on.seconds && days[best]?.seconds > 0 && (
+              <Circle cx={x(best) + slot / 2} cy={y('seconds', days[best].seconds) - 9} r={5} fill={colors.lemon} stroke="#C99A00" strokeWidth={1.5} />
+            )}
+            {picked !== null && <Line x1={x(picked) + slot / 2} x2={x(picked) + slot / 2} y1={top - 4} y2={top + inner} stroke={colors.ink} strokeWidth={1} opacity={0.35} />}
+            {days.map((d, i) => {
+              const [month, day] = jalaliMonthDay(d.date);
+              if (day !== 1 && i !== days.length - 1) return null;
+              return <SvgLabel key={`l${d.date}`} x={x(i) + slot / 2} y={h - 6} text={i === days.length - 1 ? 'امروز' : month} />;
+            })}
+          </Svg>
+          {/* One invisible column per day: tap, or point with the mouse, to see its numbers. */}
+          {days.map((d, i) => (
+            <Pressable
+              key={`p${d.date}`}
+              onPress={() => setPicked(i)}
+              onHoverIn={() => setPicked(i)}
+              style={{ position: 'absolute', left: x(i), top: 0, width: slot, height: h }}
+              accessibilityLabel={dayName(d.date)}
+            />
+          ))}
+          {p && (
+            <View pointerEvents="none" style={[styles.bubble, { left: Math.max(0, Math.min(width - 190, x(picked!) + slot / 2 - 95)) }]}>
+              <Text style={[styles.bubbleText, rtl]} numberOfLines={1}>
+                {dayName(p.date)}: {p.seconds >= 60 ? studyDuration(p.seconds) : 'بی‌مطالعه'}
+                {p.answers ? `، ${toPersianDigits(p.answers)} تست` : ''}
+                {p.sections ? `، ${toPersianDigits(p.sections)} بخش` : ''}
+              </Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
       <Text style={[styles.muted, rtl]}>
-        {picked !== null && days[picked] ? show(days[picked]) : `ستون زرد: ${MEASURES.find((m) => m[0] === measure)![1]}؛ خط: ${lineOf === 'answers' ? 'تست' : 'زمان'}. برای روزهای قبل، کنار بکش.`}
+        هر ستون یک روز است و امروز سمت چپ؛ برای روزهای قبل کنار بکش. خط‌چین: میانگین زمان روزانه در ۳۰ روز اخیر ({studyDuration(Math.round(avg))}). لیموی کوچک: پربارترین روز.
       </Text>
     </View>
   );
@@ -278,6 +384,14 @@ function SvgLabel({ x, y, text }: { x: number; y: number; text: string }) {
 }
 
 const styles = StyleSheet.create({
+  trendSum: { fontSize: 13, fontWeight: '700', color: colors.ink },
+  legend: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  legendItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: colors.line, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  legendMark: { fontSize: 13, fontWeight: '900' },
+  legendText: { fontSize: 12, fontWeight: '700', color: colors.ink },
+  legendMax: { fontSize: 11, color: colors.muted },
+  bubble: { position: 'absolute', top: 0, width: 190, backgroundColor: colors.ink, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  bubbleText: { fontSize: 11, color: '#FFFFFF', textAlign: 'center' },
   section: { gap: 8, marginBottom: 20 },
   head: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   title: { fontSize: 17, fontWeight: '800', color: colors.ink },
