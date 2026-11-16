@@ -50,11 +50,32 @@ class SitePage(models.Model):
     title = models.CharField("عنوان", max_length=120)
     body = models.TextField("متن", blank=True, help_text="پاراگراف‌ها را با یک خط خالی جدا کنید. «## » اول خط: تیتر؛ «- » اول خط: فهرست.")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین تغییر")
+    show_in_app = models.BooleanField("نمایش در اپ", default=False, help_text="در «حساب من» اپ هم دیده شود.")
+    # Set by the «تغییر مهم است» tick on save: learners who have not opened the page since see a notice in the app.
+    important_at = models.DateTimeField("آخرین تغییر مهم", null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = "صفحه‌ی سایت"
         verbose_name_plural = "صفحه‌های سایت"
         ordering = ["slug"]
+
+    def __str__(self):
+        return self.title
+
+
+class HelpPage(models.Model):
+    """«صفحه‌های راهنما»: help texts shown in the app's «حساب من» › «راهنما», written like a lesson. Never deleted: hidden instead."""
+
+    title = models.CharField("عنوان", max_length=120)
+    body = models.TextField("متن", blank=True, help_text="مثل متن درس: فرمول، فهرست، کادرها و عکس.")
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    is_hidden = models.BooleanField("پنهان", default=False)
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین تغییر")
+
+    class Meta:
+        verbose_name = "صفحه‌ی راهنما"
+        verbose_name_plural = "صفحه‌های راهنما"
+        ordering = ["order", "id"]
 
     def __str__(self):
         return self.title

@@ -5,7 +5,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { FlatList, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useHomeMax, useWide } from '../../lib/layout';
 
-import { endpoints, type Library, type Today, type BookListItem, type TodayTask } from '../../api/endpoints';
+import { endpoints, type Library, type Today, type BookListItem, type SitePageItem, type TodayTask } from '../../api/endpoints';
+import { changedPages } from '../../lib/pages';
 import { studyDuration } from '../../lib/duration';
 import { BannerCarousel } from '../../components/BannerCarousel';
 import { BookCover } from '../../components/BookCover';
@@ -64,6 +65,17 @@ export default function Home() {
   // «قفسه‌ها»: one row per subject, set in the panel; books on no shelf come last.
   const books = useApi(() => endpoints.shelves(), [user?.id, asLearner]);
   const banners = useApi(() => endpoints.banners(), [user?.id]);
+  // «قوانین به‌روز شد»: a site page with an important change the learner has not opened since.
+  const [changedPage, setChangedPage] = useState<SitePageItem | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      endpoints
+        .appPages()
+        .then((p) => changedPages(p.pages))
+        .then((c) => setChangedPage(c[0] ?? null))
+        .catch(() => undefined);
+    }, []),
+  );
   const [today, setToday] = useState<Today | null>(null);
   useFocusEffect(
     useCallback(() => {
@@ -179,6 +191,17 @@ export default function Home() {
           )}
         </View>
 
+        {!!changedPage && (
+          <Pressable
+            onPress={() => router.push({ pathname: '/page/[slug]', params: { slug: changedPage.slug } })}
+            style={styles.changed}
+            accessibilityRole="link"
+          >
+            <Icon name="bell" size={16} color={colors.ink} />
+            <Text style={[styles.changedText, rtl]}>«{changedPage.title}» به‌روز شد؛ ببین چه تغییر کرده است</Text>
+            <Icon name="chevron-left" size={16} color={colors.muted} />
+          </Pressable>
+        )}
         {asLearner && (
           <Pressable onPress={() => setViewAsLearner(false)} style={styles.asLearner} accessibilityRole="button">
             <Text style={styles.asLearnerText}>نمایش مثل کاربر عادی روشن است؛ برای خاموش کردن بزنید</Text>
@@ -379,6 +402,8 @@ const SIDE_INNER = SIDE_WIDTH - 2 * SIDE_PAD - 2;
 
 const styles = StyleSheet.create({
   guestLink: { paddingHorizontal: 16, paddingTop: 2, alignSelf: 'stretch' },
+  changed: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.lemonSoft, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10 },
+  changedText: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.ink },
   planCard: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 10 },
   planTrack: { height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden', flexDirection: 'row-reverse' },
   planFill: { backgroundColor: colors.green, borderRadius: 3 },

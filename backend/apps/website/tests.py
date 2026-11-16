@@ -75,3 +75,53 @@ class WebsiteTests(TestCase):
         self.assertIn("<h2>سر</h2>", html)
         self.assertIn("&lt;script&gt;", html)
         self.assertIn("<ul><li>یک</li><li>دو</li></ul>", html)
+
+
+class AppPagesTests(TestCase):
+    """«راهنما» and «قوانین» in the app."""
+
+    def setUp(self):
+        from .models import HelpPage, SitePage
+
+        self.terms, _ = SitePage.objects.update_or_create(slug="terms", defaults={"title": "قوانین", "body": "## یک\n\nمتن", "show_in_app": True})
+        self.about, _ = SitePage.objects.update_or_create(slug="about", defaults={"title": "درباره", "body": "x", "show_in_app": False})
+        HelpPage.objects.create(title="دوم", body="b", order=2)
+        HelpPage.objects.create(title="اول", body="$x^2$", order=1)
+        HelpPage.objects.create(title="پنهان", body="h", is_hidden=True)
+
+    def test_lists_only_what_is_shown(self):
+        d = self.client.get("/api/v1/app/pages/").json()
+        self.assertEqual([h["title"] for h in d["help"]], ["اول", "دوم"])
+        slugs = [p["slug"] for p in d["pages"]]
+        self.assertIn("terms", slugs)
+        self.assertNotIn("about", slugs)
+        self.assertIsNone(d["pages"][slugs.index("terms")]["important_at"])
+
+    def test_pages_open_by_rule(self):
+        from .models import HelpPage
+
+        first = HelpPage.objects.get(title="اول")
+        self.assertEqual(self.client.get(f"/api/v1/app/help/{first.id}/").json()["body"], "$x^2$")
+        hidden = HelpPage.objects.get(title="پنهان")
+        self.assertEqual(self.client.get(f"/api/v1/app/help/{hidden.id}/").status_code, 404)
+        self.assertEqual(self.client.get("/api/v1/app/pages/about/").status_code, 404)
+        # Linked under the login button: opens even when not listed.
+        self.terms.show_in_app = False
+        self.terms.save()
+        self.assertEqual(self.client.get("/api/v1/app/pages/terms/").json()["title"], "قوانین")
+
+    def test_important_tick_sets_the_date_only_when_ticked(self):
+        from apps.accounts.models import User
+
+        admin = User.objects.create_superuser("09120000009", password="Pass-12345")
+        self.client.force_login(admin)
+        url = f"/admin/website/sitepage/{self.terms.id}/change/"
+        form = {"slug": "terms", "title": "قوانین", "body": "تازه", "show_in_app": "on"}
+        self.assertEqual(self.client.post(url, form).status_code, 302)
+        self.terms.refresh_from_db()
+        self.assertIsNone(self.terms.important_at)
+        self.client.post(url, {**form, "important": "on"})
+        self.terms.refresh_from_db()
+        self.assertIsNotNone(self.terms.important_at)
+        self.assertEqual(self.client.get("/admin/website/helppage/add/").status_code, 200)
+        self.assertContains(self.client.get("/admin/website/helppage/add/"), "data-md-editor")
