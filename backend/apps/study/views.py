@@ -834,24 +834,54 @@ def _streak(days: set) -> int:
 
 def _year(user, days) -> dict:
     """The «days of study» grid (like GitHub's): the last 53 weeks, only the days with something done (the app fills in
-    the rest). Each day: sections, answers, cards and seconds of study; plus the longest run of days in a row."""
+    the rest). Each day: sections, answers (and how many right), cards, exams and seconds of study; plus the longest run
+    of days in a row and where it lies."""
     from django.db.models import Sum
+    from django.db.models.functions import TruncDate
 
-    from .models import StudyTime
+    from apps.learning.models import QuizAnswer
+
+    from .models import ExamAttempt, StudyTime
 
     since = timezone.localdate() - timedelta(days=370)
     out = {}
+
+    def day_of(d):
+        return out.setdefault(d, {"date": d, "sections": 0, "answers": 0, "correct": 0, "cards": 0, "exams": 0, "seconds": 0})
+
     for d in days.filter(date__gte=since):
-        out[d.date] = {"date": d.date, "sections": d.sections, "answers": d.answers, "cards": d.cards, "seconds": 0}
+        day_of(d.date).update(sections=d.sections, answers=d.answers, cards=d.cards)
     for day, seconds in StudyTime.objects.filter(user=user, day__gte=since).values_list("day").annotate(s=Sum("seconds")):
-        out.setdefault(day, {"date": day, "sections": 0, "answers": 0, "cards": 0, "seconds": 0})["seconds"] = seconds or 0
+        day_of(day)["seconds"] = seconds or 0
+    tz = timezone.get_current_timezone()
+    for day, n in (
+        QuizAnswer.objects.filter(user=user, was_correct=True, answered_at__date__gte=since)
+        .annotate(d=TruncDate("answered_at", tzinfo=tz)).values_list("d").annotate(n=Count("id")).order_by()
+    ):
+        if day in out:
+            out[day]["correct"] = n
+    for day, n in (
+        ExamAttempt.objects.filter(user=user, submitted_at__isnull=False, submitted_at__date__gte=since)
+        .annotate(d=TruncDate("submitted_at", tzinfo=tz)).values_list("d").annotate(n=Count("id")).order_by()
+    ):
+        day_of(day)["exams"] = n
     longest = run = 0
     previous = None
+    longest_end = None
     for day in sorted(days.values_list("date", flat=True)):
         run = run + 1 if previous and day - previous == timedelta(days=1) else 1
-        longest = max(longest, run)
+        if run >= longest:  # ties: the most recent run
+            longest, longest_end = run, day
         previous = day
-    return {"since": since, "days": [out[k] for k in sorted(out)], "longest_streak": longest}
+    # Where the longest run lies, for the frame the app draws around it (only when longer than one day).
+    longest_from = longest_end - timedelta(days=longest - 1) if longest > 1 else None
+    return {
+        "since": since,
+        "days": [out[k] for k in sorted(out)],
+        "longest_streak": longest,
+        "longest_from": longest_from,
+        "longest_to": longest_end if longest > 1 else None,
+    }
 
 
 def _time(user):

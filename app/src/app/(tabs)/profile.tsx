@@ -32,6 +32,7 @@ export default function Profile() {
   const { user, signOut } = useAuth();
   const { confirm } = useFeedback();
   const [purchases, setPurchases] = useState<Purchases | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const [sound, setSound] = useState(true);
   const [justify, setJustify] = useState(true);
   const coverTheme = useCoverTheme();
@@ -99,12 +100,27 @@ export default function Profile() {
           purchases && purchases.active.length > 0 && (
             <Card>
               <Text style={[styles.cardTitle, rtl]}>اشتراک‌ها و کتاب‌های من</Text>
-              {purchases.active.map((p) => (
-                <Text key={p.id} style={[styles.line, rtl]}>
-                  {p.title}
-                  {p.ends_at ? `، تا ${jalaliDate(p.ends_at)}` : '، همیشگی'}
-                </Text>
+              {/* Three at most; the rest behind «همه». A book opens its page. */}
+              {(showAll ? purchases.active : purchases.active.slice(0, 3)).map((p) => (
+                <Pressable
+                  key={p.id}
+                  onPress={() => (p.book_slug ? router.push(`/book/${p.book_slug}`) : router.push('/library'))}
+                  style={styles.owned}
+                  accessibilityRole="button"
+                >
+                  <IconBadge name={p.kind === 'subscription' ? 'badge-check' : 'book-open'} size={30} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.ownedTitle, rtl]} numberOfLines={1}>{p.title}</Text>
+                    <Text style={[styles.rowHint, rtl]}>{p.ends_at ? `تا ${jalaliDate(p.ends_at)}` : 'همیشگی'}</Text>
+                  </View>
+                  <Icon name="chevron-left" size={18} color={colors.muted} />
+                </Pressable>
               ))}
+              {purchases.active.length > 3 && (
+                <Pressable onPress={() => setShowAll((v) => !v)} accessibilityRole="button" style={{ alignSelf: 'flex-start' }}>
+                  <Text style={styles.more}>{showAll ? 'بستن ▴' : `همه (${toPersianDigits(purchases.active.length)}) ▾`}</Text>
+                </Pressable>
+              )}
             </Card>
           )
         )}
@@ -269,6 +285,9 @@ const styles = StyleSheet.create({
   phone: { fontSize: 15, color: '#C9D0C6' },
   cardTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   line: { fontSize: 15, color: colors.muted },
+  owned: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  ownedTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  more: { fontSize: 13, fontWeight: '800', color: colors.greenDark },
   groupTitle: { fontSize: 13, fontWeight: '800', color: colors.muted, marginBottom: -8, paddingHorizontal: 4 },
   group: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
   row: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.line },

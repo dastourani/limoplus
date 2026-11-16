@@ -249,6 +249,25 @@ class StudyTests(TestCase):
         self.assertEqual(len(s["year"]["days"]), 1)
         self.assertEqual(s["year"]["days"][0]["sections"], 1)
         self.assertEqual(s["year"]["longest_streak"], 1)
+        self.assertIsNone(s["year"]["longest_from"])
+
+    def test_year_days_have_right_answers_exams_and_the_longest_run(self):
+        from datetime import timedelta
+
+        from .models import StudyDay
+
+        today = timezone.localdate()
+        for ago in (9, 8, 7, 3, 2, 1):  # runs of three: the most recent one is framed
+            StudyDay.objects.create(user=self.user, date=today - timedelta(days=ago), answers=1)
+        q = self.section.questions.first()
+        choices = list(q.choices.all())
+        right = next(c for c in choices if c.is_correct)
+        self.client.post(f"/api/v1/questions/{q.id}/answer/", {"choice_id": right.id}, format="json")
+        y = self.client.get("/api/v1/me/stats/").data["year"]
+        self.assertEqual(y["longest_streak"], 4, "today joins the last run")
+        self.assertEqual((y["longest_from"], y["longest_to"]), (today - timedelta(days=3), today))
+        last = y["days"][-1]
+        self.assertEqual((last["date"], last["correct"], last["exams"]), (today, 1, 0))
 
     def test_insights_forecast_and_best_hours(self):
         self.client.post(f"/api/v1/nodes/{self.section.id}/progress/", {"done": True}, format="json")

@@ -403,7 +403,14 @@ export type Stats = {
   study_days: number;
   last_14_days: { date: string; sections: number; answers: number; cards: number }[];
   /** «روزهای مطالعه»: the last 53 weeks, only days with something done. */
-  year?: { since: string; days: { date: string; sections: number; answers: number; cards: number; seconds: number }[]; longest_streak: number };
+  year?: {
+    since: string;
+    days: { date: string; sections: number; answers: number; correct?: number; cards: number; exams?: number; seconds: number }[];
+    longest_streak: number;
+    /** Where the longest run of days lies (null when it is a single day). */
+    longest_from?: string | null;
+    longest_to?: string | null;
+  };
   books: { slug: string; title: string; done: number; total: number }[];
   weak_sections: { id: number; title: string; answers: number; accuracy: number }[];
   /** Of the questions got wrong in the last `days` days: answered right later, and settled. */
