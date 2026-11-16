@@ -13,6 +13,7 @@ import { listenForSmsCode, smsAppHash } from '../lib/smsCode';
 import { colors, radius, rtl, toPersianDigits } from '../theme';
 
 const RESEND_SECONDS = 60;
+const CODE_SECONDS = 120; // the server keeps a code two minutes (OTP_LIFETIME)
 const toLatin = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 
 /** Step 2: the SMS code. If two devices are already signed in, the user chooses one to sign out. */
@@ -24,6 +25,7 @@ export default function Verify() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [wait, setWait] = useState(RESEND_SECONDS);
+  const [left, setLeft] = useState(CODE_SECONDS); // seconds this code still works
   const [limit, setLimit] = useState<DeviceSessionInfo[] | null>(null);
 
   // Android: the code is read from the SMS by itself and the user is signed in without typing.
@@ -37,10 +39,13 @@ export default function Verify() {
   }, [limit]);
 
   useEffect(() => {
-    if (wait <= 0) return;
-    const t = setTimeout(() => setWait((w) => w - 1), 1000);
+    if (wait <= 0 && left <= 0) return;
+    const t = setTimeout(() => {
+      setWait((w) => Math.max(0, w - 1));
+      setLeft((l) => Math.max(0, l - 1));
+    }, 1000);
     return () => clearTimeout(t);
-  }, [wait]);
+  }, [wait, left]);
 
   const clean = toLatin(code).replace(/\D/g, '');
 
@@ -56,8 +61,16 @@ export default function Verify() {
       else if (router.canDismiss()) router.dismissAll();
       else router.replace('/home');
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'session_limit') setLimit((e.data.sessions as DeviceSessionInfo[]) ?? []);
-      else setError(e instanceof ApiError ? e.message : 'ورود ممکن نشد.');
+      if (e instanceof ApiError && e.code === 'session_limit' && Array.isArray(e.data.sessions)) {
+        setLimit(e.data.sessions as DeviceSessionInfo[]);
+      } else if (e instanceof ApiError && e.code === 'otp_wrong' && typeof e.data.attempts_left === 'number') {
+        const n = e.data.attempts_left;
+        setError(n > 0 ? `کد اشتباه است؛ ${toPersianDigits(n)} بار دیگر می‌توانید امتحان کنید.` : 'کد اشتباه است و دیگر پذیرفته نمی‌شود. کد تازه بگیرید.');
+        if (n <= 0) setLeft(0);
+      } else {
+        if (e instanceof ApiError && e.code === 'otp_expired') setLeft(0);
+        setError(e instanceof ApiError ? e.message : 'ورود ممکن نشد.');
+      }
     } finally {
       setBusy(false);
     }
@@ -68,8 +81,10 @@ export default function Verify() {
   const resend = async () => {
     setError(null);
     try {
-      await endpoints.requestOtp(String(phone), smsAppHash());
+      const r = await endpoints.requestOtp(String(phone), smsAppHash());
       setWait(RESEND_SECONDS);
+      setLeft(typeof r?.expires_in === 'number' ? r.expires_in : CODE_SECONDS);
+      setCode('');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'ارسال دوباره ممکن نشد.');
     }
@@ -81,13 +96,20 @@ export default function Verify() {
         <Header title="حداکثر دو دستگاه" />
         <View style={styles.page}>
           <Text style={[styles.help, rtl]}>
-            با این حساب روی دو دستگاه وارد شده‌اید. برای ورود روی این دستگاه، یکی از آن‌ها را خارج کنید.
+            با این حساب روی دو دستگاه وارد شده‌اید. برای ورود روی این دستگاه، یکی از آن‌ها را خارج کنید. دستگاهی که
+            مدت بیشتری از آن استفاده نشده، پیشنهاد شده است.
           </Text>
-          {limit.map((s) => (
+          {/* The server lists them least recently used first: that one is the suggestion. */}
+          {limit.map((s, i) => (
             <Card key={s.id}>
               <Text style={[styles.device, rtl]}>{s.device_name}</Text>
               <Text style={[styles.help, rtl]}>آخرین استفاده: {relativeDay(s.last_seen_at)}</Text>
-              <Button label="خروج این دستگاه و ورود" variant="dark" loading={busy} onPress={() => verify(s.id)} />
+              <Button
+                label={i === 0 ? 'خروج این دستگاه و ورود (پیشنهاد)' : 'خروج این دستگاه و ورود'}
+                variant={i === 0 ? 'primary' : 'outline'}
+                loading={busy}
+                onPress={() => verify(s.id)}
+              />
             </Card>
           ))}
           {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}
@@ -117,8 +139,13 @@ export default function Verify() {
           accessibilityLabel="کد تأیید"
           onSubmitEditing={() => clean.length === 6 && verify()}
         />
+        <Text style={[styles.help, rtl, { textAlign: 'center', fontSize: 13 }, left <= 0 && { color: colors.redDark }]}>
+          {left > 0
+            ? `این کد تا ${toPersianDigits(`${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`)} دیگر معتبر است.`
+            : 'کد منقضی شد؛ کد تازه بگیرید.'}
+        </Text>
         {!!error && <Text style={[styles.error, rtl]}>{error}</Text>}
-        <Button label="ورود" onPress={() => verify()} disabled={clean.length !== 6} loading={busy} />
+        <Button label="ورود" onPress={() => verify()} disabled={clean.length !== 6 || left <= 0} loading={busy} />
         <Pressable onPress={resend} disabled={wait > 0} style={{ alignSelf: 'center', padding: 10 }}>
           <Text style={{ color: wait > 0 ? colors.muted : colors.greenDark, fontWeight: '700' }}>
             {wait > 0 ? `ارسال دوباره تا ${toPersianDigits(wait)} ثانیه‌ی دیگر` : 'ارسال دوباره‌ی کد'}

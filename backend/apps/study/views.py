@@ -736,6 +736,12 @@ def _section_ref(node):
     return {"id": node.id, "title": node.title}
 
 
+def _chapter_of(access, node):
+    """«فصل ۳: مشتق» for a section (from the book's map, no query); a chapter's own page is its chapter."""
+    chapter = next((c for c in access.nodes.values() if c.kind == ContentNode.Kind.CHAPTER and node.path.startswith(c.path)), None)
+    return {"number": chapter.position, "title": chapter.title} if chapter else None
+
+
 def _next_section(access, node):
     sections = sorted((n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)), key=lambda n: n.path)
     ids = [n.id for n in sections]
@@ -780,6 +786,7 @@ def library(request):
                 "book_slug": p.book.slug,
                 "book_title": p.book.title,
                 "last_section": _section_ref(p.node),
+                "chapter": _chapter_of(access, p.node),
                 # How far into that section (0–100), to open it where the reader left off on another device.
                 "percent": p.percent,
                 "position": p.position,
@@ -878,15 +885,24 @@ def stats(request):
         d = by_day.get(date)
         last_14.append({"date": date, "sections": d.sections if d else 0, "answers": d.answers if d else 0, "cards": d.cards if d else 0})
 
-    # Per book: sections read out of the book's sections.
+    # Per book: sections read out of the book's sections. Both sides count the same thing (published, not archived
+    # sections, placed by their tree path), so the share never passes 100% when a section is moved, archived or
+    # unpublished, and chapter introductions (read too) are not counted.
+    from django.db.models.functions import Substr
+
+    step = ContentNode.steplen
+    counted = {"kind": ContentNode.Kind.SECTION, "is_archived": False, "is_published": True}
+    done_by_book: dict[str, int] = {}
+    for path in SectionProgress.objects.filter(user=user, is_done=True, **{f"node__{k}": v for k, v in counted.items()}) \
+            .values_list("node__path", flat=True):
+        done_by_book[path[:step]] = done_by_book.get(path[:step], 0) + 1
+    totals = dict(ContentNode.objects.filter(**counted).annotate(root=Substr("path", 1, step))
+                  .filter(root__in=list(done_by_book)).order_by().values("root").annotate(n=Count("id")).values_list("root", "n"))
     books = []
-    progress = SectionProgress.objects.filter(user=user, is_done=True).values("book_id").annotate(done=Count("id"))
-    for row in progress:
-        book = ContentNode.objects.filter(pk=row["book_id"], is_archived=False).first()
-        if not book:
-            continue
-        total = ContentNode.objects.filter(path__startswith=book.path, kind=ContentNode.Kind.SECTION, is_archived=False, is_published=True).count()
-        books.append({"slug": book.slug, "title": book.title, "done": row["done"], "total": total})
+    for book in ContentNode.objects.filter(path__in=list(done_by_book), depth=1, is_archived=False).order_by("path"):
+        total = totals.get(book.path, 0)
+        books.append({"slug": book.slug, "title": book.title, "done": min(done_by_book[book.path], total), "total": total})
+    sections_done = sum(b["done"] for b in books)
 
     # «N از M لغت»: books whose word cards the learner has started.
     from .progress import WORD_PREFIX, word_counts
@@ -917,7 +933,7 @@ def stats(request):
 
     return Response(
         {
-            "sections_done": SectionProgress.objects.filter(user=user, is_done=True).count(),
+            "sections_done": sections_done,
             "answers": total_answers,
             "accuracy": round(correct_answers / total_answers * 100) if total_answers else None,
             "cards_reviewed": FlashcardReview.objects.filter(user=user).aggregate(n=Count("id"))["n"],

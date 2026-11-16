@@ -14,7 +14,7 @@ export type ReaderPrefs = { fontSize: number; dark?: boolean; theme?: ReaderThem
 
 export type LastSection = { id: number; title: string; bookTitle: string; bookSlug: string };
 /** Where the reader is in one book: the section, notes or summary, and how far down (0–100). */
-export type ReadingSpot = LastSection & { mode: 'full' | 'summary'; percent: number; at: number };
+export type ReadingSpot = LastSection & { mode: 'full' | 'summary'; percent: number; at: number; chapter?: { number: number | null; title: string } | null };
 
 async function getJson<T>(key: string): Promise<T | null> {
   try {

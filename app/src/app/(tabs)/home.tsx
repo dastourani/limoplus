@@ -117,12 +117,12 @@ export default function Home() {
   const reading = useMemo(() => {
     const bySlug = new Map<string, ReadingItem & { at: number }>();
     for (const r of serverReading)
-      bySlug.set(r.book_slug, { slug: r.book_slug, bookTitle: r.book_title, id: r.last_section.id, title: r.last_section.title, at: Date.parse(r.updated_at), book: r.book, next: r.next });
+      bySlug.set(r.book_slug, { slug: r.book_slug, bookTitle: r.book_title, id: r.last_section.id, title: r.last_section.title, at: Date.parse(r.updated_at), book: r.book, next: r.next, chapter: r.chapter });
     for (const s of Object.values(spots)) {
       const had = bySlug.get(s.bookSlug);
       // This phone's own spot is newer: the account's «next section» still counts if it is the same section.
       if (!had || s.at >= had.at)
-        bySlug.set(s.bookSlug, { slug: s.bookSlug, bookTitle: s.bookTitle, id: s.id, title: s.title, at: s.at, book: had?.book, next: had?.id === s.id ? had.next : null });
+        bySlug.set(s.bookSlug, { slug: s.bookSlug, bookTitle: s.bookTitle, id: s.id, title: s.title, at: s.at, book: had?.book, next: had?.id === s.id ? had.next : null, chapter: s.chapter ?? (had?.id === s.id ? had.chapter : null) });
     }
     return [...bySlug.values()]
       .map((r) => ({ ...r, book: list.find((b) => b.slug === r.slug) ?? r.book }))
@@ -194,6 +194,12 @@ export default function Home() {
         <View style={styles.section}>
             <SectionHeader title="ادامه‌ی خواندن" side={reading.length > 1 ? `${toPersianDigits(reading.length)} کتاب` : undefined} />
             <ReadingCards items={reading} />
+            {!user && (
+              // A guest's place lives only on this device: a separate, quiet link to keep it everywhere.
+              <Pressable onPress={() => router.push('/login')} style={styles.guestLink} accessibilityRole="link">
+                <Text style={[styles.guestLinkText, rtl]}>جای خواندنت فقط روی همین دستگاه است؛ برای نگه داشتنش در همه‌جا وارد شو ←</Text>
+              </Pressable>
+            )}
           </View>
       ),
     });
@@ -203,7 +209,7 @@ export default function Home() {
       el: (
         <View style={styles.section}>
             <SectionHeader
-              title="کارهای امروز"
+              title="برنامه‌ی امروز"
               sub={
                 today.tasks?.length
                   ? `${toPersianDigits(today.tasks.length)} کار، حدود ${toPersianDigits(today.minutes)} دقیقه`
@@ -361,6 +367,8 @@ const SIDE_PAD = 16;
 const SIDE_INNER = SIDE_WIDTH - 2 * SIDE_PAD - 2;
 
 const styles = StyleSheet.create({
+  guestLink: { paddingHorizontal: 16, paddingTop: 2, alignSelf: 'stretch' },
+  guestLinkText: { fontSize: 12, color: colors.greenDark, fontWeight: '700' },
   wide: { flex: 1, flexDirection: 'row-reverse', gap: 40, paddingLeft: 24 },
   wideMain: { gap: 16, paddingVertical: 24, paddingRight: 24, minWidth: 0 },
   // A very soft, slightly warm panel: the two columns read apart without a colour that catches the eye.

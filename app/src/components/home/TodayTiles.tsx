@@ -1,4 +1,4 @@
-/** «کارهای امروز»: one compact row per job (chapter reviews, then flashcards, then the notebook), in one card. Each row
+/** «برنامه‌ی امروز»: one compact row per job (chapter reviews, then flashcards, then the notebook), in one card. Each row
  * has a lemon with a wedge per question or card (filled as they are done today), the job and its size, and a start
  * button. A job finished since the last look shows a full lemon and a tick for a moment, then leaves the list; when
  * none is left, one row says so. */
@@ -37,7 +37,7 @@ export function TodayTiles({ tasks, onError }: { tasks: TodayTask[]; onError: ()
     return (
       <View style={[styles.card, styles.row]}>
         <LemonProgress parts={['done']} size={44} />
-        <Text style={[styles.allDone, rtl]}>کارهای امروز تمام شد. آفرین!</Text>
+        <Text style={[styles.allDone, rtl]}>برنامه‌ی امروز تمام شد. آفرین!</Text>
       </View>
     );
   }
@@ -75,7 +75,7 @@ function Row({ t, ended, first, onError }: { t: TodayTask; ended: boolean; first
     size = `${fa(t.count)} کارت، حدود ${fa(t.minutes)} دقیقه`;
     open = () => router.push(t.comeback ? { pathname: '/review', params: { limit: String(t.count) } } : '/review');
   } else {
-    title = 'دفترچه‌ی اشتباهات';
+    title = 'اشتباهات من';
     total = t.count + done;
     size = `${fa(t.count)} تست از ${fa(t.total)}، حدود ${fa(t.minutes)} دقیقه`;
     open = () => router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: 'mistakes' } });

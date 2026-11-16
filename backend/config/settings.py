@@ -188,6 +188,10 @@ REST_FRAMEWORK = {
 # --- Accounts, OTP and sessions ---------------------------------------------
 
 MAX_ACTIVE_SESSIONS = env.int("MAX_ACTIVE_SESSIONS", default=2)
+# A device not used for this long is signed out by itself (it no longer takes one of the places above).
+# More new sign-ins than this in 7 days marks a user «تعویض زیاد دستگاه» in the panel (often a shared account).
+DEVICE_SWITCH_ALERT = env.int("DEVICE_SWITCH_ALERT", default=4)
+SESSION_IDLE = timedelta(days=env.int("SESSION_IDLE_DAYS", default=30))
 SESSION_TOKEN_LIFETIME = timedelta(days=env.int("SESSION_TOKEN_DAYS", default=60))
 
 OTP_LENGTH = 6

@@ -220,7 +220,7 @@ export default function Quiz() {
         <Header title="تست" />
         <ErrorState
           icon={data!.locked_count ? 'lock' : 'clipboard-list'}
-          message={quick ? 'فعلاً تستی برای این چند دقیقه نیست؛ یک بخش را شروع کن.' : notebook ? 'دفترچه‌ی اشتباهات خالی است؛ آفرین!' : data!.locked_count ? 'تست‌های این بخش در نسخه‌ی کامل کتاب است.' : 'برای این بخش هنوز تستی نیست.'}
+          message={quick ? 'فعلاً تستی برای این چند دقیقه نیست؛ یک بخش را شروع کن.' : notebook ? '«اشتباهات من» خالی است؛ آفرین!' : data!.locked_count ? 'تست‌های این بخش در نسخه‌ی کامل کتاب است.' : 'برای این بخش هنوز تستی نیست.'}
         />
       </Screen>
     );
@@ -263,7 +263,7 @@ export default function Quiz() {
       if (r.fixed?.step === 'settled') {
         // «اشتباهی که برطرف شد»: right again on a later day.
         play('pop');
-        flash(r.fixed.days >= 1 ? `تثبیت شد! ${toPersianDigits(r.fixed.days)} روز پیش این را غلط زده بودی؛ از دفترچه بیرون رفت.` : 'تثبیت شد! از دفترچه بیرون رفت.');
+        flash(r.fixed.days >= 1 ? `تثبیت شد! ${toPersianDigits(r.fixed.days)} روز پیش این را غلط زده بودی؛ از «اشتباهات من» بیرون رفت.` : 'تثبیت شد! از «اشتباهات من» بیرون رفت.');
       } else if (r.fixed?.step === 'settling') {
         flash(`درست زدی! ${toPersianDigits(r.fixed.due_in ?? 3)} روز دیگر یک بار دیگر می‌پرسیم تا مطمئن شویم یادت مانده.`);
       }
@@ -367,7 +367,7 @@ export default function Quiz() {
                 ? `برای اینکه این مرور حساب شود، ${toPersianDigits(left)} تست دیگر بزن.`
                 : 'در حال ثبت…'}
           </Text>
-          {counts.wrong > 0 && <Text style={[styles.resultLine, { fontSize: 13 }]}>تست‌های غلط به دفترچه‌ی اشتباهات رفتند.</Text>}
+          {counts.wrong > 0 && <Text style={[styles.resultLine, { fontSize: 13 }]}>تست‌های غلط به «اشتباهات من» رفتند.</Text>}
           {(info?.more ?? true) && (
             <Button
               label={reviewBusy ? 'صبر کن…' : `۵ تست دیگر از این ${info?.kind === 'book' ? 'کتاب' : 'فصل'}`}
@@ -421,7 +421,7 @@ export default function Quiz() {
           {quick ? (
             <Button label="کافی است برای امروز" variant={firstOpen >= 0 ? 'outline' : 'primary'} onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
           ) : notebook ? (
-            <Button label="دفترچه‌ی اشتباهات" variant={firstOpen >= 0 ? 'outline' : 'primary'} onPress={() => router.replace('/mistakes')} style={{ alignSelf: 'stretch' }} />
+            <Button label="اشتباهات من" variant={firstOpen >= 0 ? 'outline' : 'primary'} onPress={() => router.replace('/mistakes')} style={{ alignSelf: 'stretch' }} />
           ) : (
             <Button label="آزمون زمان‌دار با نمره‌ی منفی" variant={firstOpen >= 0 ? 'outline' : 'primary'} onPress={() => router.replace(`/exam/${nodeId}`)} style={{ alignSelf: 'stretch' }} />
           )}

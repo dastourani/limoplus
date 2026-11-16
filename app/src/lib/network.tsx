@@ -119,6 +119,15 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
       setOnline(now);
       if (now) flushOutbox();
     };
+    // In a browser the reachability check is a request to our own server every few seconds, per open tab: only
+    // the tab in front checks, and not more than once a minute when all is well.
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      NetInfo.configure({
+        reachabilityShouldRun: () => document.visibilityState === 'visible',
+        reachabilityLongTimeout: 60 * 1000,
+        reachabilityShortTimeout: 15 * 1000,
+      });
+    }
     const unsubscribe = NetInfo.addEventListener((s) => update(s.isConnected !== false && s.isInternetReachable !== false));
     // Browsers: also follow the online/offline events (Chrome's NetInfo listens to another event).
     const web = Platform.OS === 'web' && typeof window !== 'undefined';

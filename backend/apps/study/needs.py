@@ -3,7 +3,7 @@
 Two reasons, in this order:
   - mistakes: the section has tests the learner got wrong and has not answered right since (the notebook's «open»);
   - old: the section was finished more than OLD_DAYS ago and not opened since, and its chapter is not in a chapter
-    review cycle (those are already asked for in «کارهای امروز»).
+    review cycle (those are already asked for in «برنامه‌ی امروز»).
 Opening the section again (or answering its tests right) takes it off the list.
 """
 from __future__ import annotations

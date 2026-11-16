@@ -250,6 +250,22 @@ class StudyTests(TestCase):
         self.assertEqual(s["year"]["days"][0]["sections"], 1)
         self.assertEqual(s["year"]["longest_streak"], 1)
 
+    def test_book_progress_never_passes_100(self):
+        """Read chapter introductions and a section archived later are not counted: done ≤ total, always."""
+        from apps.study.models import SectionProgress
+
+        book = self.chapter.get_parent()
+        SectionProgress.objects.create(user=self.user, node=self.chapter, book=book, is_done=True, percent=100)
+        extra = self.chapter.add_child(kind=ContentNode.Kind.SECTION, title="بعداً بایگانی", slug="later-gone", is_published=True)
+        SectionProgress.objects.create(user=self.user, node=extra, book=book, is_done=True, percent=100)
+        self.client.post(f"/api/v1/nodes/{self.section.id}/progress/", {"done": True}, format="json")
+        ContentNode.objects.filter(pk=extra.pk).update(is_archived=True)
+        s = self.client.get("/api/v1/me/stats/").data
+        row = s["books"][0]
+        self.assertEqual(row["done"], 1)
+        self.assertLessEqual(row["done"], row["total"])
+        self.assertEqual(s["sections_done"], 1)
+
     def test_offline_bundle_only_readable_sections(self):
         data = self.client.get("/api/v1/books/math-1/offline/").data
         ids = {s["id"] for s in data["sections"]}

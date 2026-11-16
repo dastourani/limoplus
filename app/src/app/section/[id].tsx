@@ -255,7 +255,11 @@ export default function Section() {
     const book = node?.breadcrumb.find((b) => b.kind === 'book');
     if (!node || !book || restoring.current) return;
     spots.current[mode] = percent;
-    storage.setReading({ id: node.id, title: node.title, bookTitle: book.title, bookSlug: book.slug, mode, percent, at: Date.now() });
+    const chapter = node.breadcrumb.find((b) => b.kind === 'chapter');
+    storage.setReading({
+      id: node.id, title: node.title, bookTitle: book.title, bookSlug: book.slug, mode, percent, at: Date.now(),
+      chapter: chapter ? { number: chapter.number ?? null, title: chapter.title } : null,
+    });
     // The account keeps the place too (every 10% or on a change of mode), for «ادامه بده» on another device.
     const last = lastSpotSent.current;
     if (user && !offline && (last.mode !== mode || Math.abs(last.percent - percent) >= 10)) {

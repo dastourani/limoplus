@@ -37,6 +37,19 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
+/** When the server's own Persian message did not arrive (a proxy in between answered with its own error page),
+ *  at least the status says what kind of problem it was. */
+export function statusMessage(status: number): string {
+  if (status === 400) return 'درخواست پذیرفته نشد؛ اگر کد وارد می‌کنید، شاید اشتباه یا منقضی باشد. دوباره تلاش کنید.';
+  if (status === 401) return 'نشست منقضی شده است. دوباره وارد شوید.';
+  if (status === 403) return 'اجازه‌ی این کار را ندارید.';
+  if (status === 404) return 'پیدا نشد.';
+  if (status === 409) return 'با این حساب روی دو دستگاه دیگر وارد شده‌اید. از یکی از آن‌ها خارج شوید و دوباره امتحان کنید.';
+  if (status === 429) return 'تلاش‌ها زیاد شد. کمی بعد دوباره امتحان کنید.';
+  if (status >= 500) return 'سرور موقتاً مشکل دارد. کمی بعد دوباره تلاش کنید.';
+  return 'خطایی رخ داد. دوباره تلاش کنید.';
+}
+
 /** No request waits longer than this; an unreachable server would otherwise hang for minutes on Android. */
 const TIMEOUT_MS = 10_000;
 
@@ -78,7 +91,7 @@ export async function api<T>(path: string, options: { method?: string; body?: un
     throw new ApiError(
       response.status,
       typeof data.code === 'string' ? data.code : 'error',
-      typeof data.message === 'string' ? data.message : 'خطایی رخ داد. دوباره تلاش کنید.',
+      typeof data.message === 'string' ? data.message : statusMessage(response.status),
       data,
     );
   }

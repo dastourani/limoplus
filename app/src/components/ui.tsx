@@ -154,7 +154,7 @@ export function Empty({ icon = 'book-open', title, text, action }: { icon?: Icon
       <IconBadge name={icon} size={64} />
       <Text style={styles.emptyTitle}>{title}</Text>
       {!!text && <Text style={styles.emptyText}>{text}</Text>}
-      {action}
+      {!!action && <View style={{ alignSelf: 'stretch', alignItems: 'center' }}><View style={{ width: '100%', maxWidth: 420 }}>{action}</View></View>}
     </View>
   );
 }
@@ -178,7 +178,8 @@ const styles = StyleSheet.create({
   headerRight: { minWidth: 44, alignItems: 'flex-start' },
   title: { fontSize: 18, fontWeight: '800', color: colors.ink },
   subtitle: { fontSize: 12, color: colors.muted },
-  button: { minHeight: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  // No button wider than about 420 px, even in a wide column on a computer.
+  button: { minHeight: 52, maxWidth: 420, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
   primary: { backgroundColor: colors.lemon },
   dark: { backgroundColor: colors.ink },
   danger: { backgroundColor: colors.redDark },
@@ -199,7 +200,11 @@ const styles = StyleSheet.create({
   sheetHandle: { alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line, marginBottom: 6 },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.ink },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 16, gap: 10 },
-  empty: { alignItems: 'center', justifyContent: 'center', padding: 28, gap: 8 },
+  // An empty or guest message: a small frame in the middle of its own column, not spread over a wide page.
+  empty: {
+    alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8, width: '100%', maxWidth: 480, alignSelf: 'center',
+    marginVertical: 24, backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.line,
+  },
   emptyTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, textAlign: 'center' },
   emptyText: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 24, marginBottom: 8 },
   chipText: { fontSize: 12, fontWeight: '700' },

@@ -128,7 +128,11 @@ class DeviceSession(models.Model):
 
     @classmethod
     def active_for(cls, user):
-        return cls.objects.filter(user=user, revoked_at__isnull=True, expires_at__gt=timezone.now())
+        """Signed in: not signed out, not expired, and used within SESSION_IDLE_DAYS (a phone left in a drawer for a
+        month stops holding one of the two places)."""
+        now = timezone.now()
+        return cls.objects.filter(user=user, revoked_at__isnull=True, expires_at__gt=now,
+                                  last_seen_at__gt=now - settings.SESSION_IDLE)
 
     @classmethod
     def start(cls, user, device_name="", platform="") -> tuple["DeviceSession", str]:
@@ -148,7 +152,8 @@ class DeviceSession(models.Model):
 
     @property
     def is_active(self) -> bool:
-        return self.revoked_at is None and self.expires_at > timezone.now()
+        now = timezone.now()
+        return self.revoked_at is None and self.expires_at > now and self.last_seen_at > now - settings.SESSION_IDLE
 
     def revoke(self):
         if self.revoked_at is None:

@@ -1,9 +1,10 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db.models import Count, Q
 from django.utils import timezone
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
 from .models import DeviceSession, User
 
@@ -96,6 +97,22 @@ class ActiveWeekFilter(admin.SimpleListFilter):
         return queryset
 
 
+class DeviceSwitchFilter(admin.SimpleListFilter):
+    title = "دستگاه"
+    parameter_name = "devices"
+
+    def lookups(self, request, model_admin):
+        return [("many", "تعویض زیاد دستگاه در ۷ روز")]
+
+    def queryset(self, request, queryset):
+        if self.value() != "many":
+            return queryset
+        since = timezone.now() - timedelta(days=7)
+        heavy = (DeviceSession.objects.filter(created_at__gte=since).order_by().values("user")
+                 .annotate(n=Count("pk")).filter(n__gt=settings.DEVICE_SWITCH_ALERT).values("user"))
+        return queryset.filter(pk__in=heavy)
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """The list shows at a glance who buys and who studies; a user's page starts with «خلاصه»: access, orders and
@@ -105,7 +122,7 @@ class UserAdmin(BaseUserAdmin):
     list_display = ("who", "dates", "access", "paid", "study_month")
     list_display_links = ("who",)
     search_fields = ("phone", "email", "first_name", "last_name")
-    list_filter = (BoughtFilter, ActiveWeekFilter, "date_joined", "is_active", "is_staff")
+    list_filter = (BoughtFilter, ActiveWeekFilter, DeviceSwitchFilter, "date_joined", "is_active", "is_staff")
     readonly_fields = ("overview",)
     fieldsets = (
         ("خلاصه", {"fields": ("overview",)}),
@@ -142,6 +159,8 @@ class UserAdmin(BaseUserAdmin):
             sub_forever=Coalesce(one(active.filter(book__isnull=True, ends_at__isnull=True), Count("pk")), 0),
             paid_total=Coalesce(one(Order.objects.filter(status=Order.Status.PAID, **mine), Sum("amount")), 0,
                                 output_field=IntegerField()),
+            # Signing in on many devices in a week: often one account shared by several people.
+            new_devices=Coalesce(one(DeviceSession.objects.filter(created_at__gte=now - timedelta(days=7), **mine), Count("pk")), 0),
             month_seconds=Coalesce(one(StudyTime.objects.filter(day__gte=now.date() - timedelta(days=30), **mine), Sum("seconds")),
                                    0, output_field=IntegerField()),
         )
@@ -196,8 +215,9 @@ class UserAdmin(BaseUserAdmin):
     def flags(self, obj):
         from apps.catalog.panel_display import badges
 
+        many = getattr(obj, "new_devices", 0) > settings.DEVICE_SWITCH_ALERT
         shown = badges(obj.is_superuser and ("مدیر کل", "yellow"), obj.is_staff and not obj.is_superuser and ("مدیر", "yellow"),
-                       not obj.is_active and ("غیرفعال", "grey"))
+                       not obj.is_active and ("غیرفعال", "grey"), many and ("تعویض زیاد دستگاه", "red"))
         return "" if shown == "—" else shown
 
     @admin.display(description="")

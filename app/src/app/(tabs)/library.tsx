@@ -26,7 +26,7 @@ function NotebookCard({ counts }: { counts?: Library['mistakes'] }) {
   return (
     <ListRow
       icon="notebook-pen"
-      title="دفترچه‌ی اشتباهات"
+      title="اشتباهات من"
       subtitle={
         n === 0
           ? 'تست‌های غلط و بی‌پاسخت این‌جا جمع می‌شوند.'
@@ -37,7 +37,7 @@ function NotebookCard({ counts }: { counts?: Library['mistakes'] }) {
       value={counts?.due ? <RowCount n={toPersianDigits(counts.due)} label={`${toPersianDigits(counts.due)} تست نوبتش رسیده`} /> : undefined}
       onPress={() => router.push('/mistakes')}
       chevron
-      accessibilityLabel="دفترچه‌ی اشتباهات"
+      accessibilityLabel="اشتباهات من"
     />
   );
 }

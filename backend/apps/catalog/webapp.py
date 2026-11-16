@@ -29,6 +29,10 @@ def webapp(request, path=""):
     if not file.is_file():
         file = index  # a page of the app (e.g. /book/math-1): the app finds its own way from index.html
     kind, _ = mimetypes.guess_type(str(file))
+    if request.method == "HEAD":  # the browser's «is the server there?» check: headers only, no body to drop
+        response = HttpResponse(content_type=kind or "application/octet-stream")
+        response["Cache-Control"] = "no-cache"
+        return response
     response = FileResponse(open(file, "rb"), content_type=kind or "application/octet-stream")
     # The page itself always fresh, so a new build shows at once; its files have content-hashed names.
     response["Cache-Control"] = "no-cache" if file == index else "public, max-age=31536000, immutable"
