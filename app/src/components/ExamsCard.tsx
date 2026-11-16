@@ -18,7 +18,7 @@ export function ExamsCard({ exams, book }: { exams: ExamPage; book?: { slug: str
     <View style={styles.card}>
       <Pressable onPress={all} style={styles.head} accessibilityRole="button" accessibilityLabel="سابقه‌ی آزمون‌ها">
         <Text style={[styles.title, rtl]}>{book ? 'آزمون‌هایم از این کتاب' : 'آزمون‌های من'}</Text>
-        <Icon name="chevron-left" size={20} color={colors.lemon} />
+        <Icon name="chevron-left" size={20} color={colors.muted} />
       </Pressable>
       <Text style={[styles.line, rtl]}>
         {toPersianDigits(s.count)} آزمون، میانگین {toPersianDigits(Math.round(s.average ?? 0))}٪، بهترین {toPersianDigits(Math.round(s.best ?? 0))}٪
@@ -47,7 +47,7 @@ export function ExamsCard({ exams, book }: { exams: ExamPage; book?: { slug: str
               </Text>
               <Text style={[styles.when, rtl]}>{whenShort(e.started_at)}</Text>
             </View>
-            <Text style={styles.score}>{done ? `${toPersianDigits(score)}٪` : 'ناتمام'}</Text>
+            <Text style={[styles.score, !done && styles.unfinished]}>{done ? `${toPersianDigits(score)}٪` : 'ناتمام'}</Text>
             <Icon name="chevron-left" size={16} color="#9FB0A5" />
           </Pressable>
         );
@@ -60,13 +60,15 @@ export function ExamsCard({ exams, book }: { exams: ExamPage; book?: { slug: str
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.ink, borderRadius: 18, padding: 16, gap: 10 },
+  // White like the other cards of the stats page (only the insight card and the streak tile are dark).
+  card: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 16, gap: 10 },
   head: { flexDirection: 'row-reverse', alignItems: 'center' },
-  when: { fontSize: 12, color: '#9FB0A5' },
-  title: { flex: 1, fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
-  line: { fontSize: 13, color: '#C9D2C6' },
-  row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: '#2B3830', paddingTop: 8 },
-  examTitle: { fontSize: 15, fontWeight: '700', color: '#EDEFE6' },
-  score: { fontSize: 15, fontWeight: '800', color: colors.lemon },
-  more: { fontSize: 13, fontWeight: '800', color: colors.lemon },
+  when: { fontSize: 12, color: colors.muted },
+  title: { flex: 1, fontSize: 15, fontWeight: '800', color: colors.ink },
+  line: { fontSize: 13, color: colors.muted },
+  row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8 },
+  examTitle: { fontSize: 15, fontWeight: '700', color: colors.ink },
+  score: { fontSize: 15, fontWeight: '800', color: '#B98A00' },
+  unfinished: { color: colors.muted, fontWeight: '700' },
+  more: { fontSize: 13, fontWeight: '800', color: colors.greenDark },
 });

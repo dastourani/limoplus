@@ -166,18 +166,18 @@ export default function Home() {
   const [shelfFilter, setShelfFilter] = useState<string | undefined>(undefined);
   const coverWidth = Math.max(120, Math.min(170, Math.floor((pageWidth - 32) / 2.4)));
 
-  const bookTile = (book: BookListItem) => {
+  const bookTile = (book: BookListItem, tileWidth: number = coverWidth) => {
     const label = shelfLabel(book);
     const { on: waiting, canCancel } = notifyState(book);
     return (
-      <View style={{ width: coverWidth, gap: 8 }}>
+      <View style={{ width: tileWidth, gap: 8 }}>
         <Pressable
           onPress={() => router.push({ pathname: '/book/[slug]', params: { slug: book.slug } })}
           accessibilityRole="button"
           accessibilityLabel={`${book.title}${book.is_coming_soon ? '، به‌زودی' : ''}`}
           style={({ pressed }) => [{ opacity: book.is_coming_soon ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
         >
-          <BookCover book={book} major={book.major ?? null} width={coverWidth} />
+          <BookCover book={book} major={book.major ?? null} width={tileWidth} />
           <View style={[styles.ribbon, RIBBON[label.kind].box]}>
             {RIBBON[label.kind].icon && <Icon name={RIBBON[label.kind].icon!} size={12} color={RIBBON[label.kind].color} />}
             <Text style={[styles.ribbonText, { color: RIBBON[label.kind].color }]}>{label.text}</Text>
@@ -376,7 +376,7 @@ export default function Home() {
     for (const shelf of shelves.filter((x) => shelfFilter === undefined || shelfKey(x) === shelfFilter))
       blocks.push({
         key: `shelf-${shelf.id ?? 'rest'}`,
-        el: <ShelfBlock shelf={shelf} tile={bookTile} coverWidth={coverWidth} wide={wide} />,
+        el: <ShelfBlock shelf={shelf} tile={bookTile} wide={wide} />,
       });
   }
   blocks.push({
@@ -545,25 +545,32 @@ function PlanProgress({ tasks }: { tasks: TodayTask[] }) {
 /** A shelf's id, or «rest» for the books on no shelf. */
 const shelfKey = (x: Shelf) => (x.id == null ? 'rest' : String(x.id));
 
-/** One shelf. A phone swipes the covers sideways; a computer shows one row that fits, no sideways scroll. Either way
+/** Covers on a computer: as many as fit at least this wide, then all of them widened (up to the most) so the row is
+ *  filled edge to edge, whatever the screen's size or scaling. */
+const MIN_COVER = 150;
+const MAX_COVER = 200;
+
+/** One shelf. A phone swipes the covers sideways; a computer shows one full row, no sideways scroll. Either way
  *  «نمایش همه» opens every book of the shelf in rows right there. */
-function ShelfBlock({ shelf, tile, coverWidth, wide }: { shelf: Shelf; tile: (b: BookListItem) => ReactElement; coverWidth: number; wide: boolean }) {
+function ShelfBlock({ shelf, tile, wide }: { shelf: Shelf; tile: (b: BookListItem, width?: number) => ReactElement; wide: boolean }) {
   const [open, setOpen] = useState(false);
   const [w, setW] = useState(0);
   const gap = 14;
-  const perRow = Math.max(1, Math.floor((w - 32 + gap) / (coverWidth + gap)));
+  const inner = w - 32; // the grid's own side padding
+  const perRow = Math.max(1, Math.floor((inner + gap) / (MIN_COVER + gap)));
+  const tileW = Math.max(MIN_COVER, Math.min(MAX_COVER, Math.floor((inner - (perRow - 1) * gap) / perRow)));
   const hidden = wide ? shelf.books.length > perRow : shelf.books.length > 2;
   const grid = (books: BookListItem[]) => (
     <View style={[styles.grid, { gap }]}>
       {books.map((b) => (
-        <Fragment key={b.slug}>{tile(b)}</Fragment>
+        <Fragment key={b.slug}>{wide ? tile(b, tileW) : tile(b)}</Fragment>
       ))}
     </View>
   );
   return (
     <View style={styles.section} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
       <SectionHeader icon="library-big" title={shelf.title} side={`${toPersianDigits(shelf.books.length)} کتاب`} />
-      {open ? grid(shelf.books) : wide ? (w ? grid(shelf.books.slice(0, perRow)) : null) : <HRow data={shelf.books} keyOf={(b) => b.slug} render={tile} gap={gap} />}
+      {open ? grid(shelf.books) : wide ? (w ? grid(shelf.books.slice(0, perRow)) : null) : <HRow data={shelf.books} keyOf={(b) => b.slug} render={(b) => tile(b)} gap={gap} />}
       {hidden && (
         <Pressable onPress={() => setOpen((v) => !v)} style={styles.moreRow} accessibilityRole="button" accessibilityState={{ expanded: open }}>
           <Text style={styles.moreText}>{open ? 'بستن ▴' : `نمایش همه (${toPersianDigits(shelf.books.length)}) ▾`}</Text>

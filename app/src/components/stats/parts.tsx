@@ -2,14 +2,14 @@
  *  insight cards, the weekly ring and the trend chart. Colours stay within the app's own: lemon first, the app's
  *  green for what went well, a quiet grey-green for a second series, red only for a fall. */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewInstance } from 'react-native';
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Dimensions, Platform, Easing, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import Svg, { Circle, Line, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 
 import { jalaliMonthDay } from '../../lib/jalali';
 import { studyDuration } from '../../lib/duration';
 import { colors, rtl, toPersianDigits } from '../../theme';
-import { IconBadge, type IconName } from '../Icon';
+import { Icon, IconBadge, type IconName } from '../Icon';
 import { Text } from '../Text';
 import { HelpTip } from '../HelpTip';
 import { Sheet } from '../ui';
@@ -41,33 +41,81 @@ export function Section({ icon, title, help, side, children }: { icon: IconName;
   );
 }
 
-/** A number that counts up from zero once, when it first shows (still when motion is reduced). */
-export function CountUp({ value, format = (n) => toPersianDigits(Math.round(n)), style }: { value: number; format?: (n: number) => string; style?: object }) {
-  const reduce = useReducedMotion();
-  const [shown, setShown] = useState(reduce ? value : 0);
-  const anim = useRef(new Animated.Value(0)).current;
+/** Numbers that have already counted up since the app was opened: they show still after that. */
+const counted = new Set<string>();
+
+/** Calls back once when the view is (at least partly) on the screen: IntersectionObserver on the web, a light poll of its
+ *  place on the screen on a phone (stops as soon as it has been seen). */
+function useSeen(ref: RefObject<ViewInstance | null>, active: boolean, onSeen: () => void) {
   useEffect(() => {
-    if (reduce || !value) {
-      setShown(value);
-      return;
+    if (!active) return;
+    let done = false;
+    const fire = () => {
+      if (done) return;
+      done = true;
+      onSeen();
+    };
+    const node = ref.current as unknown as Element | null;
+    if (Platform.OS === 'web' && node && typeof IntersectionObserver !== 'undefined' && node instanceof Element) {
+      const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && fire(), { threshold: 0.4 });
+      io.observe(node);
+      return () => io.disconnect();
     }
-    const id = anim.addListener(({ value: v }) => setShown(v * value));
-    anim.setValue(0);
-    Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
-    return () => anim.removeListener(id);
-  }, [value, reduce, anim]);
-  return <Text style={style}>{format(shown)}</Text>;
+    const id = setInterval(() => {
+      ref.current?.measureInWindow((_x, y, _w, h) => {
+        const screen = Dimensions.get('window').height;
+        if (h > 0 && y < screen - h * 0.4 && y + h * 0.6 > 0) {
+          clearInterval(id);
+          fire();
+        }
+      });
+    }, 250);
+    return () => {
+      done = true;
+      clearInterval(id);
+    };
+    // onSeen is stable enough for one firing; only the switch matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, ref]);
 }
 
-/** One small card of «در یک نگاه». */
-export function Glance({ icon, label, value, format, accent }: { icon: IconName; label: string; value: number | null; format?: (n: number) => string; accent?: boolean }) {
+/** A number that counts up from zero in about a second, slowing at the end, the first time it comes into view after
+ *  the app was opened (`id` names it; `delay` lets tiles go one after another). Still when motion is reduced. */
+export function CountUp({ id, value, delay = 0, format = (n) => toPersianDigits(Math.round(n)), style }: { id?: string; value: number; delay?: number; format?: (n: number) => string; style?: object }) {
+  const reduce = useReducedMotion();
+  const once = !id || !counted.has(id);
+  const animate = once && !reduce && !!value;
+  const [shown, setShown] = useState(animate ? 0 : value);
+  const anim = useRef(new Animated.Value(0)).current;
+  const box = useRef<ViewInstance>(null);
+  useEffect(() => {
+    if (!animate) setShown(value);
+  }, [animate, value]);
+  useSeen(box, animate, () => {
+    if (id) counted.add(id);
+    const listener = anim.addListener(({ value: v }) => setShown(v * value));
+    anim.setValue(0);
+    Animated.timing(anim, { toValue: 1, duration: 1000, delay, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start(() => {
+      anim.removeListener(listener);
+      setShown(value);
+    });
+  });
+  return (
+    <View ref={box} collapsable={false}>
+      <Text style={style}>{format(shown)}</Text>
+    </View>
+  );
+}
+
+/** One small card of «در یک نگاه»; `order` is its place, so the tiles count one after another. */
+export function Glance({ icon, label, value, format, accent, order = 0 }: { icon: IconName; label: string; value: number | null; format?: (n: number) => string; accent?: boolean; order?: number }) {
   return (
     <View style={[styles.glance, accent && { backgroundColor: colors.ink, borderColor: colors.ink }]}>
       <IconBadge name={icon} size={28} />
       {value === null ? (
         <Text style={[styles.glanceValue, accent && { color: colors.lemon }]}>—</Text>
       ) : (
-        <CountUp value={value} format={format} style={[styles.glanceValue, accent && { color: colors.lemon }]} />
+        <CountUp id={`glance.${label}`} value={value} delay={order * 150} format={format} style={[styles.glanceValue, accent && { color: colors.lemon }]} />
       )}
       <Text style={[styles.glanceLabel, accent && { color: '#C9D0C6' }]}>{label}</Text>
     </View>
@@ -154,7 +202,7 @@ const GOALS = [60, 120, 180, 300, 420, 600];
 
 /** «این هفته»: a lemon ring filling towards the learner's own weekly goal (tap to change it), and three numbers
  *  against the week before. */
-export function WeekCard({ seconds, rows }: { seconds: number; rows: { label: string; now: string; up: boolean | null }[] }) {
+export function WeekCard({ seconds, rows }: { seconds: number; rows: { label: string; now: string; before: string; up: boolean | null }[] }) {
   const [goal, setGoal] = useState<number>(180);
   const [choosing, setChoosing] = useState(false);
   useEffect(() => {
@@ -168,7 +216,8 @@ export function WeekCard({ seconds, rows }: { seconds: number; rows: { label: st
   return (
     <View style={styles.card}>
       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 16 }}>
-        <Pressable onPress={() => setChoosing(true)} accessibilityRole="button" accessibilityLabel={`هدف هفتگی ${studyDuration(goal * 60)}؛ برای تغییر بزنید`}>
+        <Pressable onPress={() => setChoosing(true)} style={{ alignItems: 'center', gap: 4 }} accessibilityRole="button" accessibilityLabel={`${toPersianDigits(Math.round(share * 100))} درصد از هدف هفتگی ${studyDuration(goal * 60)}؛ برای تغییر بزنید`}>
+          <View>
           <Svg width={size} height={size}>
             <Circle cx={size / 2} cy={size / 2} r={r} stroke={colors.line} strokeWidth={stroke} fill="none" />
             <Circle
@@ -184,15 +233,23 @@ export function WeekCard({ seconds, rows }: { seconds: number; rows: { label: st
             />
           </Svg>
           <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-            <Text style={styles.ringText}>{toPersianDigits(Math.round(share * 100))}٪</Text>
+            <Icon name="target" size={26} color={share >= 1 ? colors.green : colors.muted} />
           </View>
+          </View>
+          <Text style={styles.ringText}>{toPersianDigits(Math.round(share * 100))}٪ از هدف</Text>
         </Pressable>
         <View style={{ flex: 1, gap: 4 }}>
+          <Text style={[styles.muted, rtl, { fontWeight: '700' }]}>در مقایسه با هفته‌ی قبل</Text>
           {rows.map((row) => (
             <View key={row.label} style={styles.weekRow}>
               <Text style={[styles.weekLabel, rtl]}>{row.label}</Text>
-              <Text style={styles.weekValue}>{row.now}</Text>
-              {row.up !== null && <Text style={{ color: row.up ? colors.green : colors.red, fontSize: 12 }}>{row.up ? '▲' : '▼'}</Text>}
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.weekValue}>{row.now}</Text>
+                  {row.up !== null && <Text style={{ color: row.up ? colors.green : colors.red, fontSize: 12 }}>{row.up ? '▲' : '▼'}</Text>}
+                </View>
+                <Text style={[styles.weekBefore, rtl]}>هفته‌ی قبل {row.before}</Text>
+              </View>
             </View>
           ))}
           <Text style={[styles.muted, rtl]}>هدف هفتگی: {studyDuration(goal * 60)} (برای تغییر، حلقه را بزن)</Text>
@@ -409,8 +466,9 @@ const styles = StyleSheet.create({
   dots: { flexDirection: 'row-reverse', justifyContent: 'center', gap: 6, marginTop: 8 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.line },
   dotOn: { backgroundColor: colors.lemon, width: 16 },
-  ringText: { fontSize: 15, fontWeight: '900', color: colors.ink },
-  weekRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  ringText: { fontSize: 12, fontWeight: '800', color: colors.ink },
+  weekBefore: { fontSize: 11, color: '#A3ADA5' },
+  weekRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 6 },
   weekLabel: { fontSize: 13, color: colors.muted, width: 52 },
   weekValue: { fontSize: 15, fontWeight: '800', color: colors.ink },
   muted: { fontSize: 12, color: colors.muted },

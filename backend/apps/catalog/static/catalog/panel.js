@@ -768,6 +768,11 @@
         }
       }
     }
+    // A report on a section archived since: it is no longer in the chapter, so say so (with the report's words).
+    if (extra.gone) {
+      this.find = null; this.open = null;
+      toast(['این بخش بایگانی شده؛ متن گزارش: ' + (extra.r ? '«' + extra.r + '»' : '(بدون متن)')], 'warn', true);
+    }
     this.render();
     var target = document.getElementById('item-' + slug);
     if (target) target.scrollIntoView({ block: 'center' });

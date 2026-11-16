@@ -431,6 +431,23 @@ class ReportKindFilter(admin.SimpleListFilter):
         return queryset
 
 
+class ReportArchivedFilter(admin.SimpleListFilter):
+    """Reports whose section was archived since: picked all at once, they can be closed together."""
+
+    title = "بخش"
+    parameter_name = "gone"
+
+    def lookups(self, request, model_admin):
+        return [("yes", "بخش بایگانی‌شده"), ("no", "بخش فعال")]
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(p_archived=True)
+        if self.value() == "no":
+            return queryset.filter(p_archived=False)
+        return queryset
+
+
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
     """Reports come from learners in the app; here they are read, opened in the chapter manager and closed."""
@@ -439,7 +456,7 @@ class ReportAdmin(admin.ModelAdmin):
         return False
 
     list_display = ("about", "when", "state", "manage")
-    list_filter = ("status", "reason", ReportBookFilter, ReportKindFilter)
+    list_filter = ("status", "reason", ReportBookFilter, ReportKindFilter, ReportArchivedFilter)
     search_fields = ("note", "quote", "user__phone", "question__stem", "flashcard__title", "node__title")
     raw_id_fields = ("user", "question", "flashcard", "node")
     actions = ["mark_fixed", "mark_rejected"]
@@ -454,16 +471,18 @@ class ReportAdmin(admin.ModelAdmin):
         return super().changelist_view(request, {**(extra_context or {}), "lp_macros": formula_macros()})
 
     def get_queryset(self, request):
-        from django.db.models import OuterRef, Subquery
+        from django.db.models import OuterRef, Subquery, Value
         from django.db.models.functions import Coalesce, Substr
 
         from apps.catalog.models import ContentNode
 
         # The chapter of whatever was reported, from its tree path: no query per row for the «باز کردن» link.
         item_path = Coalesce("question__node__path", "flashcard__node__path", "node__path")
+        # Was the reported item's section archived since (its tests and cards go with it)?
+        archived = Coalesce("question__node__is_archived", "flashcard__node__is_archived", "node__is_archived", Value(False))
         chapter = ContentNode.objects.filter(path=Substr(OuterRef("item_path"), 1, 2 * ContentNode.steplen), kind=ContentNode.Kind.CHAPTER)
         return (super().get_queryset(request).select_related("user", "question", "flashcard", "node")
-                .annotate(item_path=item_path).annotate(p_chapter_id=Subquery(chapter.values("pk")[:1])))
+                .annotate(item_path=item_path, p_archived=archived).annotate(p_chapter_id=Subquery(chapter.values("pk")[:1])))
 
     @admin.display(description="گزارش")
     def about(self, obj):
@@ -482,8 +501,9 @@ class ReportAdmin(admin.ModelAdmin):
         quote = format_html('<div class="lp-quote" style="margin-top:4px;padding:4px 8px;border-right:3px solid #F2C200;background:#FFFBEA">{}</div>',
                             tex(obj.quote, 300)) if obj.quote else ""
         note = format_html('<div style="margin-top:3px">توضیح: «{}»</div>', obj.note[:200]) if obj.note else ""
+        gone = ("بخش بایگانی‌شده", "grey") if getattr(obj, "p_archived", False) else None
         return format_html('<div style="min-width:240px">{} <span class="lp-quiet">{}:</span> {}{}{}</div>',
-                           badges((obj.get_reason_display(), "blue")), kind, text, quote, note)
+                           badges((obj.get_reason_display(), "blue"), gone), kind, text, quote, note)
 
     @admin.display(description="کاربر و زمان", ordering="created_at")
     def when(self, obj):
@@ -510,9 +530,14 @@ class ReportAdmin(admin.ModelAdmin):
             anchor = f"#s={obj.node.slug if obj.node.kind == 'section' else ''}"
             if obj.mode:
                 anchor += f"&m={obj.mode}"
-            if obj.quote:
+            if obj.quote and not getattr(obj, "p_archived", False):
                 # The chapter manager opens the text and selects these words.
                 anchor += f"&find={q(obj.quote[:300], safe='')}"
+        if getattr(obj, "p_archived", False):
+            from urllib.parse import quote as q
+
+            # The section is gone from the chapter: the manager says so and shows what the learner reported.
+            anchor += "&gone=1&r=" + q((obj.quote or obj.note or "")[:300], safe="")
         url = reverse("admin:catalog_chapter_manager", args=[obj.p_chapter_id]) + anchor
         return format_html('<a class="button" style="white-space:nowrap" href="{}">باز کردن</a>', url)
 

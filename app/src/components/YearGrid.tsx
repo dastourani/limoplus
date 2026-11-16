@@ -5,7 +5,7 @@
  * frame today. Tap (or point at) a day: its details show in the line under the grid. When the whole year fits (a
  * computer), the squares shrink to fit; on a phone the grid scrolls sideways and opens on the latest weeks.
  */
-import { useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { colors, rtl, toPersianDigits } from '../theme';
@@ -187,11 +187,30 @@ export function YearGrid({
           <Text style={styles.muted}>زیاد</Text>
         </View>
       </View>
+      {/* What the marks mean, each with a real sample square. */}
+      <View style={styles.key}>
+        <KeyItem label="آزمون" sample={<View style={[styles.cell, styles.sample, { backgroundColor: SHADES[2] }]}><View style={styles.exam} /></View>} />
+        <KeyItem label="طولانی‌ترین زنجیره" sample={<View style={[styles.cell, styles.sample, styles.cellRun, { backgroundColor: SHADES[1] }]} />} />
+        <KeyItem label="امروز" sample={<View style={[styles.cell, styles.sample, styles.cellToday, { backgroundColor: SHADES[0] }]} />} />
+        <KeyItem label="روز انتخاب‌شده" sample={<View style={[styles.cell, styles.sample, styles.cellOn, { backgroundColor: SHADES[3] }]} />} />
+      </View>
+    </View>
+  );
+}
+
+function KeyItem({ label, sample }: { label: string; sample: ReactNode }) {
+  return (
+    <View style={styles.keyItem}>
+      {sample}
+      <Text style={styles.muted}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  key: { flexDirection: 'row-reverse', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
+  keyItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5 },
+  sample: { width: 13, height: 13 },
   wrap: { flexDirection: 'row-reverse', gap: 6 },
   rowNames: { width: NAMES_W },
   rowName: { fontSize: 10, color: colors.muted, textAlign: 'center' },
