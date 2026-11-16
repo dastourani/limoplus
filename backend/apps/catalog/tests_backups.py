@@ -167,7 +167,8 @@ class SplitBackupTests(BackupTests):
 
     def test_pieces_of_different_backups_do_not_mix(self):
         backups.restore_upload(SimpleUploadedFile("limookhan-db-x.sqlite3.gz.part1of3", b"a"))
-        with self.assertRaises(backups.RestoreError):
-            backups.restore_upload(SimpleUploadedFile("limookhan-db-x.sqlite3.gz.part2of2", b"b"))
+        # Another split of the same name starts afresh (the old pieces are dropped, not mixed in).
+        done = backups.restore_upload(SimpleUploadedFile("limookhan-db-x.sqlite3.gz.part2of2", b"b"))
+        self.assertEqual(done["waiting"], [1])
         with self.assertRaises(backups.RestoreError):
             backups.restore_upload(SimpleUploadedFile("limookhan-db-x.sqlite3.gz.part5of3", b"b"))

@@ -454,11 +454,17 @@ def _take_piece(uploaded, match) -> Path | None:
     base, n, m = match["base"], int(match["n"]), int(match["m"])
     if not 1 <= n <= m <= 200 or "/" in base or "\\" in base or base.startswith("."):
         raise RestoreError("نام تکه درست نیست.")
-    folder = backup_dir() / "incoming" / base
-    folder.mkdir(parents=True, exist_ok=True)
-    have = {p.name for p in folder.iterdir()}
-    if any(not x.endswith(f"of{m}") for x in have):
-        raise RestoreError("تکه‌های این پشتیبان با هم جور نیستند (تعداد تکه‌ها فرق دارد). از اول بارگذاری کنید.")
+    incoming = backup_dir() / "incoming"
+    incoming.mkdir(parents=True, exist_ok=True)
+    old = timezone.now().timestamp() - 24 * 3600
+    for stale in incoming.iterdir():  # sets left unfinished for a day are dropped
+        if stale.stat().st_mtime < old:
+            shutil.rmtree(stale, ignore_errors=True) if stale.is_dir() else stale.unlink(missing_ok=True)
+    folder = incoming / base
+    folder.mkdir(exist_ok=True)
+    if any(not x.name.endswith(f"of{m}") for x in folder.iterdir()):
+        shutil.rmtree(folder)  # pieces of another split of this name: start this set afresh
+        folder.mkdir()
     with open(folder / f"part{n}of{m}", "wb") as out:
         for chunk in uploaded.chunks():
             out.write(chunk)
@@ -466,11 +472,16 @@ def _take_piece(uploaded, match) -> Path | None:
     if missing:
         return None
     joined = folder.parent / f"joined-{base}"
-    with open(joined, "wb") as out:
-        for i in range(1, m + 1):
-            with open(folder / f"part{i}of{m}", "rb") as src:
-                shutil.copyfileobj(src, out, 1024 * 1024)
-    shutil.rmtree(folder)
+    try:
+        with open(joined, "wb") as out:
+            for i in range(1, m + 1):
+                with open(folder / f"part{i}of{m}", "rb") as src:
+                    shutil.copyfileobj(src, out, 1024 * 1024)
+    except OSError as exc:
+        joined.unlink(missing_ok=True)
+        raise RestoreError("جای دیسک برای کنار هم گذاشتن تکه‌ها کافی نیست.") from exc
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
     return joined
 
 
