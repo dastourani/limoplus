@@ -88,6 +88,8 @@ def record_revision(chapter: ContentNode, user=None, source=ChapterRevision.Sour
         and last.user_id == user_id
         and timezone.now() - last.updated_at < COALESCE_WINDOW
         and chapter.revisions.count() > 1
+        # A version that a learner's copy points to keeps its text for good (apps.guard).
+        and not last.copies.exists()
     ):
         notes = [n for n in last.note.split("، ") if n]
         if note and note not in notes:

@@ -510,6 +510,9 @@ export const endpoints = {
   saveProgress: (id: number, percent: number, done = false) => api<{ percent: number; is_done: boolean }>(`nodes/${id}/progress/`, { body: { percent, done } }),
   toggleBookmark: (id: number) => api<{ bookmarked: boolean }>(`nodes/${id}/bookmark/`, { method: 'POST' }),
   addNote: (id: number, body: { quote?: string; body?: string; color?: string; mode?: string }) => api<Note>(`nodes/${id}/notes/`, { body }),
+  /** Copy a piece of a lesson: counted (30 a day) and given back with an invisible fingerprint. */
+  copyText: (id: number, text: string, mode: string) =>
+    api<{ text: string; used: number; limit: number; left: number }>(`nodes/${id}/copy/`, { body: { text, mode } }),
   editNote: (id: number, body: { body?: string; color?: string }) => api<Note>(`notes/${id}/`, { method: 'PATCH', body }),
   deleteNote: (id: number) => api<{ deleted: boolean }>(`notes/${id}/`, { method: 'DELETE' }),
   practiceState: (id: number) => api<PracticeState>(`nodes/${id}/practice/`),

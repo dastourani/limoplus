@@ -348,6 +348,13 @@ def run_due(now=None, force=False) -> list[str]:
         backup_media()
         done.append("media")
     try:
+        from apps.guard.alerts import nightly
+
+        if nightly(now):
+            done.append("guard-summary")
+    except Exception as exc:  # noqa: BLE001
+        log.error("guard summary failed: %s", _safe(exc))
+    try:
         from .waitlist_sms import retry_stuck
 
         if retry_stuck():
