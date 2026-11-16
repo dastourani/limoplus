@@ -60,6 +60,8 @@ class ListQueryTests(Base):
 
     def assertFlat(self, url, make):
         make(0), make(1)
+        # A first visit may fill one-off caches (one query more at random on PostgreSQL); count from the second.
+        self.queries(url)
         few, _ = self.queries(url)
         for i in range(2, 12):
             make(i)
