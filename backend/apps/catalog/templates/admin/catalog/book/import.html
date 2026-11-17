@@ -12,7 +12,8 @@
 {% block content %}
 <div id="content-main" class="lp">
   {% if not report or report.errors %}
-  <p>یک فایل <code>.md</code> یا <code>.zip</code> (فایل <code>.md</code> به‌همراه پوشه‌ی <code>images</code>) انتخاب کنید.
+  <p>یک فایل <code>.md</code>، <code>.tex</code> یا <code>.zip</code> انتخاب کنید: فایل مارک‌داون به‌همراه پوشه‌ی
+    <code>images</code>، یا یک فصل LaTeX (فایل <code>.tex</code>)، یا ZIP پروژه‌ی LaTeX از Overleaf.
     {% if book %}فصل به کتاب «<b>{{ book.title }}</b>» اضافه می‌شود؛ لازم نیست خط‌های کتاب (شناسه-کتاب، کتاب) در فایل باشد.{% endif %}
     اگر فصلی با همین شناسه‌ی فصل قبلاً وارد شده باشد، به‌روز می‌شود و پیشرفت کاربران حفظ می‌شود. قبل از اعمال، تغییرات را نشان می‌دهد.</p>
   <form method="post" enctype="multipart/form-data">

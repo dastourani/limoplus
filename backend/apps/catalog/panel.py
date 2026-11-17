@@ -29,6 +29,7 @@ from apps.learning.models import ExamSource, Flashcard, Question, Report
 from . import editing
 from .editing import EditError
 from .exporter import book_bundle, chapter_bundle, export_chapter, flashcard_block, question_block, write_chapter
+from .latex_export import chapter_tex_bundle
 from .importer import outside_flashcards
 from .importer import IMAGE_EXTENSIONS, MAX_IMAGE_BYTES, _SVG_DANGER, apply_chapter, parse_chapter, read_upload, check_against_db
 from .jalali import jalali_datetime
@@ -581,6 +582,15 @@ def chapter_file(admin_site, request, chapter_id):
 def chapter_export(request, chapter_id):
     _can_edit(request)
     name, data, content_type = chapter_bundle(_chapter(chapter_id))
+    response = HttpResponse(data, content_type=content_type)
+    response["Content-Disposition"] = f'attachment; filename="{name}"'
+    return response
+
+
+def chapter_tex(request, chapter_id):
+    """The chapter as a LaTeX project: a .tex alone, or a ZIP with the .tex and its images/ — for Overleaf."""
+    _can_edit(request)
+    name, data, content_type = chapter_tex_bundle(_chapter(chapter_id))
     response = HttpResponse(data, content_type=content_type)
     response["Content-Disposition"] = f'attachment; filename="{name}"'
     return response

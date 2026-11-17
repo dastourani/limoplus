@@ -1139,3 +1139,27 @@ class FreshAndRestoreTests(_Base):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertIn("متن جزوه با فرمول", ContentNode.objects.get(slug="one").full_body)
         self.assertFalse(ContentNode.objects.get(slug="three").is_archived, "a section missing from the old version stays")
+
+
+class FileEditorPreviewTests(_Base):
+    """The whole-file editor has a live preview, and it is the app's own renderer.
+
+    The behaviour is JavaScript and the test runner has no browser; what is guarded here is the page the script runs
+    in: the text box and the scripts it builds on. The script itself is exercised by hand (jsdom) while it is written;
+    the one thing a broken selector would cause — a preview that stays empty — is a browser-only failure.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse("admin:catalog_chapter_file", args=[self.chapter.pk])
+
+    def test_the_editor_page_loads_the_preview_renderer(self):
+        response = self.client.get(self.url)
+        # The panel's preview is limo-preview.js — the app's renderer compiled for the browser, not a second one.
+        for asset in ("catalog/limo-preview.js", "catalog/panel.js", "catalog/panel.css"):
+            self.assertContains(response, asset)
+
+    def test_the_editor_page_has_the_text_box_the_script_fills(self):
+        response = self.client.get(self.url)
+        self.assertContains(response, 'id="file-text"')
+        self.assertContains(response, "LimoFileEditor")

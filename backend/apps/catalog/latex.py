@@ -88,6 +88,8 @@ SILENT_WITH_ARGS = {
     "graphicspath", "definecolor", "lstset", "tikzset", "usetikzlibrary", "pgfplotsset", "sisetup", "captionsetup",
     "newenvironment", "renewenvironment", "newtheorem", "DeclareMathOperator", "DeclareGraphicsExtensions",
     "newcommand", "renewcommand", "providecommand", "def", "let", "DeclareRobustCommand", "newcounter",
+    # The set-up of a box the author built (our own export writes these too); never part of the text.
+    "newsavebox", "savebox", "sbox", "newlength", "setlength", "settowidth", "fcolorbox", "colorbox", "lrbox",
     "pageref", "index", "glossary", "bibliography", "printbibliography", "nocite",
 }
 # Commands that stand alone (no arguments) and are simply removed.
@@ -96,6 +98,7 @@ SILENT_ALONE = {
     "backmatter", "hrule", "vrule", "item", "par", "newline", "linebreak", "bfseries", "itshape", "rmfamily",
     "sffamily", "ttfamily", "normalfont", "tiny", "scriptsize", "footnotesize", "small", "normalsize", "large",
     "Large", "LARGE", "huge", "Huge", "protect", "selectlanguage", "clearpage", "noindent", "centering",
+    "ignorespaces", "medskip", "smallskip", "bigskip",
     "raggedright", "raggedleft", "tableofcontents", "listoffigures",
 }
 # Commands dropped together with their environment.
@@ -121,10 +124,18 @@ SECTIONING = {"part": 1, "chapter": 2, "section": 3, "subsection": 4, "subsubsec
               "subparagraph": 6}
 
 # LaTeX environments that are a labelled box in the book, with the same Persian label as the panel.
+# The names of latex_export.ENVIRONMENT_NAMES are here too: the export writes «:::تله» as \\begin{trap}, and reading
+# that file back must find the same box. One table, two directions — otherwise a chapter written and re-read by
+# Lemo has boxes that look the same but lose their label.
 BOX_ENVIRONMENTS = {
     "definition": "تعریف", "theorem": "قضیه", "lemma": "گزاره", "proposition": "گزاره", "corollary": "نتیجه",
     "example": "مثال", "exercise": "تمرین", "problem": "تمرین", "remark": "نکته", "note": "نکته",
     "hint": "نکته", "fact": "در یک نگاه", "question": "پرسش و پاسخ", "warning": "هشدار",
+    # The rest of the panel's labels: the exported .tex writes these names, so the import must read them.
+    "qa": "پرسش و پاسخ", "recall": "یادآوری", "counterexample": "مثال نقض", "trap": "تله",
+    "important": "مهم", "ataglance": "در یک نگاه", "formula": "فرمول", "rule": "قاعده",
+    "condition": "شرط کاربرد", "memorize": "حفظی", "plot": "نمودار", "terms": "واژه",
+    "synonyms": "مترادف", "antonyms": "متضاد",
 }
 # Boxes that are numbered in the book (labels.NUMBERED): a \label inside becomes the box's name.
 NUMBERED_BOXES = {"قضیه", "گزاره", "نتیجه", "مثال", "تمرین", "نمودار"}
@@ -212,10 +223,29 @@ _MACRO_DEFINITION = re.compile(
 )
 
 
+# A box the author built: \newenvironment{note}{begin code}{end code}. Both bodies are settings, never text.
+_NEW_ENVIRONMENT = re.compile(r"\\(?:newenvironment|renewenvironment)\*?\s*\{[^}]*\}")
+
+
 def _drop_macro_definitions(text: str) -> str:
-    """Remove \\newcommand{\\R}{\\mathbb{R}} and the like, with the body that follows them."""
+    """Remove \\newcommand{\\R}{\\mathbb{R}} and the like, with the body that follows them.
+
+    A \\newenvironment goes too, with both of its bodies: its «begin code» often holds a \\begin{mdframed}[…] whose
+    options would otherwise end up on the page as words («[backgroundcolor=notefill]»). The definitions were already
+    collected by `collect_macros`.
+    """
     while True:
         found = _MACRO_DEFINITION.search(text)
+        new_environment = _NEW_ENVIRONMENT.search(text)
+        if new_environment and (not found or new_environment.start() < found.start()):
+            end = new_environment.end()
+            for _ in range(2):   # the begin code and the end code
+                spaces = re.match(r"\s*", text[end:])
+                end += spaces.end()
+                if end < len(text) and text[end] == "{":
+                    _, end = _read_group(text, end)
+            text = text[: new_environment.start()] + text[end:]
+            continue
         if not found:
             return text
         _, end = _read_group(text, found.end() - 1)
@@ -378,6 +408,39 @@ def _restore_math(text: str, pieces: list[str]) -> str:
 
 # --- The converter --------------------------------------------------------------------------------------------
 
+def _without_math(text: str, apply=None) -> str:
+    """Run a rewrite on the words of a line, with the formulas ($…$ and $$…$$) held aside.
+
+    KaTeX's TeX is TeX: a brace inside $…$ is an argument, not grouping, and no rewrite meant for the prose may touch
+    it. Without this, the brace-stripper of a table cell turned \\frac{x^2}{2} into \\fracx^22.
+    """
+    pieces: list[str] = []
+
+    def hold(match):
+        pieces.append(match.group(0))
+        return "\x00%d\x00" % (len(pieces) - 1)
+
+    kept = re.sub(r"\$\$.+?\$\$|\$[^$\n]+?\$", hold, text, flags=re.S)
+    kept = apply(kept) if apply else kept
+    for number, formula in enumerate(pieces):
+        kept = kept.replace("\x00%d\x00" % number, formula)
+    return kept
+
+
+def _strip_preamble(text: str) -> str:
+    """Everything before \\begin{document}: the class, the packages, the author's own \\newenvironment.
+
+    The preamble of a real chapter is full of definitions — a box built with `mdframed`, a colour, a counter — and the
+    reader has no business turning those settings into prose. The body is what the book keeps; the macro definitions
+    were already collected by `collect_macros`, and a custom environment the author uses in the text is still read by
+    `_environment` (with one warning and the text kept).
+    """
+    match = re.search(r"\\(?:begin|end)\s*\{document\}", text)
+    if not match:
+        return text   # a fragment without a document environment: all of it is text
+    return text[match.end():]
+
+
 class Converter:
     """One .tex document → the chapter Markdown of docs/content-format.md."""
 
@@ -397,6 +460,14 @@ class Converter:
         # Set by the caller (the file name, the book page): the chapter's «شناسه-فصل» and «عنوان».
         self.slug = ""
         self.title = ""
+        # \title{…} names the chapter in a document that has no \chapter (an `article`, or the .tex of an export).
+        title = re.search(r"\\title\s*\{", _strip_comments(self.raw))
+        if title:
+            with_title, _ = _read_group(_strip_comments(self.raw), title.end() - 1)
+            # «حد \\ \large ریاضی عمومی ۱»: the book's title is the second line, not part of the chapter's. Take the
+            # first line only — the rest is a subtitle whose size command would be read as words.
+            with_title = re.split(r"\\\\|\n", with_title)[0]
+            self.title = self._inline(with_title).strip()
         self.book = None
         # The headings met, in order: (level, title, name). The first is the chapter's title when none was given.
         self.headings: list[tuple[int, str, str | None]] = []
@@ -438,11 +509,16 @@ class Converter:
     def _prepare(self, text: str) -> str:
         text = text.replace("\r\n", "\n").replace("\r", "\n")
         text = _strip_comments(text)
+        # The title block of a document: \\title, \\author, \\date — read into the front matter (see __init__), and
+        # no part of the text. \\maketitle prints them; it prints nothing in the book.
+        text = re.sub(r"\\(title|author|date|thanks)\s*\{[^{}]*\}", "", text)
+        text = re.sub(r"\\maketitle\b", "", text)
         # The author's definitions are collected for the panel's «دستورهای فرمول»; in the text they are no longer
         # needed (KaTeX knows the name), and rewriting them here would put \mathbb into the prose.
         text = _drop_macro_definitions(text)
         text = SETUP_COMMANDS.sub("", text)
         text = re.sub(r"\\(begin|end)\s*\{document\}", "", text)
+        text = _strip_preamble(text)
         # \ifxetex … \else … \fi and the other conditionals: keep the branches as written, drop the switches.
         text = re.sub(r"\\(ifxetex|ifluatex|ifpdf|ifPDFTeX|ifXeTeX|ifLuaTeX|ifdefined|ifcsname)\b", "", text)
         text = re.sub(r"\\(else|fi)\b", "", text)
@@ -503,6 +579,7 @@ class Converter:
 
             begin = re.match(r"\\begin\s*\{([^}]+)\}", stripped)
             if begin:
+                flush()   # the text before a box is its own paragraph, not the one after it
                 env = begin.group(1).strip()
                 end_index = self._find_end(lines, index, env)
                 # The environment's text is what sits after \begin{env} on its line, the lines between, and what
@@ -598,6 +675,9 @@ class Converter:
             body = re.sub(r"^\s*\{[^}]*\}\s*", "", body, count=1)
         elif env in FIGURE_ENVIRONMENTS:
             body = re.sub(r"^\s*(\[[^\]]*\]\s*)?(\{[^}]*\}\s*)?", "", body, count=1)
+        elif env in ("mdframed", "tcolorbox", "mdframed*", "shaded", "framed", "adjustbox", "minipage"):
+            # Framing settings, not text: \begin{mdframed}[backgroundcolor=…,linewidth=1pt]
+            body = re.sub(r"^\s*(\[[^\]]*\]\s*)?(\{[^}]*\}\s*)?", "", body, count=1)
         if env in SILENT_ENVIRONMENTS:
             return ""
         if env in MATH_ENVIRONMENTS:
@@ -613,7 +693,7 @@ class Converter:
         if env in ("subfigure", "subfigure*"):
             return self._blocks(body)
         if env in ("center", "flushleft", "flushright", "minipage", "small", "footnotesize", "large", "quotation",
-                   "quote", "abstract", "titlepage", "adjustbox", "landscape"):
+                   "quote", "abstract", "titlepage", "adjustbox", "landscape", "mdframed"):
             return self._blocks(body)
         if env in ("lstlisting", "verbatim", "verbatim*", "minted", "alltt"):
             return self._code(env, body, opening)
@@ -640,7 +720,11 @@ class Converter:
             f" {{#{name}}}" if name else "")
 
     def _box(self, label: str, body: str, opening: str) -> str:
-        name = self._label_in(opening + "\n" + body) if label in NUMBERED_BOXES else None
+        # A name on the \\begin line is the box's own name, whatever the label; inside the body only a numbered box
+        # takes one, because there the \\label usually belongs to a formula or a figure the box holds.
+        name = self._label_in(opening)
+        if name is None and label in NUMBERED_BOXES:
+            name = self._label_in(body)
         body = re.sub(r"\\(label|index|glossary)\s*\{[^}]*\}", "", body)
         inner = self._blocks(body).strip()
         head = f":::{label}" + (f" {{#{name}}}" if name else "")
@@ -730,8 +814,9 @@ class Converter:
             cell = cell[: found.start()] + inner + cell[after:]
         cell = re.sub(r"\\multirow\s*\{\s*\d+\s*\}\s*\{[^}]*\}\s*\{([^}]*)\}", r"\1", cell)
         cell = self._inline(cell)
-        # A cell's braces group nothing for the book: {a} → a
-        cell = re.sub(r"(?<!\\)[{}]", "", cell)
+        # A cell's braces group nothing for the book: {a} → a. But a formula's braces are its own — \frac{x^2}{2}
+        # lost both its arguments here, and the cell came out as «\fracx^22».
+        cell = _without_math(cell, lambda text: re.sub(r"(?<!\\)[{}]", "", text))
         return cell.replace("|", "\\|").strip()
 
     # -- figures --

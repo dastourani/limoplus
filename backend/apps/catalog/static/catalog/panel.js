@@ -33,12 +33,19 @@
   function media(text) { return (text || '').replace(/\]\(media:/g, '](' + MEDIA); }
   function plain(s) { return (s || '').replace(/[*_`]/g, '').replace(/\s+/g, ' '); }
 
+  // The learner's reading setting (profile: «متن درس تراز باشد», on by default). The preview follows it, so what the
+  // professor sees is what the learner sees — a line broken at a different place, never aligned differently.
+  function readingJustify() {
+    try { var v = localStorage.getItem('limo.panel.justify'); if (v !== null) return v === '1'; } catch (e) { /* ignore */ }
+    return true;
+  }
   function previewDoc(html, extraCss) {
+    var lesson = 'lesson' + (readingJustify() ? '' : ' ragged');
     return '<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>' +
       '@font-face{font-family:Vazirmatn;font-weight:400;src:url("' + STATIC + 'fonts/Vazirmatn_400Regular.ttf")}' +
       '@font-face{font-family:Vazirmatn;font-weight:700;src:url("' + STATIC + 'fonts/Vazirmatn_700Bold.ttf")}' +
       P.CONTENT_CSS + 'body{background:#F6F7F2;padding:14px 0}.lesson{padding:4px 16px 24px}' + (extraCss || '') +
-      '</style></head><body><div class="lesson">' + html + '</div></body></html>';
+      '</style></head><body><div class="' + lesson + '">' + html + '</div></body></html>';
   }
   function render(source, variant) {
     if (variant === 'summary') return P.renderSummary(media(source), { hasCards: false });
@@ -50,6 +57,47 @@
       try { frame.style.height = Math.max(min || 200, frame.contentDocument.documentElement.scrollHeight + 4) + 'px'; } catch (e) { /* ignore */ }
     }
     frame.addEventListener('load', function () { fit(); setTimeout(fit, 300); });
+  }
+
+  // ---------- the preview's own controls: how wide, and aligned which way ----------
+  // A phone, a tablet, or the whole panel. «دقیقاً مثل اپ» is only true at a phone's width: the same text breaks its
+  // lines elsewhere. Choosing the width is the honest answer — the professor sees the layout a learner gets.
+  var WIDTHS = [['phone', 'گوشی', 390], ['tablet', 'تبلت', 768], ['wide', 'تمام عرض', 0]];
+  function previewWidth() {
+    try { var v = localStorage.getItem('limo.panel.width'); if (v) return v; } catch (e) { /* ignore */ }
+    return 'phone';
+  }
+  function widthPx(name) {
+    for (var i = 0; i < WIDTHS.length; i++) if (WIDTHS[i][0] === name) return WIDTHS[i][2];
+    return 390;
+  }
+  // The controls that sit above a preview: width buttons and the justify switch. `onChange` redraws it.
+  function previewControls(onChange) {
+    var row = h('div', { class: 'pv-ctl' });
+    var widthBtns = {};
+    function paint() {
+      var name = previewWidth();
+      for (var k in widthBtns) widthBtns[k].classList.toggle('on', k === name);
+      justifyBtn.classList.toggle('on', readingJustify());
+      onChange();
+    }
+    WIDTHS.forEach(function (w) {
+      widthBtns[w[0]] = h('button', { type: 'button', title: 'عرض پیش‌نمایش: ' + w[1], onclick: function (e) {
+        e.preventDefault();
+        try { localStorage.setItem('limo.panel.width', w[0]); } catch (err) { /* ignore */ }
+        paint();
+      } }, w[1]);
+      row.appendChild(widthBtns[w[0]]);
+    });
+    var justifyBtn = h('button', { type: 'button', class: 'pv-just', title: 'متن درس تراز باشد (مثل تنظیم پروفایل در اپ)',
+      onclick: function (e) {
+        e.preventDefault();
+        try { localStorage.setItem('limo.panel.justify', readingJustify() ? '0' : '1'); } catch (err) { /* ignore */ }
+        paint();
+      } }, '⇔ تراز دو طرفه');
+    row.appendChild(justifyBtn);
+    paint();
+    return { el: row, repaint: paint };
   }
 
   // ---------- labels («برچسب‌های متن», managed in admin) ----------
@@ -525,18 +573,30 @@
     bar.appendChild(modes);
     var host = h('div', { class: 'md-host' });
     addTools(textarea, bar, host, { before: modes, fileUrl: opts.fileUrl, find: !opts.inline });
+    // The width and the alignment of the preview, above it; both remembered between visits. Defined before setMode,
+    // which the constructor calls at its end.
+    var self2 = self;
+    this.applyWidth = function () {
+      var px = widthPx(previewWidth());
+      self2.frame.style.width = px ? px + 'px' : '100%';
+    };
+    var ctl = previewControls(function () {
+      self2.applyWidth();
+      if (wrap.classList.contains('mode-split') || wrap.classList.contains('mode-preview')) self2.refresh();
+    });
     this.setMode = function (m) {
       wrap.classList.remove('mode-split', 'mode-text', 'mode-preview');
       wrap.classList.add('mode-' + m);
       for (var k in modeBtns) modeBtns[k].classList.toggle('on', k === m);
       try { localStorage.setItem('limo.panel.mode', m); } catch (e) { /* ignore */ }
       if (m !== 'text') self.refresh();
+      self.applyWidth();
     };
     this.frame = h('iframe', { title: 'پیش‌نمایش مثل گوشی' });
     var body = h('div', { class: 'md-body' });
     textarea.parentNode.insertBefore(wrap, textarea);
     body.appendChild(textarea);
-    body.appendChild(h('div', { class: 'md-prev' }, this.frame));
+    body.appendChild(h('div', { class: 'md-prev' }, ctl.el, this.frame));
     // A draft left from last time (closed before «ذخیره»): offered back above the toolbar.
     this.drafts = opts.draft ? draftKeeper(opts.draft, textarea.value, function () { return textarea.value; }, function (text) {
       replaceRange(textarea, 0, textarea.value.length, text);
@@ -1686,13 +1746,64 @@
 
   window.LimoFileEditor = function (opts) {
     var ta = document.getElementById('file-text'), out = document.getElementById('file-result');
-    // The same tools as the chapter manager's boxes (find and replace here is over the whole chapter).
+    // The same tools as the chapter manager's boxes (find and replace here is over the whole chapter), and the same
+    // live preview. Rendering a whole chapter is cheap (11 ms for 6000 characters, measured), so the preview is the
+    // chapter — not a part of it: what a professor checks here is the chapter as a reader will get it.
     var edBar = h('div', { class: 'md-bar' }), edHost = h('div', { class: 'md-host' });
-    var edWrap = h('div', { class: 'md-ed tools-only file' }, edBar, edHost);
+    var frame = h('iframe', { class: 'file-prev', title: 'پیش‌نمایش فصل' });
+    var prevWrap = h('div', { class: 'md-prev file-prev-wrap' }, frame);
+    var edBody = h('div', { class: 'md-body' });
+    var edWrap = h('div', { class: 'md-ed mode-split file' }, edBar, edHost, edBody);
     ta.parentNode.insertBefore(edWrap, ta);
-    edWrap.appendChild(ta);
+    edBody.appendChild(ta);
+    edBody.appendChild(prevWrap);
     addTools(ta, edBar, edHost, {});
     fileNav(ta, edBar);
+
+    // The mode of this editor is remembered on its own: «فقط متن» over a whole chapter is a usual habit, and it must
+    // not be the same switch as the section editors'.
+    function savedMode() {
+      try { return localStorage.getItem('limo.panel.file.mode') || 'split'; } catch (e) { return 'split'; }
+    }
+    var startMode = savedMode();
+    var modes = h('span', { class: 'modes' });
+
+    var prevTimer = null;
+    function refresh(now) {
+      clearTimeout(prevTimer);
+      var draw = function () {
+        var html;
+        try { html = render(ta.value, 'notes'); }
+        catch (e) { html = '<p style="color:#ba2121">خطا در نمایش: ' + e.message + '</p>'; }
+        frame.srcdoc = previewDoc(html);
+      };
+      if (now) draw(); else prevTimer = setTimeout(draw, 350);
+    }
+    function applyWidth() {
+      var px = widthPx(previewWidth());
+      frame.style.width = px ? Math.min(px, 520) + 'px' : '100%';
+    }
+    var ctl = previewControls(function () { applyWidth(); refresh(true); });
+    prevWrap.insertBefore(ctl.el, frame);
+    ta.addEventListener('input', function () { refresh(false); });
+    // The same three modes as the section editors: both, text only, preview only.
+    [['split', 'هر دو'], ['text', 'فقط متن'], ['preview', 'فقط پیش‌نمایش']].forEach(function (m) {
+      var b = h('button', { type: 'button', onclick: function (e) {
+        e.preventDefault();
+        edWrap.classList.remove('mode-split', 'mode-text', 'mode-preview');
+        edWrap.classList.add('mode-' + m[0]);
+        modes.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+        try { localStorage.setItem('limo.panel.file.mode', m[0]); } catch (err) { /* ignore */ }
+        if (m[0] !== 'text') { applyWidth(); refresh(true); }
+      } }, m[1]);
+      modes.appendChild(b);
+      if (m[0] === startMode) b.classList.add('on');
+    });
+    edWrap.classList.remove('mode-split');
+    edWrap.classList.add('mode-' + startMode);
+    edBar.appendChild(modes);
+    applyWidth();
+    refresh(true);
     fetch(opts.api, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) { setCtx(d.state); }).catch(function () {});
     var keeper = opts.restore ? { el: null, changed: function () {}, saved: function () {} }
       : draftKeeper(opts.api + '|file', ta.value, function () { return ta.value; }, function (text) { replaceRange(ta, 0, ta.value.length, text); });
