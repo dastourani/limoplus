@@ -1,8 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { hasFormula, quoteMarkdown, quoteText } from '../lib/noteQuote';
 import { colors, rtl } from '../theme';
 import { MarkdownView } from './MarkdownView';
+import { Text } from './Text';
 
 /**
  * The highlighted words above a note (the coloured strip). Formulas are drawn as in the book, a fraction as a

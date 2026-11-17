@@ -97,6 +97,9 @@ def request_otp(request):
     ip_key = f"otp-req-ip:{_client_ip(request)}"
     with transaction.atomic():
         ratelimit.lock(f"otp:{phone}")
+        existing = User.objects.filter(phone=phone).only("is_active").first()
+        if existing is not None and not existing.is_active:
+            return _error("این حساب غیرفعال شده است.", "user_inactive", status.HTTP_403_FORBIDDEN)
         if ratelimit.count(ip_key) >= settings.OTP_REQUESTS_PER_IP_PER_HOUR:
             return _too_many("تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید.")
 

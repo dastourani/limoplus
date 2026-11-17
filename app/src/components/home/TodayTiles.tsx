@@ -35,7 +35,7 @@ export function TodayTiles({ tasks, onError }: { tasks: TodayTask[]; onError: ()
 
   if (!tasks.length && !finished.length) {
     return (
-      <View style={[styles.card, styles.row]}>
+      <View style={styles.row}>
         <LemonProgress parts={['done']} size={44} />
         <Text style={[styles.allDone, rtl]}>برنامه‌ی امروز تمام شد. آفرین!</Text>
       </View>
@@ -43,15 +43,13 @@ export function TodayTiles({ tasks, onError }: { tasks: TodayTask[]; onError: ()
   }
   const rows = [...tasks.map((t) => ({ t, ended: false })), ...finished.map((t) => ({ t, ended: true }))];
   return (
-    <View style={styles.card}>
+    <View style={styles.list}>
       {rows.map(({ t, ended }, i) => (
         <Row key={keyOf(t) + (ended ? '-end' : '')} t={t} ended={ended} first={i === 0} onError={onError} />
       ))}
     </View>
   );
 }
-
-const ACCENT = { review: colors.green, cards: '#2F6BD8', notebook: colors.red } as const;
 
 function Row({ t, ended, first, onError }: { t: TodayTask; ended: boolean; first: boolean; onError: () => void }) {
   const fa = toPersianDigits;
@@ -89,19 +87,18 @@ function Row({ t, ended, first, onError }: { t: TodayTask; ended: boolean; first
       accessibilityRole="button"
       accessibilityLabel={ended ? `${title}، تمام شد` : `${title}، ${size}`}
     >
-      <View style={[styles.accent, { backgroundColor: ACCENT[t.kind] }]} />
-      <LemonProgress parts={parts} size={46} />
-      <View style={{ flex: 1, gap: 2 }}>
+      <LemonProgress parts={parts} size={44} />
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <Text style={[styles.title, rtl]} numberOfLines={1}>{title}</Text>
         <Text style={[styles.size, rtl]} numberOfLines={1}>{ended ? 'تمام شد' : size}</Text>
       </View>
       {ended ? (
-        <View style={[styles.go, styles.goDone]}>
-          <Icon name="check" size={18} color={colors.green} />
+        <View style={[styles.pill, styles.pillDone]}>
+          <Icon name="check" size={16} color={colors.greenDark} />
         </View>
       ) : (
-        <View style={styles.go}>
-          <Icon name="play" size={16} color={colors.ink} />
+        <View style={styles.pill}>
+          <Text style={styles.pillText}>{done > 0 ? 'ادامه' : 'شروع'}</Text>
         </View>
       )}
     </Pressable>
@@ -109,13 +106,13 @@ function Row({ t, ended, first, onError }: { t: TodayTask; ended: boolean; first
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
-  row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  list: { overflow: 'hidden' },
+  row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 4, paddingVertical: 10, borderRadius: radius.sm },
   line: { borderTopWidth: 1, borderTopColor: colors.line },
-  accent: { position: 'absolute', right: 0, top: 12, bottom: 12, width: 4, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 },
   title: { fontSize: 15, fontWeight: '800', color: colors.ink },
   size: { fontSize: 12, color: colors.muted },
-  go: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center' },
-  goDone: { backgroundColor: '#E7F3EC' },
+  pill: { backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center', justifyContent: 'center' },
+  pillDone: { backgroundColor: '#E7F3EC', paddingHorizontal: 10 },
+  pillText: { fontSize: 12, fontWeight: '800', color: colors.ink },
   allDone: { flex: 1, fontSize: 15, fontWeight: '800', color: colors.greenDark },
 });

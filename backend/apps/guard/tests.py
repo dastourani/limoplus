@@ -135,6 +135,15 @@ class CopyTests(TestCase):
         self.assertEqual((risk["copies"], risk["hits"]), (1, 25))
         user_page = self.client.get(f"/admin/accounts/user/{self.user.pk}/change/")
         self.assertContains(user_page, "امتیاز خطر")
+        self.assertContains(user_page, "بستن کپی متن")
+        # Quick toggle buttons on the user page close and reopen copy/report permissions.
+        self.client.post(f"/admin/accounts/user/{self.user.pk}/change/", {"_quick_action": "toggle_copy"})
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.can_copy)
+        self.assertEqual(marked.post(f"/api/v1/nodes/{self.section.id}/copy/", {"text": self.phrase}, format="json").status_code, 403)
+        self.client.post(f"/admin/accounts/user/{self.user.pk}/change/", {"_quick_action": "toggle_copy"})
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.can_copy)
 
     def test_alerts_are_off_by_default(self):
         with override_settings(BALE_BOT_TOKEN="t", BALE_CHAT_ID="1"), mock.patch("apps.catalog.backups.send_text") as send:

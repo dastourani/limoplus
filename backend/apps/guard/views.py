@@ -20,6 +20,8 @@ def copy_quota(request):
 @api_view(["POST"])
 def copy_text(request, node_id):
     """Copy a piece of a lesson: recorded, counted against today's copies, and given back with its fingerprint."""
+    if not getattr(request.user, "can_copy", True):
+        return _err("امکان کپی متن برای حساب شما بسته شده است. می‌توانید متن را به یادداشت‌هایتان ببرید.", "copy_disabled", status.HTTP_403_FORBIDDEN)
     node, _, error = _readable_node(request, node_id)
     if error:
         return error

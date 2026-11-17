@@ -123,14 +123,15 @@ class UserAdmin(BaseUserAdmin):
     ordering = ("-date_joined",)
     list_display = ("who", "dates", "access", "paid", "study_month")
     list_display_links = ("who",)
-    search_fields = ("phone", "email", "first_name", "last_name")
-    list_filter = (BoughtFilter, ActiveWeekFilter, DeviceSwitchFilter, "date_joined", "is_active", "is_staff")
+    search_fields = ("phone", "email", "first_name", "last_name", "admin_note")
+    list_filter = (BoughtFilter, ActiveWeekFilter, DeviceSwitchFilter, "date_joined", "is_active", "can_copy", "can_report", "is_staff")
     readonly_fields = ("overview",)
     fieldsets = (
         ("خلاصه", {"fields": ("overview",)}),
         (None, {"fields": ("phone",)}),
         ("مشخصات", {"fields": ("first_name", "last_name", "email")}),
-        ("دسترسی به پنل", {"fields": ("is_active", "is_staff", "is_superuser")}),
+        ("محدودیت‌ها و وضعیت حساب", {"fields": ("is_active", "can_copy", "can_report", "admin_note")}),
+        ("دسترسی به پنل مدیریت", {"fields": ("is_staff", "is_superuser")}),
         ("گذرواژه‌ی پنل، گروه‌ها و اجازه‌های جزئی", {"classes": ("collapse",), "fields": ("password", "groups", "user_permissions")}),
         ("تاریخ‌ها", {"classes": ("collapse",), "fields": ("last_login", "date_joined")}),
     )
@@ -140,6 +141,36 @@ class UserAdmin(BaseUserAdmin):
     def has_delete_permission(self, request, obj=None):
         # A learner's purchases, progress and notes must never be lost: «فعال» off signs them out instead.
         return False
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        if request.method == "POST" and object_id and "_quick_action" in request.POST:
+            from django.contrib import messages
+            from django.shortcuts import redirect
+
+            obj = User.objects.filter(pk=object_id).first()
+            if obj and self.has_change_permission(request, obj):
+                act = request.POST["_quick_action"]
+                if act == "toggle_copy":
+                    obj.can_copy = not obj.can_copy
+                    obj.save(update_fields=["can_copy"])
+                    messages.success(request, "امکان کپی متن برای این کاربر باز شد." if obj.can_copy else "امکان کپی متن برای این کاربر بسته شد.")
+                elif act == "toggle_report":
+                    obj.can_report = not obj.can_report
+                    obj.save(update_fields=["can_report"])
+                    messages.success(request, "امکان ارسال گزارش برای این کاربر باز شد." if obj.can_report else "امکان ارسال گزارش برای این کاربر بسته شد.")
+                elif act == "revoke_sessions":
+                    for s in DeviceSession.active_for(obj):
+                        s.revoke()
+                    messages.success(request, "کاربر از همه‌ی دستگاه‌های فعال خارج شد.")
+                elif act == "toggle_active":
+                    obj.is_active = not obj.is_active
+                    obj.save(update_fields=["is_active"])
+                    if not obj.is_active:
+                        for s in DeviceSession.active_for(obj):
+                            s.revoke()
+                    messages.success(request, "حساب کاربر دوباره فعال شد." if obj.is_active else "حساب کاربر مسدود شد و از همه‌ی دستگاه‌ها خارج گردید.")
+                return redirect(request.path)
+        return super().changeform_view(request, object_id, form_url, extra_context)
 
     def get_queryset(self, request):
         from django.db.models import IntegerField, OuterRef, Subquery, Sum
@@ -218,8 +249,14 @@ class UserAdmin(BaseUserAdmin):
         from apps.catalog.panel_display import badges
 
         many = getattr(obj, "new_devices", 0) > settings.DEVICE_SWITCH_ALERT
-        shown = badges(obj.is_superuser and ("مدیر کل", "yellow"), obj.is_staff and not obj.is_superuser and ("مدیر", "yellow"),
-                       not obj.is_active and ("غیرفعال", "grey"), many and ("تعویض زیاد دستگاه", "red"))
+        shown = badges(
+            obj.is_superuser and ("مدیر کل", "yellow"),
+            obj.is_staff and not obj.is_superuser and ("مدیر", "yellow"),
+            not obj.is_active and ("غیرفعال", "grey"),
+            not obj.can_copy and ("کپی بسته", "red"),
+            not obj.can_report and ("گزارش بسته", "red"),
+            many and ("تعویض زیاد دستگاه", "red"),
+        )
         return "" if shown == "—" else shown
 
     @admin.display(description="")

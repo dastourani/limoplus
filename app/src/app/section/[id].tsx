@@ -598,12 +598,12 @@ export default function Section() {
       <View style={{ flex: 1, flexDirection: 'row-reverse' }}>
       {wide && !!bookSlug && !offline && <ChapterSide bookSlug={bookSlug} nodeId={node.id} dark={dark} book={book} readHere={readHere} />}
       <View style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
-      <View style={{ flex: 1, width: '100%', maxWidth: wide ? 880 : undefined }}>
-      <View style={styles.header}>
+      <View style={{ flex: 1, width: '100%', maxWidth: wide ? 760 : undefined }}>
+      <View style={[styles.header, wide && styles.headerWide]}>
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={styles.icon} accessibilityLabel="بازگشت">
           <Icon name="arrow-right" size={24} color={ink} />
         </Pressable>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           {bookSlug ? (
             <Pressable onPress={() => router.push(`/book/${bookSlug}`)} accessibilityRole="button" accessibilityLabel="صفحه‌ی کتاب">
               <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین، ${chapterLabel}` : chapterLabel}</Text>
@@ -805,8 +805,20 @@ export default function Section() {
           </View>
         )}
         <TextInput value={noteText} onChangeText={setNoteText} multiline placeholder="یادداشت شما…" style={styles.noteInput} maxLength={5000} />
-        <Button label="ذخیره" onPress={saveNote} loading={noteBusy} />
-        {noteSheet?.note && <Button label="حذف" variant="outline" onPress={() => deleteNote(noteSheet.note!)} />}
+        <View style={styles.noteActions}>
+          <Button label="ذخیره" onPress={saveNote} loading={noteBusy} style={{ flex: 1, maxWidth: undefined }} />
+          {noteSheet?.note && (
+            <Pressable
+              onPress={() => deleteNote(noteSheet.note!)}
+              style={({ pressed }) => [styles.noteDelete, pressed && { opacity: 0.8 }]}
+              accessibilityRole="button"
+              accessibilityLabel="حذف یادداشت"
+            >
+              <Icon name="trash" size={18} color={colors.redDark} />
+              <Text style={styles.noteDeleteText}>حذف</Text>
+            </Pressable>
+          )}
+        </View>
       </Sheet>
 
       <Sheet visible={notesOpen} onClose={() => setNotesOpen(false)} title="یادداشت‌ها و هایلایت‌های این بخش">
@@ -856,8 +868,12 @@ const styles = StyleSheet.create({
   termEn: { fontSize: 18, fontWeight: '700', color: '#3B44B8', textAlign: 'left', writingDirection: 'ltr' },
   termMean: { fontSize: 15, color: colors.ink, lineHeight: 26 },
   header: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 4 },
+  headerWide: { paddingHorizontal: 18 },
   icon: { width: 40, height: 44, alignItems: 'center', justifyContent: 'center' },
   lemonWrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  noteActions: { flexDirection: 'row-reverse', alignItems: 'stretch', gap: 10 },
+  noteDelete: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 52, paddingHorizontal: 18, borderRadius: radius.md, borderWidth: 1.5, borderColor: '#E6928B', backgroundColor: '#FDECEA' },
+  noteDeleteText: { fontSize: 15, fontWeight: '700', color: colors.redDark },
   panelLabel: { fontSize: 15, fontWeight: '700', color: colors.muted },
   themes: { flexDirection: 'row-reverse', gap: 8 },
   theme: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: colors.line, gap: 2 },
