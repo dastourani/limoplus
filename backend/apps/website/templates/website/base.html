@@ -21,10 +21,10 @@
     <input type="checkbox" id="menu" class="menu-toggle" aria-label="منو">
     <label for="menu" class="menu-btn" aria-hidden="true"><span></span><span></span><span></span></label>
     <nav class="links">
-      <a href="{% url 'website:books' %}">کتاب‌ها</a>
-      <a href="{% url 'website:pricing' %}">قیمت‌ها</a>
-      <a href="{% url 'website:download' %}">دانلود</a>
-      <a href="{% url 'website:faq' %}">پرسش‌های پرتکرار</a>
+      <a href="{% url 'website:books' %}"{% if nav == 'books' or nav == 'book' %} class="on"{% endif %}>کتاب‌ها</a>
+      <a href="{% url 'website:pricing' %}"{% if nav == 'pricing' %} class="on"{% endif %}>قیمت‌ها</a>
+      <a href="{% url 'website:download' %}"{% if nav == 'download' %} class="on"{% endif %}>دانلود</a>
+      <a href="{% url 'website:faq' %}"{% if nav == 'faq' %} class="on"{% endif %}>پرسش‌های پرتکرار</a>
       <span class="grow"></span>
       <a class="btn ghost small" href="{{ app_url }}">ورود</a>
       <a class="btn lemon small" href="{% url 'website:download' %}">{% icon "download" 16 %}دانلود اپ</a>

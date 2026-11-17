@@ -19,13 +19,15 @@
 
   function md(text) {
     if (!P || !P.renderMarkdown) return null;
-    return '<div class="lesson compact">' + P.renderMarkdown(text || '') + '</div>';
+    return '<div class="lesson compact justify">' + P.renderMarkdown(text || '') + '</div>';
   }
 
   function formulas() {
     if (!P || !P.renderMarkdown) return;
     var m = document.getElementById('limo-macros');
     if (m && P.setMacros) { try { P.setMacros(JSON.parse(m.textContent)); } catch (e) { /* ignore */ } }
+    var l = document.getElementById('limo-labels');
+    if (l && P.setLabels) { try { P.setLabels(JSON.parse(l.textContent)); } catch (e) { /* ignore */ } }
     if (P.CONTENT_CSS && !document.getElementById('limo-css')) {
       var st = document.createElement('style');
       st.id = 'limo-css';
@@ -35,6 +37,19 @@
     document.querySelectorAll('[data-md]').forEach(function (el) {
       var html = md(el.getAttribute('data-md'));
       if (html) el.innerHTML = html;
+    });
+    document.querySelectorAll('[data-fold]').forEach(function (box) {
+      var body = box.querySelector('.about-body');
+      var btn = box.querySelector('.fold-btn');
+      if (!body || !btn) return;
+      if (body.scrollHeight > 260) {
+        box.classList.add('folded');
+        btn.hidden = false;
+        btn.addEventListener('click', function () {
+          var open = box.classList.toggle('folded');
+          btn.textContent = open ? 'نمایش کامل معرفی کتاب ▾' : 'بستن ▴';
+        });
+      }
     });
   }
 
