@@ -227,7 +227,15 @@ export function FlashcardDeck({
             </Pressable>
           ) : undefined
         }
-        lemon={<LemonProgress parts={parts} current={cards.findIndex((c) => c.id === card!.id)} size={46} />}
+        lemon={
+          <HelpTip
+            size={46}
+            title="پیشرفت مرور فلش‌کارت"
+            text={`کارت ${toPersianDigits(Math.min(pos + 1, queue.length))} از ${toPersianDigits(queue.length)} در این نوبت (${toPersianDigits(gradedCount)} از ${toPersianDigits(cards.length)} کارت مرور شده${puzzle && user && masteredIdx.size ? `، ${toPersianDigits(masteredIdx.size)} کارت در جعبه‌ی ۴+` : ''}). برش پررنگ: مرور شده؛ برش صورتی: «دوباره» زده شده.`}
+          >
+            <LemonProgress parts={parts} current={cards.findIndex((c) => c.id === card!.id)} size={46} />
+          </HelpTip>
+        }
       />
       <Text style={[styles.place, rtl]} numberOfLines={2}>
         {[placeLabel(card?.node_title, card?.chapter_number) || title, `${toPersianDigits(gradedCount)} از ${toPersianDigits(cards.length)} کارت مرور شد${puzzle && user && masteredIdx.size ? `، ${toPersianDigits(masteredIdx.size)} کارت کاملاً بلدی` : ''}`].join('؛ ')}
