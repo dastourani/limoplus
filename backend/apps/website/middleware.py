@@ -11,6 +11,11 @@ class WebsiteHostMiddleware:
         self.hosts = {h.lower() for h in getattr(settings, "WEBSITE_HOSTS", [])}
 
     def __call__(self, request):
-        if self.hosts and request.get_host().split(":")[0].lower() in self.hosts:
+        is_site_host = bool(self.hosts and request.get_host().split(":")[0].lower() in self.hosts)
+        if is_site_host:
             request.urlconf = "config.website_urls"
-        return self.get_response(request)
+        response = self.get_response(request)
+        if (is_site_host or request.path.startswith("/site/")) and response.get("Content-Type", "").startswith("text/html"):
+            response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response["Pragma"] = "no-cache"
+        return response

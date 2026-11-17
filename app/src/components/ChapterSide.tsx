@@ -10,7 +10,71 @@ import { endpoints, type BookDetail } from '../api/endpoints';
 import { useApi } from '../lib/useApi';
 import { colors, radius, rtl, toPersianDigits } from '../theme';
 import { Icon } from './Icon';
+import { LemonProgress } from './LemonProgress';
 import { Text } from './Text';
+
+/**
+ * On a computer, beside the book page (/book/[slug]): the book's chapters with their progress lemons and quick links
+ * (shares the same column width, border and row style as ChapterSide).
+ */
+export function BookSide({
+  book,
+  openId,
+  onSelect,
+}: {
+  book: BookDetail;
+  openId: number | null | undefined;
+  onSelect: (chapterId: number) => void;
+}) {
+  const done = new Set(book.done_ids);
+  const read = new Set(book.read_ids ?? []);
+  return (
+    <View style={styles.side}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 4 }}>
+        <Text style={[styles.book, rtl]} numberOfLines={1}>{book.title}</Text>
+        <Text style={[styles.chapter, rtl, { color: colors.ink, marginBottom: 8 }]}>فهرست فصل‌ها</Text>
+        {book.chapters.map((ch, idx) => {
+          const on = openId === ch.id;
+          const parts = ch.sections.map((s) => (done.has(s.id) ? ('done' as const) : read.has(s.id) ? ('soft' as const) : ('empty' as const)));
+          return (
+            <Pressable
+              key={ch.id}
+              onPress={() => onSelect(ch.id)}
+              style={[styles.row, on && styles.rowOn]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
+            >
+              {ch.is_locked ? (
+                <Icon name="lock" size={16} color={colors.muted} />
+              ) : (
+                <LemonProgress parts={parts} size={24} />
+              )}
+              <Text style={[styles.rowText, rtl, { color: colors.ink }, on && { fontWeight: '900' }]} numberOfLines={2}>
+                فصل {toPersianDigits(idx + 1)}، {ch.title}
+              </Text>
+            </Pressable>
+          );
+        })}
+        <View style={styles.actions}>
+          {[
+            ['کادرهای کتاب', () => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(book.id) } })],
+            ['واژه‌نامه', () => router.push(`/glossary/${book.slug}`)],
+            ...(book.done_card_count
+              ? [['مرور کارت‌ها', () => router.push({ pathname: '/flashcards/[nodeId]', params: { nodeId: String(book.id), done: '1' } })]]
+              : []),
+            ...(book.mine?.mistakes.count
+              ? [['اشتباه‌هایم', () => router.push({ pathname: '/mistakes', params: { book: book.slug } })]]
+              : []),
+          ].map(([label, go]) => (
+            <Pressable key={label as string} onPress={go as () => void} style={styles.action} accessibilityRole="button">
+              <Text style={[styles.actionText, { color: colors.ink }]}>{label as string}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
 
 export function ChapterSide({
   bookSlug,
