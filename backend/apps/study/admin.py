@@ -81,6 +81,9 @@ class NoteAdmin(ReadOnlyAdmin):
     search_fields = ("user__phone", "quote", "body", "node__title")
     list_per_page = 40
 
+    class Media:
+        js = ("catalog/limo-preview.js", "catalog/lists.js")
+
     def get_queryset(self, request):
         step = ContentNode.steplen
         book = ContentNode.objects.filter(path=Substr(OuterRef("node__path"), 1, step))
@@ -105,7 +108,7 @@ class NoteAdmin(ReadOnlyAdmin):
         bd = NOTE_BORDER.get(obj.color, "#E5B800")
         quote_html = (
             format_html(
-                '<div style="padding:5px 9px;border-right:3px solid {};background:{};border-radius:6px;margin-bottom:4px">{}</div>',
+                '<div class="lp-quote" style="padding:5px 9px;border-right:3px solid {};background:{};color:#17201A;border-radius:6px;margin-bottom:4px">{}</div>',
                 bd, bg, tex(obj.quote, 220),
             )
             if obj.quote
@@ -211,8 +214,11 @@ class NoteAdmin(ReadOnlyAdmin):
 
         filtered_user = request.GET.get("user__id__exact")
         filtered_node = request.GET.get("node__id__exact")
+        from apps.catalog.fresh import formula_macros
+
         ctx = {
             **(extra_context or {}),
+            "lp_macros": formula_macros(),
             "top_sections": top_sections,
             "top_users": top_users,
             "has_active_filter": bool(filtered_user or filtered_node or request.GET.get("q") or request.GET.get("book")),

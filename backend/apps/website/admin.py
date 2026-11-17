@@ -118,6 +118,6 @@ class FaqItemAdmin(admin.ModelAdmin):
 
 @admin.register(SiteNavItem)
 class SiteNavItemAdmin(admin.ModelAdmin):
-    list_display = ("title", "url", "order", "is_hidden")
-    list_editable = ("url", "order", "is_hidden")
-    fields = ("title", "url", "order", "is_hidden")
+    list_display = ("title", "parent", "url", "order", "is_hidden")
+    list_editable = ("parent", "url", "order", "is_hidden")
+    fields = ("parent", "title", "url", "order", "is_hidden")

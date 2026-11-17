@@ -110,15 +110,27 @@ def _base(request, **extra) -> dict:
     cur_key = f"page:{cur_page.slug}" if cur_page else ("books" if nav_name == "book" else nav_name)
 
     nav_items = []
-    seen_Targets = set()
-    for item in SiteNavItem.objects.filter(is_hidden=False).order_by("order", "id"):
-        href, key = _resolve_nav_url(item.url)
-        seen_Targets.add(key)
-        nav_items.append({"title": item.title, "href": href, "active": key == cur_key})
+    seen_targets = set()
+    all_nav = list(SiteNavItem.objects.filter(is_hidden=False).order_by("order", "id"))
+    by_parent: dict[int | None, list[SiteNavItem]] = {}
+    for item in all_nav:
+        by_parent.setdefault(item.parent_id, []).append(item)
+
+    for item in by_parent.get(None, []):
+        href, key = _resolve_nav_url(item.url or "#")
+        seen_targets.add(key)
+        children = []
+        for sub in by_parent.get(item.id, []):
+            s_href, s_key = _resolve_nav_url(sub.url or "#")
+            seen_targets.add(s_key)
+            children.append({"title": sub.title, "href": s_href, "active": s_key == cur_key})
+        active = (key == cur_key) or any(c["active"] for c in children)
+        nav_items.append({"title": item.title, "href": href or "#", "active": active, "children": children})
+
     for p in ordered_pages:
         key = f"page:{p.slug}"
-        if p.show_in_nav and key not in seen_Targets:
-            nav_items.append({"title": p.title, "href": reverse("website:page", args=[p.slug]), "active": key == cur_key})
+        if p.show_in_nav and key not in seen_targets:
+            nav_items.append({"title": p.title, "href": reverse("website:page", args=[p.slug]), "active": key == cur_key, "children": []})
 
     return {
         "s": s,

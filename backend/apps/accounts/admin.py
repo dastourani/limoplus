@@ -285,6 +285,7 @@ class SessionStateFilter(admin.SimpleListFilter):
 
 @admin.register(DeviceSession)
 class DeviceSessionAdmin(admin.ModelAdmin):
+    change_list_template = "admin/accounts/devicesession/change_list.html"
     list_display = ("user", "device", "state", "created_at", "last_seen_at")
     list_filter = (SessionStateFilter, "platform")
     list_select_related = ("user",)
@@ -299,12 +300,36 @@ class DeviceSessionAdmin(admin.ModelAdmin):
     search_fields = ("user__phone", "device_name")
     readonly_fields = ("user", "device_name", "platform", "created_at", "last_seen_at", "expires_at", "revoked_at")
     exclude = ("token_hash",)
-    actions = ["revoke_sessions"]
+    actions = ["revoke_sessions", "purge_expired_sessions"]
 
     @admin.action(description="خارج کردن نشست‌های انتخاب‌شده")
     def revoke_sessions(self, request, queryset):
         for session in queryset:
             session.revoke()
+
+    @admin.action(description="پاک کردن نشست‌های خارج‌شده و منقضی قدیمی (بیش از ۷ روز)")
+    def purge_expired_sessions(self, request, queryset):
+        now = timezone.now()
+        live = Q(revoked_at__isnull=True, expires_at__gt=now, last_seen_at__gt=now - settings.SESSION_IDLE)
+        cutoff = now - timedelta(days=7)
+        deleted, _ = DeviceSession.objects.exclude(live).filter(created_at__lt=cutoff).delete()
+        self.message_user(request, f"{deleted} نشست قدیمی پاک شد.")
+
+    def changelist_view(self, request, extra_context=None):
+        from apps.catalog.panel_display import fa_number
+
+        now = timezone.now()
+        live_q = Q(revoked_at__isnull=True, expires_at__gt=now, last_seen_at__gt=now - settings.SESSION_IDLE)
+        live = DeviceSession.objects.filter(live_q)
+        ctx = {
+            **(extra_context or {}),
+            "active_total": fa_number(live.count()),
+            "active_android": fa_number(live.filter(platform="android").count()),
+            "active_web": fa_number(live.exclude(platform="android").count()),
+            "active_users": fa_number(live.values("user_id").distinct().count()),
+            "only_active": request.GET.get("state") == "active",
+        }
+        return super().changelist_view(request, extra_context=ctx)
 
     def has_add_permission(self, request):
         return False
