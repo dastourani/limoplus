@@ -39,10 +39,16 @@ def is_inbox(node: ContentNode) -> bool:
     return bool(book and book.is_inbox)
 
 
-def destinations() -> list[dict]:
-    """Every place a test can go: books (the inbox first), their chapters (the chapter's intro) and sections."""
+def destinations(user=None) -> list[dict]:
+    """Every place a test can go: books (the inbox first), their chapters (the chapter's intro) and sections.
+
+    With `user`, only books that user may write are listed: «انتقال» is a write into the destination book."""
+    from . import access
+
     out = []
     books = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_archived=False).order_by("-is_inbox", "title")
+    if user is not None:
+        books = [b for b in books if access.can_edit_book(user, b)]
     for book in books:
         chapters = []
         for c in book.get_children().filter(kind=ContentNode.Kind.CHAPTER, is_archived=False):

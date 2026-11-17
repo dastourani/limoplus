@@ -1,5 +1,12 @@
 {% load static %}
-<link rel="stylesheet" href="{% static 'catalog/panel.css' %}">
-<script src="{% static 'catalog/limo-preview.js' %}"></script>
-<script src="{% static 'catalog/limo-editor.js' %}"></script>
-<script src="{% static 'catalog/panel.js' %}"></script>
+{% comment %}
+  The panel's stylesheet and scripts, with the file's own modification time as a version.
+
+  Without it a browser keeps the old panel.css after a change and the panel looks broken in a way the server cannot
+  see («the width buttons do nothing» was exactly that for one round: the JS was new, the CSS was from the cache).
+  A file's mtime is enough for a dev server and harmless on the server: the value changes only when the file does.
+{% endcomment %}
+<link rel="stylesheet" href="{% static 'catalog/panel.css' %}?v={{ assets_v }}">
+<script src="{% static 'catalog/limo-preview.js' %}?v={{ assets_v }}"></script>
+<script src="{% static 'catalog/limo-editor.js' %}?v={{ assets_v }}"></script>
+<script src="{% static 'catalog/panel.js' %}?v={{ assets_v }}"></script>

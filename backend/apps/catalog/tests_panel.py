@@ -1163,3 +1163,103 @@ class FileEditorPreviewTests(_Base):
         response = self.client.get(self.url)
         self.assertContains(response, 'id="file-text"')
         self.assertContains(response, "LimoFileEditor")
+
+    def test_the_chapter_header_is_in_the_box_and_stays_there(self):
+        # The box holds the file as the server gave it, header included; the preview is what leaves it out (in JS).
+        # If the header ever stopped reaching the box, «ویرایش کل فایل» would silently drop it on the next save.
+        response = self.client.get(self.url)
+        box = response.content.decode().split('id="file-text"', 1)[1].split("</textarea>", 1)[0]
+        self.assertIn("شناسه-کتاب", box)
+        self.assertIn("شناسه-فصل", box)
+
+
+class BookEditorAccessTests(_Base):
+    """«استاد کتاب»: a staff member writes only the books they are the editor of, and only edits to other books are refused."""
+
+    def clerk(self, *books, can_publish=False):
+        from django.contrib.auth.models import Permission
+
+        from .models import BookEditor
+
+        user = User.objects.create_user("09120000002", is_staff=True)
+        user.user_permissions.add(Permission.objects.get(codename="change_contentnode"))
+        user.refresh_from_db()
+        for book in books:
+            BookEditor.objects.create(book=book, user=user, can_publish=can_publish)
+        return user
+
+    def other_book(self):
+        from .importer import import_file
+
+        _, result = import_file("ch2.md", GOOD.replace("کتاب تست", "کتاب دیگر").replace("test-book", "other-book")
+                                .replace("متن دوم", "متن دیگر").encode())
+        return result.book, result.chapter
+
+    def test_staff_without_a_row_cannot_open_or_write_the_chapter(self):
+        self.client.force_login(self.clerk())
+        self.assertEqual(self.client.get(self.api).status_code, 403)
+        url = reverse("admin:catalog_chapter_manager", args=[self.chapter.pk])
+        self.assertEqual(self.client.get(url).status_code, 403)
+        before = export_chapter(self.chapter)
+        r = self.client.post(self.api, json.dumps({"op": "chapter.update", "title": "دست‌کاری", "number": 1}),
+                             content_type="application/json")
+        self.assertEqual(r.status_code, 403)
+        self.chapter.refresh_from_db()
+        self.assertEqual(export_chapter(self.chapter), before)
+
+    def test_editor_of_the_book_may_open_and_write_it(self):
+        self.client.force_login(self.clerk(self.book))
+        self.assertEqual(self.client.get(self.api).status_code, 200)
+        r = self.client.post(self.api, json.dumps({"op": "chapter.update", "title": "عنوان تازه", "number": 1, "is_free": True}),
+                             content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.chapter.refresh_from_db()
+        self.assertEqual(self.chapter.title, "عنوان تازه")
+
+    def test_editor_of_one_book_cannot_reach_another(self):
+        _, other_chapter = self.other_book()
+        self.client.force_login(self.clerk(self.book))
+        for name in ("admin:catalog_chapter_manager", "admin:catalog_chapter_api", "admin:catalog_chapter_file"):
+            self.assertEqual(self.client.get(reverse(name, args=[other_chapter.pk])).status_code, 403, name)
+
+    def test_cannot_move_content_into_a_book_one_may_not_edit(self):
+        _, other_chapter = self.other_book()
+        self.client.force_login(self.clerk(self.book))
+        r = self.client.post(self.api, json.dumps({"op": "section.relocate", "slug": "one", "to": other_chapter.pk, "dry": True}),
+                             content_type="application/json")
+        self.assertEqual(r.status_code, 403)
+
+    def test_destination_list_only_shows_own_books(self):
+        other_book, _ = self.other_book()
+        self.client.force_login(self.clerk(self.book))
+        r = self.client.post(self.api, json.dumps({"op": "destinations"}), content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        ids = [b["id"] for b in r.json()["destinations"]]
+        self.assertIn(self.book.pk, ids)
+        self.assertNotIn(other_book.pk, ids)
+
+    def test_a_row_pointing_at_a_chapter_grants_nothing(self):
+        # Only a book row counts; a row on a chapter must not leak writing rights to that chapter's book.
+        from .models import BookEditor
+
+        user = self.clerk()
+        BookEditor.objects.create(book=self.chapter, user=user)
+        self.client.force_login(user)
+        self.assertEqual(self.client.get(self.api).status_code, 403)
+
+    def test_superuser_still_edits_every_book_without_any_row(self):
+        self.assertEqual(self.client.get(self.api).status_code, 200)
+
+    def test_staff_view_as_learner_keeps_no_writing_rights(self):
+        # A learner view is a read-only view of the app; staff rights must still apply in the panel.
+        self.client.force_login(self.clerk(self.book))
+        self.assertEqual(self.client.get(self.api).status_code, 200)
+
+    def test_book_editor_must_point_at_a_book_not_a_chapter(self):
+        from django.core.exceptions import ValidationError
+
+        from .models import BookEditor
+
+        row = BookEditor(book=self.chapter, user=self.admin)
+        with self.assertRaises(ValidationError):
+            row.full_clean()

@@ -52,7 +52,9 @@
 .md-ed.mode-text .md-body { grid-template-columns: 1fr; } .md-ed.mode-text .md-prev { display: none; }
 .md-ed.mode-preview .md-body { grid-template-columns: 1fr; } .md-ed.mode-preview textarea { display: none; }
 .md-ed textarea { border: 0 !important; border-radius: 0 !important; min-height: 260px; height: 100%; padding: 12px 14px !important; font-size: 15px !important; }
-.md-ed .md-prev { border-right: 1px solid var(--line); background: #e9ece4; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; }
+/* The column may hold a preview wider than itself (a tablet is 768px in a 460px column): it scrolls sideways
+   rather than shrinking the preview, because a shrunken preview is a lie about the layout. */
+.md-ed .md-prev { border-right: 1px solid var(--line); background: #e9ece4; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; overflow-x: auto; overflow-y: auto; }
 .md-ed .md-prev iframe { width: 380px; max-width: 100%; height: 100%; min-height: 260px; border: 0; border-radius: 18px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
 /* The preview's own controls: how wide, and aligned which way. A phone is the only width where the preview is really
    «مثل اپ»; a tablet and the full panel are there for tables and long formulas. */
@@ -67,6 +69,13 @@
 .md-ed.file.mode-preview .md-body { grid-template-columns: 1fr; }
 .md-ed.file.mode-text .md-prev { display: none; }
 .md-ed.file textarea { min-height: 60vh; }
+/* «تمام عرض»: the preview takes the panel and the editor steps above it, so «the whole width» is the whole width
+   and not a 460px column. Going back to گوشی or تبلت puts the split back. */
+.md-ed.file.wide-preview .md-body { grid-template-columns: 1fr; }
+.md-ed.file.wide-preview .md-prev { border-right: 0; border-top: 1px solid var(--line); }
+/* The whole-file preview is as tall as the editor, not a short strip: a chapter is long, and a 260px window on it
+   shows three lines and hides the rest. */
+.md-ed.file .md-prev iframe { min-height: 60vh; }
 .md-ed.compact .md-body, .md-ed.compact textarea, .md-ed.compact .md-prev iframe { min-height: 110px; }
 /* Editor tools: undo/redo, formula toolbox, references, find and replace, drafts. */
 .md-ed .md-bar .tools { display: inline-flex; flex-wrap: wrap; gap: 2px; }
