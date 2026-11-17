@@ -463,3 +463,53 @@ class LabelIconTests(TestCase):
         icons = {l["name"]: l["icon"] for l in all_labels()}
         self.assertEqual(icons["تعریف"], "book-open")
         self.assertEqual(icons["نکته"], "")  # turned off in the panel: no icon
+
+
+class PracticeCountTests(TestCase):
+    """«۳ تست، ۰ کارت» on the section page: the app hides «تست‌ها» and «فلش‌کارت» when there is nothing behind them."""
+
+    def setUp(self):
+        self.media = tempfile.mkdtemp()
+        self.override = override_settings(MEDIA_ROOT=self.media)
+        self.override.enable()
+        call_command("load_samples", stdout=io.StringIO())
+        self.client = APIClient()
+
+    def tearDown(self):
+        self.override.disable()
+        shutil.rmtree(self.media, ignore_errors=True)
+
+    def test_a_section_counts_its_own_tests_and_cards(self):
+        node = ContentNode.objects.get(slug="limit-idea")
+        data = self.client.get(f"/api/v1/nodes/{node.id}/").data
+        self.assertEqual(data["question_count"], Question.objects.filter(node=node, is_archived=False).count())
+        self.assertEqual(data["flashcard_count"], Flashcard.objects.filter(node=node, is_archived=False).count())
+        self.assertGreater(data["question_count"], 0)
+
+    def test_a_section_without_practice_says_zero(self):
+        node = ContentNode.objects.get(slug="special-limits")
+        Question.objects.filter(node=node).delete()
+        Flashcard.objects.filter(node=node).delete()
+        data = self.client.get(f"/api/v1/nodes/{node.id}/").data
+        self.assertEqual((data["question_count"], data["flashcard_count"]), (0, 0))
+
+    def test_a_chapter_counts_its_sections(self):
+        chapter = ContentNode.objects.get(slug="limits")
+        data = self.client.get(f"/api/v1/nodes/{chapter.id}/").data
+        self.assertEqual(data["question_count"], Question.objects.filter(node__path__startswith=chapter.path, is_archived=False).count())
+        self.assertGreater(data["flashcard_count"], 0)
+
+    def test_archived_items_do_not_count(self):
+        node = ContentNode.objects.get(slug="limit-idea")
+        before = self.client.get(f"/api/v1/nodes/{node.id}/").data["question_count"]
+        Question.objects.filter(node=node).update(is_archived=True)
+        after = self.client.get(f"/api/v1/nodes/{node.id}/").data["question_count"]
+        self.assertEqual(after, 0)
+        self.assertGreater(before, 0)
+
+    def test_guests_see_the_counts_too(self):
+        """The bottom bar of the section page is drawn for everyone: a guest must not get an empty «تست‌ها»."""
+        node = ContentNode.objects.get(slug="limit-idea")
+        data = APIClient().get(f"/api/v1/nodes/{node.id}/").data
+        self.assertIn("question_count", data)
+        self.assertIn("flashcard_count", data)

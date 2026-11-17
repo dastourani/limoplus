@@ -632,6 +632,7 @@ function ChapterCard({
     Animated.spring(turn, { toValue: open ? 1 : 0, friction: 7, tension: 120, useNativeDriver: true }).start();
   }, [open, turn]);
   const tests = chapter.sections.reduce((n, s) => n + (s.question_count ?? 0), 0);
+  const cards = chapter.sections.reduce((n, s) => n + (s.flashcard_count ?? 0), 0);
   let lastGroup = '';
   return (
     <View style={styles.chapter}>
@@ -733,15 +734,22 @@ function ChapterCard({
           )}
           {!chapter.is_locked && (
             <View style={styles.actions}>
-              <Pressable style={styles.action} onPress={() => router.push(`/quiz/${chapter.id}`)}>
-                <Text style={styles.actionText}>تمرین کل فصل</Text>
-              </Pressable>
-              <Pressable style={styles.action} onPress={() => router.push(`/exam/${chapter.id}`)}>
-                <Text style={styles.actionText}>آزمون</Text>
-              </Pressable>
-              <Pressable style={styles.action} onPress={() => router.push(`/flashcards/${chapter.id}`)}>
-                <Text style={styles.actionText}>فلش‌کارت</Text>
-              </Pressable>
+              {/* Only the practice this chapter actually has: no tests, no «تمرین کل فصل» and «آزمون». */}
+              {!!tests && (
+                <Pressable style={styles.action} onPress={() => router.push(`/quiz/${chapter.id}`)}>
+                  <Text style={styles.actionText}>تمرین کل فصل</Text>
+                </Pressable>
+              )}
+              {!!tests && (
+                <Pressable style={styles.action} onPress={() => router.push(`/exam/${chapter.id}`)}>
+                  <Text style={styles.actionText}>آزمون</Text>
+                </Pressable>
+              )}
+              {!!cards && (
+                <Pressable style={styles.action} onPress={() => router.push(`/flashcards/${chapter.id}`)}>
+                  <Text style={styles.actionText}>فلش‌کارت</Text>
+                </Pressable>
+              )}
               <Pressable style={styles.action} onPress={() => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(chapter.id) } })}>
                 <Text style={styles.actionText}>کادرها</Text>
               </Pressable>

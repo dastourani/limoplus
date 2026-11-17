@@ -106,6 +106,10 @@ export type NodeDetail = {
   badge?: Badge;
   /** «دستورهای فرمول» for KaTeX. */
   macros?: Record<string, string>;
+  /** What there is to practise here: a section its own, a chapter its sections'. The buttons that lead to a
+   * practice screen are hidden when the count is 0 (a book with no tests never offers «تست‌ها»). */
+  question_count?: number;
+  flashcard_count?: number;
 };
 /** «تغییرات کتاب»: the important updates of a book, newest first. */
 export type BookChanges = { title: string; changes: { id: number; text: string; at: string; place: string; node_id: number | null }[] };
