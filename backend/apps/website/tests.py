@@ -53,6 +53,38 @@ class WebsiteTests(TestCase):
         if q.explanation:
             self.assertNotIn(q.explanation[:40], html)
 
+    def test_auto_samples_and_coming_soon_and_home_dynamic(self):
+        from apps.catalog.models import Banner, BookChange
+        from .models import SiteSettings
+
+        book = ContentNode.objects.get(slug="math-1")
+        # Even when no question has is_sample=True, readable questions from free chapters are shown automatically.
+        Question.objects.filter(node__path__startswith=book.path).update(is_sample=False)
+        book.about = ""
+        book.save()
+        r = Client().get("/site/books/math-1/")
+        self.assertContains(r, 'class="feat sample"')
+        self.assertContains(r, "درباره‌ی کتاب")
+
+        # Home page shows editable features, live stats, sample test, banners and book changes.
+        s = SiteSettings.get()
+        s.features_title = "چهار ابزار ویژه"
+        s.save()
+        Banner.objects.create(title="بنر تستی خانه", subtitle="زیرعنوان بنر", is_active=True)
+        BookChange.objects.create(book=book, text="به‌روزرسانی فصل اول")
+        home_r = Client().get("/site/")
+        self.assertContains(home_r, "چهار ابزار ویژه")
+        self.assertContains(home_r, "بنر تستی خانه")
+        self.assertContains(home_r, "به‌روزرسانی فصل اول")
+        self.assertContains(home_r, "یک تست واقعی را همین الان امتحان کن")
+
+        # Coming-soon book page shows structured preparation card and related books.
+        soon = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="فیزیک نوین", slug="modern-phys", is_published=True, is_coming_soon=True)
+        soon_r = Client().get(f"/site/books/{soon.slug}/")
+        self.assertEqual(soon_r.status_code, 200)
+        self.assertContains(soon_r, "در حال تدوین و آماده‌سازی است")
+        self.assertContains(soon_r, book.title)
+
     def test_sitemap_and_robots(self):
         c = Client()
         self.assertContains(c.get("/site/sitemap.xml"), "/site/books/math-1/")

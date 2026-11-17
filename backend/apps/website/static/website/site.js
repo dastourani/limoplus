@@ -97,12 +97,27 @@
     });
   }
 
+  function device() {
+    var cards = document.querySelectorAll('.dl-card[data-device]');
+    if (!cards.length || typeof navigator === 'undefined') return;
+    var isAndroid = /android/i.test(navigator.userAgent || '');
+    var target = isAndroid ? 'android' : 'web';
+    cards.forEach(function (c) {
+      if (c.getAttribute('data-device') === target) {
+        c.classList.add('rec');
+        var b = c.querySelector('.dev-badge');
+        if (b) b.hidden = false;
+      }
+    });
+  }
+
   function start() {
     P = window.LimoPreview;
     covers();
     formulas();
     filters();
     samples();
+    device();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();

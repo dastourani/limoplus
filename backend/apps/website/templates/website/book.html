@@ -27,10 +27,10 @@
 </section>
 <section class="sec wrap twocol">
   <div>
-    {% if b.about %}
+    {% if about %}
     <div class="about-card" data-fold>
       <div class="card-head">{% icon "book-open" 20 %}<h2>درباره‌ی کتاب</h2></div>
-      <div class="about about-body" data-md="{{ b.about }}"><p>{{ b.about|linebreaksbr }}</p></div>
+      <div class="about about-body" data-md="{{ about }}"><p>{{ about|linebreaksbr }}</p></div>
       <button type="button" class="fold-btn" hidden>نمایش کامل معرفی کتاب ▾</button>
     </div>
     {% endif %}
@@ -73,6 +73,15 @@
       </details>
     {% endfor %}
     </div>
+    {% elif b.is_coming_soon %}
+    <div class="about-card">
+      <div class="card-head">{% icon "bell" 20 %}<h2>این کتاب در حال تدوین و آماده‌سازی است</h2></div>
+      <p class="about">محتوای درسنامه، چکیده، تست‌های طبقه‌بندی‌شده و فلش‌کارت‌های کتاب «{{ b.title }}» در حال نگارش و بازبینی نهایی است. با زدن دکمه‌ی <b>«خبرم کن»</b> در اپلیکیشن لیموخوان، به محض انتشار کتاب با پیامک به شما اطلاع می‌دهیم.</p>
+      <div class="grid2" style="margin-top: 18px; gap: 14px">
+        <div class="feat" style="padding: 16px"><b>{% icon "book-open" 18 %} درسنامه و چکیده‌ی دوحالته</b><p>کادرهای تعریف، فرمول، مثال‌های شماره‌دار و چکیده‌ی مرور سریع هر بخش.</p></div>
+        <div class="feat" style="padding: 16px"><b>{% icon "list-checks" 18 %} بانک تست با پاسخ تشریحی</b><p>تست‌های کنکورهای سال‌های گذشته با پاسخ تشریحی گام‌به‌گام و دفترچه‌ی اشتباهات.</p></div>
+      </div>
+    </div>
     {% endif %}
   </div>
   <div>
@@ -92,9 +101,24 @@
       </div>
       {% endfor %}
     </div>
+    {% elif b.is_coming_soon %}
+    <div class="feat big">
+      <div class="ic">{% icon "bell" 26 %}</div>
+      <b>وقتی منتشر شد باخبر شو</b>
+      <p style="margin-bottom: 16px">در اپلیکیشن یا نسخه‌ی وب لیموخوان وارد صفحه‌ی این کتاب شو و دکمه‌ی «خبرم کن» را بزن تا به محض باز شدن فصل اول رایگان، پیامک دریافت کنی.</p>
+      <a class="btn lemon wide" style="margin-top: 0" href="{{ open_url }}">{% icon "bell" 18 %}ثبت «خبرم کن» در لیموخوان</a>
+    </div>
     {% endif %}
+    {% if not b.is_coming_soon %}
     <a class="btn dark wide" href="{{ open_url }}">{% icon "book-open" 18 %}باز کردن کتاب در لیموخوان</a>
+    {% endif %}
   </div>
 </section>
+{% if related_books %}
+<section class="sec wrap">
+  <div class="sechead"><div><h2>کتاب‌های آماده‌ی مطالعه</h2><p class="sub">فصل اول همه‌ی این کتاب‌ها همین الان رایگان باز است</p></div></div>
+  <div class="shelf">{% for c in related_books %}{% include "website/_book.html" %}{% endfor %}</div>
+</section>
+{% endif %}
 {% endblock %}
 {% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

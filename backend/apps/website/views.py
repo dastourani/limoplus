@@ -104,14 +104,18 @@ def _base(request, **extra) -> dict:
 
 def _apk(s: SiteSettings) -> dict | None:
     if s.apk_url:
-        return {"url": s.apk_url, "version": "", "date": None}
+        return {"url": s.apk_url, "version": "", "date": None, "date_fa": "", "notes": []}
     from apps.releases.models import AppRelease
 
     r = AppRelease.objects.filter(is_published=True).order_by("-build").first()
     if not r:
         return None
-    return {"url": r.link or r.link_arm64 or r.link_32, "arm64": r.link_arm64, "bit32": r.link_32,
-            "version": r.version_name or fa(r.build), "date": r.created_at}
+    notes = [line.strip().lstrip("-• ").strip() for line in (r.notes or "").splitlines() if line.strip()]
+    return {
+        "url": r.link or r.link_arm64 or r.link_32, "arm64": r.link_arm64, "bit32": r.link_32,
+        "version": r.version_name or fa(r.build), "date": r.created_at,
+        "date_fa": fa_date(r.created_at), "notes": notes,
+    }
 
 
 def _plans():
@@ -120,13 +124,109 @@ def _plans():
     return [{"title": p.title, "price": toman(p.price), "months": fa(p.months)} for p in _plans_on_sale().order_by("order", "price")]
 
 
+def _format_sample(q, idx: int, book_node=None) -> dict:
+    src = next(iter(q.questionsource_set.all()), None)
+    return {
+        "id": q.id, "number": fa(idx), "stem": q.stem,
+        "section": q.node.title if q.node and q.node.kind == ContentNode.Kind.SECTION else "",
+        "book_title": book_node.title if book_node else "",
+        "book_url": reverse("website:book", args=[book_node.slug]) if book_node else "",
+        "choices": [{"id": c.id, "num": fa(i), "text": c.text} for i, c in enumerate(q.choices.all(), start=1)],
+        "source": (f"{src.source.name} {fa(src.source.year)}" if src.source.year else src.source.name) if src else "",
+    }
+
+
+def _book_samples(questions, access, limit: int = 3, book_node=None) -> list[dict]:
+    """Up to `limit` interactive sample questions: `is_sample` first, then automatic fallback to readable questions."""
+    from django.contrib.auth.models import AnonymousUser
+    from apps.learning.views import _usable
+
+    # Must be readable by an anonymous visitor so `POST /api/v1/questions/<id>/answer/` works on the public site.
+    anon_access = AccessMap(AnonymousUser(), access.book)
+    picked_ids: set[int] = set()
+    out: list[dict] = []
+    base_qs = questions.select_related("node").prefetch_related("choices", "questionsource_set__source").order_by("node__path", "order", "id")
+    for pool in (base_qs.filter(is_sample=True), base_qs.filter(is_extra=False)):
+        for q in pool:
+            if q.id in picked_ids:
+                continue
+            if not (_usable(access, q) and _usable(anon_access, q)):
+                continue
+            picked_ids.add(q.id)
+            out.append(_format_sample(q, len(out) + 1, book_node=book_node))
+            if len(out) >= limit:
+                return out
+    return out
+
+
 def home(request):
-    books = [_card(request, b) for b in _published()]
-    majors = Major.objects.filter(books__in=[c["book"] for c in books]).distinct().order_by("order", "name")
-    paid = [c["book"].price for c in books if c["book"].price and not c["book"].is_coming_soon]
+    from django.utils import timezone
+    from apps.catalog.models import Banner, BookChange
+    from apps.learning.models import Flashcard, Question
+
+    pub_books = list(_published())
+    books = [_card(request, b) for b in pub_books]
+    majors = Major.objects.filter(books__in=pub_books).distinct().order_by("order", "name")
+    paid = [b.price for b in pub_books if b.price and not b.is_coming_soon]
+
+    # Live content statistics across all published books.
+    active_books = [b for b in pub_books if not b.is_coming_soon]
+    total_sections = 0
+    visible_ids: list[int] = []
+    home_sample = None
+    for b in active_books:
+        acc = AccessMap(request.user, b)
+        v_ids = acc.visible_ids_under(b)
+        visible_ids.extend(v_ids)
+        total_sections += sum(1 for n in acc.nodes.values() if n.kind == ContentNode.Kind.SECTION and acc.visible(n.id))
+        if home_sample is None:
+            qs = Question.objects.filter(node_id__in=v_ids, is_archived=False)
+            found = _book_samples(qs, acc, limit=1, book_node=b)
+            if found:
+                home_sample = found[0]
+
+    total_questions = Question.objects.filter(node_id__in=visible_ids, is_archived=False).count() if visible_ids else 0
+    total_cards = Flashcard.objects.filter(node_id__in=visible_ids, is_archived=False).count() if visible_ids else 0
+    site_stats = [
+        (fa(len(active_books)), "کتاب درسی تعاملی"),
+        (fa(total_sections), "بخش درسنامه و چکیده"),
+        (fa(total_questions), "تست با پاسخ تشریحی"),
+        (fa(total_cards), "فلش‌کارت مرور هوشمند"),
+    ] if active_books else []
+
+    # Active banners and recent book updates from the panel.
+    now = timezone.now()
+    raw_banners = Banner.objects.filter(is_active=True).filter(
+        Q(starts_at__isnull=True) | Q(starts_at__lte=now),
+        Q(ends_at__isnull=True) | Q(ends_at__gte=now),
+    )[:4]
+    banners = []
+    for bn in raw_banners:
+        raw_link = bn.resolved_link()
+        href = raw_link if raw_link.startswith(("http://", "https://")) else (app_url(raw_link) if raw_link else app_url())
+        banners.append({"title": bn.title, "subtitle": bn.subtitle, "button": bn.button or "مشاهده", "url": href})
+
+    raw_changes = (
+        BookChange.objects.filter(is_hidden=False, book__in=pub_books)
+        .select_related("book", "node")
+        .order_by("-created_at")[:4]
+    )
+    updates = [
+        {
+            "book_title": ch.book.title,
+            "book_url": reverse("website:book", args=[ch.book.slug]),
+            "place": ch.node.title if ch.node and ch.node_id != ch.book_id else "",
+            "text": ch.text,
+            "date": fa_date(ch.created_at),
+        }
+        for ch in raw_changes
+    ]
+
     return render(request, "website/home.html", _base(
         request, books=books[:12], more=len(books) > 12, majors=majors, plans=_plans(),
         min_price=toman(min(paid)) if paid else None,
+        site_stats=site_stats, banners=banners, updates=updates,
+        home_sample=home_sample, faq=FaqItem.objects.filter(is_hidden=False)[:4],
     ))
 
 
@@ -176,34 +276,32 @@ def book(request, slug):
             "section_list": sec_items,
         })
     first_free = next((ch for ch in chapters if ch["free"]), None)
-    samples = (
-        questions.filter(is_sample=True).select_related("node").prefetch_related("choices", "questionsource_set__source")
-        .order_by("node__path", "order", "id")
-    )
-    sample_list = []
-    for q in samples:
-        if not _usable(access, q):
-            continue
-        src = next(iter(q.questionsource_set.all()), None)
-        sample_list.append({
-            "id": q.id, "number": fa(len(sample_list) + 1), "stem": q.stem,
-            "section": q.node.title if q.node and q.node.kind == ContentNode.Kind.SECTION else "",
-            "choices": [{"id": c.id, "num": fa(i), "text": c.text} for i, c in enumerate(q.choices.all(), start=1)],
-            "source": (f"{src.source.name} {fa(src.source.year)}" if src.source.year else src.source.name) if src else "",
-        })
-        if len(sample_list) >= 3:
-            break
+    sample_list = _book_samples(questions, access, limit=3)
     sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
+    q_total = questions.count()
+    f_total = flashcards.count()
     stats = [
-        (fa(len(chapters)), "فصل"), (fa(len(sections)), "بخش"), (fa(questions.count()), "تست"),
-        (fa(flashcards.count()), "فلش‌کارت"),
+        (fa(len(chapters)), "فصل"), (fa(len(sections)), "بخش"), (fa(q_total), "تست"),
+        (fa(f_total), "فلش‌کارت"),
     ]
+    about_text = (b.about or "").strip()
+    if not about_text and chapters:
+        parts = [f"کتاب **{b.title}** در **{fa(len(chapters))} فصل** و **{fa(len(sections))} بخش** تدوین شده"]
+        if q_total:
+            parts.append(f"همراه با **{fa(q_total)} تست طبقه‌بندی‌شده با پاسخ تشریحی**")
+        if f_total:
+            parts.append(f"و **{fa(f_total)} فلش‌کارت مرور هوشمند**")
+        about_text = "، ".join(parts) + " است.\n\n" + "\n".join(f"- فصل {ch['number']}: {ch['title']}" for ch in chapters[:8])
+    related_books = []
+    if b.is_coming_soon:
+        other = [x for x in _published() if x.id != b.id and not x.is_coming_soon][:6]
+        related_books = [_card(request, x) for x in other]
     upd = book_updated_on(b)
     return render(request, "website/book.html", _base(
         request, b=b, cover=_cover(request, b), majors=list(b.majors.all()), chapters=chapters, stats=[s for s in stats if s[0] != "۰"],
         samples=sample_list, samples_json=json.dumps(sample_list, ensure_ascii=False), first_free=first_free,
         price=toman(b.price) if b.price else None, open_url=app_url(f"book/{b.slug}"), buy_url=app_url(f"buy/{b.slug}"),
-        about=b.about, updated_on=fa_date(upd) if upd else "",
+        about=about_text, updated_on=fa_date(upd) if upd else "", related_books=related_books,
     ))
 
 

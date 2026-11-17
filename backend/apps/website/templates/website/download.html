@@ -2,35 +2,57 @@
 {% block title %}دانلود لیموخوان{% endblock %}
 {% block description %}دانلود لیموخوان برای اندروید، و نسخه‌ی وب برای آیفون و کامپیوتر.{% endblock %}
 {% block main %}
-<section class="sec wrap center"><h1 class="h1">لیموخوان را نصب کن</h1><p class="sub">روی اندروید اپ کامل؛ روی آیفون و کامپیوتر نسخه‌ی وب، با همان حساب</p></section>
+<section class="sec wrap center">
+  <h1 class="h1">نصب و ورود به لیموخوان</h1>
+  <p class="sub">اپلیکیشن اختصاصی اندروید (با مطالعه‌ی آفلاین) و وب‌اپلیکیشن پیشرفته برای آیفون، تبلت و کامپیوتر</p>
+</section>
 <section class="wrap grid2">
-  <div class="feat big"><div class="head">{% icon "smartphone" 30 %}<h2>اندروید</h2></div><p class="sub">اندروید ۷ به بالا</p>
+  <div class="feat big dl-card" data-device="android">
+    <span class="dev-badge" hidden>پیشنهاد برای دستگاه شما</span>
+    <div class="head">{% icon "smartphone" 30 %}<h2>اپلیکیشن اندروید</h2></div>
+    <p class="sub">قابل نصب روی اندروید ۷ به بالا، با قابلیت دانلود آفلاین کتاب‌ها</p>
+    {% if apk.version %}<div class="dl-meta"><span class="q-badge">نسخه‌ی {{ apk.version }}</span>{% if apk.date_fa %}<span class="mut">انتشار: {{ apk.date_fa }}</span>{% endif %}</div>{% endif %}
     <div class="stores">
+      {% if apk %}<a class="store" href="{{ apk.url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دانلود مستقیم، سازگار با همه‌ی گوشی‌ها</small><b>دریافت فایل APK (همه‌کاره)</b></span></a>{% endif %}
       {% if s.bazaar_url %}<a class="store" href="{{ s.bazaar_url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دریافت از</small><b>کافه‌بازار</b></span></a>{% endif %}
       {% if s.myket_url %}<a class="store" href="{{ s.myket_url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دریافت از</small><b>مایکت</b></span></a>{% endif %}
-      {% if apk %}<a class="store" href="{{ apk.url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دانلود مستقیم، روی همه‌ی گوشی‌ها</small><b>فایل APK</b></span></a>{% endif %}
-      {% if not apk and not s.bazaar_url and not s.myket_url %}<p class="sub">لینک دانلود به‌زودی اینجا می‌آید.</p>{% endif %}
+      {% if not apk and not s.bazaar_url and not s.myket_url %}<p class="sub">لینک دانلود به‌زودی اینجا قرار می‌گیرد.</p>{% endif %}
     </div>
-    {% if apk.version %}<p class="mut small">نسخه‌ی {{ apk.version }}</p>{% endif %}
-    {% if apk.arm64 or apk.bit32 %}<p class="mut small apk-light">اینترنتت کم است؟ نسخه‌ی سبک‌تر:
-      {% if apk.arm64 %}<a href="{{ apk.arm64 }}">۶۴ بیتی</a> (بیشتر گوشی‌های چند سال اخیر){% endif %}{% if apk.arm64 and apk.bit32 %}، {% endif %}
-      {% if apk.bit32 %}<a href="{{ apk.bit32 }}">۳۲ بیتی</a> (گوشی‌های ارزان‌تر، مثل Galaxy A03){% endif %}.
-      اگر مطمئن نیستی، همان دکمه‌ی بالا را بزن؛ اگر نسخه‌ی سبک نصب نشد، دیگری را امتحان کن. به‌روزرسانی‌های بعدی را خود اپ درست می‌گیرد.</p>{% endif %}
+    {% if apk.arm64 or apk.bit32 %}
+    <div class="abi-grid">
+      {% if apk.arm64 %}<a class="abi-card" href="{{ apk.arm64 }}"><b>{% icon "download" 15 %} نسخه‌ی ۶۴ بیتی (سبک‌تر)</b><span>مناسب بیشتر گوشی‌های سال‌های اخیر</span></a>{% endif %}
+      {% if apk.bit32 %}<a class="abi-card" href="{{ apk.bit32 }}"><b>{% icon "download" 15 %} نسخه‌ی ۳۲ بیتی (سبک‌تر)</b><span>مناسب گوشی‌های اقتصادی یا قدیمی‌تر</span></a>{% endif %}
+    </div>
+    <p class="mut small apk-light">اگر مدل پردازنده‌ی گوشی را نمی‌دانید همان دکمه‌ی اصلی بالا (همه‌کاره) را بزنید. به‌روزرسانی‌های بعدی را خودِ اپ متناسب با گوشی شما دریافت می‌کند.</p>
+    {% endif %}
+    {% if apk.notes %}
+    <div class="rel-notes">
+      <b>تغییرات آخرین نسخه:</b>
+      <ul>{% for line in apk.notes %}<li>{{ line }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
   </div>
-  <div class="feat big"><div class="head">{% icon "monitor-smartphone" 30 %}<h2>آیفون و کامپیوتر</h2></div><p class="sub">بدون نصب، در مرورگر؛ روی آیفون مثل یک اپ به صفحه‌ی اصلی اضافه می‌شود</p>
-    <a class="btn lemon" href="{{ app_url }}">{% icon "book-open" 18 %}باز کردن نسخه‌ی وب</a>
-    <div class="grid3 steps">
-      <div><span class="n">۱</span><div class="box"><span class="url" dir="ltr">Safari</span></div><b>در سافاری باز کن</b></div>
-      <div><span class="n">۲</span><div class="box">{% icon "share-2" 40 %}</div><b>دکمه‌ی اشتراک‌گذاری</b></div>
-      <div><span class="n">۳</span><div class="box">{% include "website/_lemon.html" with size=56 %}</div><b>«افزودن به صفحه‌ی اصلی»</b></div>
+  <div class="feat big dl-card" data-device="web">
+    <span class="dev-badge" hidden>پیشنهاد برای دستگاه شما</span>
+    <div class="head">{% icon "monitor-smartphone" 30 %}<h2>آیفون، آیپد و کامپیوتر (وب‌اپ)</h2></div>
+    <p class="sub">بدون نیاز به نصب فایل؛ مستقیم در مرورگر باز می‌شود و روی آیفون مثل یک اپ مستقل کار می‌کند</p>
+    <a class="btn lemon wide" style="margin-top:0;margin-bottom:18px" href="{{ app_url }}">{% icon "book-open" 18 %}ورود به نسخه‌ی وب لیموخوان</a>
+    <div class="pwa-guide">
+      <b>راهنمای افزودن به صفحه‌ی اصلی آیفون (PWA):</b>
+      <div class="pwa-step"><span class="n">۱</span><div><b>باز کردن در مرورگر Safari</b><p>نسخه‌ی وب لیموخوان را در مرورگر سافاری آیفون یا آیپد باز کنید.</p></div></div>
+      <div class="pwa-step"><span class="n">۲</span><div><b>زدن دکمه‌ی Share ({% icon "share-2" 14 %})</b><p>در نوار پایین سافاری روی آیکون اشتراک‌گذاری بزنید.</p></div></div>
+      <div class="pwa-step"><span class="n">۳</span><div><b>گزینه‌ی Add to Home Screen</b><p>آیکون لیموخوان کنار سایر اپ‌های گوشی قرار می‌گیرد و تمام‌صفحه باز می‌شود.</p></div></div>
     </div>
   </div>
 </section>
-<section class="sec wrap"><h2>بعد از نصب</h2>
+<section class="sec wrap">
+  <h2>یک حساب کاربری، همگام در همه‌ی دستگاه‌ها</h2>
+  <p class="sub">هر جا مطالعه کنی، ادامه‌اش روی دستگاه دیگرت آماده است</p>
   <div class="grid3">
-    <div class="feat"><div class="bign">۱</div><b>رشته‌ات را انتخاب کن</b><p>کتاب‌های همان رشته بالای صفحه می‌آیند.</p></div>
-    <div class="feat"><div class="bign">۲</div><b>با شماره‌ی موبایل وارد شو</b><p>رمز لازم نیست؛ یک کد پیامکی کافی است.</p></div>
-    <div class="feat"><div class="bign">۳</div><b>از فصل اول شروع کن</b><p>فصل اول همه‌ی کتاب‌ها رایگان است.</p></div>
+    <div class="feat"><div class="ic">{% icon "wifi-off" 26 %}</div><b>مطالعه‌ی آفلاین در اندروید</b><p>کتاب‌های خودت را دانلود کن تا در مترو، دانشگاه یا بدون اینترنت هم به درسنامه، تست و فلش‌کارت دسترسی داشته باشی.</p></div>
+    <div class="feat"><div class="ic">{% icon "repeat" 26 %}</div><b>همگام‌سازی خودکار دو دستگاه</b><p>پیشرفت مطالعه، هایلایت‌های چهاررنگ، یادداشت‌های شخصی و جعبه‌های لایتنر بین گوشی و کامپیوترت همگام می‌مانند.</p></div>
+    <div class="feat"><div class="ic">{% icon "circle-check" 26 %}</div><b>ورود سریع بدون رمز عبور</b><p>فقط با شماره‌ی موبایل و کد پیامکی وارد شو؛ به محض انتشار مطالب یا تست‌های تازه در کتاب‌ها هم مطلع می‌شوی.</p></div>
   </div>
 </section>
 {% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}
