@@ -17,7 +17,7 @@
     اگر فصلی با همین شناسه‌ی فصل قبلاً وارد شده باشد، به‌روز می‌شود و پیشرفت کاربران حفظ می‌شود. قبل از اعمال، تغییرات را نشان می‌دهد.</p>
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
-    <div class="row"><input type="file" name="file" accept=".md,.zip" required> <button class="btn primary" type="submit">بررسی فایل</button></div>
+    <div class="row"><input type="file" name="file" accept=".md,.tex,.zip" required> <button class="btn primary" type="submit">بررسی فایل</button></div>
   </form>
   {% endif %}
 
