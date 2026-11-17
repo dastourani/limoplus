@@ -1,3 +1,5 @@
+import os
+
 from django import forms
 from django.contrib import admin
 from django.contrib.auth import get_user_model
@@ -868,3 +870,33 @@ class BookChangeAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+
+
+# --- A version stamp for the panel's own assets -------------------------------------------------------------------
+# panel.css and panel.js are served by name; a browser that cached yesterday's copy keeps showing yesterday's panel
+# («the width buttons do nothing» was exactly that for one round). The stamp is the newest modification time of the
+# files, so it changes when they change and not on every request.
+_assets_each_context = admin.site.each_context
+
+
+def _assets_each_context_with_version(request):
+    context = _assets_each_context(request)
+    context["assets_v"] = _assets_version()
+    return context
+
+
+def _assets_version() -> str:
+    from django.contrib.staticfiles import finders
+
+    newest = 0.0
+    for name in ("catalog/panel.css", "catalog/panel.js", "catalog/limo-preview.js", "catalog/limo-editor.js"):
+        path = finders.find(name)
+        if path:
+            try:
+                newest = max(newest, os.path.getmtime(path))
+            except OSError:
+                pass
+    return str(int(newest)) or "1"
+
+
+admin.site.each_context = _assets_each_context_with_version

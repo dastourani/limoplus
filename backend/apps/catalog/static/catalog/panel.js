@@ -33,6 +33,29 @@
   function media(text) { return (text || '').replace(/\]\(media:/g, '](' + MEDIA); }
   function plain(s) { return (s || '').replace(/[*_`]/g, '').replace(/\s+/g, ' '); }
 
+  // The chapter file starts with its own details between two «---» lines (شناسه-کتاب، فصل، عنوان …). They are the
+  // panel's business, not the reader's: «ویرایش کل فایل» shows the file, so it must show them, but the PREVIEW must
+  // not — rendered as Markdown they become a giant heading and push the lesson down (that is what a professor saw).
+  // A «---» further down the file is a horizontal rule and stays; only the header at the very top is taken.
+  var FRONT_KEYS = /^(شناسه-کتاب|کتاب|قیمت-کتاب|رشته‌ها|شناسه-فصل|فصل|عنوان|عنوان-انگلیسی|رایگان)\s*:/;
+  function stripFrontMatter(text) {
+    var body = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+    var m = /^[ \t]*---[ \t]*\n([\s\S]*?)\n[ \t]*---[ \t]*(?:\n|$)/.exec(body);
+    if (!m) return body;
+    // Only when the block really holds the chapter's keys: a bare «---» pair around prose is not a header.
+    var lines = m[1].split('\n').filter(function (line) { return line.trim(); });
+    if (!lines.length || !lines.every(function (line) { return FRONT_KEYS.test(line.trim()); })) return body;
+    return body.slice(m[0].length);
+  }
+
+  // «## مفهوم حد {#limit-idea}»: the {#slug} is how the file remembers a section's id, not part of its title. The
+  // markdown renderer has no heading rule of its own (headings in the app come from the section list, not from the
+  // text), so the marker would be printed inside the heading. Taken off here, in the preview only — the text box
+  // keeps the file exactly as the server gave it.
+  function stripHeadingIds(text) {
+    return String(text || '').replace(/^(#{1,6}[ \t]+.*?)[ \t]*\{#[^}\s]+\}[ \t]*$/gm, '$1');
+  }
+
   // The learner's reading setting (profile: «متن درس تراز باشد», on by default). The preview follows it, so what the
   // professor sees is what the learner sees — a line broken at a different place, never aligned differently.
   function readingJustify() {
@@ -1773,15 +1796,21 @@
       clearTimeout(prevTimer);
       var draw = function () {
         var html;
-        try { html = render(ta.value, 'notes'); }
+        try { html = render(stripHeadingIds(stripFrontMatter(ta.value)), 'notes'); }
         catch (e) { html = '<p style="color:#ba2121">خطا در نمایش: ' + e.message + '</p>'; }
         frame.srcdoc = previewDoc(html);
       };
       if (now) draw(); else prevTimer = setTimeout(draw, 350);
     }
     function applyWidth() {
-      var px = widthPx(previewWidth());
-      frame.style.width = px ? Math.min(px, 520) + 'px' : '100%';
+      var name = previewWidth(), px = widthPx(name);
+      // No cap and no max-width: a tablet is 768px even when its column is narrower — the column scrolls instead,
+      // otherwise «تبلت» and «گوشی» would look the same and the buttons would be a lie.
+      frame.style.width = px ? px + 'px' : '100%';
+      frame.style.maxWidth = 'none';
+      // «تمام عرض» means the whole panel, not the whole of a 460px column: the split itself is released while it is
+      // chosen, otherwise all three buttons would give the same size and none of them would do anything visible.
+      edWrap.classList.toggle('wide-preview', !px);
     }
     var ctl = previewControls(function () { applyWidth(); refresh(true); });
     prevWrap.insertBefore(ctl.el, frame);

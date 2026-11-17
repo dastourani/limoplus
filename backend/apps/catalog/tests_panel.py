@@ -1164,6 +1164,14 @@ class FileEditorPreviewTests(_Base):
         self.assertContains(response, 'id="file-text"')
         self.assertContains(response, "LimoFileEditor")
 
+    def test_the_chapter_header_is_in_the_box_and_stays_there(self):
+        # The box holds the file as the server gave it, header included; the preview is what leaves it out (in JS).
+        # If the header ever stopped reaching the box, «ویرایش کل فایل» would silently drop it on the next save.
+        response = self.client.get(self.url)
+        box = response.content.decode().split('id="file-text"', 1)[1].split("</textarea>", 1)[0]
+        self.assertIn("شناسه-کتاب", box)
+        self.assertIn("شناسه-فصل", box)
+
 
 class BookEditorAccessTests(_Base):
     """«استاد کتاب»: a staff member writes only the books they are the editor of, and only edits to other books are refused."""
