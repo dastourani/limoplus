@@ -63,6 +63,8 @@
             <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="down">
             <button class="btn small icon" type="submit" title="پایین">▼</button></form>
           <a class="btn small" href="{% url 'admin:catalog_chapter_export' c.node.pk %}">دریافت فایل</a>
+          <a class="btn small" href="{% url 'admin:catalog_chapter_tex' c.node.pk %}"
+             title="همین فصل برای Overleaf: فایل .tex و تصویرها">📥 .tex</a>
           <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
             <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="archive">
             <input type="hidden" name="value" value="{% if c.node.is_archived %}0{% else %}1{% endif %}">

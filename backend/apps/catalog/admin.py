@@ -245,6 +245,7 @@ class BookAdmin(admin.ModelAdmin):
             path("chapter/<int:chapter_id>/api/", site(panel.chapter_api), name="catalog_chapter_api"),
             path("chapter/<int:chapter_id>/file/", site(lambda r, chapter_id: panel.chapter_file(self.admin_site, r, chapter_id)), name="catalog_chapter_file"),
             path("chapter/<int:chapter_id>/export/", site(panel.chapter_export), name="catalog_chapter_export"),
+            path("chapter/<int:chapter_id>/export/tex/", site(panel.chapter_tex), name="catalog_chapter_tex"),
             path("chapter/<int:chapter_id>/history/", site(lambda r, chapter_id: panel.chapter_history(self.admin_site, r, chapter_id)), name="catalog_chapter_history"),
             path("chapter/<int:chapter_id>/history/<int:revision_id>/", site(panel.revision_text), name="catalog_revision_text"),
         ]
