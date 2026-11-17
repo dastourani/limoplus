@@ -2,5 +2,15 @@
   <div class="cover" data-cover="{{ c.cover }}" data-w="{{ w|default:170 }}" style="width:{{ w|default:170 }}px"><div class="cover-ph"><b>{{ c.book.title }}</b></div></div>
   <b class="bk-title">{{ c.book.title }}</b>
   <span class="bk-meta">{% if c.chapters %}{{ c.chapters }} فصل{% if c.book.author %}، {{ c.book.author }}{% endif %}{% elif c.release_estimate %}انتشار: {{ c.release_estimate }}{% elif c.book.author %}{{ c.book.author }}{% else %}&nbsp;{% endif %}</span>
+  {% if c.label.kind == 'soon' %}
+  <span class="tip-wrap tip-up" style="width:100%;margin-top:auto">
+    <span class="tagbtn {{ c.label.kind }}">{% icon c.label.icon 15 %}{{ c.label.text }}</span>
+    <span class="tip-bubble">
+      <b>زمان حدودی انتشار: {{ c.release_estimate|default:"به‌زودی" }}</b>
+      <span>برای ثبت «خبرم کن» و دریافت پیامک به محض انتشار این کتاب کلیک کنید.</span>
+    </span>
+  </span>
+  {% else %}
   <span class="tagbtn {{ c.label.kind }}">{% icon c.label.icon 15 %}{{ c.label.text }}</span>
+  {% endif %}
 </a>
