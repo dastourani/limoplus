@@ -106,5 +106,24 @@ def user_overview(user):
         reverse("admin:accounts_devicesession_changelist") + f"?q={user.phone}",
         reverse("admin:study_examattempt_changelist") + f"?q={user.phone}",
     )
-    return format_html('<div class="lp-ov">{}<div class="lp-ov-grid">{}{}{}{}</div></div>',
-                       links, study_card, access_card, orders_card, reading_card)
+    status_badges = badges(
+        not user.is_active and ("حساب مسدود است", "red"),
+        not user.can_copy and ("کپی متن بسته است", "red"),
+        not user.can_report and ("ارسال گزارش بسته است", "red"),
+        user.is_active and user.can_copy and user.can_report and ("بدون محدودیت", "green"),
+    )
+    controls = format_html(
+        '<div class="lp-ov-links" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">'
+        '<span>وضعیت دسترسی: {}</span> '
+        '<button type="submit" name="_quick_action" value="toggle_copy" class="button">{}</button> '
+        '<button type="submit" name="_quick_action" value="toggle_report" class="button">{}</button> '
+        '<button type="submit" name="_quick_action" value="revoke_sessions" class="button">خارج کردن از همه‌ی دستگاه‌ها</button> '
+        '<button type="submit" name="_quick_action" value="toggle_active" class="button">{}</button>'
+        '</div>',
+        status_badges,
+        "بستن کپی متن" if user.can_copy else "باز کردن کپی متن",
+        "بستن ارسال گزارش" if user.can_report else "باز کردن ارسال گزارش",
+        "مسدود کردن حساب" if user.is_active else "رفع مسدودیت حساب",
+    )
+    return format_html('<div class="lp-ov">{}{}<div class="lp-ov-grid">{}{}{}{}</div></div>',
+                       links, controls, study_card, access_card, orders_card, reading_card)

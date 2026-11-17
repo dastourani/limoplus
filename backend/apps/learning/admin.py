@@ -459,7 +459,7 @@ class ReportAdmin(admin.ModelAdmin):
     list_filter = ("status", "reason", ReportBookFilter, ReportKindFilter, ReportArchivedFilter)
     search_fields = ("note", "quote", "user__phone", "question__stem", "flashcard__title", "node__title")
     raw_id_fields = ("user", "question", "flashcard", "node")
-    actions = ["mark_fixed", "mark_rejected"]
+    actions = ["mark_fixed", "mark_rejected", "block_reporter", "unblock_reporter"]
     change_list_template = "admin/lp_tex_change_list.html"
 
     class Media:
@@ -509,7 +509,10 @@ class ReportAdmin(admin.ModelAdmin):
     def when(self, obj):
         from apps.catalog.jalali import jalali_datetime
 
-        return format_html('{}<div class="lp-quiet" style="white-space:nowrap">{}</div>', obj.user.phone, jalali_datetime(obj.created_at))
+        user_url = reverse("admin:accounts_user_change", args=[obj.user_id])
+        tag = badges(("گزارش بسته", "red")) if not getattr(obj.user, "can_report", True) else ""
+        return format_html('<a href="{}">{}</a> {}{}', user_url, obj.user.phone, tag,
+                           format_html('<div class="lp-quiet" style="white-space:nowrap">{}</div>', jalali_datetime(obj.created_at)))
 
     @admin.display(description="وضعیت", ordering="status")
     def state(self, obj):
@@ -548,6 +551,23 @@ class ReportAdmin(admin.ModelAdmin):
     @admin.action(description="علامت «بررسی شد، درست بود»")
     def mark_rejected(self, request, queryset):
         queryset.update(status=Report.Status.REJECTED, resolved_at=timezone.now())
+
+    @admin.action(description="رد گزارش و بستن امکان ارسال گزارش برای این کاربر")
+    def block_reporter(self, request, queryset):
+        from apps.accounts.models import User
+
+        user_ids = set(queryset.values_list("user_id", flat=True))
+        queryset.update(status=Report.Status.REJECTED, resolved_at=timezone.now())
+        User.objects.filter(pk__in=user_ids).update(can_report=False)
+        self.message_user(request, f"امکان ارسال گزارش برای {len(user_ids)} کاربر بسته شد.")
+
+    @admin.action(description="باز کردن دوباره امکان ارسال گزارش برای این کاربر")
+    def unblock_reporter(self, request, queryset):
+        from apps.accounts.models import User
+
+        user_ids = set(queryset.values_list("user_id", flat=True))
+        User.objects.filter(pk__in=user_ids).update(can_report=True)
+        self.message_user(request, f"امکان ارسال گزارش برای {len(user_ids)} کاربر دوباره باز شد.")
 
 
 _each_context = admin.site.each_context

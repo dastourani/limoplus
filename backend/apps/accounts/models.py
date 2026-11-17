@@ -38,6 +38,17 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField("نام خانوادگی", max_length=60, blank=True)
     is_active = models.BooleanField("فعال", default=True)
     is_staff = models.BooleanField("کارمند", default=False)
+    can_copy = models.BooleanField(
+        "امکان کپی متن",
+        default=True,
+        help_text="اگر برداشته شود، حساب و کتاب‌هایش باز می‌ماند ولی دیگر نمی‌تواند متن درس را کپی کند.",
+    )
+    can_report = models.BooleanField(
+        "امکان ارسال گزارش",
+        default=True,
+        help_text="اگر برداشته شود، حساب باز می‌ماند ولی دیگر نمی‌تواند گزارش اشکال بفرستد.",
+    )
+    admin_note = models.CharField("یادداشت مدیر / علت محدودیت", max_length=300, blank=True)
     date_joined = models.DateTimeField("تاریخ عضویت", default=timezone.now)
 
     objects = UserManager()

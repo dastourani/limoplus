@@ -50,11 +50,11 @@ const REASONS: Record<ReportKind, [ReportReason, string][]> = {
 
 const NOTE_MAX = 200;
 const COUNT_FROM = 150;
-const OTHER_MIN = 10;
+const NOTE_MIN = 10;
 
-/** «گزارش اشکال»: a reason (by what is reported), a short note (at most 200 characters; «سایر» needs ten), and — for
- *  the lesson text — the selected words shown on top. The learner then sees «گزارش داده شد»; the report waits in the
- *  panel, and when it is fixed the app says «اصلاح شد، ممنون». */
+/** «گزارش اشکال»: a reason (by what is reported), a short note (10–200 characters, required so accidental or empty
+ *  taps do not flood the panel), and — for the lesson text — the selected words shown on top. The learner then sees
+ *  «گزارش داده شد»; the report waits in the panel, and when it is fixed the app says «اصلاح شد، ممنون». */
 export function ReportSheet({
   visible,
   onClose,
@@ -86,7 +86,8 @@ export function ReportSheet({
   }, [visible, kind]);
 
   const trimmed = note.trim();
-  const needsNote = reason === 'other' && trimmed.length < OTHER_MIN;
+  const distinctChars = new Set(trimmed.replace(/\s+/g, '')).size;
+  const needsNote = trimmed.length < NOTE_MIN || distinctChars < 3;
   const send = async () => {
     setBusy(true);
     setError(null);
@@ -126,14 +127,14 @@ export function ReportSheet({
       <TextInput
         value={note}
         onChangeText={(t) => setNote(t.slice(0, NOTE_MAX))}
-        placeholder={reason === 'other' ? 'در چند کلمه بنویس چه اشکالی دیدی' : 'توضیح (اختیاری)'}
+        placeholder="در یک جمله‌ی کوتاه بنویس اشکال کجاست (دست‌کم ۱۰ نویسه)…"
         multiline
         style={styles.input}
         maxLength={NOTE_MAX}
       />
       {(note.length >= COUNT_FROM || needsNote) && (
         <Text style={[styles.count, rtl, note.length >= NOTE_MAX && { color: colors.redDark }]}>
-          {needsNote ? `برای «سایر» دست‌کم ${toPersianDigits(OTHER_MIN)} نویسه بنویس.` : `${toPersianDigits(note.length)} از ${toPersianDigits(NOTE_MAX)}`}
+          {needsNote ? `برای ارسال گزارش، دست‌کم ${toPersianDigits(NOTE_MIN)} نویسه بنویس چه اشکالی دیدی.` : `${toPersianDigits(note.length)} از ${toPersianDigits(NOTE_MAX)}`}
         </Text>
       )}
       {!!error && <Text style={{ color: colors.redDark }}>{error}</Text>}

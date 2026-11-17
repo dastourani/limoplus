@@ -263,23 +263,27 @@ def due_flashcards(request):
 # --- Reports -------------------------------------------------------------------------------------------------------------
 
 
-REPORTS_PER_DAY = 20
+REPORTS_PER_DAY = 5
 NOTE_MAX = 200
-OTHER_NOTE_MIN = 10
+NOTE_MIN = 10
 QUOTE_MAX = 1000
 
 
 def _report(request, **target):
-    """One report. Rules: a known reason; a note of at most 200 characters, and at least 10 when the reason is «سایر»;
-    at most 20 new reports a day. The same words reported again while still open update that report instead."""
+    """One report. Rules: a known reason; a required note of 10–200 characters (at least 3 distinct characters, so
+    random taps cannot spam the panel); at most 5 new reports a day. The same words reported again while still open
+    update that report instead."""
+    if not getattr(request.user, "can_report", True):
+        return Response({"detail": "امکان ارسال گزارش اشکال برای حساب شما بسته شده است."}, status=status.HTTP_403_FORBIDDEN)
     reason = request.data.get("reason")
     if reason not in Report.Reason.values:
         reason = Report.Reason.OTHER
     note = str(request.data.get("note") or "").strip()
     if len(note) > NOTE_MAX:
         return Response({"detail": f"توضیح حداکثر {NOTE_MAX} نویسه است."}, status=status.HTTP_400_BAD_REQUEST)
-    if reason == Report.Reason.OTHER and len(note) < OTHER_NOTE_MIN:
-        return Response({"detail": "برای «سایر» در چند کلمه بنویس چه اشکالی دیدی."}, status=status.HTTP_400_BAD_REQUEST)
+    distinct = len({c for c in note if not c.isspace()})
+    if len(note) < NOTE_MIN or distinct < 3:
+        return Response({"detail": f"برای ارسال گزارش، دست‌کم {NOTE_MIN} نویسه بنویس چه اشکالی دیدی."}, status=status.HTTP_400_BAD_REQUEST)
     quote = str(request.data.get("quote") or "").strip()[:QUOTE_MAX]
     mode = request.data.get("mode") if request.data.get("mode") in ("full", "summary") else ""
     box = str(request.data.get("box") or "").strip()[:80]
