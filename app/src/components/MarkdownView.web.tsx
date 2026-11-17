@@ -92,10 +92,37 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
       const style = document.createElement('style');
       style.id = 'limo-no-print';
       style.textContent =
-        "@media print { .lesson { display: none !important; } body::after { content: 'چاپ متن درس‌های لیموخوان ممکن نیست.'; display: block; padding: 40px; font: 20px Vazirmatn, Tahoma, sans-serif; text-align: center; direction: rtl; } }";
+        "@media print { .lesson { display: none !important; } body::after { content: 'چاپ متن درس‌های لیموخوان ممکن نیست.'; display: block; padding: 40px; font: 20px Vazirmatn, Tahoma, sans-serif; text-align: center; direction: rtl; } } " +
+        ".lesson.shielded { filter: blur(14px); transition: filter 0.12s; user-select: none; }";
       document.head.appendChild(style);
     }
-    return () => events.forEach((n) => el.removeEventListener(n, refuse, true));
+    const shield = () => el.classList.add('shielded');
+    const unshield = () => el.classList.remove('shielded');
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'PrintScreen' || (e.metaKey && e.shiftKey && ['3', '4', '5', 's', 'S'].includes(e.key))) {
+        shield();
+        navigator.clipboard?.writeText?.('').catch(() => undefined);
+      }
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') shield();
+      else unshield();
+    };
+    window.addEventListener('blur', shield);
+    window.addEventListener('focus', unshield);
+    window.addEventListener('pointermove', unshield, { passive: true });
+    window.addEventListener('pointerdown', unshield, { passive: true });
+    window.addEventListener('keydown', onKey, true);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      events.forEach((n) => el.removeEventListener(n, refuse, true));
+      window.removeEventListener('blur', shield);
+      window.removeEventListener('focus', unshield);
+      window.removeEventListener('pointermove', unshield);
+      window.removeEventListener('pointerdown', unshield);
+      window.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [compact, html]);
 
   useEffect(() => {

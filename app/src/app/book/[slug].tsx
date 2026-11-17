@@ -428,11 +428,19 @@ export default function Book() {
           {!book.is_coming_soon && !!past?.exams.length && (
             <View style={styles.about}>
               <Pressable onPress={() => setPastOpen((v) => !v)} style={styles.aboutHead} accessibilityRole="button" accessibilityState={{ expanded: pastOpen }}>
-                <Text style={[styles.aboutTitle, rtl]}>
+                <Text style={[styles.aboutTitle, rtl, { flex: 1 }]}>
                   کنکورهای سال‌های قبل ({toPersianDigits(past.exams.length)} کنکور، {toPersianDigits(past.total)} تست)
                 </Text>
-                <HelpTip title="آمادگی برای کنکورها" text="لیموی کنار هر کنکور «آمادگی» توست: چند درصد تست‌های آن کنکور از فصل‌هایی است که تمامشان کرده‌ای. هر چه پرتر، آن کنکور را راحت‌تر می‌توانی بزنی." />
-                <Icon name="chevron-down" size={20} color={colors.muted} />
+                <View style={styles.aboutActions}>
+                  <HelpTip
+                    size={26}
+                    title="آمادگی برای کنکورها"
+                    text="لیموی کنار هر کنکور «آمادگی» توست: چند درصد تست‌های آن کنکور از فصل‌هایی است که تمامشان کرده‌ای. هر چه پرتر، آن کنکور را راحت‌تر می‌توانی بزنی."
+                  />
+                  <View style={[styles.chevronCircle, pastOpen && styles.chevronCircleOn, pastOpen && { transform: [{ rotate: '-180deg' }] }]}>
+                    <Icon name="chevron-down" size={16} color={pastOpen ? colors.ink : colors.muted} />
+                  </View>
+                </View>
               </Pressable>
               {pastOpen && (
                 <View style={{ gap: 8 }}>
@@ -631,8 +639,8 @@ function ChapterCard({
             {chapter.is_locked ? <Chip label="نسخه‌ی کامل" icon="lock" /> : !owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
           </View>
         </View>
-        <Animated.View style={{ transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-180deg'] }) }] }}>
-          <Icon name="chevron-down" size={22} color={colors.muted} />
+        <Animated.View style={[styles.chevronCircle, open && styles.chevronCircleOn, { transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-180deg'] }) }] }]}>
+          <Icon name="chevron-down" size={16} color={open ? colors.ink : colors.muted} />
         </Animated.View>
       </Pressable>
       {/* A quiet strip for what is the learner's own: time spent and the next review. Nothing when there is none. */}
@@ -821,7 +829,10 @@ const styles = StyleSheet.create({
   aboutMore: { height: 44, borderRadius: 12, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
   aboutMoreText: { fontSize: 14, fontWeight: '700', color: colors.greenDark },
   about: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 6 },
-  aboutHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
+  aboutHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  aboutActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  chevronCircle: { width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  chevronCircleOn: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   aboutTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
   chaptersTitle: { fontSize: 18, fontWeight: '900', color: colors.ink, marginTop: 6 },
   chapter: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
