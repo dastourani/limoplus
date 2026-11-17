@@ -343,15 +343,16 @@ class SectionAdmin(admin.ModelAdmin):
         group = format_html('<div class="lp-quiet">{}</div>', obj.group) if obj.group else ""
         return format_html("{}{}", obj.title, group)
 
-    @admin.display(description="فصل", ordering="path")
+    @admin.display(description="کتاب و فصل", ordering="path")
     def chapter_title(self, obj):
         from .jalali import fa_digits
 
         if not getattr(obj, "p_chapter_title", None):
             return "—"
         head = f"فصل {fa_digits(obj.p_chapter_pos)}" if obj.p_chapter_pos else "فصل"
-        return format_html('<span style="white-space:nowrap">{}</span><div class="lp-quiet" title="{}">{}</div>',
-                           head, obj.p_book or "", obj.p_chapter_title)
+        book = obj.p_book or "بدون کتاب"
+        return format_html('<div class="lp-quiet">{}</div><span style="white-space:nowrap"><b>{}</b>، {}</span>',
+                           book, head, obj.p_chapter_title)
 
     @admin.display(description="خلاصه")
     def summary_kind(self, obj):

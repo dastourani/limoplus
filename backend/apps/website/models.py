@@ -89,12 +89,25 @@ class SitePage(models.Model):
 
 
 class SiteNavItem(models.Model):
-    """An item in the website's top navigation bar, editable in the panel («منوی بالای سایت»)."""
+    """An item in the website's top navigation bar, editable in the panel («منوی بالای سایت»). Supports 2 levels
+    (a parent item with dropdown children)."""
 
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+        verbose_name="زیرمجموعه‌ی منوی",
+        limit_choices_to={"parent__isnull": True},
+        help_text="خالی = آیتم اصلی در نوار بالا؛ اگر یک آیتم اصلی را انتخاب کنید، به‌عنوان زیرمنوی آبشاری آن نمایش داده می‌شود.",
+    )
     title = models.CharField("عنوان در منو", max_length=60)
     url = models.CharField(
         "آدرس یا مسیر",
         max_length=300,
+        blank=True,
+        default="#",
         help_text="نام بخش داخلی («books»، «pricing»، «download»، «faq»)، آدرس یک صفحه («page:protection») یا لینک کامل («https://...»).",
     )
     order = models.PositiveIntegerField("ترتیب", default=10)
@@ -106,7 +119,7 @@ class SiteNavItem(models.Model):
         ordering = ["order", "id"]
 
     def __str__(self):
-        return self.title
+        return f"{self.parent.title} › {self.title}" if self.parent_id else self.title
 
 
 class HelpPage(models.Model):

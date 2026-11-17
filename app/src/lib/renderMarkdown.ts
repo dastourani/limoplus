@@ -311,6 +311,13 @@ math { font-family: "STIX Two Math", "Cambria Math", "Latin Modern Math", serif;
 .box-warn { background: #FFF6D6; } .box-warn .box-title { color: #7A4F00; }
 .box-formal { background: #EEF0FC; } .box-formal .box-title { color: #3B44B8; }
 .box-table { background: #F6F7F2; border: 1px solid #E3E8DE; } .box-table .box-title { color: #56655B; }
+/* Display formulas inside a coloured box blend with the box instead of sitting on a stark white rectangle. */
+.box .math-block:not(.hlb) { background: rgba(255, 255, 255, 0.35); border-color: rgba(23, 32, 26, 0.08); }
+.box-formal .math-block:not(.hlb) { background: rgba(59, 68, 184, 0.06); border-color: rgba(59, 68, 184, 0.16); }
+.box-note .math-block:not(.hlb) { background: rgba(31, 94, 58, 0.06); border-color: rgba(31, 94, 58, 0.16); }
+.box-warn .math-block:not(.hlb) { background: rgba(122, 79, 0, 0.06); border-color: rgba(122, 79, 0, 0.18); }
+.rc-s-formal .math-block:not(.hlb) { background: rgba(59, 68, 184, 0.05); border-color: rgba(59, 68, 184, 0.14); }
+.rc-s-warn .math-block:not(.hlb) { background: rgba(158, 47, 42, 0.05); border-color: rgba(158, 47, 42, 0.14); }
 /* «مثال ۳-۵»: a link to a numbered box; the box lights up when reached. */
 a.ref { color: #3B44B8; font-weight: 700; text-decoration: none; border-bottom: 1px dashed currentColor; cursor: pointer; white-space: nowrap; }
 .ref.missing { color: #9E2F2A; font-family: system-ui, sans-serif; font-size: .85em; }
@@ -354,6 +361,8 @@ mark.hl[data-body] { box-shadow: inset 0 -2px 0 rgba(23,32,26,.35); }
 .lesson.dark .box-warn { background: #3A3216; } .lesson.dark .box-warn .box-title { color: #F5D96B; }
 .lesson.dark .box-formal { background: #23264A; } .lesson.dark .box-formal .box-title { color: #AEB4F5; }
 .lesson.dark .box-table { background: #1E2621; border-color: #33403A; } .lesson.dark .box-table .box-title { color: #B9C4BC; }
+.lesson.dark .box .math-block:not(.hlb) { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.1); }
+.lesson.sepia .box .math-block:not(.hlb) { background: rgba(74, 59, 42, 0.05); border-color: rgba(74, 59, 42, 0.14); }
 .lesson.dark mark.hl { color: #17201A; }
 .rc { display: grid; gap: 14px; }
 .rc-lead { margin-bottom: 4px; }

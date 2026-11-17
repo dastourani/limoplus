@@ -62,8 +62,11 @@ class SourceYearFilter(admin.SimpleListFilter):
     def lookups(self, request, model_admin):
         from apps.catalog.jalali import fa_digits
 
-        years = sorted(set(ExamSource.objects.values_list("year", flat=True)), reverse=True)
-        return [(str(y), fa_digits(y)) for y in years]
+        years = sorted((y for y in set(ExamSource.objects.values_list("year", flat=True)) if y), reverse=True)
+        out = [(str(y), fa_digits(y)) for y in years]
+        if ExamSource.objects.filter(year=0).exists():
+            out.append(("0", "بدون سال (کتاب مرجع)"))
+        return out
 
     def queryset(self, request, queryset):
         if self.value():
@@ -352,8 +355,11 @@ class ExamYearFilter(admin.SimpleListFilter):
     def lookups(self, request, model_admin):
         from apps.catalog.jalali import fa_digits
 
-        years = sorted(set(ExamSource.objects.values_list("year", flat=True)), reverse=True)
-        return [(str(y), fa_digits(y)) for y in years]
+        years = sorted((y for y in set(ExamSource.objects.values_list("year", flat=True)) if y), reverse=True)
+        out = [(str(y), fa_digits(y)) for y in years]
+        if ExamSource.objects.filter(year=0).exists():
+            out.append(("0", "بدون سال (کتاب مرجع)"))
+        return out
 
     def queryset(self, request, queryset):
         return queryset.filter(year=self.value()) if self.value() else queryset
@@ -498,7 +504,7 @@ class ReportAdmin(admin.ModelAdmin):
         else:
             kind, text = "", ""
         # What the learner selected, then what they wrote.
-        quote = format_html('<div class="lp-quote" style="margin-top:4px;padding:4px 8px;border-right:3px solid #F2C200;background:#FFFBEA">{}</div>',
+        quote = format_html('<div class="lp-quote" style="margin-top:4px;padding:4px 8px;border-right:3px solid #F2C200;background:#FFFBEA;color:#17201A;border-radius:4px">{}</div>',
                             tex(obj.quote, 300)) if obj.quote else ""
         note = format_html('<div style="margin-top:3px">توضیح: «{}»</div>', obj.note[:200]) if obj.note else ""
         gone = ("بخش بایگانی‌شده", "grey") if getattr(obj, "p_archived", False) else None
