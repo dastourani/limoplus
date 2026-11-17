@@ -51,7 +51,7 @@
           <div class="num">{{ ch.number }}</div>
           <div class="grow">
             <b>فصل {{ ch.number }}: {{ ch.title }}</b>
-            <span class="mut">{{ ch.sections }} بخش، {{ ch.tests }} تست{% if ch.cards %}، {{ ch.cards }} فلش‌کارت{% endif %}</span>
+            <span class="mut">{{ ch.sections }} بخش{% if ch.tests %}، {{ ch.tests }} تست{% endif %}{% if ch.cards %}، {{ ch.cards }} فلش‌کارت{% endif %}</span>
           </div>
           {% if ch.free %}<span class="tagbtn free">رایگان</span>{% else %}<span class="mut">{% icon "lock" 18 %}</span>{% endif %}
         </summary>

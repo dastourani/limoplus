@@ -275,7 +275,7 @@ def book(request, slug):
             })
         chapters.append({
             "id": c.id, "title": c.title, "number": fa(c.position or len(chapters) + 1),
-            "sections": fa(len(sections)), "tests": fa(ch_tests), "cards": fa(ch_cards) if ch_cards else "",
+            "sections": fa(len(sections)), "tests": fa(ch_tests) if ch_tests else "", "cards": fa(ch_cards) if ch_cards else "",
             "free": access.readable(c.id), "has_overview": bool(c.full_body.strip()),
             "overview_url": app_url(f"section/{c.id}") if access.readable(c.id) else app_url(f"buy/{b.slug}"),
             "section_list": sec_items,

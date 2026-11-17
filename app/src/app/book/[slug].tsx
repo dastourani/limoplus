@@ -29,11 +29,14 @@ import { studyDuration } from '../../lib/duration';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
 import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
+import { BookSide } from '../../components/ChapterSide';
 import { HelpTip } from '../../components/HelpTip';
+import { useWide } from '../../lib/layout';
 
 export default function Book() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
+  const wide = useWide();
   const { data, error, loading, retry } = useApi(() => endpoints.book(String(slug)), [slug, user?.id]);
   const celebrate = useCelebrate();
   // Coming back with a section, a chapter or the whole book newly finished: celebrated here, once each.
@@ -175,7 +178,19 @@ export default function Book() {
   const isPreparing = book.is_coming_soon || book.chapters.length === 0;
 
   return (
-    <Screen background={colors.ground}>
+    <Screen background={colors.ground} wide={wide}>
+      <View style={{ flex: 1, flexDirection: 'row-reverse' }}>
+      {wide && !isPreparing && (
+        <BookSide
+          book={book}
+          openId={openId}
+          onSelect={(cid) => {
+            LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
+            setOpenId(cid);
+          }}
+        />
+      )}
+      <View style={{ flex: 1, minWidth: 0 }}>
       <View style={[styles.inkBack, { height: BAR_H + heroHeight + 40, backgroundColor: top.bg }]} />
       {/* The margin is on a wrapper: on the web a refresh control gives the scroll view's style to two elements. */}
       <View style={{ flex: 1, marginTop: BAR_H }}>
@@ -574,6 +589,8 @@ export default function Book() {
         >
           <Icon name="share-2" size={20} color={top.fg} />
         </Pressable>
+      </View>
+      </View>
       </View>
       {cover && <View style={StyleSheet.absoluteFill}>{cover}</View>}
     </Screen>
