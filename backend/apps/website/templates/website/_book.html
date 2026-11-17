@@ -1,4 +1,6 @@
 {% load site_icons %}<a class="bk" href="{{ c.url }}" data-majors="{{ c.majors|join:' ' }}">
   <div class="cover" data-cover="{{ c.cover }}" data-w="{{ w|default:170 }}" style="width:{{ w|default:170 }}px"><div class="cover-ph"><b>{{ c.book.title }}</b></div></div>
+  <b class="bk-title">{{ c.book.title }}</b>
+  {% if c.chapters %}<span class="bk-meta">{{ c.chapters }} فصل{% if c.book.author %}، {{ c.book.author }}{% endif %}</span>{% endif %}
   <span class="tagbtn {{ c.label.kind }}">{% icon c.label.icon 15 %}{{ c.label.text }}</span>
 </a>

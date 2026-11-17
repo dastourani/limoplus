@@ -48,6 +48,8 @@ class WebsiteTests(TestCase):
         self.assertContains(r, f'data-id="{q.id}"')
         html = r.content.decode()
         self.assertNotIn("is_correct", html)
+        self.assertIn("limo-labels", html)
+        self.assertIn("sec-list", html)
         if q.explanation:
             self.assertNotIn(q.explanation[:40], html)
 

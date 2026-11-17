@@ -18,12 +18,15 @@ from django.utils.safestring import mark_safe
 
 from apps.catalog.access import AccessMap
 from apps.catalog.drawing import loads as loads_drawing
-from apps.catalog.fresh import formula_macros
+from apps.catalog.fresh import book_updated_on, formula_macros
+from apps.catalog.jalali import jalali_date as fa_date
+from apps.catalog.labels import all_labels
 from apps.catalog.models import ContentNode, Major
 
 from .models import FaqItem, SitePage, SiteSettings
 
 FA = "۰۱۲۳۴۵۶۷۸۹"
+PAGE_ORDER = {"terms": 0, "privacy": 1, "about": 2, "contact": 3}
 
 
 def fa(n) -> str:
@@ -75,20 +78,26 @@ def _card(request, book) -> dict:
         label = {"kind": "free", "icon": "gift", "text": "رایگان"}
     else:
         label = {"kind": "paid", "icon": "tag", "text": toman(book.price)}
-    return {"book": book, "cover": _cover(request, book), "label": label,
-            "url": reverse("website:book", args=[book.slug]), "majors": [m.slug for m in book.majors.all()]}
+    return {
+        "book": book, "cover": _cover(request, book), "label": label,
+        "chapters": fa(len(chapters)) if chapters else "",
+        "url": reverse("website:book", args=[book.slug]), "majors": [m.slug for m in book.majors.all()],
+    }
 
 
 def _base(request, **extra) -> dict:
     s = SiteSettings.get()
+    ordered_pages = sorted(SitePage.objects.all(), key=lambda p: (PAGE_ORDER.get(p.slug, 9), p.slug))
     return {
         "s": s,
         "app_url": app_url(),
         "apk": _apk(s),
-        "pages": {p.slug: p for p in SitePage.objects.all()},
+        "pages": {p.slug: p for p in ordered_pages},
         "canonical": request.build_absolute_uri(request.path),
-        # «دستورهای فرمول» for the formulas the browser draws.
+        "nav": request.resolver_match.url_name if getattr(request, "resolver_match", None) else "",
+        # «دستورهای فرمول» and «برچسب‌های متن» for the lesson boxes and formulas the browser draws.
         "macros": formula_macros(),
+        "labels": all_labels(),
         **extra,
     }
 
@@ -137,13 +146,34 @@ def book(request, slug):
 
     visible = access.visible_ids_under(b)
     questions = Question.objects.filter(node_id__in=visible, is_archived=False)
+    flashcards = Flashcard.objects.filter(node_id__in=visible, is_archived=False)
+    from django.db.models import Count
+
+    q_by_node = dict(questions.values("node_id").annotate(n=Count("id")).values_list("node_id", "n"))
+    f_by_node = dict(flashcards.values("node_id").annotate(n=Count("id")).values_list("node_id", "n"))
     chapters = []
     for c in access.children(b):
         sections = access.children(c)
         ids = [c.id, *[s.id for s in sections]]
+        ch_tests = sum(q_by_node.get(i, 0) for i in ids)
+        ch_cards = sum(f_by_node.get(i, 0) for i in ids)
+        sec_items = []
+        for idx, s in enumerate(sections, start=1):
+            sq = q_by_node.get(s.id, 0)
+            sf = f_by_node.get(s.id, 0)
+            s_free = access.readable(s.id)
+            sec_items.append({
+                "id": s.id, "title": s.title, "number": fa(idx),
+                "has_summary": bool(s.summary_body),
+                "tests": fa(sq) if sq else "", "cards": fa(sf) if sf else "",
+                "free": s_free, "url": app_url(f"section/{s.id}") if s_free else app_url(f"buy/{b.slug}"),
+            })
         chapters.append({
-            "title": c.title, "number": fa(c.position or len(chapters) + 1), "sections": fa(len(sections)),
-            "tests": fa(questions.filter(node_id__in=ids).count()), "free": access.readable(c.id),
+            "id": c.id, "title": c.title, "number": fa(c.position or len(chapters) + 1),
+            "sections": fa(len(sections)), "tests": fa(ch_tests), "cards": fa(ch_cards) if ch_cards else "",
+            "free": access.readable(c.id), "has_overview": bool(c.full_body.strip()),
+            "overview_url": app_url(f"section/{c.id}") if access.readable(c.id) else app_url(f"buy/{b.slug}"),
+            "section_list": sec_items,
         })
     first_free = next((ch for ch in chapters if ch["free"]), None)
     samples = (
@@ -156,7 +186,9 @@ def book(request, slug):
             continue
         src = next(iter(q.questionsource_set.all()), None)
         sample_list.append({
-            "id": q.id, "stem": q.stem, "choices": [{"id": c.id, "text": c.text} for c in q.choices.all()],
+            "id": q.id, "number": fa(len(sample_list) + 1), "stem": q.stem,
+            "section": q.node.title if q.node and q.node.kind == ContentNode.Kind.SECTION else "",
+            "choices": [{"id": c.id, "num": fa(i), "text": c.text} for i, c in enumerate(q.choices.all(), start=1)],
             "source": (f"{src.source.name} {fa(src.source.year)}" if src.source.year else src.source.name) if src else "",
         })
         if len(sample_list) >= 3:
@@ -164,13 +196,14 @@ def book(request, slug):
     sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
     stats = [
         (fa(len(chapters)), "فصل"), (fa(len(sections)), "بخش"), (fa(questions.count()), "تست"),
-        (fa(Flashcard.objects.filter(node_id__in=visible, is_archived=False).count()), "فلش‌کارت"),
+        (fa(flashcards.count()), "فلش‌کارت"),
     ]
+    upd = book_updated_on(b)
     return render(request, "website/book.html", _base(
         request, b=b, cover=_cover(request, b), majors=list(b.majors.all()), chapters=chapters, stats=[s for s in stats if s[0] != "۰"],
         samples=sample_list, samples_json=json.dumps(sample_list, ensure_ascii=False), first_free=first_free,
         price=toman(b.price) if b.price else None, open_url=app_url(f"book/{b.slug}"), buy_url=app_url(f"buy/{b.slug}"),
-        about=b.about,
+        about=b.about, updated_on=fa_date(upd) if upd else "",
     ))
 
 
@@ -193,7 +226,11 @@ def page(request, slug):
     p = SitePage.objects.filter(slug=slug).first()
     if not p:
         raise Http404
-    return render(request, "website/page.html", _base(request, page=p, body=simple_text(p.body)))
+    return render(request, "website/page.html", _base(
+        request, page=p, body=simple_text(p.body),
+        updated_on=fa_date(p.updated_at),
+        important_on=fa_date(p.important_at) if p.important_at else "",
+    ))
 
 
 def simple_text(body: str) -> str:

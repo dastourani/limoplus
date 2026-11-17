@@ -1,5 +1,6 @@
 {% extends "website/base.html" %}
 {% block title %}پرسش‌های پرتکرار، لیموخوان{% endblock %}
 {% block main %}
-<section class="sec wrap narrow"><h1 class="h2">پرسش‌های پرتکرار</h1>{% if faq %}{% include "website/_faq.html" %}{% else %}<p class="sub">به‌زودی.</p>{% endif %}</section>
+<section class="sec wrap narrow"><h1 class="h2">پرسش‌های پرتکرار</h1><p class="sub">پاسخ به پرسش‌های رایج درباره‌ی کتاب‌ها، اشتراک و مطالعه‌ی آفلاین</p>{% if faq %}{% include "website/_faq.html" %}{% else %}<p class="sub">به‌زودی.</p>{% endif %}</section>
 {% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

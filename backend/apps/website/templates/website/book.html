@@ -11,7 +11,10 @@
       <h1>{{ b.title }}</h1>
       {% if b.title_en %}<div class="en" dir="ltr">{{ b.title_en }}</div>{% endif %}
       {% if b.author %}<p class="lead">{{ b.author }}{% if b.edition %}، {{ b.edition }}{% endif %}</p>{% endif %}
-      <div class="stats">{% for n, l in stats %}<div><b>{{ n }}</b><span>{{ l }}</span></div>{% endfor %}</div>
+      <div class="stats">
+        {% for n, l in stats %}<div><b>{{ n }}</b><span>{{ l }}</span></div>{% endfor %}
+        {% if updated_on %}<div><b>{{ updated_on }}</b><span>آخرین به‌روزرسانی</span></div>{% endif %}
+      </div>
       <div class="cta">
         {% if b.is_coming_soon %}<a class="btn lemon" href="{{ open_url }}">{% icon "bell" 18 %}به‌زودی؛ در اپ «خبرم کن» را بزن</a>
         {% else %}
@@ -24,22 +27,67 @@
 </section>
 <section class="sec wrap twocol">
   <div>
-    {% if b.about %}<h2>درباره‌ی کتاب</h2><div class="about" data-md="{{ b.about }}"><p>{{ b.about|linebreaksbr }}</p></div>{% endif %}
-    {% if chapters %}<h2>فهرست کتاب</h2>{% if first_free %}<p class="sub">فصل‌های رایگان را همین الان می‌توانی بخوانی</p>{% endif %}
+    {% if b.about %}
+    <div class="about-card" data-fold>
+      <div class="card-head">{% icon "book-open" 20 %}<h2>درباره‌ی کتاب</h2></div>
+      <div class="about about-body" data-md="{{ b.about }}"><p>{{ b.about|linebreaksbr }}</p></div>
+      <button type="button" class="fold-btn" hidden>نمایش کامل معرفی کتاب ▾</button>
+    </div>
+    {% endif %}
+    {% if chapters %}
+    <div class="sechead"><div><h2>سرفصل‌ها و ساختار درس</h2>{% if first_free %}<p class="sub">روی هر فصل بزن تا بخش‌ها، درسنامه‌ها و تست‌هایش را ببینی</p>{% endif %}</div></div>
+    <div class="ch-list">
     {% for ch in chapters %}
-      <div class="feat row"><div class="num">{{ ch.number }}</div><div class="grow"><b>فصل {{ ch.number }}، {{ ch.title }}</b><span class="mut">{{ ch.sections }} بخش، {{ ch.tests }} تست</span></div>
-        {% if ch.free %}<span class="tagbtn free">رایگان</span>{% else %}<span class="mut">{% icon "lock" 18 %}</span>{% endif %}</div>
-    {% endfor %}{% endif %}
+      <details class="ch-box"{% if forloop.first %} open{% endif %}>
+        <summary class="feat row ch-sum">
+          <div class="num">{{ ch.number }}</div>
+          <div class="grow">
+            <b>فصل {{ ch.number }}: {{ ch.title }}</b>
+            <span class="mut">{{ ch.sections }} بخش، {{ ch.tests }} تست{% if ch.cards %}، {{ ch.cards }} فلش‌کارت{% endif %}</span>
+          </div>
+          {% if ch.free %}<span class="tagbtn free">رایگان</span>{% else %}<span class="mut">{% icon "lock" 18 %}</span>{% endif %}
+        </summary>
+        {% if ch.section_list or ch.has_overview %}
+        <div class="sec-list">
+          {% if ch.has_overview %}
+          <a class="sec-row" href="{{ ch.overview_url }}">
+            <span class="sec-num">مقدمه</span>
+            <span class="sec-title">مقدمه‌ی فصل {{ ch.number }}</span>
+            {% if ch.free %}<span class="sec-go">مطالعه ←</span>{% endif %}
+          </a>
+          {% endif %}
+          {% for s in ch.section_list %}
+          <a class="sec-row" href="{{ s.url }}">
+            <span class="sec-num">{{ ch.number }}-{{ s.number }}</span>
+            <span class="sec-title">{{ s.title }}</span>
+            <span class="sec-badges">
+              {% if s.has_summary %}<span class="pill">درسنامه + چکیده</span>{% else %}<span class="pill">درسنامه</span>{% endif %}
+              {% if s.tests %}<span class="pill">{{ s.tests }} تست</span>{% endif %}
+              {% if s.cards %}<span class="pill">{{ s.cards }} کارت</span>{% endif %}
+            </span>
+            {% if s.free %}<span class="sec-go">مطالعه ←</span>{% else %}<span class="mut">{% icon "lock" 14 %}</span>{% endif %}
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </details>
+    {% endfor %}
+    </div>
+    {% endif %}
   </div>
   <div>
     {% if samples %}
-    <h2>تست نمونه</h2><p class="sub">یک گزینه را بزن تا پاسخ و توضیحش را ببینی</p>
+    <h2>تست‌های نمونه با پاسخ تشریحی</h2><p class="sub">یک گزینه را انتخاب کن تا تصحیح شود و درسنامه‌ی پاسخ باز شود</p>
     <div id="samples">
       {% for q in samples %}
       <div class="feat sample" data-id="{{ q.id }}">
-        {% if q.source %}<span class="mut">{{ q.source }}</span>{% endif %}
+        <div class="sample-head">
+          <span class="q-badge">تست {{ q.number }}</span>
+          {% if q.section %}<span class="mut">{{ q.section }}</span>{% endif %}
+          {% if q.source %}<span class="src-chip">{{ q.source }}</span>{% endif %}
+        </div>
         <div class="stem" data-md="{{ q.stem }}">{{ q.stem }}</div>
-        <div class="choices">{% for c in q.choices %}<button class="choice" data-choice="{{ c.id }}"><b>{{ forloop.counter }}.</b><span data-md="{{ c.text }}">{{ c.text }}</span></button>{% endfor %}</div>
+        <div class="choices">{% for c in q.choices %}<button class="choice" data-choice="{{ c.id }}"><span class="cnum">{{ c.num }}</span><span class="ctext" data-md="{{ c.text }}">{{ c.text }}</span></button>{% endfor %}</div>
         <div class="explain" hidden></div>
       </div>
       {% endfor %}

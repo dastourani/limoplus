@@ -63,6 +63,12 @@ class SitePageAdmin(admin.ModelAdmin):
             obj.important_at = timezone.now()
         super().save_model(request, obj, form, change)
 
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if "body" in form.base_fields:
+            form.base_fields["body"].widget.attrs.update({"data-md-editor": "1", "rows": 18})
+        return form
+
 
 @admin.register(HelpPage)
 class HelpPageAdmin(admin.ModelAdmin):
