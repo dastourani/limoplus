@@ -90,6 +90,34 @@ def book_of(node: ContentNode) -> ContentNode:
     return ContentNode.objects.get(path=node.path[: ContentNode.steplen])
 
 
+def can_edit_book(user, book: ContentNode) -> bool:
+    """May this user WRITE this book's content?
+
+    Superusers, always. Otherwise a staff member must hold the catalog change permission AND a «استاد کتاب»
+    row for this very book. Reading other books is allowed; writing them is not. (See BookEditor.)
+    """
+    if not (user and user.is_authenticated and user.is_active):
+        return False
+    if user.is_superuser:
+        return True
+    if not (user.is_staff and user.has_perm("catalog.change_contentnode")):
+        return False
+    from .models import BookEditor
+
+    return BookEditor.objects.filter(book=book, user=user).exists()
+
+
+def can_publish_book(user, book: ContentNode) -> bool:
+    """Superusers, or an editor trusted with publishing. Drafting is open to every editor of the book."""
+    if not (user and user.is_authenticated and user.is_active):
+        return False
+    if user.is_superuser:
+        return True
+    from .models import BookEditor
+
+    return BookEditor.objects.filter(book=book, user=user, can_publish=True).exists()
+
+
 _UNSET = object()
 
 

@@ -213,6 +213,8 @@ def read_upload(filename: str, data: bytes, book: ContentNode | None = None) -> 
     `parse_chapter` like any other chapter file: one format in the database, one renderer in the app.
     With `book`, the file may leave out the book lines; if it names another book, that is an error."""
     lowered = filename.lower()
+    if lowered.endswith(".pptx"):
+        return _read_pptx(filename, data, book)
     if lowered.endswith(".zip"):
         if _zip_is_latex(data):
             return _read_latex_zip(filename, data, book)
@@ -241,7 +243,7 @@ def read_upload(filename: str, data: bytes, book: ContentNode | None = None) -> 
         _check_images(chapter)
         return chapter
     chapter = ParsedChapter()
-    chapter.error("فقط فایل .md یا .zip پذیرفته می‌شود.")
+    chapter.error("فقط فایل .md، .tex، .pptx یا .zip پذیرفته می‌شود.")
     return chapter
 
 
@@ -275,6 +277,36 @@ def _read_latex_zip(filename: str, data: bytes, book: ContentNode | None = None)
         chapter.error("فایل LaTeX خوانده نشد؛ متن خالی است.")
         return chapter
     for name, body in images.items():
+        chapter.images[posixpath.normpath(name)] = body
+    _check_images(chapter)
+    return chapter
+
+
+def _read_pptx(filename: str, data: bytes, book: ContentNode | None = None) -> ParsedChapter:
+    """A PowerPoint → a chapter: each slide is one section, its pictures kept under their own names."""
+    from .pptx import images_of, read_pptx, report, to_chapter
+
+    reading = read_pptx(data)
+    if reading.fatal:
+        failed = ParsedChapter()
+        failed.error(reading.fatal)
+        return failed
+    slug = _slug_from_name(filename) or "slides"
+    book_slug = book.slug if book is not None else slug
+    book_title = book.title if book is not None else "بدون کتاب"
+    majors = list(book.majors.values_list("slug", flat=True)) if book is not None else []
+    markdown = to_chapter(
+        reading,
+        book_slug=book_slug,
+        book_title=book_title,
+        chapter_slug=slug,
+        chapter_title=posixpath.splitext(posixpath.basename(filename))[0].strip() or slug,
+        majors=majors,
+    )
+    chapter = parse_chapter(markdown, book=book)
+    for warning in report(reading):
+        chapter.warn(warning)
+    for name, body in images_of(data, reading).items():
         chapter.images[posixpath.normpath(name)] = body
     _check_images(chapter)
     return chapter

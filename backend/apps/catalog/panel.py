@@ -27,6 +27,7 @@ from django.views.decorators.http import require_POST
 from apps.learning.models import ExamSource, Flashcard, Question, Report
 
 from . import editing
+from . import access
 from .editing import EditError
 from .exporter import book_bundle, chapter_bundle, export_chapter, flashcard_block, question_block, write_chapter
 from .latex_export import chapter_tex_bundle
@@ -39,6 +40,8 @@ from .labels import all_labels
 from .summary import parse_parts
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+# What «فصل از فایل» accepts, longest suffix first so «.pptx» is not matched as «.zip»-like by accident.
+UPLOAD_EXTENSIONS = (".zip", ".pptx", ".tex", ".md")
 PENDING_DIR = "imports/pending"
 
 
@@ -61,6 +64,7 @@ def orphans():
 @require_POST
 def archive_orphan(request, node_id):
     _can_edit(request)
+    _require_superuser(request)
     node = get_object_or_404(orphans(), pk=node_id)
     ids = [node.pk, *node.get_descendants().values_list("pk", flat=True)]
     with transaction.atomic():
@@ -71,9 +75,30 @@ def archive_orphan(request, node_id):
     return redirect(reverse("admin:catalog_book_changelist"))
 
 
-def _can_edit(request):
+def _can_edit(request, book=None):
+    """Who may open the writing panel.
+
+    A staff member with the catalog change permission, and — when a book is in play — only that book's own
+    editors («استاد کتاب»), plus superusers. Reading another book is fine; writing it is refused.
+    """
     if not (request.user.is_active and request.user.is_staff and request.user.has_perm("catalog.change_contentnode")):
         raise PermissionDenied
+    if book is not None and not access.can_edit_book(request.user, book):
+        raise PermissionDenied
+
+
+def _require_superuser(request):
+    if not request.user.is_superuser:
+        raise PermissionDenied("این کار از این صفحه فقط برای مدیر کل است.")
+
+
+def _can_edit_destination(node_id, user):
+    """«انتقال» moves content into another book, so the destination needs its own permission check."""
+    node = ContentNode.objects.filter(pk=node_id).first()
+    if node is None:
+        return  # relocate() reports «مقصد پیدا نشد» with a readable message.
+    if not access.can_edit_book(user, access.book_of(node)):
+        raise PermissionDenied("اجازه‌ی نوشتن در کتاب مقصد را ندارید.")
 
 
 def _context(admin_site, request, title, **extra):
@@ -236,15 +261,17 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
     if op in ("question.relocate", "flashcard.relocate"):
         from .inbox import relocate
 
+        _can_edit_destination(data.get("to"), user)
         return relocate(chapter, data.get("slugs") or [], data.get("to"), user, kind=op.split(".")[0])
     if op == "section.relocate":
         from .inbox import relocate_section
 
+        _can_edit_destination(data.get("to"), user)
         return relocate_section(chapter, data.get("slug", ""), data.get("to"), user, dry=bool(data.get("dry")))
     if op == "destinations":
         from .inbox import destinations
 
-        return {"ok": True, "destinations": destinations()}
+        return {"ok": True, "destinations": destinations(user)}
 
     # Visibility lives only in the panel (not in the file). The «صندوق تست» is never published.
     if op in ("chapter.publish", "section.publish") and data.get("value") and chapter.is_inbox:
@@ -439,8 +466,8 @@ def _drop_refs(parsed, flashcard_slugs: set[str]):
 
 
 def chapter_api(request, chapter_id):
-    _can_edit(request)
     chapter = _chapter(chapter_id)
+    _can_edit(request, chapter.book())
     if request.method == "POST":
         if request.content_type.startswith("multipart/"):
             return _upload_image(request, chapter)
@@ -544,15 +571,17 @@ def _restore_text(request, chapter, data):
 
 def open_inbox(request):
     """«صندوق تست»: made on first use, then opened in the chapter manager."""
+    # The inbox belongs to no book, so no «استاد کتاب» row can guard it. It is a test bench for the whole site.
     _can_edit(request)
+    _require_superuser(request)
     from .inbox import inbox_chapter
 
     return redirect(reverse("admin:catalog_chapter_manager", args=[inbox_chapter().pk]))
 
 
 def chapter_manager(admin_site, request, chapter_id):
-    _can_edit(request)
     chapter = _chapter(chapter_id)
+    _can_edit(request, chapter.book())
     book = chapter.book()
     return TemplateResponse(
         request,
@@ -563,8 +592,8 @@ def chapter_manager(admin_site, request, chapter_id):
 
 
 def chapter_file(admin_site, request, chapter_id):
-    _can_edit(request)
     chapter = _chapter(chapter_id)
+    _can_edit(request, chapter.book())
     text = export_chapter(chapter)
     restore = None
     if request.GET.get("revision"):
@@ -580,8 +609,9 @@ def chapter_file(admin_site, request, chapter_id):
 
 
 def chapter_export(request, chapter_id):
-    _can_edit(request)
-    name, data, content_type = chapter_bundle(_chapter(chapter_id))
+    chapter = _chapter(chapter_id)
+    _can_edit(request, chapter.book())
+    name, data, content_type = chapter_bundle(chapter)
     response = HttpResponse(data, content_type=content_type)
     response["Content-Disposition"] = f'attachment; filename="{name}"'
     return response
@@ -589,24 +619,25 @@ def chapter_export(request, chapter_id):
 
 def chapter_tex(request, chapter_id):
     """The chapter as a LaTeX project: a .tex alone, or a ZIP with the .tex and its images/ — for Overleaf."""
-    _can_edit(request)
-    name, data, content_type = chapter_tex_bundle(_chapter(chapter_id))
+    chapter = _chapter(chapter_id)
+    _can_edit(request, chapter.book())
+    name, data, content_type = chapter_tex_bundle(chapter)
     response = HttpResponse(data, content_type=content_type)
     response["Content-Disposition"] = f'attachment; filename="{name}"'
     return response
 
 
 def book_export(request, book_id):
-    _can_edit(request)
     book = _book(book_id)
+    _can_edit(request, book)
     response = HttpResponse(book_bundle(book), content_type="application/zip")
     response["Content-Disposition"] = f'attachment; filename="{book.slug}.zip"'
     return response
 
 
 def chapter_history(admin_site, request, chapter_id):
-    _can_edit(request)
     chapter = _chapter(chapter_id)
+    _can_edit(request, chapter.book())
     revisions = list(chapter.revisions.select_related("user").order_by("-updated_at", "-id"))
     current = export_chapter(chapter)
     rows = [{"r": r, "when": jalali_datetime(r.updated_at), "is_current": r.text == current, "size": len(r.text.splitlines())} for r in revisions]
@@ -623,7 +654,7 @@ def chapter_history(admin_site, request, chapter_id):
 
 
 def revision_text(request, chapter_id, revision_id):
-    _can_edit(request)
+    _can_edit(request, _chapter(chapter_id).book())
     revision = get_object_or_404(ChapterRevision, pk=revision_id, chapter_id=chapter_id)
     response = HttpResponse(revision.text, content_type="text/markdown; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{revision.chapter.slug}-v{revision.pk}.md"'
@@ -635,15 +666,20 @@ def revision_text(request, chapter_id, revision_id):
 
 def import_view(admin_site, request, book_id=None):
     """Upload → check and preview what will change → confirm. The upload waits on the server between the two steps."""
-    _can_edit(request)
     book = _book(book_id) if book_id else None
+    if book is None:
+        # With no book in the URL the file itself names the book, so it could land in ANY book. Superusers only;
+        # everyone else imports through their own book's page, which passes book_id.
+        _can_edit(request)
+        _require_superuser(request)
+    else:
+        _can_edit(request, book)
     report = None
     if request.method == "POST" and request.POST.get("token"):
         token = request.POST["token"]
         if not all(c in "0123456789abcdef-" for c in token):
             raise PermissionDenied
-        found = [p for p in (f"{PENDING_DIR}/{token}.md", f"{PENDING_DIR}/{token}.tex", f"{PENDING_DIR}/{token}.zip")
-                 if default_storage.exists(p)]
+        found = [p for p in (f"{PENDING_DIR}/{token}{ext}" for ext in UPLOAD_EXTENSIONS) if default_storage.exists(p)]
         if not found:
             messages.error(request, "فایل بررسی‌شده پیدا نشد؛ دوباره انتخابش کنید.")
             return redirect(request.path)
@@ -682,7 +718,7 @@ def import_view(admin_site, request, book_id=None):
             }
             if not parsed.errors:
                 token = str(uuid.uuid4())
-                ext = next(e for e in (".zip", ".tex", ".md") if upload.name.lower().endswith(e))
+                ext = next(e for e in UPLOAD_EXTENSIONS if upload.name.lower().endswith(e))
                 default_storage.save(f"{PENDING_DIR}/{token}{ext}", ContentFile(data))
                 report.update(
                     token=token,
@@ -738,8 +774,8 @@ def _cleanup_pending():
 
 @require_POST
 def book_chapter_action(request, book_id):
-    _can_edit(request)
     book = _book(book_id)
+    _can_edit(request, book)
     action = request.POST.get("action")
     back = reverse("admin:catalog_book_change", args=[book.pk]) + "#chapters"
     if action == "new":

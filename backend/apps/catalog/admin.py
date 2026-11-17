@@ -12,7 +12,7 @@ from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
 from .filters import BookFilter, BookFKFilter, ChapterFilter, YesNoFilter
 from .panel_display import badges
-from .models import (Banner, Book, BookChange, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
+from .models import (Banner, Book, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
                      ShareSettings, Shelf, ShelfBook)
 
 
@@ -379,6 +379,22 @@ class SectionAdmin(admin.ModelAdmin):
         if node and (c := node.get_parent()):
             return redirect(reverse("admin:catalog_chapter_manager", args=[c.pk]) + f"#s={node.slug}")
         return super().change_view(request, object_id, form_url, extra_context)
+
+
+@admin.register(BookEditor)
+class BookEditorAdmin(admin.ModelAdmin):
+    """«استادان کتاب»: who may write which book. Without a row here, a staff member can only read it."""
+
+    list_display = ("book", "user", "can_publish", "note", "created_at")
+    list_filter = ("can_publish", BookFilter)
+    search_fields = ("book__title", "user__phone", "user__first_name", "user__last_name", "note")
+    list_select_related = ("book", "user")
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if "book" in form.base_fields:
+            form.base_fields["book"].help_text = "فقط کتاب؛ فصل یا بخش را اینجا نگذارید."
+        return form
 
 
 @admin.register(ChapterRevision)

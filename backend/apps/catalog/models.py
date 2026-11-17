@@ -471,3 +471,38 @@ class FormulaCommand(models.Model):
             raise ValidationError({"name": "دستور با «\\» شروع می‌شود و بعد فقط حروف انگلیسی، مثلاً \\R"})
         if (self.definition or "").count("{") != (self.definition or "").count("}"):
             raise ValidationError({"definition": "تعداد «{» و «}» برابر نیست."})
+
+
+class BookEditor(models.Model):
+    """«استادِ کتاب»: who may write this book's content, besides superusers.
+
+    One row per (book, user). Without a row a staff member with the change permission can only READ.
+    `can_publish` is separate: many professors may draft, but only some may put a book in front of learners.
+    """
+
+    book = models.ForeignKey(
+        "catalog.ContentNode", on_delete=models.CASCADE, related_name="editors", verbose_name="کتاب"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="edited_books", verbose_name="کاربر"
+    )
+    can_publish = models.BooleanField(
+        "اجازه‌ی انتشار", default=False, help_text="اگر برداشته شود، می‌نویسد ولی کتاب را منتشر نمی‌کند."
+    )
+    note = models.CharField("یادداشت", max_length=200, blank=True)
+    created_at = models.DateTimeField("زمان", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "استاد کتاب"
+        verbose_name_plural = "استادان کتاب"
+        ordering = ["book__title", "user__phone"]
+        constraints = [models.UniqueConstraint(fields=["book", "user"], name="uniq_book_editor")]
+
+    def __str__(self):
+        return f"{self.user} → {self.book.title}"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.book_id and (self.book.kind != ContentNode.Kind.BOOK or self.book.depth != 1):
+            raise ValidationError({"book": "فقط یک کتاب (نه فصل یا بخش) می‌تواند اینجا باشد."})
