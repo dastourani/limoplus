@@ -14,6 +14,13 @@ class SiteSettingsAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ("صفحه‌ی اول", {"fields": ("tagline", "audience", "intro")}),
+        ("باکس‌های معرفی صفحه‌ی اول", {"fields": (
+            "features_title", "features_sub",
+            "feat1_title", "feat1_body",
+            "feat2_title", "feat2_body",
+            "feat3_title", "feat3_body",
+            "feat4_title", "feat4_body",
+        )}),
         ("دانلود", {"fields": ("bazaar_url", "myket_url", "apk_url")}),
         ("تماس", {"fields": ("email", "phone", "address", "telegram_url", "instagram_url")}),
         ("اینماد", {"fields": ("enamad_html",)}),

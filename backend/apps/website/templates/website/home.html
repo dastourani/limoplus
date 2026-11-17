@@ -22,19 +22,50 @@
 </section>
 
 <section class="sec wrap first">
-  <h2>یک کتاب، چهار راه یاد گرفتن</h2>
-  <p class="sub">همه‌چیز از روی همان کتاب، با شماره‌ی فصل و بخش خودش</p>
+  <h2>{{ s.features_title }}</h2>
+  <p class="sub">{{ s.features_sub }}</p>
   <div class="grid4">
-    <div class="feat"><div class="ic">{% icon "book-open" 26 %}</div><b>خلاصه و درسنامه</b><p>اول کارت مرور یک‌صفحه‌ای، بعد درسنامه‌ی کامل با تعریف، قضیه، مثال و تله‌ها.</p></div>
-    <div class="feat"><div class="ic">{% icon "list-checks" 26 %}</div><b>تست با پاسخ تشریحی</b><p>تست‌های کنکورهای سال‌های قبل، با راه‌حل سریع و پاسخ کامل؛ تست غلط به دفترچه‌ی اشتباه‌ها می‌رود.</p></div>
-    <div class="feat"><div class="ic">{% icon "layers" 26 %}</div><b>فلش‌کارت هوشمند</b><p>نکته‌های حفظی، با مرور در فاصله‌ی درست (فردا، هفته‌ی بعد، ماه بعد) تا یادت بماند.</p></div>
-    <div class="feat"><div class="ic">{% icon "chart-column" 26 %}</div><b>آمار و مرور منظم</b><p>لیموی پیشرفت هر فصل، برنامه‌ی امروز، و آزمون زمان‌دار با نمره‌ی منفی مثل جلسه‌ی کنکور.</p></div>
+    <div class="feat"><div class="ic">{% icon "book-open" 26 %}</div><b>{{ s.feat1_title }}</b><p>{{ s.feat1_body }}</p></div>
+    <div class="feat"><div class="ic">{% icon "list-checks" 26 %}</div><b>{{ s.feat2_title }}</b><p>{{ s.feat2_body }}</p></div>
+    <div class="feat"><div class="ic">{% icon "layers" 26 %}</div><b>{{ s.feat3_title }}</b><p>{{ s.feat3_body }}</p></div>
+    <div class="feat"><div class="ic">{% icon "chart-column" 26 %}</div><b>{{ s.feat4_title }}</b><p>{{ s.feat4_body }}</p></div>
   </div>
 </section>
 
+{% if banners or updates %}
+<section class="sec wrap">
+  <div class="sechead"><div><h2>تازه‌های لیموخوان</h2><p class="sub">آخرین اطلاعیه‌ها و به‌روزرسانی‌های محتوای درسی</p></div></div>
+  {% if banners %}
+  <div class="grid2" style="margin-bottom: 18px">
+    {% for bn in banners %}
+    <a class="feat row banner-card" href="{{ bn.url }}">
+      <div class="ic" style="margin:0">{% icon "bell" 24 %}</div>
+      <div class="grow"><b>{{ bn.title }}</b>{% if bn.subtitle %}<p>{{ bn.subtitle }}</p>{% endif %}</div>
+      <span class="btn lemon small">{{ bn.button }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if updates %}
+  <div class="grid2">
+    {% for u in updates %}
+    <a class="feat row update-card" href="{{ u.book_url }}">
+      <div class="num">{% icon "repeat" 18 %}</div>
+      <div class="grow">
+        <b>{{ u.book_title }}{% if u.place %}، {{ u.place }}{% endif %}</b>
+        <p>{{ u.text }}</p>
+      </div>
+      <span class="mut">{{ u.date }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if books %}
 <section class="sec wrap">
-  <div class="sechead"><div><h2>کتاب‌ها</h2><p class="sub">بر اساس رشته</p></div>
+  <div class="sechead"><div><h2>کتاب‌ها</h2><p class="sub">بر اساس رشته، فصل اول همه‌ی کتاب‌ها رایگان</p></div>
     {% if majors|length > 1 %}<div class="chips" data-filter><button class="chip on" data-major="">همه</button>{% for m in majors %}<button class="chip" data-major="{{ m.slug }}">{{ m.name }}</button>{% endfor %}</div>{% endif %}
   </div>
   <div class="shelf">{% for c in books %}{% include "website/_book.html" %}{% endfor %}</div>
@@ -44,12 +75,44 @@
 
 <section class="band">
   <div class="wrap bandin">
-    <div class="bandtext"><h2>هر روز فقط چند دقیقه</h2><p class="sub">لیموخوان می‌داند امروز چه چیزی را باید مرور کنی</p>
-      <ul class="checks"><li>{% icon "circle-check" 22 %}مرور فصل‌ها: فردا، یک هفته بعد، یک ماه بعد</li><li>{% icon "circle-check" 22 %}تست‌هایی که غلط زده‌ای تا درست نزنی برمی‌گردند</li><li>{% icon "circle-check" 22 %}«فقط ۵ دقیقه وقت دارم»: یک مرور کوتاه، هر جا که هستی</li></ul></div>
-    <div class="bigl">{% include "website/_lemon.html" with size=200 %}<div><b>۷ از ۱۰</b><span>بخش این فصل را خوانده‌ای</span></div></div>
+    <div class="bandtext"><h2>هر روز فقط چند دقیقه، با برنامه‌ی مرور هوشمند</h2><p class="sub">لیموخوان بر اساس عملکردت می‌داند امروز چه بخشی، تستی یا کارتی را باید مرور کنی</p>
+      <ul class="checks"><li>{% icon "circle-check" 22 %}مرور زمان‌بندی‌شده‌ی فصل‌ها و کارت‌ها: فردا، یک هفته بعد، یک ماه بعد</li><li>{% icon "circle-check" 22 %}دفترچه‌ی اشتباهات: تست‌هایی که غلط زده‌ای تا تثبیت کامل برمی‌گردند</li><li>{% icon "circle-check" 22 %}حالت «فقط ۵ دقیقه وقت دارم»: مرور سریع در مترو، دانشگاه یا استراحت</li></ul>
+      {% if site_stats %}
+      <div class="home-stats">
+        {% for val, label in site_stats %}<div><b>{{ val }}</b><span>{{ label }}</span></div>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="bigl">{% include "website/_lemon.html" with size=180 %}<div><b>برش‌به‌برش</b><span>هر برش لیمو نشان‌دهنده‌ی پیشرفت واقعی تو در یک بخش از کتاب است</span></div></div>
   </div>
 </section>
 
+{% if home_sample %}
+<section class="sec wrap narrow">
+  <div class="sechead">
+    <div><h2>یک تست واقعی را همین الان امتحان کن</h2><p class="sub">یک گزینه را بزن تا پاسخ تشریحی و درسنامه‌ی مرتبط با آن باز شود</p></div>
+    {% if home_sample.book_url %}<a class="btn dark small" href="{{ home_sample.book_url }}">از کتاب «{{ home_sample.book_title }}» ←</a>{% endif %}
+  </div>
+  <div class="feat sample" data-id="{{ home_sample.id }}">
+    <div class="sample-head">
+      <span class="q-badge">تست نمونه</span>
+      {% if home_sample.book_title %}<span class="mut">{{ home_sample.book_title }}{% if home_sample.section %}، {{ home_sample.section }}{% endif %}</span>{% endif %}
+      {% if home_sample.source %}<span class="src-chip">{{ home_sample.source }}</span>{% endif %}
+    </div>
+    <div class="stem" data-md="{{ home_sample.stem }}">{{ home_sample.stem }}</div>
+    <div class="choices">{% for c in home_sample.choices %}<button class="choice" data-choice="{{ c.id }}"><span class="cnum">{{ c.num }}</span><span class="ctext" data-md="{{ c.text }}">{{ c.text }}</span></button>{% endfor %}</div>
+    <div class="explain" hidden></div>
+  </div>
+</section>
+{% endif %}
+
 <section class="sec wrap">{% include "website/_prices.html" %}</section>
+
+{% if faq %}
+<section class="sec wrap narrow">
+  <div class="sechead"><div><h2>پرسش‌های پرتکرار</h2><p class="sub">پاسخ کوتاه به پرسش‌های رایج داوطلبان</p></div><a class="btn dark small" href="{% url 'website:faq' %}">همه‌ی پرسش‌ها</a></div>
+  {% include "website/_faq.html" %}
+</section>
+{% endif %}
 {% endblock %}
 {% block scripts %}{% include "website/_scripts.html" %}{% endblock %}
