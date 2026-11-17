@@ -32,7 +32,7 @@
   </div>
 </section>
 
-{% if banners or updates %}
+{% if s.show_updates and banners or s.show_updates and updates %}
 <section class="sec wrap">
   <div class="sechead"><div><h2>تازه‌های لیموخوان</h2><p class="sub">آخرین اطلاعیه‌ها و به‌روزرسانی‌های محتوای درسی</p></div></div>
   {% if banners %}
@@ -75,7 +75,7 @@
 
 <section class="band">
   <div class="wrap bandin">
-    <div class="bandtext"><h2>هر روز فقط چند دقیقه، با برنامه‌ی مرور هوشمند</h2><p class="sub">لیموخوان بر اساس عملکردت می‌داند امروز چه بخشی، تستی یا کارتی را باید مرور کنی</p>
+    <div class="bandtext"><h2>{{ s.band_title }}</h2><p class="sub">{{ s.band_sub }}</p>
       <ul class="checks"><li>{% icon "circle-check" 22 %}مرور زمان‌بندی‌شده‌ی فصل‌ها و کارت‌ها: فردا، یک هفته بعد، یک ماه بعد</li><li>{% icon "circle-check" 22 %}دفترچه‌ی اشتباهات: تست‌هایی که غلط زده‌ای تا تثبیت کامل برمی‌گردند</li><li>{% icon "circle-check" 22 %}حالت «فقط ۵ دقیقه وقت دارم»: مرور سریع در مترو، دانشگاه یا استراحت</li></ul>
       {% if site_stats %}
       <div class="home-stats">
@@ -83,20 +83,29 @@
       </div>
       {% endif %}
     </div>
-    <div class="bigl">{% include "website/_lemon.html" with size=180 %}<div><b>برش‌به‌برش</b><span>هر برش لیمو نشان‌دهنده‌ی پیشرفت واقعی تو در یک بخش از کتاب است</span></div></div>
+    <div class="bigl">
+      <div class="lemon-anim">{% include "website/_lemon.html" with size=170 %}<span class="lemon-shadow"></span></div>
+      <div><b>برش‌به‌برش</b><span>هر برش لیمو نشان‌دهنده‌ی پیشرفت واقعی تو در یک بخش از کتاب است</span></div>
+    </div>
   </div>
 </section>
 
-{% if home_sample %}
+{% if s.show_sample_test and home_sample %}
 {{ home_samples|json_script:'limo-home-samples' }}
 <section class="sec wrap narrow">
   <div class="sechead">
-    <div><h2>یک تست واقعی را همین الان امتحان کن</h2><p class="sub">هر بار یک تست تصادفی از کتاب‌های منتشرشده؛ گزینه را بزن تا پاسخ تشریحی باز شود</p></div>
+    <div><h2>یک تست واقعی را همین الان امتحان کن</h2><p class="sub">رشته‌ات را انتخاب کن تا تست‌های همان رشته را ببینی؛ گزینه را بزن تا پاسخ تشریحی باز شود</p></div>
     <div class="cta">
       {% if home_samples|length > 1 %}<button type="button" class="btn ghost-dark small" data-next-sample>{% icon "repeat" 15 %}تست تصادفی بعدی</button>{% endif %}
       {% if home_sample.book_url %}<a class="btn dark small" data-sample-book-link href="{{ home_sample.book_url }}">از کتاب «{{ home_sample.book_title }}» ←</a>{% endif %}
     </div>
   </div>
+  {% if majors|length > 1 %}
+  <div class="chips" data-sample-filter style="margin-bottom: 14px">
+    <button type="button" class="chip on" data-major="">همه‌ی رشته‌ها</button>
+    {% for m in majors %}<button type="button" class="chip" data-major="{{ m.slug }}">{{ m.name }}</button>{% endfor %}
+  </div>
+  {% endif %}
   <div class="feat sample" id="home-sample-box" data-id="{{ home_sample.id }}">
     <div class="sample-head">
       <span class="q-badge">تست تصادفی</span>
@@ -112,7 +121,7 @@
 
 <section class="sec wrap">{% include "website/_prices.html" %}</section>
 
-{% if faq %}
+{% if s.show_home_faq and faq %}
 <section class="sec wrap narrow">
   <div class="sechead"><div><h2>پرسش‌های پرتکرار</h2><p class="sub">پاسخ کوتاه به پرسش‌های رایج داوطلبان</p></div><a class="btn dark small" href="{% url 'website:faq' %}">همه‌ی پرسش‌ها</a></div>
   {% include "website/_faq.html" %}

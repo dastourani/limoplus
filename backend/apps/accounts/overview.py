@@ -84,7 +84,14 @@ def user_overview(user):
             f" ({fa_number(round(100 * answers['right'] / answers['n']))}٪ درست)" if answers["n"] else "")),
         _stat("آزمون‌ها", fa_number(exams["n"]) + (f" (میانگین {fa_number(round(exams['avg']))}٪)" if exams["avg"] is not None else "")),
         _stat("فلش‌کارت‌های در جعبه", fa_number(FlashcardReview.objects.filter(user=user).count())),
-        _stat("یادداشت و هایلایت", fa_number(Note.objects.filter(user=user, is_archived=False).count())),
+        _stat(
+            "یادداشت و هایلایت",
+            format_html(
+                '<a href="{}">{}</a>',
+                reverse("admin:study_note_changelist") + f"?user__id__exact={user.pk}",
+                fa_number(Note.objects.filter(user=user, is_archived=False).count()),
+            ),
+        ),
         _risk_stat(user),
     ]
     study_card = _card("مطالعه", format_html('<div class="lp-ov-stats">{}</div>', format_html_join("", "{}", ((x,) for x in stats))))
@@ -98,10 +105,13 @@ def user_overview(user):
     reading_card = _card("کتاب‌هایی که می‌خواند", _rows(book_rows))
 
     reports = Report.objects.filter(user=user)
+    notes_count = Note.objects.filter(user=user, is_archived=False).count()
     links = format_html(
         '<p class="lp-ov-links"><a class="button" href="{}">هدیه دادن کتاب یا اشتراک</a> '
+        '<a href="{}">یادداشت‌ها و هایلایت‌ها ({})</a>، '
         '<a href="{}">گزارش‌های خطای او ({})</a>، <a href="{}">نشست‌ها</a>، <a href="{}">آزمون‌ها</a></p>',
         gift,
+        reverse("admin:study_note_changelist") + f"?user__id__exact={user.pk}", fa_number(notes_count),
         reverse("admin:learning_report_changelist") + f"?q={user.phone}", fa_number(reports.count()),
         reverse("admin:accounts_devicesession_changelist") + f"?q={user.phone}",
         reverse("admin:study_examattempt_changelist") + f"?q={user.phone}",

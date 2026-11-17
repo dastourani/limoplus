@@ -98,6 +98,16 @@ class WebsiteTests(TestCase):
         self.assertEqual(api_prot.status_code, 200)
         self.assertEqual(api_prot.json()["title"], "حفاظت از محتوا")
 
+        # Admin can add custom pages and custom navigation items.
+        from .models import SiteNavItem, SitePage
+
+        SitePage.objects.create(slug="konkur-1405", title="راهنمای کنکور ۱۴۰۵", body="متن راهنما", show_in_nav=True)
+        SiteNavItem.objects.create(title="لینک سفارشی منو", url="https://example.com", order=99)
+        custom_r = Client().get("/site/p/konkur-1405/")
+        self.assertEqual(custom_r.status_code, 200)
+        self.assertContains(custom_r, "راهنمای کنکور ۱۴۰۵")
+        self.assertContains(custom_r, "لینک سفارشی منو")
+
     def test_sitemap_and_robots(self):
         c = Client()
         self.assertContains(c.get("/site/sitemap.xml"), "/site/books/math-1/")

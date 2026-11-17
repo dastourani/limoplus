@@ -4,15 +4,16 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { endpoints, type Library } from '../../api/endpoints';
 import { Text } from '../../components/Text';
-import { Icon, IconBadge } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
+import { LemonProgress, type PartState } from '../../components/LemonProgress';
 import { Button, Card, Empty, ErrorState, Loading, Screen, usePullRefresh } from '../../components/ui';
-import { ListRow, RowCount } from '../../components/ListRow';
+import { ListRow } from '../../components/ListRow';
 import { Pill } from '../../components/Pill';
 import { useAuth } from '../../lib/auth';
 import { useFeedback } from '../../components/Feedback';
 import { QuoteView } from '../../components/QuoteView';
 import { relativeDay } from '../../lib/jalali';
-import { colors, rtl, toPersianDigits } from '../../theme';
+import { colors, radius, rtl, toPersianDigits } from '../../theme';
 
 const TABS = [
   ['reading', 'در حال مطالعه'],
@@ -20,25 +21,45 @@ const TABS = [
   ['notes', 'یادداشت‌ها'],
 ] as const;
 
-/** Always shown, even empty: where wrong and blank answers gather. */
+/** Always shown, even empty: where wrong and blank answers gather (harmonized with TodayTiles & ReadingCards). */
 function NotebookCard({ counts }: { counts?: Library['mistakes'] }) {
   const n = counts?.count ?? 0;
+  const settling = counts?.settling ?? 0;
+  const due = counts?.due ?? 0;
+  const parts: PartState[] =
+    n === 0
+      ? ['empty']
+      : Array.from({ length: Math.min(24, n) }, (_, i) => (i < Math.round((settling / Math.max(1, n)) * Math.min(24, n)) ? 'soft' : 'wrong'));
+  const sub =
+    n === 0
+      ? 'تست‌های غلط و بی‌پاسخت این‌جا جمع می‌شوند.'
+      : [counts!.open ? `${toPersianDigits(counts!.open)} منتظر جبران` : '', counts!.settling ? `${toPersianDigits(counts!.settling)} در حال تثبیت` : '']
+          .filter(Boolean)
+          .join('، ');
   return (
-    <ListRow
-      icon="notebook-pen"
-      title="اشتباهات من"
-      subtitle={
-        n === 0
-          ? 'تست‌های غلط و بی‌پاسخت این‌جا جمع می‌شوند.'
-          : [counts!.open ? `${toPersianDigits(counts!.open)} منتظر جبران` : '', counts!.settling ? `${toPersianDigits(counts!.settling)} نیازمند تثبیت` : '']
-              .filter(Boolean)
-              .join('، ')
-      }
-      value={counts?.due ? <RowCount n={toPersianDigits(counts.due)} label={`${toPersianDigits(counts.due)} تست نوبتش رسیده`} /> : undefined}
+    <Pressable
       onPress={() => router.push('/mistakes')}
-      chevron
+      style={({ pressed }) => [styles.notebookRow, pressed && { opacity: 0.9 }]}
+      accessibilityRole="button"
       accessibilityLabel="اشتباهات من"
-    />
+    >
+      <LemonProgress parts={parts} size={44} />
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={[styles.itemTitle, rtl]} numberOfLines={1}>اشتباهات من</Text>
+        <Text style={[styles.muted, rtl]} numberOfLines={1}>{sub}</Text>
+      </View>
+      {due > 0 ? (
+        <View style={styles.go}>
+          <Text style={styles.goText}>مرور {toPersianDigits(due)} تست</Text>
+        </View>
+      ) : n > 0 ? (
+        <View style={[styles.go, { backgroundColor: colors.ground, borderWidth: 1, borderColor: colors.line }]}>
+          <Text style={styles.goText}>{toPersianDigits(n)} تست</Text>
+        </View>
+      ) : (
+        <Icon name="chevron-left" size={18} color={colors.muted} />
+      )}
+    </Pressable>
   );
 }
 
@@ -166,8 +187,18 @@ export default function LibraryTab() {
 }
 
 const styles = StyleSheet.create({
-  go: { backgroundColor: colors.lemon, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
-  goText: { fontSize: 13, fontWeight: '800', color: colors.ink },
+  notebookRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  go: { backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 7 },
+  goText: { fontSize: 12, fontWeight: '800', color: colors.ink },
   // The four tabs start alike: the page title 12 from the top, on the 16 margin.
   title: { fontSize: 22, fontWeight: '800', color: colors.ink, paddingHorizontal: 16, paddingTop: 12 },
   tabs: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
