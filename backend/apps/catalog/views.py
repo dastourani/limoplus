@@ -209,6 +209,10 @@ def book_detail(request, slug):
         # Every chapter opens with its introduction page (its text, if any, its sections and «ادامه»).
         item["has_overview"] = not item["is_locked"]
         item["sections"] = [summary(s) for s in access.children(chapter)]
+        # A chapter's practice is its sections': the app shows these as the chapter's «N تست» and decides with them
+        # whether to offer «تمرین کل فصل», «آزمون» and «فلش‌کارت». Summed here once, not again in every screen.
+        item["question_count"] = sum(s["question_count"] for s in item["sections"])
+        item["flashcard_count"] = sum(s["flashcard_count"] for s in item["sections"])
         item["term_count"] = _term_count(access, chapter)
         chapters.append(item)
     return Response(

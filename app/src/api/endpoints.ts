@@ -49,6 +49,8 @@ export type NodeSummary = {
   /** «به‌روز شده»: marked in the panel since the learner last read it. */
   badge?: Badge;
 };
+/** A chapter in the book page's tree. `question_count` and `flashcard_count` are its sections' totals, summed by the
+ * server: the chapter's «N تست» line and its «تمرین کل فصل» / «آزمون» / «فلش‌کارت» buttons follow them. */
 export type ChapterSummary = NodeSummary & { sections: NodeSummary[]; has_overview?: boolean; term_count?: number };
 export type Shelf = { id: number | null; title: string; books: BookListItem[] };
 export type BookDetail = BookListItem & {

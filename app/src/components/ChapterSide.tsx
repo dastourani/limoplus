@@ -99,9 +99,9 @@ export function ChapterSide({
   if (readHere) read.add(nodeId);
   const number = data.chapters.indexOf(chapter) + 1;
   const ink = dark ? '#E4E9E2' : colors.ink;
-  // What this chapter has to practise: its sections' questions and cards. A chapter with none keeps only «کادرها».
-  const tests = chapter.sections.reduce((n, s) => n + (s.question_count ?? 0), 0);
-  const cards = chapter.sections.reduce((n, s) => n + (s.flashcard_count ?? 0), 0);
+  // What this chapter has to practise, summed by the server. A chapter with none keeps only «کادرها».
+  const tests = chapter.question_count ?? 0;
+  const cards = chapter.flashcard_count ?? 0;
   const rows = [
     ...(chapter.has_overview ? [{ id: chapter.id, title: 'مقدمه‌ی فصل', locked: !!chapter.is_locked }] : []),
     ...chapter.sections.map((s) => ({ id: s.id, title: s.title, locked: !!s.is_locked })),
