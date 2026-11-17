@@ -9,6 +9,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api, ApiError, setOnline } from '../api/client';
+import { HelpTip } from '../components/HelpTip';
 import { Icon } from '../components/Icon';
 import { Text } from '../components/Text';
 import { colors } from '../theme';
@@ -156,8 +157,16 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
         </View>
       )}
       {!online && !banner && (
-        <View style={[styles.dot, { top: insets.top + 8 }]} pointerEvents="none" accessibilityLabel="آفلاین هستید">
-          <Icon name="cloud-off" size={14} color={colors.ink} />
+        <View style={[styles.dotWrap, { top: insets.top + 8 }]}>
+          <HelpTip
+            size={26}
+            title="آفلاین هستید"
+            text="ارتباط با سرور برقرار نیست. پیشرفت مطالعه و مرور فلش‌کارت‌ها روی دستگاه شما ذخیره می‌شود و به محض وصل شدن اینترنت، خودکار ارسال خواهد شد."
+          >
+            <View style={styles.dot}>
+              <Icon name="cloud-off" size={14} color={colors.ink} />
+            </View>
+          </HelpTip>
         </View>
       )}
     </OnlineContext.Provider>
@@ -166,6 +175,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   banner: { position: 'absolute', zIndex: 1000, elevation: 10, top: 0, left: 0, right: 0, paddingBottom: 8, paddingHorizontal: 16, backgroundColor: colors.lemon, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  dot: { position: 'absolute', zIndex: 1000, elevation: 10, left: 10, width: 26, height: 26, borderRadius: 13, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', opacity: 0.9 },
+  dotWrap: { position: 'absolute', zIndex: 1000, elevation: 10, left: 10 },
+  dot: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', opacity: 0.9 },
   text: { fontSize: 13, fontWeight: '700', color: colors.ink, textAlign: 'right', flexShrink: 1 },
 });

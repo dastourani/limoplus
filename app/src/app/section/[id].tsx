@@ -21,7 +21,10 @@ import { setLabels } from '../../lib/labels';
 import { setNumbering } from '../../lib/numbering';
 import { setMacros } from '../../lib/macros';
 import { useWide } from '../../lib/layout';
+import { useApi } from '../../lib/useApi';
 import { ChapterSide } from '../../components/ChapterSide';
+import { HelpTip } from '../../components/HelpTip';
+import { LemonProgress, type PartState } from '../../components/LemonProgress';
 import { parseTerms, type Term } from '../../lib/reviewCard';
 import { QuoteView } from '../../components/QuoteView';
 import { offlineBooks, offlineSection } from '../../lib/offline';
@@ -112,6 +115,7 @@ export default function Section() {
     setReport({ quote, box, kind: kind ?? (/لاتین|ترجمه/.test(box) ? 'latin' : 'text') });
   };
   const progress = useRef({ sent: 0, done: false });
+  const [readHere, setReadHere] = useState(false);
 
   const { toast: flash, confirm } = useFeedback();
 
@@ -120,6 +124,7 @@ export default function Section() {
     setError(null);
     setLocked(null);
     setOffline(false);
+    setReadHere(false);
     progress.current = { sent: 0, done: false };
     try {
       setNode(await endpoints.node(nodeId));
@@ -373,6 +378,7 @@ export default function Section() {
     } else if (e.type === 'scroll' && node) {
       rememberSpot(e.percent);
       if (!user && e.percent >= 90) nudgeGuest();
+      if (mode === 'full' && e.percent >= 90) setReadHere(true);
       if (!(user && !offline && mode === 'full')) return;
       const p = progress.current;
       if (e.percent >= p.sent + 10 || (e.percent >= 90 && !p.done)) {
@@ -522,6 +528,8 @@ export default function Section() {
   const nudgeGuest = useGuestNudge();
   // «زمان مطالعه»: reading this section while the screen is open (two minutes without a touch stops it).
   useStudyTimer(node ? nodeId : null, 'read', !!user);
+  const bookSlug = node?.breadcrumb.find((b) => b.kind === 'book')?.slug;
+  const { data: book } = useApi(() => (bookSlug && !offline ? endpoints.book(bookSlug) : Promise.resolve(null)), [bookSlug, offline]);
 
   if (loading)
     return arriving ? (
@@ -572,14 +580,23 @@ export default function Section() {
   setNumbering(node.numbering);
   setMacros(node.macros);
   const body = mode === 'summary' && node.summary ? node.summary : node.full;
-  const bookSlug = node.breadcrumb.find((b) => b.kind === 'book')?.slug;
   const missingNotes = notes.filter((n) => missing.includes(n.id) && n.mode === mode);
+  const chapterInBook = book?.chapters.find((c) => c.id === node.id || c.sections.some((s) => s.id === node.id));
+  const chapterDone = new Set(book?.done_ids ?? []);
+  const chapterRead = new Set(book?.read_ids ?? []);
+  if (readHere && node.kind === 'section') chapterRead.add(node.id);
+  const chapterParts: PartState[] | undefined = chapterInBook?.sections.map((s) =>
+    chapterDone.has(s.id) ? 'done' : chapterRead.has(s.id) ? 'soft' : 'empty',
+  );
+  const currentSectionIdx = chapterInBook ? chapterInBook.sections.findIndex((s) => s.id === node.id) : -1;
+  const doneCount = chapterInBook ? chapterInBook.sections.filter((s) => chapterDone.has(s.id)).length : 0;
+  const readCount = chapterInBook ? chapterInBook.sections.filter((s) => !chapterDone.has(s.id) && chapterRead.has(s.id)).length : 0;
 
   return (
     <Screen background={paper} wide={wide}>
       {/* A computer: the chapter's sections beside the text. */}
       <View style={{ flex: 1, flexDirection: 'row-reverse' }}>
-      {wide && !!bookSlug && !offline && <ChapterSide bookSlug={bookSlug} nodeId={node.id} dark={dark} />}
+      {wide && !!bookSlug && !offline && <ChapterSide bookSlug={bookSlug} nodeId={node.id} dark={dark} book={book} readHere={readHere} />}
       <View style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
       <View style={{ flex: 1, width: '100%', maxWidth: wide ? 880 : undefined }}>
       <View style={styles.header}>
@@ -587,7 +604,13 @@ export default function Section() {
           <Icon name="arrow-right" size={24} color={ink} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین، ${chapterLabel}` : chapterLabel}</Text>
+          {bookSlug ? (
+            <Pressable onPress={() => router.push(`/book/${bookSlug}`)} accessibilityRole="button" accessibilityLabel="صفحه‌ی کتاب">
+              <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین، ${chapterLabel}` : chapterLabel}</Text>
+            </Pressable>
+          ) : (
+            <Text style={[styles.sub, rtl]} numberOfLines={1}>{offline ? `آفلاین، ${chapterLabel}` : chapterLabel}</Text>
+          )}
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
             <Text style={[styles.title, rtl, { color: ink, flexShrink: 1 }]} numberOfLines={1}>{pageTitle}</Text>
             {node.badge === 'updated' && <Text style={styles.updated}>به‌روز شده</Text>}
@@ -603,6 +626,18 @@ export default function Section() {
         <Pressable onPress={() => setPanelOpen(true)} style={styles.icon} accessibilityLabel="تنظیمات نمایش متن">
           <Icon name="a-large-small" size={24} color={ink} />
         </Pressable>
+        {!!chapterParts?.length && (
+          <View style={styles.lemonWrap}>
+            <HelpTip
+              size={36}
+              title={chapterLabel || 'پیشرفت فصل'}
+              text={`${toPersianDigits(doneCount)} از ${toPersianDigits(chapterInBook!.sections.length)} بخش این فصل تمام شده است${readCount ? ` (${toPersianDigits(readCount)} بخش خوانده‌شده)` : ''}. برش پررنگ: تمام‌شده؛ برش کم‌رنگ: خوانده‌شده.`}
+              action={bookSlug ? { label: `صفحه‌ی کتاب${book?.title ? ` (${book.title})` : ''} ←`, onPress: () => router.push(`/book/${bookSlug}`) } : undefined}
+            >
+              <LemonProgress parts={chapterParts} current={currentSectionIdx >= 0 ? currentSectionIdx : undefined} size={36} />
+            </HelpTip>
+          </View>
+        )}
       </View>
       {!!node.summary && (
         <View style={[styles.toggle, dark && { backgroundColor: '#26302A' }]}>
@@ -822,6 +857,7 @@ const styles = StyleSheet.create({
   termMean: { fontSize: 15, color: colors.ink, lineHeight: 26 },
   header: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 4 },
   icon: { width: 40, height: 44, alignItems: 'center', justifyContent: 'center' },
+  lemonWrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   panelLabel: { fontSize: 15, fontWeight: '700', color: colors.muted },
   themes: { flexDirection: 'row-reverse', gap: 8 },
   theme: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: colors.line, gap: 2 },
