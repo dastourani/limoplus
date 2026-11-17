@@ -129,6 +129,7 @@ def book_card(request, book, access) -> dict:
         "drawing": loads_drawing(book.cover_drawing),
         "cover": request.build_absolute_uri(book.cover.url) if book.cover else None,
         "is_coming_soon": book.is_coming_soon,
+        "release_estimate": book.release_estimate,
         "price": book.price,
         "chapter_count": len(chapters),
         "section_count": len(sections),

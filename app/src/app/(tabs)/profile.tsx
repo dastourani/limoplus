@@ -220,7 +220,7 @@ export default function Profile() {
         </View>
         {!!pages?.pages.length && (
           <>
-            <Text style={[styles.groupTitle, rtl]}>قوانین</Text>
+            <Text style={[styles.groupTitle, rtl]}>قوانین و حفاظت از محتوا</Text>
             <View style={styles.group}>
               {pages.pages.map((p) => (
                 <Row

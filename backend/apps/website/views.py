@@ -7,6 +7,7 @@ settings.APP_URL (the web app's address; the same server by default).
 from __future__ import annotations
 
 import json
+import random
 
 from django.conf import settings
 from django.db.models import Q
@@ -26,7 +27,7 @@ from apps.catalog.models import ContentNode, Major
 from .models import FaqItem, SitePage, SiteSettings
 
 FA = "۰۱۲۳۴۵۶۷۸۹"
-PAGE_ORDER = {"terms": 0, "privacy": 1, "about": 2, "contact": 3}
+PAGE_ORDER = {"terms": 0, "privacy": 1, "protection": 2, "about": 3, "contact": 4}
 
 
 def fa(n) -> str:
@@ -72,8 +73,9 @@ def _card(request, book) -> dict:
     access = AccessMap(request.user, book)
     chapters = access.children(book)
     free = sum(1 for c in chapters if c.is_free)
-    if book.is_coming_soon:
-        label = {"kind": "soon", "icon": "bell", "text": "به‌زودی"}
+    if book.is_coming_soon or not chapters:
+        text = f"به‌زودی ({book.release_estimate})" if book.release_estimate else "به‌زودی"
+        label = {"kind": "soon", "icon": "bell", "text": text}
     elif not book.price or (chapters and free == len(chapters)) or book.is_free:
         label = {"kind": "free", "icon": "gift", "text": "رایگان"}
     else:
@@ -81,6 +83,7 @@ def _card(request, book) -> dict:
     return {
         "book": book, "cover": _cover(request, book), "label": label,
         "chapters": fa(len(chapters)) if chapters else "",
+        "release_estimate": book.release_estimate,
         "url": reverse("website:book", args=[book.slug]), "majors": [m.slug for m in book.majors.all()],
     }
 
@@ -169,21 +172,22 @@ def home(request):
     majors = Major.objects.filter(books__in=pub_books).distinct().order_by("order", "name")
     paid = [b.price for b in pub_books if b.price and not b.is_coming_soon]
 
-    # Live content statistics across all published books.
+    # Live content statistics and a randomized pool of interactive sample questions across all published books.
     active_books = [b for b in pub_books if not b.is_coming_soon]
     total_sections = 0
     visible_ids: list[int] = []
-    home_sample = None
+    pool_samples: list[dict] = []
     for b in active_books:
         acc = AccessMap(request.user, b)
         v_ids = acc.visible_ids_under(b)
         visible_ids.extend(v_ids)
         total_sections += sum(1 for n in acc.nodes.values() if n.kind == ContentNode.Kind.SECTION and acc.visible(n.id))
-        if home_sample is None:
+        if len(pool_samples) < 12:
             qs = Question.objects.filter(node_id__in=v_ids, is_archived=False)
-            found = _book_samples(qs, acc, limit=1, book_node=b)
-            if found:
-                home_sample = found[0]
+            pool_samples.extend(_book_samples(qs, acc, limit=3, book_node=b))
+
+    random.shuffle(pool_samples)
+    home_sample = pool_samples[0] if pool_samples else None
 
     total_questions = Question.objects.filter(node_id__in=visible_ids, is_archived=False).count() if visible_ids else 0
     total_cards = Flashcard.objects.filter(node_id__in=visible_ids, is_archived=False).count() if visible_ids else 0
@@ -226,7 +230,8 @@ def home(request):
         request, books=books[:12], more=len(books) > 12, majors=majors, plans=_plans(),
         min_price=toman(min(paid)) if paid else None,
         site_stats=site_stats, banners=banners, updates=updates,
-        home_sample=home_sample, faq=FaqItem.objects.filter(is_hidden=False)[:4],
+        home_sample=home_sample, home_samples=pool_samples,
+        faq=FaqItem.objects.filter(is_hidden=False)[:4],
     ))
 
 
@@ -292,8 +297,9 @@ def book(request, slug):
         if f_total:
             parts.append(f"و **{fa(f_total)} فلش‌کارت مرور هوشمند**")
         about_text = "، ".join(parts) + " است.\n\n" + "\n".join(f"- فصل {ch['number']}: {ch['title']}" for ch in chapters[:8])
+    is_preparing = bool(b.is_coming_soon or not chapters)
     related_books = []
-    if b.is_coming_soon:
+    if is_preparing:
         other = [x for x in _published() if x.id != b.id and not x.is_coming_soon][:6]
         related_books = [_card(request, x) for x in other]
     upd = book_updated_on(b)
@@ -301,7 +307,8 @@ def book(request, slug):
         request, b=b, cover=_cover(request, b), majors=list(b.majors.all()), chapters=chapters, stats=[s for s in stats if s[0] != "۰"],
         samples=sample_list, samples_json=json.dumps(sample_list, ensure_ascii=False), first_free=first_free,
         price=toman(b.price) if b.price else None, open_url=app_url(f"book/{b.slug}"), buy_url=app_url(f"buy/{b.slug}"),
-        about=about_text, updated_on=fa_date(upd) if upd else "", related_books=related_books,
+        about=about_text, updated_on=fa_date(upd) if upd else "",
+        is_preparing=is_preparing, release_estimate=b.release_estimate, related_books=related_books,
     ))
 
 

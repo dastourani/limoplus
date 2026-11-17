@@ -14,9 +14,17 @@
       <div class="stats">
         {% for n, l in stats %}<div><b>{{ n }}</b><span>{{ l }}</span></div>{% endfor %}
         {% if updated_on %}<div><b>{{ updated_on }}</b><span>آخرین به‌روزرسانی</span></div>{% endif %}
+        {% if is_preparing and release_estimate %}<div><b>{{ release_estimate }}</b><span>زمان حدودی انتشار</span></div>{% endif %}
       </div>
       <div class="cta">
-        {% if b.is_coming_soon %}<a class="btn lemon" href="{{ open_url }}">{% icon "bell" 18 %}به‌زودی؛ در اپ «خبرم کن» را بزن</a>
+        {% if is_preparing %}
+          <div class="tip-wrap">
+            <a class="btn lemon" href="{{ open_url }}">{% icon "bell" 18 %}به‌زودی؛ در اپ «خبرم کن» را بزن</a>
+            <div class="tip-bubble">
+              <b>زمان حدودی انتشار: {{ release_estimate|default:"به‌زودی" }}</b>
+              <span>با ثبت «خبرم کن» در اپلیکیشن یا وب‌اپ لیموخوان، به محض انتشار فصل اول رایگان با پیامک به شما اطلاع می‌دهیم.</span>
+            </div>
+          </div>
         {% else %}
           {% if first_free %}<a class="btn lemon" href="{{ open_url }}">شروع رایگان از فصل {{ first_free.number }}</a>{% endif %}
           {% if price %}<a class="btn ghost" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب، {{ price }}</a>{% elif not first_free %}<a class="btn lemon" href="{{ open_url }}">شروع</a>{% endif %}
@@ -73,10 +81,13 @@
       </details>
     {% endfor %}
     </div>
-    {% elif b.is_coming_soon %}
+    {% elif is_preparing %}
     <div class="about-card">
-      <div class="card-head">{% icon "bell" 20 %}<h2>این کتاب در حال تدوین و آماده‌سازی است</h2></div>
-      <p class="about">محتوای درسنامه، چکیده، تست‌های طبقه‌بندی‌شده و فلش‌کارت‌های کتاب «{{ b.title }}» در حال نگارش و بازبینی نهایی است. با زدن دکمه‌ی <b>«خبرم کن»</b> در اپلیکیشن لیموخوان، به محض انتشار کتاب با پیامک به شما اطلاع می‌دهیم.</p>
+      <div class="card-head">
+        {% icon "bell" 20 %}<h2>این کتاب در حال تدوین و آماده‌سازی است</h2>
+        {% if release_estimate %}<span class="src-chip">انتشار: {{ release_estimate }}</span>{% endif %}
+      </div>
+      <p class="about">محتوای درسنامه، چکیده، تست‌های طبقه‌بندی‌شده و فلش‌کارت‌های کتاب «{{ b.title }}» در حال نگارش و بازبینی نهایی است.{% if release_estimate %} زمان پیش‌بینی‌شده برای انتشار این کتاب <b>{{ release_estimate }}</b> است.{% endif %} با زدن دکمه‌ی <b>«خبرم کن»</b> در اپلیکیشن لیموخوان، به محض انتشار کتاب با پیامک به شما اطلاع می‌دهیم.</p>
       <div class="grid2" style="margin-top: 18px; gap: 14px">
         <div class="feat" style="padding: 16px"><b>{% icon "book-open" 18 %} درسنامه و چکیده‌ی دوحالته</b><p>کادرهای تعریف، فرمول، مثال‌های شماره‌دار و چکیده‌ی مرور سریع هر بخش.</p></div>
         <div class="feat" style="padding: 16px"><b>{% icon "list-checks" 18 %} بانک تست با پاسخ تشریحی</b><p>تست‌های کنکورهای سال‌های گذشته با پاسخ تشریحی گام‌به‌گام و دفترچه‌ی اشتباهات.</p></div>
@@ -101,15 +112,22 @@
       </div>
       {% endfor %}
     </div>
-    {% elif b.is_coming_soon %}
+    {% elif is_preparing %}
     <div class="feat big">
       <div class="ic">{% icon "bell" 26 %}</div>
       <b>وقتی منتشر شد باخبر شو</b>
+      {% if release_estimate %}<p style="margin-bottom: 8px"><span class="q-badge">زمان حدودی انتشار: {{ release_estimate }}</span></p>{% endif %}
       <p style="margin-bottom: 16px">در اپلیکیشن یا نسخه‌ی وب لیموخوان وارد صفحه‌ی این کتاب شو و دکمه‌ی «خبرم کن» را بزن تا به محض باز شدن فصل اول رایگان، پیامک دریافت کنی.</p>
-      <a class="btn lemon wide" style="margin-top: 0" href="{{ open_url }}">{% icon "bell" 18 %}ثبت «خبرم کن» در لیموخوان</a>
+      <div class="tip-wrap" style="width:100%">
+        <a class="btn lemon wide" style="margin-top: 0" href="{{ open_url }}">{% icon "bell" 18 %}ثبت «خبرم کن» در لیموخوان</a>
+        <div class="tip-bubble">
+          <b>زمان حدودی انتشار: {{ release_estimate|default:"به‌زودی" }}</b>
+          <span>پیامک اطلاع‌رسانی فقط یک بار و دقیقاً در لحظه‌ی انتشار کتاب برای شما ارسال می‌شود.</span>
+        </div>
+      </div>
     </div>
     {% endif %}
-    {% if not b.is_coming_soon %}
+    {% if not is_preparing %}
     <a class="btn dark wide" href="{{ open_url }}">{% icon "book-open" 18 %}باز کردن کتاب در لیموخوان</a>
     {% endif %}
   </div>

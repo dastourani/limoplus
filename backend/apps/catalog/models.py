@@ -103,6 +103,12 @@ class ContentNode(MP_Node):
                                    help_text="نقش خطی وسط جلد؛ بقیه‌ی جلد (رنگ، نام، نویسنده) خودکار است. اگر «عکس جلد» بگذارید، عکس به‌جای این جلد نشان داده می‌شود.")
     cover_drawing = models.TextField("طرح سفارشی جلد", blank=True, editable=False, help_text="طرح خطی پاک‌سازی‌شده‌ی یک فایل SVG")
     is_coming_soon = models.BooleanField("به‌زودی", default=False, help_text="کتاب با جلد کم‌رنگ و دکمه‌ی «خبرم کن» در قفسه دیده می‌شود ولی باز نمی‌شود.")
+    release_estimate = models.CharField(
+        "زمان حدودی انتشار",
+        max_length=80,
+        blank=True,
+        help_text="اختیاری؛ مثلاً «آذر ۱۴۰۵» یا «نیمسال دوم ۱۴۰۵». کنار دکمه‌ی «خبرم کن» در سایت و اپ نشان داده می‌شود.",
+    )
     is_published = models.BooleanField("منتشر شده", default=False)
     is_archived = models.BooleanField("بایگانی", default=False, help_text="به‌جای حذف؛ داده‌ی کاربران حفظ می‌شود")
     updated_at = models.DateTimeField(auto_now=True)
