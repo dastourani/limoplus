@@ -23,6 +23,12 @@ class SiteSettings(models.Model):
     feat3_body = models.TextField("متن باکس ۳", default="نکات کلیدی، فرمول‌ها و لغات تخصصی در ۶ جعبه‌ی مرور هوشمند (فردا، هفته‌ی بعد، ماه بعد) تا انتقال به حافظه‌ی بلندمدت.")
     feat4_title = models.CharField("عنوان باکس ۴", max_length=80, default="آمار پیشرفت و آزمون زمان‌دار")
     feat4_body = models.TextField("متن باکس ۴", default="لیموی پیشرفت هر فصل، سنجش آمادگی برای کنکورهای سال قبل و شبیه‌ساز آزمون با نمره‌ی منفی.")
+    band_title = models.CharField("عنوان بخش میانی (کنار لیمو)", max_length=140, default="هر روز فقط چند دقیقه، با برنامه‌ی مرور هوشمند")
+    band_sub = models.CharField("زیرعنوان بخش میانی", max_length=220, default="لیموخوان بر اساس عملکردت می‌داند امروز چه بخشی، تستی یا کارتی را باید مرور کنی")
+    show_updates = models.BooleanField("نمایش بخش تازه‌ها در صفحه‌ی اول", default=True)
+    show_sample_test = models.BooleanField("نمایش تست نمونه‌ی تعاملی در صفحه‌ی اول", default=True)
+    show_home_faq = models.BooleanField("نمایش پرسش‌های پرتکرار در صفحه‌ی اول", default=True)
+    footer_about = models.TextField("متن معرفی در فوتر سایت", default="کتاب درسی تعاملی برای دانشجوهای ایران: خلاصه، درسنامه، تست با پاسخ تشریحی و فلش‌کارت.")
     email = models.EmailField("ایمیل پشتیبانی", blank=True)
     phone = models.CharField("تلفن", max_length=40, blank=True)
     address = models.CharField("نشانی", max_length=300, blank=True)
@@ -48,7 +54,7 @@ class SiteSettings(models.Model):
 
 
 class SitePage(models.Model):
-    """«درباره‌ی ما»، «قوانین»، «حریم خصوصی»، «تماس با ما»: a title and a text («## » for a heading, «- » for a list)."""
+    """«درباره‌ی ما»، «قوانین»، «حریم خصوصی»، «حفاظت از محتوا» یا هر صفحه‌ی دلخواه دیگر در سایت و اپ."""
 
     class Kind(models.TextChoices):
         ABOUT = "about", "درباره‌ی ما"
@@ -57,9 +63,17 @@ class SitePage(models.Model):
         PRIVACY = "privacy", "حریم خصوصی"
         PROTECTION = "protection", "حفاظت از محتوا"
 
-    slug = models.CharField("صفحه", max_length=20, choices=Kind.choices, unique=True)
+    slug = models.SlugField(
+        "شناسه‌ی آدرس (لاتین)",
+        max_length=40,
+        unique=True,
+        help_text="در آدرس /p/<slug>/ قرار می‌گیرد؛ مثلاً terms، privacy، protection یا هر نام لاتین دلخواه.",
+    )
     title = models.CharField("عنوان", max_length=120)
     body = models.TextField("متن", blank=True, help_text="پاراگراف‌ها را با یک خط خالی جدا کنید. «## » اول خط: تیتر؛ «- » اول خط: فهرست.")
+    order = models.PositiveIntegerField("ترتیب", default=10)
+    show_in_nav = models.BooleanField("نمایش در منوی بالا", default=False, help_text="در نوار منوی بالای سایت نشان داده شود.")
+    show_in_footer = models.BooleanField("نمایش در فوتر", default=True, help_text="در ستون پشتیبانی پایین سایت نشان داده شود.")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین تغییر")
     show_in_app = models.BooleanField("نمایش در اپ", default=False, help_text="در «حساب من» اپ هم دیده شود.")
     # Set by the «تغییر مهم است» tick on save: learners who have not opened the page since see a notice in the app.
@@ -68,7 +82,28 @@ class SitePage(models.Model):
     class Meta:
         verbose_name = "صفحه‌ی سایت"
         verbose_name_plural = "صفحه‌های سایت"
-        ordering = ["slug"]
+        ordering = ["order", "slug"]
+
+    def __str__(self):
+        return self.title
+
+
+class SiteNavItem(models.Model):
+    """An item in the website's top navigation bar, editable in the panel («منوی بالای سایت»)."""
+
+    title = models.CharField("عنوان در منو", max_length=60)
+    url = models.CharField(
+        "آدرس یا مسیر",
+        max_length=300,
+        help_text="نام بخش داخلی («books»، «pricing»، «download»، «faq»)، آدرس یک صفحه («page:protection») یا لینک کامل («https://...»).",
+    )
+    order = models.PositiveIntegerField("ترتیب", default=10)
+    is_hidden = models.BooleanField("پنهان", default=False)
+
+    class Meta:
+        verbose_name = "آیتم منوی سایت"
+        verbose_name_plural = "منوی بالای سایت"
+        ordering = ["order", "id"]
 
     def __str__(self):
         return self.title

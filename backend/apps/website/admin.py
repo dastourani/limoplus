@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.catalog.jalali import jalali_date as fa_date
 
-from .models import FaqItem, HelpPage, SitePage, SiteSettings
+from .models import FaqItem, HelpPage, SiteNavItem, SitePage, SiteSettings
 
 
 @admin.register(SiteSettings)
@@ -13,7 +13,7 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     """One row only: contact details, store links, the trust seal."""
 
     fieldsets = (
-        ("صفحه‌ی اول", {"fields": ("tagline", "audience", "intro")}),
+        ("صفحه‌ی اول", {"fields": ("tagline", "audience", "intro", "show_updates", "show_sample_test", "show_home_faq")}),
         ("باکس‌های معرفی صفحه‌ی اول", {"fields": (
             "features_title", "features_sub",
             "feat1_title", "feat1_body",
@@ -21,6 +21,7 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             "feat3_title", "feat3_body",
             "feat4_title", "feat4_body",
         )}),
+        ("بخش میانی و فوتر", {"fields": ("band_title", "band_sub", "footer_about")}),
         ("دانلود", {"fields": ("bazaar_url", "myket_url", "apk_url")}),
         ("تماس", {"fields": ("email", "phone", "address", "telegram_url", "instagram_url")}),
         ("اینماد", {"fields": ("enamad_html",)}),
@@ -42,16 +43,25 @@ class SitePageForm(forms.ModelForm):
 
     class Meta:
         model = SitePage
-        fields = ("slug", "title", "body", "show_in_app")
+        fields = ("slug", "title", "order", "show_in_nav", "show_in_footer", "show_in_app", "body")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "order" in self.fields:
+            self.fields["order"].required = False
+
+    def clean_order(self):
+        val = self.cleaned_data.get("order")
+        return val if val is not None else (self.instance.order if self.instance and self.instance.pk else 10)
 
 
 @admin.register(SitePage)
 class SitePageAdmin(admin.ModelAdmin):
     form = SitePageForm
-    list_display = ("title", "slug", "show_in_app", "changed", "important")
-    list_editable = ("show_in_app",)
+    list_display = ("title", "slug", "order", "show_in_nav", "show_in_footer", "show_in_app", "changed", "important")
+    list_editable = ("order", "show_in_nav", "show_in_footer", "show_in_app")
     readonly_fields = ("important_at_fa",)
-    fields = ("slug", "title", "body", "show_in_app", "important", "important_at_fa")
+    fields = ("slug", "title", "order", "show_in_nav", "show_in_footer", "show_in_app", "body", "important", "important_at_fa")
 
     @admin.display(description="آخرین تغییر")
     def changed(self, obj):
@@ -104,3 +114,10 @@ class FaqItemAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(SiteNavItem)
+class SiteNavItemAdmin(admin.ModelAdmin):
+    list_display = ("title", "url", "order", "is_hidden")
+    list_editable = ("url", "order", "is_hidden")
+    fields = ("title", "url", "order", "is_hidden")

@@ -24,10 +24,11 @@ from apps.catalog.jalali import jalali_date as fa_date
 from apps.catalog.labels import all_labels
 from apps.catalog.models import ContentNode, Major
 
-from .models import FaqItem, SitePage, SiteSettings
+from .models import FaqItem, SiteNavItem, SitePage, SiteSettings
 
 FA = "۰۱۲۳۴۵۶۷۸۹"
 PAGE_ORDER = {"terms": 0, "privacy": 1, "protection": 2, "about": 3, "contact": 4}
+NAMED_URLS = {"home": "website:home", "books": "website:books", "pricing": "website:pricing", "download": "website:download", "faq": "website:faq"}
 
 
 def fa(n) -> str:
@@ -88,16 +89,46 @@ def _card(request, book) -> dict:
     }
 
 
+def _resolve_nav_url(raw: str) -> tuple[str, str]:
+    raw = (raw or "").strip()
+    if raw in NAMED_URLS:
+        return reverse(NAMED_URLS[raw]), raw
+    if raw.startswith("page:"):
+        slug = raw.split(":", 1)[1].strip()
+        return reverse("website:page", args=[slug]), f"page:{slug}"
+    if raw.startswith("/p/") and raw.strip("/").count("/") == 1:
+        slug = raw.strip("/").split("/", 1)[1]
+        return reverse("website:page", args=[slug]), f"page:{slug}"
+    return raw, raw
+
+
 def _base(request, **extra) -> dict:
     s = SiteSettings.get()
-    ordered_pages = sorted(SitePage.objects.all(), key=lambda p: (PAGE_ORDER.get(p.slug, 9), p.slug))
+    ordered_pages = sorted(SitePage.objects.all(), key=lambda p: (p.order, PAGE_ORDER.get(p.slug, 9), p.slug))
+    nav_name = request.resolver_match.url_name if getattr(request, "resolver_match", None) else ""
+    cur_page = extra.get("page")
+    cur_key = f"page:{cur_page.slug}" if cur_page else ("books" if nav_name == "book" else nav_name)
+
+    nav_items = []
+    seen_Targets = set()
+    for item in SiteNavItem.objects.filter(is_hidden=False).order_by("order", "id"):
+        href, key = _resolve_nav_url(item.url)
+        seen_Targets.add(key)
+        nav_items.append({"title": item.title, "href": href, "active": key == cur_key})
+    for p in ordered_pages:
+        key = f"page:{p.slug}"
+        if p.show_in_nav and key not in seen_Targets:
+            nav_items.append({"title": p.title, "href": reverse("website:page", args=[p.slug]), "active": key == cur_key})
+
     return {
         "s": s,
         "app_url": app_url(),
         "apk": _apk(s),
         "pages": {p.slug: p for p in ordered_pages},
+        "footer_pages": [p for p in ordered_pages if p.show_in_footer],
+        "nav_items": nav_items,
         "canonical": request.build_absolute_uri(request.path),
-        "nav": request.resolver_match.url_name if getattr(request, "resolver_match", None) else "",
+        "nav": nav_name,
         # «دستورهای فرمول» and «برچسب‌های متن» for the lesson boxes and formulas the browser draws.
         "macros": formula_macros(),
         "labels": all_labels(),
@@ -127,13 +158,14 @@ def _plans():
     return [{"title": p.title, "price": toman(p.price), "months": fa(p.months)} for p in _plans_on_sale().order_by("order", "price")]
 
 
-def _format_sample(q, idx: int, book_node=None) -> dict:
+def _format_sample(q, idx: int, book_node=None, majors=None) -> dict:
     src = next(iter(q.questionsource_set.all()), None)
     return {
         "id": q.id, "number": fa(idx), "stem": q.stem,
         "section": q.node.title if q.node and q.node.kind == ContentNode.Kind.SECTION else "",
         "book_title": book_node.title if book_node else "",
         "book_url": reverse("website:book", args=[book_node.slug]) if book_node else "",
+        "majors": majors or ([m.slug for m in book_node.majors.all()] if book_node else []),
         "choices": [{"id": c.id, "num": fa(i), "text": c.text} for i, c in enumerate(q.choices.all(), start=1)],
         "source": (f"{src.source.name} {fa(src.source.year)}" if src.source.year else src.source.name) if src else "",
     }

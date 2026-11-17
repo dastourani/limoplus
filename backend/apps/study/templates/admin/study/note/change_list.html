@@ -1,0 +1,50 @@
+{% extends "admin/lp_tex_change_list.html" %}
+
+{% block result_list %}
+{% if top_sections or top_users %}
+<div class="lp-ov" style="margin-bottom: 18px">
+  {% if has_active_filter %}
+  <p class="lp-ov-links" style="margin-bottom: 10px">
+    <a class="button" href="?">نمایش همه‌ی یادداشت‌ها و پاک کردن فیلتر ✕</a>
+  </p>
+  {% endif %}
+  <div class="lp-ov-grid" style="grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px">
+    {% if top_sections %}
+    <section class="lp-ov-card">
+      <h3>بخش‌های پرهایلایت (کلیک روی بخش = فیلتر جدول)</h3>
+      <table class="lp-ov-table">
+        <tr><th>کتاب › بخش</th><th>هایلایت‌ها</th><th>دانشجوها</th><th>یادداشت‌دار</th><th>پرتکرارترین عبارت</th></tr>
+        {% for s in top_sections %}
+        <tr>
+          <td><a href="?node__id__exact={{ s.node_id }}"><b>{{ s.section }}</b></a><div class="lp-quiet">{{ s.book }}</div></td>
+          <td>{{ s.total }}</td>
+          <td>{{ s.learners }}</td>
+          <td>{{ s.notes_n }}</td>
+          <td class="lp-quiet" style="max-width:200px">{{ s.sample|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </section>
+    {% endif %}
+    {% if top_users %}
+    <section class="lp-ov-card">
+      <h3>کاربران با بیشترین هایلایت (کلیک روی فیلتر = ریزِ هایلایت‌های کاربر)</h3>
+      <table class="lp-ov-table">
+        <tr><th>کاربر</th><th>۷ روز اخیر</th><th>کل</th><th>یادداشت متنی</th><th>بررسی</th></tr>
+        {% for u in top_users %}
+        <tr>
+          <td><a href="{{ u.user_url }}">{{ u.phone }}</a></td>
+          <td><b>{{ u.week }}</b></td>
+          <td>{{ u.total }}</td>
+          <td>{{ u.notes_n }}</td>
+          <td><a class="button" href="?user__id__exact={{ u.user_id }}">فیلتر هایلایت‌های او</a></td>
+        </tr>
+        {% endfor %}
+      </table>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}
