@@ -143,8 +143,9 @@ export default function Book() {
   const done = new Set(book.done_ids);
   const read = new Set(book.read_ids ?? []);
   const sections = book.chapters.flatMap((c) => c.sections);
-  const tests = sections.reduce((n, x) => n + (x.question_count ?? 0), 0);
-  const cards = sections.reduce((n, x) => n + (x.flashcard_count ?? 0), 0);
+  // The book's own counts come summed from the server (a chapter already carries its sections' totals).
+  const tests = book.chapters.reduce((n, c) => n + (c.question_count ?? 0), 0);
+  const cards = book.chapters.reduce((n, c) => n + (c.flashcard_count ?? 0), 0);
   const readCount = sections.filter((x) => done.has(x.id)).length;
   const firstOpen = book.chapters.find((c) => !c.is_locked);
   const firstOpenIndex = firstOpen ? book.chapters.indexOf(firstOpen) + 1 : 0;
@@ -631,7 +632,9 @@ function ChapterCard({
   useEffect(() => {
     Animated.spring(turn, { toValue: open ? 1 : 0, friction: 7, tension: 120, useNativeDriver: true }).start();
   }, [open, turn]);
-  const tests = chapter.sections.reduce((n, s) => n + (s.question_count ?? 0), 0);
+  // The chapter's totals come summed from the server, the same numbers the buttons below follow.
+  const tests = chapter.question_count ?? 0;
+  const cards = chapter.flashcard_count ?? 0;
   let lastGroup = '';
   return (
     <View style={styles.chapter}>
@@ -733,15 +736,22 @@ function ChapterCard({
           )}
           {!chapter.is_locked && (
             <View style={styles.actions}>
-              <Pressable style={styles.action} onPress={() => router.push(`/quiz/${chapter.id}`)}>
-                <Text style={styles.actionText}>تمرین کل فصل</Text>
-              </Pressable>
-              <Pressable style={styles.action} onPress={() => router.push(`/exam/${chapter.id}`)}>
-                <Text style={styles.actionText}>آزمون</Text>
-              </Pressable>
-              <Pressable style={styles.action} onPress={() => router.push(`/flashcards/${chapter.id}`)}>
-                <Text style={styles.actionText}>فلش‌کارت</Text>
-              </Pressable>
+              {/* Only the practice this chapter actually has: no tests, no «تمرین کل فصل» and «آزمون». */}
+              {!!tests && (
+                <Pressable style={styles.action} onPress={() => router.push(`/quiz/${chapter.id}`)}>
+                  <Text style={styles.actionText}>تمرین کل فصل</Text>
+                </Pressable>
+              )}
+              {!!tests && (
+                <Pressable style={styles.action} onPress={() => router.push(`/exam/${chapter.id}`)}>
+                  <Text style={styles.actionText}>آزمون</Text>
+                </Pressable>
+              )}
+              {!!cards && (
+                <Pressable style={styles.action} onPress={() => router.push(`/flashcards/${chapter.id}`)}>
+                  <Text style={styles.actionText}>فلش‌کارت</Text>
+                </Pressable>
+              )}
               <Pressable style={styles.action} onPress={() => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(chapter.id) } })}>
                 <Text style={styles.actionText}>کادرها</Text>
               </Pressable>

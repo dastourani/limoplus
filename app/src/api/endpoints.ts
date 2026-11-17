@@ -49,6 +49,8 @@ export type NodeSummary = {
   /** «به‌روز شده»: marked in the panel since the learner last read it. */
   badge?: Badge;
 };
+/** A chapter in the book page's tree. `question_count` and `flashcard_count` are its sections' totals, summed by the
+ * server: the chapter's «N تست» line and its «تمرین کل فصل» / «آزمون» / «فلش‌کارت» buttons follow them. */
 export type ChapterSummary = NodeSummary & { sections: NodeSummary[]; has_overview?: boolean; term_count?: number };
 export type Shelf = { id: number | null; title: string; books: BookListItem[] };
 export type BookDetail = BookListItem & {
@@ -106,6 +108,10 @@ export type NodeDetail = {
   badge?: Badge;
   /** «دستورهای فرمول» for KaTeX. */
   macros?: Record<string, string>;
+  /** What there is to practise here: a section its own, a chapter its sections'. The buttons that lead to a
+   * practice screen are hidden when the count is 0 (a book with no tests never offers «تست‌ها»). */
+  question_count?: number;
+  flashcard_count?: number;
 };
 /** «تغییرات کتاب»: the important updates of a book, newest first. */
 export type BookChanges = { title: string; changes: { id: number; text: string; at: string; place: string; node_id: number | null }[] };

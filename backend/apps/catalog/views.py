@@ -209,6 +209,10 @@ def book_detail(request, slug):
         # Every chapter opens with its introduction page (its text, if any, its sections and «ادامه»).
         item["has_overview"] = not item["is_locked"]
         item["sections"] = [summary(s) for s in access.children(chapter)]
+        # A chapter's practice is its sections': the app shows these as the chapter's «N تست» and decides with them
+        # whether to offer «تمرین کل فصل», «آزمون» and «فلش‌کارت». Summed here once, not again in every screen.
+        item["question_count"] = sum(s["question_count"] for s in item["sections"])
+        item["flashcard_count"] = sum(s["flashcard_count"] for s in item["sections"])
         item["term_count"] = _term_count(access, chapter)
         chapters.append(item)
     return Response(
@@ -315,6 +319,25 @@ def _term_count(access, chapter) -> int:
     return len(terms)
 
 
+def _practice_counts(access, node) -> dict:
+    """«۳ تست، ۰ کارت»: how much there is to practise here, for the buttons that lead to it.
+
+    A section counts its own questions and cards; a chapter counts those of every section under it, because
+    «تمرین کل فصل» and «فلش‌کارت» of a chapter gather the whole chapter (learning/views.py does the same with
+    `visible_ids_under`). The rule inside is the one `_section_status` uses for «۳ تست باقی است»: only items the
+    learner may actually answer. The app hides a button whose count is 0, so a book without tests never offers
+    «تست‌ها» and never opens an empty practice screen."""
+    from apps.learning.models import Flashcard, Question
+
+    ids = access.visible_ids_under(node)
+
+    def count(model) -> int:
+        rows = model.objects.filter(node_id__in=ids, is_archived=False).only("id", "node_id", "is_free")
+        return sum(1 for r in rows if r.is_free or access.readable(r.node_id))
+
+    return {"question_count": count(Question), "flashcard_count": count(Flashcard)}
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def node_detail(request, node_id):
@@ -364,6 +387,8 @@ def node_detail(request, node_id):
             "badge": section_badges(request.user, [node]).get(node.id),
             "refreshed_at": node.refreshed_at,
             "macros": formula_macros(),
+            # The buttons of the bottom bar («تست‌ها», «فلش‌کارت») are hidden when there is nothing to practise.
+            **_practice_counts(access, node),
         }
     )
 

@@ -99,6 +99,9 @@ export function ChapterSide({
   if (readHere) read.add(nodeId);
   const number = data.chapters.indexOf(chapter) + 1;
   const ink = dark ? '#E4E9E2' : colors.ink;
+  // What this chapter has to practise, summed by the server. A chapter with none keeps only «کادرها».
+  const tests = chapter.question_count ?? 0;
+  const cards = chapter.flashcard_count ?? 0;
   const rows = [
     ...(chapter.has_overview ? [{ id: chapter.id, title: 'مقدمه‌ی فصل', locked: !!chapter.is_locked }] : []),
     ...chapter.sections.map((s) => ({ id: s.id, title: s.title, locked: !!s.is_locked })),
@@ -140,9 +143,9 @@ export function ChapterSide({
         })}
         <View style={styles.actions}>
           {[
-            ['تمرین کل فصل', () => router.push(`/quiz/${chapter.id}`)],
-            ['آزمون', () => router.push(`/exam/${chapter.id}`)],
-            ['فلش‌کارت', () => router.push(`/flashcards/${chapter.id}`)],
+            ...(tests ? [['تمرین کل فصل', () => router.push(`/quiz/${chapter.id}`)]] : []),
+            ...(tests ? [['آزمون', () => router.push(`/exam/${chapter.id}`)]] : []),
+            ...(cards ? [['فلش‌کارت', () => router.push(`/flashcards/${chapter.id}`)]] : []),
             ['کادرها', () => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(chapter.id) } })],
           ].map(([label, go]) => (
             <Pressable key={label as string} onPress={go as () => void} style={[styles.action, dark && { backgroundColor: '#26302A' }]} accessibilityRole="button">

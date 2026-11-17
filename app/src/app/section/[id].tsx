@@ -719,8 +719,13 @@ export default function Section() {
         >
           <Icon name="chevron-right" size={24} color={ink} />
         </Pressable>
-        <Button label="تست‌ها" variant={dark ? 'primary' : 'outline'} onPress={() => router.push(`/quiz/${node.id}`)} style={styles.barButton} />
-        <Button label="فلش‌کارت" variant={dark ? 'primary' : 'outline'} onPress={() => router.push(`/flashcards/${node.id}`)} style={styles.barButton} />
+        {/* Only what this section has: a book whose sections have no tests never shows «تست‌ها». */}
+        {!!node.question_count && (
+          <Button label="تست‌ها" variant={dark ? 'primary' : 'outline'} onPress={() => router.push(`/quiz/${node.id}`)} style={styles.barButton} />
+        )}
+        {!!node.flashcard_count && (
+          <Button label="فلش‌کارت" variant={dark ? 'primary' : 'outline'} onPress={() => router.push(`/flashcards/${node.id}`)} style={styles.barButton} />
+        )}
         <Pressable
           onPress={() => turnBy(1)}
           disabled={!node.next_id}
