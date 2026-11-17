@@ -632,7 +632,8 @@ def import_view(admin_site, request, book_id=None):
         token = request.POST["token"]
         if not all(c in "0123456789abcdef-" for c in token):
             raise PermissionDenied
-        found = [p for p in (f"{PENDING_DIR}/{token}.md", f"{PENDING_DIR}/{token}.zip") if default_storage.exists(p)]
+        found = [p for p in (f"{PENDING_DIR}/{token}.md", f"{PENDING_DIR}/{token}.tex", f"{PENDING_DIR}/{token}.zip")
+                 if default_storage.exists(p)]
         if not found:
             messages.error(request, "فایل بررسی‌شده پیدا نشد؛ دوباره انتخابش کنید.")
             return redirect(request.path)
@@ -671,7 +672,7 @@ def import_view(admin_site, request, book_id=None):
             }
             if not parsed.errors:
                 token = str(uuid.uuid4())
-                ext = ".zip" if upload.name.lower().endswith(".zip") else ".md"
+                ext = next(e for e in (".zip", ".tex", ".md") if upload.name.lower().endswith(e))
                 default_storage.save(f"{PENDING_DIR}/{token}{ext}", ContentFile(data))
                 report.update(
                     token=token,

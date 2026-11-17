@@ -207,10 +207,31 @@ class ParsedChapter:
 
 
 def read_upload(filename: str, data: bytes, book: ContentNode | None = None) -> ParsedChapter:
-    """Accept a .md file or a .zip containing one .md file and optional images/ folder.
+    """Accept a .md file, a .tex file, or a .zip holding one of them plus its images.
+
+    A .tex (or a ZIP of a LaTeX project) is converted to the same Markdown first (apps/catalog/latex.py), then read by
+    `parse_chapter` like any other chapter file: one format in the database, one renderer in the app.
     With `book`, the file may leave out the book lines; if it names another book, that is an error."""
-    if filename.lower().endswith(".zip"):
+    lowered = filename.lower()
+    if lowered.endswith(".zip"):
+        if _zip_is_latex(data):
+            return _read_latex_zip(filename, data, book)
         return _read_zip(data, book)
+    if lowered.endswith(".tex"):
+        from .latex import Converter
+
+        if len(data) > MAX_MARKDOWN_BYTES:
+            chapter = ParsedChapter()
+            chapter.error("فایل متن بیشتر از ۲ مگابایت است؛ فصل را کوچک‌تر کنید.")
+            return chapter
+        converter = Converter(data.decode("utf-8-sig", errors="replace"))
+        converter.slug = _slug_from_name(filename) or "ch1"
+        converter.book = book
+        markdown = converter.to_chapter()
+        chapter = parse_chapter(markdown, book=book)
+        for warning in converter.report():
+            chapter.warn(warning)
+        return chapter
     if filename.lower().endswith(".md"):
         if len(data) > MAX_MARKDOWN_BYTES:
             chapter = ParsedChapter()
@@ -221,6 +242,41 @@ def read_upload(filename: str, data: bytes, book: ContentNode | None = None) -> 
         return chapter
     chapter = ParsedChapter()
     chapter.error("فقط فایل .md یا .zip پذیرفته می‌شود.")
+    return chapter
+
+
+def _zip_is_latex(data: bytes) -> bool:
+    """A ZIP of a LaTeX project instead of one holding chapter.md: it has a .tex file and no .md."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            names = [i.filename.lower() for i in archive.infolist() if not i.is_dir()]
+    except (zipfile.BadZipFile, zlib.error, EOFError, OSError):
+        return False
+    has_tex = any(name.endswith(".tex") for name in names)
+    has_md = any(name.endswith(".md") for name in names)
+    return has_tex and not has_md
+
+
+def _slug_from_name(filename: str) -> str:
+    """«حد-و-پیوستگی.tex» → a chapter slug: Latin letters, digits, - and _ only (what the book accepts)."""
+    stem = posixpath.splitext(posixpath.basename(filename.replace("\\", "/")))[0]
+    return re.sub(r"[^\w\-]+", "-", stem, flags=re.UNICODE).strip("-")[:60]
+
+
+def _read_latex_zip(filename: str, data: bytes, book: ContentNode | None = None) -> ParsedChapter:
+    """A ZIP of a LaTeX project → a chapter, its images kept under the names the text points at."""
+    from .latex import read_latex
+
+    markdown, images, warnings = read_latex(filename, data, book, slug=_slug_from_name(filename))
+    chapter = parse_chapter(markdown, book=book) if markdown.strip() else ParsedChapter()
+    for warning in warnings:
+        chapter.warn(warning)
+    if not markdown.strip():
+        chapter.error("فایل LaTeX خوانده نشد؛ متن خالی است.")
+        return chapter
+    for name, body in images.items():
+        chapter.images[posixpath.normpath(name)] = body
+    _check_images(chapter)
     return chapter
 
 
