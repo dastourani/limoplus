@@ -57,7 +57,8 @@ def cleanup_temporary(now=None) -> dict:
 
 
 def prune_revisions(now=None) -> int:
-    """Older than 30 days: keep the newest version of each week of each chapter (and each chapter's newest of all)."""
+    """Older than 30 days: keep the newest version of each week of each chapter (and each chapter's newest of all).
+    Versions that copies point to (apps.guard) are never removed."""
     from .models import ChapterRevision
 
     now = now or timezone.now()
@@ -65,10 +66,11 @@ def prune_revisions(now=None) -> int:
     newest = {}
     for cid, rid in ChapterRevision.objects.order_by("-updated_at", "-id").values_list("chapter_id", "id"):
         newest.setdefault(cid, rid)
+    pinned = set(ChapterRevision.objects.filter(copies__isnull=False).values_list("id", flat=True))
     kept_weeks: set[tuple[int, int, int]] = set()
     remove = []
     for rid, cid, at in ChapterRevision.objects.filter(updated_at__lt=cutoff).order_by("-updated_at", "-id").values_list("id", "chapter_id", "updated_at"):
-        if newest.get(cid) == rid:
+        if newest.get(cid) == rid or rid in pinned:
             continue
         year, week, _ = timezone.localtime(at).isocalendar()
         if (cid, year, week) in kept_weeks:

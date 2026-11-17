@@ -9,6 +9,7 @@ from apps.accounts import views as accounts_views
 from apps.catalog import search as catalog_search
 from apps.catalog import views as catalog
 from apps.commerce import views as commerce
+from apps.guard import views as guard
 from apps.learning import views as learning
 from apps.releases import views as releases
 from apps.study import mistakes
@@ -53,6 +54,8 @@ api = [
     path("nodes/<int:node_id>/progress/", study.save_progress),
     path("nodes/<int:node_id>/bookmark/", study.toggle_bookmark),
     path("nodes/<int:node_id>/notes/", study.add_note),
+    path("nodes/<int:node_id>/copy/", guard.copy_text),
+    path("copy/quota/", guard.copy_quota),
     path("notes/<int:note_id>/", study.edit_note),
     path("nodes/<int:node_id>/practice/", study.practice_state),
     path("nodes/<int:node_id>/practice/reset/", study.practice_reset),

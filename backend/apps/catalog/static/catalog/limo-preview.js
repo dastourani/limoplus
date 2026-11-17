@@ -761,9 +761,13 @@ root.__menu = function (action, fallback) {
   var q = now || (recent ? root.__lastQuote : '') || norm(fallback || '').trim();
   post({ type: 'menu', action: action, text: q.slice(0, 2000), box: now ? selectionBox() : recent ? root.__lastBox : '' });
 };
+// Copying goes through the app: it is counted, and the text gets an invisible fingerprint (apps.guard on the server).
 root.addEventListener('copy', function (e) {
-  var text = (window.getSelection() || '').toString();
-  if (text.length > MAX_COPY) { e.preventDefault(); post({ type: 'copy_blocked' }); }
+  e.preventDefault();
+  var q = selectedQuote() || norm((window.getSelection() || '').toString()).trim();
+  if (!q) return;
+  if (q.length > MAX_COPY) post({ type: 'copy_blocked', text: q.slice(0, 2000) });
+  else post({ type: 'copy', text: q });
 });
 root.addEventListener('contextmenu', function (e) { if (e.target && e.target.tagName === 'IMG') e.preventDefault(); });
 // A formula is one piece: a long press on it (a click with a mouse) selects all of it, however long, so \xAB\u0647\u0627\u06CC\u0644\u0627\u06CC\u062A\xBB and
