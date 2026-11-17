@@ -172,10 +172,23 @@ export default function Book() {
   // The cover fades back a little as the page comes over it (it doesn't move).
   const heroFade = scrollY.interpolate({ inputRange: [0, heroHeight], outputRange: [1, 0.35], extrapolate: 'clamp' });
 
+  const isPreparing = book.is_coming_soon || book.chapters.length === 0;
+
   return (
     <Screen background={colors.ground}>
       <View style={[styles.inkBack, { height: BAR_H + heroHeight + 40, backgroundColor: top.bg }]} />
-      <Animated.View style={[styles.hero, { top: BAR_H, opacity: heroFade, backgroundColor: top.bg }]} onLayout={(e) => setHeroH(Math.round(e.nativeEvent.layout.height))}>
+      {/* The margin is on a wrapper: on the web a refresh control gives the scroll view's style to two elements. */}
+      <View style={{ flex: 1, marginTop: BAR_H }}>
+      <Animated.ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={refresh}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: Platform.OS !== 'web' })}
+      >
+        <Animated.View
+          style={[styles.hero, { opacity: heroFade, backgroundColor: top.bg, transform: [{ translateY: scrollY }] }]}
+          onLayout={(e) => setHeroH(Math.round(e.nativeEvent.layout.height))}
+        >
           <View style={{ alignItems: 'center' }}>
             {/* The cover carries the title (and author), so it is not written again under it; screen readers hear it here. */}
             <View accessible accessibilityRole="header" accessibilityLabel={[book.title, coverByline(book.author, book.edition)].filter(Boolean).join('، ')}>
@@ -190,7 +203,7 @@ export default function Book() {
           </View>
           {/* An uploaded cover image may not show the title clearly: then it stays, small. */}
           {!!book.cover && <Text style={[styles.heroTitle, { color: top.fg }]}>{book.title}</Text>}
-          {!book.is_coming_soon && (
+          {!isPreparing && (
             <View style={styles.stats}>
               {(
                 [
@@ -220,24 +233,26 @@ export default function Book() {
               )}
             </View>
           )}
-      </Animated.View>
-      {/* The margin is on a wrapper: on the web a refresh control gives the scroll view's style to two elements. */}
-      <View style={{ flex: 1, marginTop: BAR_H }}>
-      <Animated.ScrollView
-        contentContainerStyle={styles.scroll}
-        refreshControl={refresh}
-        scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: Platform.OS !== 'web' })}
-      >
-        {/* Room for the cover: dragging here scrolls the page up over it. */}
-        <View style={{ height: heroHeight - 12 }} />
+        </Animated.View>
         <View style={styles.sheet}>
         <View style={styles.page}>
-          {book.is_coming_soon ? (
+          {isPreparing ? (
             <View style={styles.cta}>
               <View style={styles.ctaHead}>
                 <IconBadge name="bell" size={30} />
-                <Text style={[styles.ctaTitle, rtl, { flex: 1 }]}>این کتاب به‌زودی منتشر می‌شود</Text>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[styles.ctaTitle, rtl]}>این کتاب در حال آماده‌سازی است و به‌زودی منتشر می‌شود</Text>
+                  {!!book.release_estimate && (
+                    <Text style={[styles.ctaSmall, rtl, { color: colors.greenDark, fontWeight: '800' }]}>
+                      زمان حدودی انتشار: {book.release_estimate}
+                    </Text>
+                  )}
+                </View>
+                <HelpTip
+                  size={22}
+                  title={`زمان حدودی انتشار: ${book.release_estimate || 'به‌زودی'}`}
+                  text="با زدن دکمه‌ی «خبرم کن»، به محض انتشار فصل اول رایگان این کتاب، یک پیامک اطلاع‌رسانی برای شما ارسال می‌شود."
+                />
               </View>
               <Button
                 label={waiting ? (now.canCancel ? 'خبرت می‌کنیم (لغو)' : 'خبرت می‌کنیم ✓') : 'خبرم کن'}
@@ -248,7 +263,13 @@ export default function Book() {
             </View>
           ) : fullAccess ? (
             <View style={[styles.cta, styles.ctaRow]}>
-              <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={54} />
+              <HelpTip
+                size={54}
+                title="لیموی پیشرفت کتاب"
+                text={`${user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش این کتاب تمام شده است. ` : ''}هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای.`}
+              >
+                <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={54} />
+              </HelpTip>
               <View style={{ flex: 1, gap: 2 }}>
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
                   <Text style={[styles.ctaSmall, rtl]}>
@@ -591,7 +612,13 @@ function ChapterCard({
     <View style={styles.chapter}>
       <Pressable onPress={onToggle} style={styles.chapterHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
         {/* As tall as two lines of the title, so the lemon and the name read as one. */}
-        <LemonProgress parts={chapter.sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={46} />
+        <HelpTip
+          size={46}
+          title={`فصل ${toPersianDigits(number)}، ${chapter.title}`}
+          text={`${toPersianDigits(chapter.sections.filter((s) => done.has(s.id)).length)} از ${toPersianDigits(chapter.sections.length)} بخش این فصل تمام شده است.`}
+        >
+          <LemonProgress parts={chapter.sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={46} />
+        </HelpTip>
         <View style={{ flex: 1, gap: 4 }}>
           <Text style={[styles.chapterTitle, rtl]} numberOfLines={2}>
             فصل {toPersianDigits(number)}، {chapter.title}
@@ -742,13 +769,13 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 1 },
   updated: { fontSize: 11, fontWeight: '800', color: '#4A3A9E', backgroundColor: '#E8E4FA', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 1, overflow: 'hidden' },
   inkBack: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: colors.ink },
-  sheet: { flexGrow: 1, backgroundColor: colors.ground, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingBottom: 28 },
+  sheet: { flexGrow: 1, backgroundColor: colors.ground, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingBottom: 28, zIndex: 2 },
   bar: { position: 'absolute', top: 0, left: 0, right: 0, height: BAR_H, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 16, zIndex: 2 },
   // Once the page covers the cover: a soft shadow under the bar, so the page seems to slide beneath it.
   barShade: { backgroundColor: colors.ink, shadowColor: '#000000', shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   barTitle: { textAlign: 'center', fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
   page: { padding: 16, gap: 14, maxWidth: 760, width: '100%', alignSelf: 'center' },
-  hero: { position: 'absolute', left: 0, right: 0, backgroundColor: colors.ink, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 36, gap: 6 },
+  hero: { backgroundColor: colors.ink, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 36, gap: 6, zIndex: 1 },
   heroButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   heroTitle: { marginTop: 10, textAlign: 'center', fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
   // Equal boxes across the width of the cards below them, so their edges line up.

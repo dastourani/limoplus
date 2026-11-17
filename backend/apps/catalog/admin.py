@@ -94,7 +94,7 @@ class BookAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {"fields": ("title", "title_en", "slug", "author", "edition", "majors")}),
         ("جلد و معرفی", {"fields": ("cover_motif", "drawing_file", "clear_drawing", "cover", "about")}),
-        ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "position", "is_published", "is_archived")}),
+        ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "release_estimate", "position", "is_published", "is_archived")}),
         ("اشتراک‌گذاری", {"fields": ("share_link",)}),
     )
 

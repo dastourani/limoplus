@@ -78,12 +78,25 @@ class WebsiteTests(TestCase):
         self.assertContains(home_r, "به‌روزرسانی فصل اول")
         self.assertContains(home_r, "یک تست واقعی را همین الان امتحان کن")
 
-        # Coming-soon book page shows structured preparation card and related books.
-        soon = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="فیزیک نوین", slug="modern-phys", is_published=True, is_coming_soon=True)
+        # Coming-soon (or empty) book page shows structured preparation card, release estimate and related books.
+        soon = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK, title="فیزیک نوین", slug="modern-phys",
+            is_published=True, is_coming_soon=False, release_estimate="آذر ۱۴۰۵",
+        )
         soon_r = Client().get(f"/site/books/{soon.slug}/")
         self.assertEqual(soon_r.status_code, 200)
         self.assertContains(soon_r, "در حال تدوین و آماده‌سازی است")
+        self.assertContains(soon_r, "آذر ۱۴۰۵")
         self.assertContains(soon_r, book.title)
+
+        # Content protection page renders on the website and in the app API.
+        prot_r = Client().get("/site/p/protection/")
+        self.assertEqual(prot_r.status_code, 200)
+        self.assertContains(prot_r, "حفاظت از محتوا")
+        self.assertContains(prot_r, "انگشت‌نگاری دیجیتال")
+        api_prot = Client().get("/api/v1/app/pages/protection/")
+        self.assertEqual(api_prot.status_code, 200)
+        self.assertEqual(api_prot.json()["title"], "حفاظت از محتوا")
 
     def test_sitemap_and_robots(self):
         c = Client()

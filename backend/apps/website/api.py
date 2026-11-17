@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from .models import HelpPage, SitePage
 
 
-ORDER = {"terms": 0, "privacy": 1}
+ORDER = {"terms": 0, "privacy": 1, "protection": 2}
 
 
 @api_view(["GET"])
@@ -39,6 +39,6 @@ def help_page(request, page_id):
 def site_page(request, slug):
     # «قوانین» and «حریم خصوصی» are linked under the login button, so they open even when not listed in the app.
     p = get_object_or_404(SitePage, slug=slug)
-    if not p.show_in_app and slug not in ("terms", "privacy"):
+    if not p.show_in_app and slug not in ("terms", "privacy", "protection"):
         raise Http404
     return Response({"slug": p.slug, "title": p.title, "body": p.body, "updated_at": p.updated_at, "important_at": p.important_at})

@@ -88,16 +88,20 @@
 </section>
 
 {% if home_sample %}
+{{ home_samples|json_script:'limo-home-samples' }}
 <section class="sec wrap narrow">
   <div class="sechead">
-    <div><h2>یک تست واقعی را همین الان امتحان کن</h2><p class="sub">یک گزینه را بزن تا پاسخ تشریحی و درسنامه‌ی مرتبط با آن باز شود</p></div>
-    {% if home_sample.book_url %}<a class="btn dark small" href="{{ home_sample.book_url }}">از کتاب «{{ home_sample.book_title }}» ←</a>{% endif %}
+    <div><h2>یک تست واقعی را همین الان امتحان کن</h2><p class="sub">هر بار یک تست تصادفی از کتاب‌های منتشرشده؛ گزینه را بزن تا پاسخ تشریحی باز شود</p></div>
+    <div class="cta">
+      {% if home_samples|length > 1 %}<button type="button" class="btn ghost-dark small" data-next-sample>{% icon "repeat" 15 %}تست تصادفی بعدی</button>{% endif %}
+      {% if home_sample.book_url %}<a class="btn dark small" data-sample-book-link href="{{ home_sample.book_url }}">از کتاب «{{ home_sample.book_title }}» ←</a>{% endif %}
+    </div>
   </div>
-  <div class="feat sample" data-id="{{ home_sample.id }}">
+  <div class="feat sample" id="home-sample-box" data-id="{{ home_sample.id }}">
     <div class="sample-head">
-      <span class="q-badge">تست نمونه</span>
-      {% if home_sample.book_title %}<span class="mut">{{ home_sample.book_title }}{% if home_sample.section %}، {{ home_sample.section }}{% endif %}</span>{% endif %}
-      {% if home_sample.source %}<span class="src-chip">{{ home_sample.source }}</span>{% endif %}
+      <span class="q-badge">تست تصادفی</span>
+      <span class="mut" data-sample-place>{% if home_sample.book_title %}{{ home_sample.book_title }}{% if home_sample.section %}، {{ home_sample.section }}{% endif %}{% endif %}</span>
+      <span class="src-chip" data-sample-src{% if not home_sample.source %} hidden{% endif %}>{{ home_sample.source }}</span>
     </div>
     <div class="stem" data-md="{{ home_sample.stem }}">{{ home_sample.stem }}</div>
     <div class="choices">{% for c in home_sample.choices %}<button class="choice" data-choice="{{ c.id }}"><span class="cnum">{{ c.num }}</span><span class="ctext" data-md="{{ c.text }}">{{ c.text }}</span></button>{% endfor %}</div>

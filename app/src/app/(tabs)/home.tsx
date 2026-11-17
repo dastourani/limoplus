@@ -11,6 +11,7 @@ import { studyDuration } from '../../lib/duration';
 import { BannerCarousel } from '../../components/BannerCarousel';
 import { BookCover } from '../../components/BookCover';
 import { Icon } from '../../components/Icon';
+import { LemonProgress } from '../../components/LemonProgress';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
 import { ErrorState, Loading, Screen, usePullRefresh, Chip } from '../../components/ui';
@@ -292,15 +293,17 @@ export default function Home() {
                     style={[styles.needsRow, i > 0 && styles.needsRowLine]}
                     accessibilityRole="button"
                   >
-                    <Icon name={item.reason === 'mistakes' ? 'notebook-pen' : 'rotate-ccw'} size={18} color={item.reason === 'mistakes' ? colors.red : colors.muted} />
-                    <View style={{ flex: 1, gap: 2 }}>
+                    <LemonProgress parts={[item.reason === 'mistakes' ? 'wrong' : 'soft']} size={44} />
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                       <Text style={[styles.needsTitle, rtl]} numberOfLines={1}>{item.title}</Text>
                       <Text style={[styles.needsSub, rtl]} numberOfLines={1}>
                         {item.reason === 'mistakes' ? `${toPersianDigits(item.mistakes)} تست غلط مانده` : `${toPersianDigits(item.days)} روز پیش خواندی`}
                         {`، ${item.book_title}`}
                       </Text>
                     </View>
-                    <Icon name="chevron-left" size={18} color={colors.muted} />
+                    <View style={styles.needsPill}>
+                      <Text style={styles.needsPillText}>{item.reason === 'mistakes' ? 'تمرین' : 'مرور'}</Text>
+                    </View>
                   </Pressable>
                 ))}
               </View>
@@ -485,10 +488,12 @@ const styles = StyleSheet.create({
   },
   wideSideInner: { gap: 16, padding: SIDE_PAD },
   needsList: { gap: 0 },
-  needsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
+  needsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingHorizontal: 4, paddingVertical: 10 },
   needsRowLine: { borderTopWidth: 1, borderTopColor: colors.line },
   needsTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   needsSub: { fontSize: 12, color: colors.muted },
+  needsPill: { backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center', justifyContent: 'center' },
+  needsPillText: { fontSize: 12, fontWeight: '800', color: colors.ink },
   section: { gap: 10, marginTop: 8 },
   note: { fontSize: 12, color: colors.muted, lineHeight: 20 },
   quick: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, backgroundColor: colors.lemon, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 },

@@ -15,6 +15,7 @@ export type BookListItem = {
   drawing: { viewBox: string; body: string } | null;
   cover: string | null;
   is_coming_soon: boolean;
+  release_estimate?: string;
   price: number | null;
   chapter_count: number;
   section_count: number;

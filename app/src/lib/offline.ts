@@ -8,8 +8,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { gcm } from '@noble/ciphers/aes';
 import { getRandomBytes } from 'expo-crypto';
+import * as Device from 'expo-device';
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { ApiError } from '../api/client';
 import type { OfflineBundle } from '../api/endpoints';
 import { secure } from './secure';
 import { utf8Decode, utf8Encode } from './utf8';
@@ -63,6 +65,9 @@ async function saveIndex(books: OfflineBook[]) {
 }
 
 export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBook> {
+  if (await Device.isRootedExperimentalAsync().catch(() => false)) {
+    throw new ApiError(403, 'rooted', 'دانلود آفلاین روی دستگاه‌های روت‌شده برای حفاظت از محتوا غیرفعال است.');
+  }
   const k = (await key(true))!;
   const nonce = getRandomBytes(12);
   const sealed = gcm(k, nonce).encrypt(utf8Encode(JSON.stringify(bundle)));
@@ -88,6 +93,7 @@ export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBoo
 }
 
 async function readBundle(slug: string): Promise<OfflineBundle | null> {
+  if (await Device.isRootedExperimentalAsync().catch(() => false)) return null;
   const k = await key(false);
   const f = fileFor(slug);
   if (!k || !f.exists) return null;

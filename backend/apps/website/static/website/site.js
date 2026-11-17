@@ -71,10 +71,12 @@
 
   function samples() {
     document.querySelectorAll('.sample').forEach(function (box) {
-      var id = box.getAttribute('data-id');
+      if (box.__bound) return;
+      box.__bound = true;
       box.addEventListener('click', function (e) {
         var btn = e.target.closest('.choice');
         if (!btn || btn.disabled) return;
+        var id = box.getAttribute('data-id');
         var buttons = box.querySelectorAll('.choice');
         buttons.forEach(function (b) { b.disabled = true; });
         fetch('/api/v1/questions/' + id + '/answer/', {
@@ -94,6 +96,39 @@
           if (parts.length) { ex.innerHTML = parts.join(''); ex.hidden = false; }
         }).catch(function () { buttons.forEach(function (b) { b.disabled = false; }); });
       });
+    });
+  }
+
+  function homeRandomSample() {
+    var script = document.getElementById('limo-home-samples');
+    var btn = document.querySelector('[data-next-sample]');
+    var box = document.getElementById('home-sample-box');
+    if (!script || !btn || !box) return;
+    var pool;
+    try { pool = JSON.parse(script.textContent); } catch (e) { return; }
+    if (!pool || pool.length < 2) return;
+    var idx = 0;
+    var esc = function (t) { return String(t || '').replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    btn.addEventListener('click', function () {
+      idx = (idx + 1) % pool.length;
+      var q = pool[idx];
+      box.setAttribute('data-id', q.id);
+      var place = box.querySelector('[data-sample-place]');
+      if (place) place.textContent = (q.book_title || '') + (q.section ? '، ' + q.section : '');
+      var src = box.querySelector('[data-sample-src]');
+      if (src) { src.textContent = q.source || ''; src.hidden = !q.source; }
+      var bookLink = document.querySelector('[data-sample-book-link]');
+      if (bookLink && q.book_url) { bookLink.href = q.book_url; bookLink.textContent = 'از کتاب «' + q.book_title + '» ←'; }
+      var stem = box.querySelector('.stem');
+      if (stem) { stem.setAttribute('data-md', q.stem); stem.innerHTML = md(q.stem) || esc(q.stem); }
+      var choices = box.querySelector('.choices');
+      if (choices) {
+        choices.innerHTML = (q.choices || []).map(function (c) {
+          return '<button class="choice" data-choice="' + c.id + '"><span class="cnum">' + esc(c.num) + '</span><span class="ctext">' + (md(c.text) || esc(c.text)) + '</span></button>';
+        }).join('');
+      }
+      var ex = box.querySelector('.explain');
+      if (ex) { ex.hidden = true; ex.innerHTML = ''; }
     });
   }
 
@@ -117,6 +152,7 @@
     formulas();
     filters();
     samples();
+    homeRandomSample();
     device();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

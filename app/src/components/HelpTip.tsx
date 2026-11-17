@@ -85,11 +85,19 @@ export function HelpTip({
         } as Record<string, unknown>)
       : undefined;
 
+  const webTriggerProps =
+    Platform.OS === 'web'
+      ? ({
+          onMouseEnter: (e: unknown) => open(e as GestureResponderEvent, true),
+        } as Record<string, unknown>)
+      : undefined;
+
   return (
     <>
       <Pressable
         onPress={(e) => open(e, false)}
         onHoverIn={Platform.OS === 'web' ? (e) => open(e as unknown as GestureResponderEvent, true) : undefined}
+        {...webTriggerProps}
         hitSlop={children ? 6 : 10}
         accessibilityRole="button"
         accessibilityLabel={`${title} یعنی چه؟`}

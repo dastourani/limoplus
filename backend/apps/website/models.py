@@ -55,6 +55,7 @@ class SitePage(models.Model):
         CONTACT = "contact", "تماس با ما"
         TERMS = "terms", "قوانین"
         PRIVACY = "privacy", "حریم خصوصی"
+        PROTECTION = "protection", "حفاظت از محتوا"
 
     slug = models.CharField("صفحه", max_length=20, choices=Kind.choices, unique=True)
     title = models.CharField("عنوان", max_length=120)
