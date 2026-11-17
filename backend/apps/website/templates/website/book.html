@@ -66,7 +66,7 @@
           {% endif %}
           {% for s in ch.section_list %}
           <a class="sec-row" href="{{ s.url }}">
-            <span class="sec-num">{{ ch.number }}-{{ s.number }}</span>
+            <span class="sec-num">{{ ch.number }}&rlm;-&rlm;{{ s.number }}</span>
             <span class="sec-title">{{ s.title }}</span>
             <span class="sec-badges">
               {% if s.has_summary %}<span class="pill">درسنامه + چکیده</span>{% else %}<span class="pill">درسنامه</span>{% endif %}

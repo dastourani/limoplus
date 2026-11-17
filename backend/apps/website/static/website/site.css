@@ -98,17 +98,17 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 /* Books */
 .shelf { display: flex; gap: 24px; overflow-x: auto; padding: 4px 4px 16px; scrollbar-width: thin; }
 .shelf.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); overflow: visible; }
-.bk { display: flex; flex-direction: column; gap: 8px; text-decoration: none; width: 170px; flex: none; }
+.bk { display: flex; flex-direction: column; gap: 6px; text-decoration: none; width: 170px; flex: none; }
 .shelf.grid .bk { width: auto; align-items: stretch; }
-.bk-title { font-size: 14px; font-weight: 800; line-height: 1.5; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.bk-meta { font-size: 12px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.bk-title { font-size: 14px; font-weight: 800; line-height: 1.5; min-height: 42px; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bk-meta { font-size: 12px; line-height: 1.5; min-height: 18px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .bk:hover .cover { transform: translateY(-3px); }
 .cover { flex: none; transition: transform .2s; }
 .cover img { width: 100%; border-radius: 10px; box-shadow: 0 10px 28px rgba(23,32,26,.25); display: block; }
 .cover-ph { aspect-ratio: 2 / 3; border-radius: 10px; background: #1E2A23; color: #fff; display: flex; align-items: flex-end; padding: 16px; font-size: 16px; }
-.tagbtn { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; border-radius: 12px; border: 1px solid; font-size: 13px; font-weight: 700; padding: 0 8px; }
+.tagbtn { margin-top: auto; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; border-radius: 12px; border: 1px solid; font-size: 13px; font-weight: 700; padding: 0 8px; }
 .tagbtn.paid { background: #FDF4D3; color: #7A5B00; border-color: #F1DE94; }
-.tagbtn.free { background: var(--green-soft); color: var(--green-dark); border-color: #BFE2CC; display: inline-flex; padding: 0 12px; }
+.tagbtn.free { background: var(--green-soft); color: var(--green-dark); border-color: #BFE2CC; padding: 0 12px; }
 .tagbtn.soon { background: #fff; color: var(--ink); border-color: var(--line); }
 .bk.hide { display: none; }
 
