@@ -17,10 +17,12 @@
     <div class="msg warn">این متن نسخه‌ی <b>{{ restore_when }}</b> است ({{ restore.get_source_display }}{% if restore.note %}: {{ restore.note }}{% endif %}).
       «بررسی» را بزنید تا ببینید چه چیزی برمی‌گردد؛ با «ذخیره»، فصل به این نسخه برمی‌گردد. نسخه‌ی فعلی هم در «نسخه‌ها» می‌ماند.</div>
   {% else %}
-    <p>این متن کل فصل به همان قالب فایل <code>chapter.md</code> است و دقیقاً از محتوای فعلی سرور ساخته شده. هر چیزی را عوض کنید، «بررسی» را بزنید تا خطاها و تغییرات را ببینید، بعد «ذخیره».
-      شناسه‌ها (<code>{#…}</code>) را عوض نکنید؛ آمار کاربران به آن‌ها وصل است.</p>
+    <p>متن فصل، دقیقاً همان چیزی که روی سرور است. مشخصات فصل (عنوان، شماره، رایگان) بالای کادر است؛ سرصفحه‌ی فایل
+      (شناسه‌ی کتاب و فصل، رشته‌ها) خودکار ساخته می‌شود و در کادر نشان داده نمی‌شود. هر چیزی را عوض کنید، «بررسی» را بزنید
+      تا خطاها و تغییرات را ببینید، بعد «ذخیره». شناسه‌ها (<code>{#…}</code>) را عوض نکنید؛ آمار کاربران به آن‌ها وصل است.</p>
   {% endif %}
-  <textarea id="file-text" class="file-ed" spellcheck="false">{{ text }}</textarea>
+  {{ meta|json_script:"file-meta" }}
+  <textarea id="file-text" class="file-ed" spellcheck="false">{{ body }}</textarea>
   <div class="cm-save">
     <button id="file-check" class="btn" type="button">بررسی</button>
     <button id="file-save" class="btn primary" type="button" disabled>ذخیره</button>
@@ -31,8 +33,12 @@
 </div>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
+    var metaEl = document.getElementById('file-meta');
+    var meta = null;
+    try { meta = JSON.parse(metaEl.textContent); } catch (err) { meta = null; }
     LimoFileEditor({ api: "{{ api_url|escapejs }}", version: "{{ version }}", restore: {% if restore %}true{% else %}false{% endif %},
       note: "{% if restore %}بازگرداندن نسخه‌ی {{ restore_when|escapejs }}{% else %}ویرایش کل فایل{% endif %}",
+      meta: meta, book_url: "{{ book_url|escapejs }}",
       done: "{% url 'admin:catalog_chapter_manager' chapter.pk %}" });
   });
 </script>

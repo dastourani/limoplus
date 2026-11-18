@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import posixpath
+import re
 import uuid
 from datetime import timedelta
 
@@ -33,7 +34,7 @@ from .exporter import book_bundle, chapter_bundle, export_chapter, flashcard_blo
 from .latex_export import chapter_tex_bundle
 from .importer import outside_flashcards
 from .importer import IMAGE_EXTENSIONS, MAX_IMAGE_BYTES, _SVG_DANGER, apply_chapter, parse_chapter, read_upload, check_against_db
-from .jalali import jalali_datetime
+from .jalali import fa_digits, jalali_datetime
 from .models import ChapterRevision, ContentNode
 from .fresh import formula_macros
 from .labels import all_labels
@@ -233,6 +234,12 @@ def chapter_state(chapter: ContentNode, user=None) -> dict:
         "book": {"id": book.pk, "slug": book.slug, "title": book.title, "is_published": book.is_published},
         "chapter": {"id": chapter.pk, "slug": chapter.slug, "title": chapter.title, "number": chapter.position,
                     "is_free": chapter.is_free, "is_published": chapter.is_published},
+        # Chapter numbers are not unique, but the book is ordered by them. The manager checks this list before its
+        # quick-edit «chapter.update» prompt; the whole-file editor gets the same warning from file.check.
+        "sibling_chapters": list(ContentNode.objects.filter(path__startswith=book.path, depth=book.depth + 1,
+                                                              kind=ContentNode.Kind.CHAPTER)
+                                  .exclude(pk=chapter.pk).order_by("position", "path")
+                                  .values("id", "title", "position")),
         "intro": section_json(intro, None),
         "sections": [section_json(s, nodes.get(s.slug)) for s in parsed.sections],
         "groups": sorted({s.group for s in parsed.sections if s.group}),
@@ -530,7 +537,7 @@ def chapter_api(request, chapter_id):
         except ValueError:
             return JsonResponse({"errors": ["درخواست نامعتبر."]}, status=400)
         if data.get("op") == "file.check":
-            return JsonResponse(_file_check(chapter, data.get("text", "")))
+            return JsonResponse(_file_check(chapter, data.get("text", ""), data.get("meta")))
         if data.get("op") == "file.apply":
             return _file_apply(request, chapter, data)
         if data.get("op") == "file.restore_text":
@@ -566,7 +573,10 @@ def _upload_image(request, chapter):
     return JsonResponse({"ref": f"media:{path}", "url": default_storage.url(path)})
 
 
-def _file_check(chapter, text):
+def _file_check(chapter, text, meta=None):
+    meta_error = _meta_error(meta)
+    if meta_error:
+        return {"errors": [meta_error], "warnings": [], "plan": None, "diff": [], "meta": {"error": True}}
     parsed = editing.check_text(text, chapter.book(), chapter)
     current = export_chapter(chapter)
     return {
@@ -574,11 +584,36 @@ def _file_check(chapter, text):
         "warnings": [str(w) for w in parsed.warnings if "مقدمه‌ی فصل ذخیره می‌شود" not in str(w)],
         "plan": editing.plan_changes(editing.load(chapter), parsed) if not parsed.errors else None,
         "diff": editing.text_diff(current, text.replace("\r\n", "\n")),
+        "meta": _meta_notes(chapter, parsed, meta),
     }
+
+
+def _meta_notes(chapter, parsed, meta=None) -> dict:
+    """What the page says about the details above the box (the card), not about the text.
+
+    «clash» is the one that matters: the chapter's number is not unique and `_order_chapters` sorts the book by it, so
+    a second chapter numbered ۲ moves every chapter after it — silently, until now. Said here, before the save.
+    """
+    number = parsed.meta.get("chapter_number")
+    if meta and "chapter_number" in meta:
+        number = meta["chapter_number"]
+    if number is None:
+        return {}
+    book = chapter.book()
+    twin = (ContentNode.objects.filter(path__startswith=book.path, depth=book.depth + 1, position=number, kind=ContentNode.Kind.CHAPTER)
+            .exclude(pk=chapter.pk).first())
+    if twin is None:
+        return {}
+    return {"clash": f"شماره‌ی {fa_digits(number)} الان به فصل «{twin.title}» داده شده؛ با ذخیره ترتیب فصل‌های کتاب عوض می‌شود.",
+            "twin": twin.title}
+
 
 
 def _file_apply(request, chapter, data):
     text = data.get("text", "")
+    meta_error = _meta_error(data.get("meta"))
+    if meta_error:
+        return JsonResponse({"errors": [meta_error], "meta": {"error": True}}, status=400)
     parsed = editing.check_text(text, chapter.book(), chapter)
     if parsed.errors:
         return JsonResponse({"errors": [str(e) for e in parsed.errors]}, status=400)
@@ -596,6 +631,20 @@ def _file_apply(request, chapter, data):
     except editing.Conflict as e:
         return JsonResponse({"errors": e.messages, "conflict": True}, status=409)
     return JsonResponse({"ok": True, "note": note, "state": chapter_state(chapter, request.user)})
+
+
+def _meta_error(meta) -> str:
+    """The card sends its three details beside the text. They are also lines of the header, so the text is what is
+    checked — but a value that cannot become a line (a number that is not a number, an empty title) is refused here,
+    with its own sentence, rather than as a confusing «خط مشخصات نامعتبر است»."""
+    if not isinstance(meta, dict):
+        return ""
+    number = meta.get("chapter_number")
+    if number is not None and (isinstance(number, bool) or not isinstance(number, int) or number < 0 or number > 32767):
+        return "شماره‌ی فصل باید عددی بین ۰ و ۳۲۷۶۷ باشد."
+    if "chapter_title" in meta and not str(meta.get("chapter_title") or "").strip():
+        return "عنوان فصل خالی است."
+    return ""
 
 
 def _restore_text(request, chapter, data):
@@ -647,19 +696,60 @@ def chapter_manager(admin_site, request, chapter_id):
 
 def chapter_file(admin_site, request, chapter_id):
     chapter = _chapter(chapter_id)
-    _can_edit(request, chapter.book())
-    text = export_chapter(chapter)
+    book = chapter.book()
+    _can_edit(request, book)
+    current_text = export_chapter(chapter)
+    text = current_text
     restore = None
     if request.GET.get("revision"):
         revision = get_object_or_404(ChapterRevision, pk=request.GET["revision"], chapter=chapter)
         text, restore = revision.text, revision
+    # The box holds only the selected version's body; its header always comes from the *current* chapter. Restoring an
+    # old text must never undo a later book rename, slug, major assignment, or chapter detail hidden from the box.
+    body = whole_file_body(text)
+    current_header = whole_file_header(current_text)
+    majors = list(book.majors.order_by("order", "name"))
+    # A full version restore includes the three editable chapter details from that version. The book, its majors and
+    # both slugs remain current/read-only: a restore must not roll back book metadata or user-progress identities.
+    restore_details = parse_chapter(text).meta if restore and whole_file_header(text) else {}
+    meta = {
+        "chapter_title": restore_details.get("chapter_title", chapter.title),
+        "chapter_number": restore_details.get("chapter_number", chapter.position),
+        "chapter_free": restore_details.get("chapter_free", chapter.is_free),
+        "book_slug": book.slug, "book_title": book.title, "chapter_slug": chapter.slug,
+        "majors": [{"slug": m.slug, "name": m.name} for m in majors], "header": current_header,
+    }
     return TemplateResponse(
         request,
         "admin/catalog/book/chapter_file.html",
-        _context(admin_site, request, f"ویرایش کل فایل: {chapter.title}", book=chapter.book(), chapter=chapter, text=text,
+        _context(admin_site, request, f"ویرایش کل فایل: {chapter.title}", book=book, chapter=chapter, body=body, meta=meta,
+                 book_url=reverse("admin:catalog_inbox") if book.is_inbox else reverse("admin:catalog_book_change", args=[book.pk]),
                  restore=restore, restore_when=jalali_datetime(restore.updated_at) if restore else "",
                  version=editing.version_of(export_chapter(chapter)), api_url=reverse("admin:catalog_chapter_api", args=[chapter.pk])),
     )
+
+
+FRONT_MATTER = re.compile(r"\A\ufeff?[ \t]*---[ \t]*\n(.*?)\n[ \t]*---[ \t]*(?:\n|\Z)", re.S)
+FRONT_KEY = re.compile(r"^(شناسه-کتاب|کتاب|قیمت-کتاب|رشته‌ها|شناسه-فصل|فصل|عنوان|عنوان-انگلیسی|رایگان)\s*:", re.M)
+
+
+def whole_file_header(text: str) -> str:
+    """The leading chapter header, exactly as written, or an empty string if the text has none."""
+    match = FRONT_MATTER.match(text or "")
+    if not match:
+        return ""
+    lines = [line for line in match.group(1).split("\n") if line.strip()]
+    return (text or "")[:match.end()] if lines and all(FRONT_KEY.match(line.strip()) for line in lines) else ""
+
+
+def whole_file_body(text: str) -> str:
+    """The chapter's text without its header — what «ویرایش کل فایل» puts in the box.
+
+    The same rule the page has always used to keep the header out of the preview: only a block at the very top that
+    holds nothing but the chapter's keys. A «---» pair around prose is a horizontal rule and stays in the text.
+    """
+    header = whole_file_header(text)
+    return (text or "")[len(header):] if header else (text or "")
 
 
 def chapter_export(request, chapter_id):

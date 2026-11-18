@@ -1165,13 +1165,69 @@ class FileEditorPreviewTests(_Base):
         self.assertContains(response, 'id="file-text"')
         self.assertContains(response, "LimoFileEditor")
 
-    def test_the_chapter_header_is_in_the_box_and_stays_there(self):
-        # The box holds the file as the server gave it, header included; the preview is what leaves it out (in JS).
-        # If the header ever stopped reaching the box, «ویرایش کل فایل» would silently drop it on the next save.
+    def test_the_box_holds_the_body_and_the_details_sit_above_it(self):
+        # The header used to reach the box as code («--- شناسه-کتاب: … ---» above the lesson). It is a contract for a
+        # file coming from outside, not something to type while editing a chapter that exists: the box now holds the
+        # body only, and the three details a person edits come as fields. The header still goes back on save — the
+        # page script puts it back (`headerWith`), and `test_saving_the_body_keeps_the_header` here pins the result
+        # through the server.
         response = self.client.get(self.url)
-        box = response.content.decode().split('id="file-text"', 1)[1].split("</textarea>", 1)[0]
-        self.assertIn("شناسه-کتاب", box)
-        self.assertIn("شناسه-فصل", box)
+        html = response.content.decode()
+        box = html.split('id="file-text"', 1)[1].split("</textarea>", 1)[0]
+        self.assertNotIn("شناسه-کتاب", box)
+        self.assertNotIn("شناسه-فصل", box)
+        self.assertNotIn("---", box.strip().splitlines()[0] if box.strip() else "")
+        # The details the card edits, and the ids it never lets anyone edit.
+        meta = json.loads(html.split('id="file-meta"', 1)[1].split(">", 1)[1].split("</script>", 1)[0])
+        self.assertEqual((meta["chapter_slug"], meta["book_slug"]), ("ch1", "test-book"))
+        for key in ("chapter_title", "chapter_number", "chapter_free", "majors"):
+            self.assertIn(key, meta)
+        self.assertIn("file-meta", html)
+
+    def test_a_body_saved_alone_is_still_checked_with_its_header(self):
+        # What the page sends back is body + header (headerWith in panel.js). The server side of that contract: the
+        # body alone is not a chapter, and body + header is the file it was before.
+        from .panel import whole_file_body
+
+        text = export_chapter(self.chapter)
+        body = whole_file_body(text)
+        self.assertNotIn("شناسه-کتاب", body)
+        self.assertIn("## بخش اول {#one}", body)
+        self.assertTrue(self.op(op="file.check", text=body).json()["errors"], "a body with no header must not pass")
+        header = text[: len(text) - len(body)]
+        self.assertEqual(self.op(op="file.check", text=header + body).json()["errors"], [])
+
+    def test_saving_the_body_keeps_the_header(self):
+        # The whole point of taking the header out of the box: putting it back must be exact, or a save would drop
+        # the book, the ids and the majors from the file.
+        from .panel import whole_file_body
+
+        before = export_chapter(self.chapter)
+        body = whole_file_body(before).replace("متن دوم.", "متن دوم، با سرصفحه‌ی برگشته.")
+        r = self.op(op="file.apply", text=before.replace(whole_file_body(before), body))
+        self.assertEqual(r.status_code, 200, r.content)
+        after = export_chapter(self.chapter)
+        self.assertIn("متن دوم، با سرصفحه‌ی برگشته.", after)
+        self.assertTrue(after.startswith("---\nشناسه-کتاب: test-book\nکتاب: کتاب آزمایشی"))
+
+    def test_restoring_old_body_uses_the_current_read_only_header(self):
+        # A past revision can predate a book rename. The body comes from that version, but its header (book/title/slug/
+        # majors) must not roll back: those are readonly in the card and belong to the current book.
+        old = (export_chapter(self.chapter).replace("کتاب: کتاب آزمایشی", "کتاب: عنوان کهنه")
+               .replace(f"عنوان: {self.chapter.title}", "فصل: 9\nعنوان: عنوان کهنه"))
+        revision = ChapterRevision.objects.create(chapter=self.chapter, text=old, source=ChapterRevision.Source.PANEL)
+        self.book.title = "عنوان تازه"
+        self.book.save(update_fields=["title"])
+        response = self.client.get(self.url + f"?revision={revision.pk}")
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        meta = json.loads(html.split('id="file-meta"', 1)[1].split(">", 1)[1].split("</script>", 1)[0])
+        self.assertIn("کتاب: عنوان تازه", meta["header"])
+        self.assertNotIn("عنوان کهنه", meta["header"])
+        self.assertEqual(meta["chapter_title"], "عنوان کهنه")
+        self.assertEqual(meta["chapter_number"], 9)
+        body = html.split('id="file-text"', 1)[1].split("</textarea>", 1)[0]
+        self.assertIn("متن دوم.", body)
 
 
 class BookEditorAccessTests(_Base):
@@ -1460,3 +1516,65 @@ class ChapterManagerScriptTests(_Base):
         # An answer without «destinations» left self.dest unset, so every render asked again and re-rendered itself.
         self.assertEqual(self.js.count("self.dest = d.destinations || [];"), 2,
                          "both destination lists must fall back to [] or the panel can loop")
+
+    def test_the_header_goes_back_on_the_text_before_check_and_save(self):
+        # The box of «ویرایش کل فایل» holds the body only. Both requests that reach the server must carry the whole
+        # file, or a save would drop the book and the chapter's id — the one thing that must never happen.
+        body = self.js[self.js.index("window.LimoFileEditor = function (opts) {"):]
+        for call in ("post({ op: 'file.check', text: checkText,", "post(Object.assign({ op: 'file.apply', text: fullText(),"):
+            self.assertIn(call, body)
+        self.assertIn("function fullText() { return header + ta.value; }", body)
+        self.assertIn("var checkText = fullText();", body)
+        self.assertIn("function headerWith(text, meta) {", self.js)
+
+    def test_the_quick_chapter_edit_warns_before_reordering_the_book(self):
+        self.assertIn("this.state.sibling_chapters || []", self.js)
+        self.assertIn("ذخیره، ترتیب فصل‌های کتاب را عوض می‌کند", self.js)
+
+
+class ChapterCardTests(_Base):
+    """«مشخصات فصل» above the whole-file box: the details a person edits, and the one that used to bite.
+
+    The number is not unique and `_order_chapters` sorts the book by it, so a second chapter numbered ۲ moved every
+    chapter after it with no error at all (measured: chapters 5, 10, 20 became 1, 1, 10 after two saves). The card
+    warns before the save instead of after the book has silently reordered itself.
+    """
+
+    def test_a_duplicate_number_is_reported_with_the_name_of_the_other_chapter(self):
+        second = (GOOD.replace("شناسه-فصل: ch1", "شناسه-فصل: ch2").replace("{#one}", "{#c2a}").replace("{#two}", "{#c2b}")
+                  .replace(":::تست {#q1}", ":::تست {#c2q}").replace("فلش‌کارت: card1", "فلش‌کارت: c2f")
+                  .replace(":::فلش‌کارت {#card1}", ":::فلش‌کارت {#c2f}").replace("عنوان: فصل یک", "عنوان: فصل دو"))
+        _, result = import_file("ch2.md", second.encode())
+        ContentNode.objects.filter(pk=result.chapter.pk).update(position=1)
+        siblings = self.state()["sibling_chapters"]
+        self.assertIn({"id": result.chapter.pk, "title": "فصل دو", "position": 1}, siblings)
+        self.op(op="chapter.update", title="فصل یک", number=1, is_free=True)
+        r = self.op(op="file.check", text=export_chapter(self.chapter)).json()
+        self.assertIn("clash", r["meta"])
+        self.assertIn("فصل دو", r["meta"]["clash"])
+        # Sending the card's own number (the same one) says the same thing: the page sends its fields with the text.
+        r = self.op(op="file.check", text=export_chapter(self.chapter), meta={"chapter_number": 1, "chapter_title": "فصل یک",
+                                                                            "chapter_free": True}).json()
+        self.assertIn("فصل دو", r["meta"]["clash"])
+        r = self.op(op="file.check", text=export_chapter(self.chapter), meta={"chapter_number": 7}).json()
+        self.assertNotIn("clash", r["meta"])
+
+    def test_a_number_that_is_not_a_number_is_refused_with_its_own_sentence(self):
+        text = export_chapter(self.chapter)
+        for bad in ("دو", -3, 1.5, True, 32768):
+            with self.subTest(bad=bad):
+                r = self.op(op="file.apply", text=text, meta={"chapter_number": bad})
+                self.assertEqual(r.status_code, 400)
+                self.assertIn("شماره‌ی فصل باید عددی بین ۰ و ۳۲۷۶۷ باشد", r.json()["errors"][0])
+
+    def test_an_empty_title_from_the_card_is_refused(self):
+        r = self.op(op="file.apply", text=export_chapter(self.chapter), meta={"chapter_title": "   "})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("عنوان فصل خالی است", r.json()["errors"][0])
+
+    def test_the_card_is_only_about_the_three_details(self):
+        # A request without «meta» (an older page, a saved tab) still works: the header of the text is what counts.
+        r = self.op(op="file.check", text=export_chapter(self.chapter))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["errors"], [])
+        self.assertEqual(r.json()["meta"], {})
