@@ -836,8 +836,13 @@
       frameClass: opts.frameClass || '',
       onClose: function () { self.setPreview(false, false); },
       onExpandChange: function (expanded) { self.setPreview(true, expanded); },
-      onDeviceChange: function () { if (previewOn) self.refresh(); },
+      onDeviceChange: function () { syncDeviceClass(); preview.refreshScale(); },
     });
+    function syncDeviceClass() {
+      ['phone', 'tablet', 'web'].forEach(function (id) {
+        wrap.classList.toggle('device-' + id, preview.getDevice() === id);
+      });
+    }
     this.preview = preview;
     this.frame = preview.frame;
     body.appendChild(preview.el);
@@ -849,8 +854,7 @@
       previewOn = visible;
       wrap.classList.toggle('preview-off', !visible);
       wrap.classList.toggle('preview-only', visible && expanded);
-      wrap.classList.toggle('device-' + preview.getDevice(), true);
-      ['phone', 'tablet', 'web'].forEach(function (id) { wrap.classList.toggle('device-' + id, preview.getDevice() === id); });
+      syncDeviceClass();
       previewBtn.classList.toggle('on', visible);
       previewBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
       preview.setExpanded(expanded);
@@ -2115,7 +2119,7 @@
       minWidth: 360,
       onClose: function () { setPreview(false, false); },
       onExpandChange: function (expanded) { setPreview(true, expanded); },
-      onDeviceChange: function () { syncDeviceClass(); if (previewOn) refresh(true); },
+      onDeviceChange: function () { syncDeviceClass(); preview.refreshScale(); },
     });
     var frame = preview.frame;
     edBody.appendChild(preview.el);
