@@ -1,12 +1,13 @@
 """The website's pages. At the root of the site's own host (WEBSITE_HOSTS), and under /site/ elsewhere (to preview)."""
 from django.urls import path
 
-from . import views
+from . import applications, views
 
 app_name = "website"
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("teacher-application/", applications.teacher_application, name="teacher-application"),
     path("books/", views.books, name="books"),
     path("books/<str:slug>/", views.book, name="book"),
     path("download/", views.download, name="download"),

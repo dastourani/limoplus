@@ -11,7 +11,7 @@
 <meta property="og:locale" content="fa_IR">
 <meta name="theme-color" content="#1B2620">
 <link rel="icon" href="{% static 'website/icon.svg' %}" type="image/svg+xml">
-<link rel="stylesheet" href="{% static 'website/site.css' %}?v=9">
+<link rel="stylesheet" href="{% static 'website/site.css' %}?v=10">
 {% block head %}{% endblock %}
 </head>
 <body>
@@ -44,7 +44,7 @@
   <div class="wrap footin">
     <div class="fcol wide"><b>لیموخوان</b><p>{{ s.footer_about }}</p></div>
     <div class="fcol"><b>لینک‌ها</b>{% for item in nav_items %}<a href="{{ item.href }}">{{ item.title }}</a>{% endfor %}</div>
-    <div class="fcol"><b>پشتیبانی</b><a href="{% url 'website:faq' %}">پرسش‌های پرتکرار</a>{% for p in footer_pages %}<a href="{% url 'website:page' p.slug %}">{{ p.title }}</a>{% endfor %}</div>
+    <div class="fcol"><b>پشتیبانی</b><a href="{% url 'website:faq' %}">پرسش‌های پرتکرار</a><a href="{% url 'website:teacher-application' %}">درخواست همکاری آموزشی</a>{% for p in footer_pages %}<a href="{% url 'website:page' p.slug %}">{{ p.title }}</a>{% endfor %}</div>
     <div class="fcol"><b>تماس</b>{% if s.email %}<a href="mailto:{{ s.email }}" dir="ltr">{{ s.email }}</a>{% endif %}{% if s.phone %}<span dir="ltr">{{ s.phone }}</span>{% endif %}{% if s.telegram_url %}<a href="{{ s.telegram_url }}">تلگرام</a>{% endif %}{% if s.instagram_url %}<a href="{{ s.instagram_url }}">اینستاگرام</a>{% endif %}</div>
     {% if s.enamad_html %}<div class="enamad">{{ s.enamad_html|safe }}</div>{% endif %}
   </div>
