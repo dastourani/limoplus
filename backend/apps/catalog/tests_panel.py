@@ -1405,8 +1405,11 @@ class PreviewPaneTests(_Base):
         self.assertIn(".pv-pane", css)
         self.assertIn(".pv-device.on", css)
         self.assertIn("preview-only", css)
-        self.assertIn("overflow: visible", css)
-        self.assertIn("height: max-content", css)
+        # The pane is capped to the editor's working height; its body scrolls (like the editor), the bar stays put,
+        # and the page never grows to the lesson's full height. A short lesson still shows exactly its content.
+        self.assertIn(".pv-pane-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;", css)
+        self.assertIn("height: max-content; max-height: 70vh;", css)
+        self.assertIn(".md-ed.file .pv-pane { max-height: 75vh; }", css)
 
     def test_phone_and_tablet_lay_out_at_their_logical_width_and_only_shrink_visually(self):
         pane = self.assets("preview-pane.js")
@@ -1420,6 +1423,10 @@ class PreviewPaneTests(_Base):
         self.assertIn("function contentHeight()", pane)
         self.assertIn("var height = contentHeight();", pane)
         self.assertNotIn("availableHeight", pane)
+        # Only the body is measured: the root's offsetHeight is the frame's own current height, and counting it
+        # ratcheted the frame so it could never shrink again («the page never stops growing»).
+        self.assertNotIn("root ? root.offsetHeight", pane)
+        self.assertNotIn("root ? root.scrollHeight", pane)
 
     def test_the_floating_window_and_its_drag_code_are_gone(self):
         panel = self.assets("panel.js")
@@ -1437,9 +1444,9 @@ class PreviewTypeAndScrollTests(_Base):
     shared with the app verbatim, the preview document carries all four weights with `font-display: swap`, and the
     page's cache stamp (?v=) covers the fonts and the pane so a changed font is a changed URL.
 
-    Scroll rule (no JavaScript intercepts the wheel anywhere): over the preview nothing can scroll, so the page does;
-    over the editor CodeMirror scrolls itself and `overscroll-behavior: contain` keeps it from jerking the page;
-    everywhere else the page scrolls.
+    Scroll rule (no JavaScript intercepts the wheel anywhere): the preview pane is capped to the editor's working
+    height and its body scrolls over `overscroll-behavior: contain`, the editor's CodeMirror scroller does the same,
+    and everywhere else the page scrolls.
     """
 
     def assets(self, name):
@@ -1450,7 +1457,7 @@ class PreviewTypeAndScrollTests(_Base):
         for face in ("font-weight:' + weight + '", "font-display:swap", "Vazirmatn_400Regular.ttf",
                      "Vazirmatn_700Bold.ttf", "Vazirmatn_800ExtraBold.ttf", "Vazirmatn_900Black.ttf", "STATIC_V"):
             self.assertIn(face, panel)
-        self.assertIn("html,body{overflow:hidden}", panel)   # the frame cannot scroll, so the wheel reaches the page
+        self.assertIn("html,body{overflow:hidden}", panel)   # the frame never scrolls: the pane's body does
 
     def test_the_panel_stylesheet_declares_all_four_weights_with_swap(self):
         css = self.assets("panel.css")
@@ -1473,6 +1480,12 @@ class PreviewTypeAndScrollTests(_Base):
         css = self.assets("panel.css")
         self.assertIn(".md-ed .limo-cm .cm-scroller { max-height: 70vh; overscroll-behavior: contain; }", css)
         self.assertIn(".file-ed + .limo-cm .cm-scroller { max-height: 75vh; overscroll-behavior: contain; }", css)
+
+    def test_the_preview_pane_is_capped_and_scrolls_itself_instead_of_growing_the_page(self):
+        css = self.assets("panel.css")
+        self.assertIn("height: max-content; max-height: 70vh;", css)
+        self.assertIn(".md-ed.file .pv-pane { max-height: 75vh; }", css)
+        self.assertIn("overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;", css)
 
     def test_no_wheel_listener_is_registered_anywhere_in_the_panel(self):
         for name in ("panel.js", "preview-pane.js", "limo-preview.js"):
