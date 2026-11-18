@@ -72,10 +72,18 @@
 .md-ed .pv-pane { border-right: 1px solid var(--line); background: #e9ece4; min-width: 0; min-height: 240px; display: flex; flex-direction: column; align-self: start; height: max-content; max-height: 70vh; }
 .pv-pane-bar { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 6px 8px; background: #17201A; color: #F6F7F2; flex: 0 0 auto; }
 .pv-pane-title { font-size: 12px; font-weight: 700; flex: 1 1 auto; min-width: 48px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* The bar never scrolls: the body below it is the scroller (wheel over a lesson scrolls the preview, like the editor). */
-.pv-pane-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; display: flex; justify-content: center; align-items: flex-start; padding: 10px; }
+/* The bar never scrolls: the body below it is the scroller (wheel over a lesson scrolls the preview, like the editor).
+   `overscroll-behavior` is toggled by preview-pane.js: `contain` only while this pane actually has overflow, otherwise
+   `auto`, so the wheel/touch chains to the page when it does not (an unconditional `contain` swallows the gesture). */
+.pv-pane-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: auto; display: flex; justify-content: center; align-items: flex-start; padding: 10px; scrollbar-width: thin; scrollbar-color: rgba(120,125,120,.45) transparent; }
+.pv-pane-body::-webkit-scrollbar { width: 8px; }
+.pv-pane-body::-webkit-scrollbar-thumb { background: rgba(120,125,120,.4); border-radius: 8px; }
+.pv-pane-body::-webkit-scrollbar-track { background: transparent; }
 .pv-pane-stage { flex: 0 0 auto; }
 .pv-frame { display: block; border: 0; border-radius: 14px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+/* The preview frames render the lesson read-only (srcdoc, no links or forms). Ignoring the pointer puts the
+   wheel/touch back on the page — no dead zones over the lesson inside the editor or the «کارت مرور» cards. */
+.pv-frame, iframe.phone { pointer-events: none; }
 .pv-devices { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; overflow-x: auto; padding: 2px;
   border-radius: 8px; background: rgba(255,255,255,.08); scrollbar-width: none; }
 .pv-devices::-webkit-scrollbar { display: none; }
