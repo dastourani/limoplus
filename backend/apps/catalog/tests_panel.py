@@ -1684,6 +1684,20 @@ class PreviewPaneTests(_Base):
         self.assertNotIn("root ? root.offsetHeight", pane)
         self.assertNotIn("root ? root.scrollHeight", pane)
 
+    def test_device_changes_reflow_both_editors_without_reloading_the_page(self):
+        panel = self.assets("panel.js")
+        css = self.assets("panel.css")
+        md_editor = panel[panel.index("function MdEditor("):panel.index("MdEditor.prototype.refresh")]
+        file_editor = panel[panel.index("window.LimoFileEditor = function (opts) {"):]
+        callback = "onDeviceChange: function () { syncDeviceClass(); preview.refreshScale(); }"
+        self.assertIn(callback, md_editor)
+        self.assertIn(callback, file_editor)
+        self.assertIn("function syncDeviceClass()", md_editor)
+        self.assertIn("wrap.classList.toggle('device-' + id, preview.getDevice() === id)", md_editor)
+        # The selected tablet/web mode widens the left-hand preview track; the editor uses the remaining width.
+        self.assertIn(".md-ed.device-tablet .md-body { grid-template-columns: minmax(0, 1fr) minmax(430px, 788px); }", css)
+        self.assertIn(".md-ed.device-web .md-body { grid-template-columns: minmax(260px, 0.72fr) minmax(360px, 1.28fr); }", css)
+
     def test_the_floating_window_and_its_drag_code_are_gone(self):
         panel = self.assets("panel.js")
         css = self.assets("panel.css")
