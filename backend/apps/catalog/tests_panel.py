@@ -1405,6 +1405,8 @@ class PreviewPaneTests(_Base):
         self.assertIn(".pv-pane", css)
         self.assertIn(".pv-device.on", css)
         self.assertIn("preview-only", css)
+        self.assertIn("overflow: visible", css)
+        self.assertIn("height: max-content", css)
 
     def test_phone_and_tablet_lay_out_at_their_logical_width_and_only_shrink_visually(self):
         pane = self.assets("preview-pane.js")
@@ -1415,6 +1417,9 @@ class PreviewPaneTests(_Base):
         self.assertIn("stage.style.width = Math.round(w * scale) + 'px'", pane)
         self.assertIn("var scale = Math.min(1, available / w)", pane)
         self.assertIn("if (!w)", pane)   # «وب» stays flexible instead of pretending to be a phone at another width
+        self.assertIn("function contentHeight()", pane)
+        self.assertIn("var height = contentHeight();", pane)
+        self.assertNotIn("availableHeight", pane)
 
     def test_the_floating_window_and_its_drag_code_are_gone(self):
         panel = self.assets("panel.js")
@@ -1557,7 +1562,7 @@ class ChapterManagerScriptTests(_Base):
         pane = (settings.BASE_DIR / "apps/catalog/static/catalog/preview-pane.js").read_text(encoding="utf-8")
         create = pane.index("function create(options)")
         make = pane.index("var frame =", create)
-        bind = pane.index("frame.addEventListener('load', scheduleLayout)", make)
+        bind = pane.index("frame.addEventListener('load'", make)
         self.assertLess(make, bind)
         self.assertLess(self.js.index("LimoPreviewPane.create({"), self.js.index("this.frame = preview.frame;"))
         self.assertLess(self.js.index("var preview = window.LimoPreviewPane.create({"), self.js.index("body.appendChild(preview.el);"))
