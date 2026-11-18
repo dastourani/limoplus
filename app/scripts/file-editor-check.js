@@ -17,7 +17,9 @@
  *   - 「بررسی」 sends text whose header is exactly the one the server wrote (byte for byte);
  *   - a card edit reaches that header (title, number);
  *   - a duplicate number is said out loud;
- *   - the preview never shows the header.
+ *   - the preview never shows the header;
+ *   - the preview window opens, its title bar carries the device widths, and they apply without closing it;
+ *   - dragging by the title bar moves the window in both axes.
  * Exit code 1 = something is wrong.
  */
 'use strict';
@@ -187,6 +189,57 @@ const headerOf = (text) => { const i = text.indexOf('\n---', 4); return text.sli
   const frame = doc.querySelector('iframe.file-prev');
   if (!frame) fails.push('no preview frame');
   else if (frame.srcdoc && frame.srcdoc.includes('شناسه-کتاب')) fails.push('the preview shows the file header');
+
+  // 7. The preview window: it opens from the toolbar, its title bar carries the device widths, they apply without
+  //    closing it, and dragging by the bar moves the window in both axes.
+  const winBtn = Array.from(doc.querySelectorAll('.md-bar .pv-open')).pop();
+  const dialog = doc.querySelector('dialog.pv-win');
+  if (!winBtn) fails.push('no «پیش‌نمایش در پنجره» button on the editor toolbar');
+  else if (!dialog) fails.push('no preview window in the page');
+  else {
+    // The width buttons are NOT in the editor's toolbar any more (they travel with the window); the justify switch is.
+    if (doc.querySelector('.md-bar .pv-ctl') && /گوشی|تبلت|تمام‌عرض/.test(doc.querySelector('.md-bar .pv-ctl').textContent)) {
+      fails.push('the device widths are still on the editor toolbar');
+    }
+    winBtn.click();
+    await wait(400);
+    const devices = dialog.querySelectorAll('.pv-devices .pv-device');
+    if (devices.length !== 4) fails.push('the window title bar has ' + devices.length + ' device widths, not 4');
+    else {
+      const tablet = Array.from(devices).find((b) => b.textContent.trim() === 'تبلت');
+      const label = (el) => el && el.textContent.trim();
+      if (!tablet) fails.push('no «تبلت» among the window device widths (' + Array.from(devices).map(label).join('، ') + ')');
+      else {
+        tablet.click();
+        await wait(200);
+        if (w.localStorage.getItem('limo.panel.width') !== 'tablet') fails.push('clicking «تبلت» did not remember the width');
+        if (tablet.getAttribute('aria-pressed') !== 'true') fails.push('the chosen width is not marked pressed');
+        if (frame && frame.style.width !== '768px') fails.push('the chosen width did not reach the frame (width=' + (frame && frame.style.width) + ')');
+        // And back to phone, to prove the switch applies again without closing the window.
+        const phone = Array.from(devices).find((b) => b.textContent.trim() === 'گوشی');
+        phone.click();
+        await wait(200);
+        if (frame && frame.style.width !== '390px') fails.push('switching to «گوشی» did not resize the frame (width=' + (frame && frame.style.width) + ')');
+      }
+    }
+    // Drag the title bar: the window must follow the pointer horizontally AND vertically.
+    const bar = dialog.querySelector('.pv-win-bar');
+    const ptr = (target, type, x, y) => {
+      const e = new w.Event(type, { bubbles: true, cancelable: true });
+      e.clientX = x; e.clientY = y; e.pointerId = 1; e.button = 0;
+      target.dispatchEvent(e);
+    };
+    const left = parseFloat(dialog.style.left), top = parseFloat(dialog.style.top);
+    ptr(bar, 'pointerdown', 500, 40);
+    ptr(w, 'pointermove', 640, 160);
+    await wait(120);
+    ptr(w, 'pointerup', 640, 160);
+    await wait(120);
+    if (Math.abs(parseFloat(dialog.style.left) - left - 140) > 1) fails.push('dragging did not move the window horizontally (' + dialog.style.left + ' vs ' + left + ')');
+    if (Math.abs(parseFloat(dialog.style.top) - top - 120) > 1) fails.push('dragging did not move the window vertically (' + dialog.style.top + ' vs ' + top + ')');
+    winBtn.click();   // close again
+    await wait(200);
+  }
 
   const report = [
     'sent: ' + sent.map((b) => b.op).join(' | '),

@@ -142,9 +142,10 @@
   }
 
   // ---------- the preview's own controls: how wide, and aligned which way ----------
-  // A phone, a tablet, or the whole panel. «دقیقاً مثل اپ» is only true at a phone's width: the same text breaks its
-  // lines elsewhere. Choosing the width is the honest answer — the professor sees the layout a learner gets.
-  var WIDTHS = [['phone', 'گوشی', 390], ['tablet', 'تبلت', 768], ['wide', 'تمام عرض', 0]];
+  // A phone, a tablet, a desktop web page, or the whole panel. «دقیقاً مثل اپ» is only true at a phone's width: the
+  // same text breaks its lines elsewhere. Choosing the width is the honest answer — the professor sees the layout a
+  // learner gets. «تمام‌عرض» releases the frame to the window's width.
+  var WIDTHS = [['phone', 'گوشی', 390], ['tablet', 'تبلت', 768], ['web', 'وب', 1024], ['wide', 'تمام‌عرض', 0]];
   function previewWidth() {
     try { var v = localStorage.getItem('limo.panel.width'); if (v) return v; } catch (e) { /* ignore */ }
     return 'phone';
@@ -154,7 +155,8 @@
     return 390;
   }
   // The controls that sit above a preview: width buttons and the justify switch. `onChange` redraws it.
-  function previewControls(onChange) {
+  function previewControls(onChange, options) {
+    options = options || {};
     var row = h('div', { class: 'pv-ctl' });
     var widthBtns = {};
     function paint() {
@@ -163,7 +165,7 @@
       justifyBtn.classList.toggle('on', readingJustify());
       onChange();
     }
-    WIDTHS.forEach(function (w) {
+    if (!options.hideWidths) WIDTHS.forEach(function (w) {
       widthBtns[w[0]] = h('button', { type: 'button', title: 'عرض پیش‌نمایش: ' + w[1], onclick: function (e) {
         e.preventDefault();
         try { localStorage.setItem('limo.panel.width', w[0]); } catch (err) { /* ignore */ }
@@ -182,11 +184,37 @@
     return { el: row, repaint: paint };
   }
 
+  // The whole-file preview has its own window, so device widths belong in that window's title bar. Unlike the old
+  // toolbar buttons outside the modal, these stay reachable while the preview is open and apply immediately.
+  function deviceControls(onChange) {
+    var row = h('div', { class: 'pv-devices', role: 'group', 'aria-label': 'اندازه‌ی پیش‌نمایش' });
+    var buttons = {};
+    function paint() {
+      var active = previewWidth();
+      for (var key in buttons) {
+        buttons[key].classList.toggle('on', key === active);
+        buttons[key].setAttribute('aria-pressed', key === active ? 'true' : 'false');
+      }
+    }
+    WIDTHS.forEach(function (item) {
+      var key = item[0], label = item[1];
+      buttons[key] = h('button', { type: 'button', class: 'pv-device', title: 'نمایش در اندازه‌ی ' + label,
+        onclick: function (e) {
+          e.preventDefault();
+          try { localStorage.setItem('limo.panel.width', key); } catch (err) { /* ignore */ }
+          paint();
+          onChange(key);
+        } }, label);
+      row.appendChild(buttons[key]);
+    });
+    paint();
+    return row;
+  }
+
   // ---------- The preview as a window you can move ----------
-  // The preview used to live inside the editor's right-hand column, so «تمام عرض» could never be wider than that
-  // column and «تبلت» was cut off. A professor asked for a real window: a title bar, an × to close, movable by its
-  // bar, and the width buttons on the EDITOR's toolbar rather than above the lesson (they are settings of the frame,
-  // not part of what the reader sees).
+  // The preview used to live inside the editor's right-hand column, so «تمام‌عرض» could never be wider than that
+  // column and «تبلت» was cut off. It now lives in its own real window: a title bar, device-width buttons inside
+  // that bar (always reachable while the window is open), an × to close, and free dragging in every direction.
   //
   // Built on <dialog>: the browser already handles Escape, focus and the backdrop, so the only things written here are
   // the ones it does not have — dragging and resizing.
@@ -203,7 +231,7 @@
     dialog.className = 'pv-win';
     var title = h('span', { class: 'pv-win-title' }, opts.title || 'پیش‌نمایش فصل');
     var closeBtn = h('button', { type: 'button', class: 'pv-win-x', title: 'بستن (Esc)', onclick: function () { close(); } }, '×');
-    var bar = h('div', { class: 'pv-win-bar' }, title, closeBtn);
+    var bar = h('div', { class: 'pv-win-bar' }, title, opts.controls || null, closeBtn);
     var body = h('div', { class: 'pv-win-body' });
     var grip = h('div', { class: 'pv-win-grip', title: 'برای تغییر اندازه بکشید' });
     dialog.appendChild(bar);
@@ -232,19 +260,47 @@
     place(saved && saved.x, saved && saved.y, saved && saved.w, saved && saved.h);
     var api;   // filled at the end; close() reads `api.onClosed` at call time
 
-    // --- dragging by the title bar ---
-    var drag = null;
+    // --- Windows-style drag: grab anywhere on the non-control part of the title bar and move freely in both axes.
+    // Listen on window as well as capturing on the bar so a fast pointer that leaves the bar cannot lose the window.
+    // Position updates are coalesced to one per animation frame, which avoids the stutter of laying out on every
+    // high-frequency pointer event and feels the same with a mouse, pen or touch.
+    var drag = null, moveFrame = 0, pendingMove = null;
+    function flushDrag() {
+      moveFrame = 0;
+      if (!drag || !pendingMove) return;
+      var p = pendingMove;
+      pendingMove = null;
+      place(drag.left + p.x - drag.x, drag.top + p.y - drag.y, dialog.offsetWidth || parseFloat(dialog.style.width),
+        dialog.offsetHeight || parseFloat(dialog.style.height));
+    }
+    function stopDrag(e) {
+      if (!drag || (e && e.pointerId != null && drag.pointerId != null && e.pointerId !== drag.pointerId)) return;
+      if (pendingMove) flushDrag();
+      var id = drag.pointerId;
+      drag = null;
+      pendingMove = null;
+      if (moveFrame) { cancelAnimationFrame(moveFrame); moveFrame = 0; }
+      dialog.classList.remove('dragging');
+      try { if (id != null && bar.hasPointerCapture && bar.hasPointerCapture(id)) bar.releasePointerCapture(id); } catch (err) { /* ignore */ }
+      keep();
+    }
     bar.addEventListener('pointerdown', function (e) {
-      if (e.target === closeBtn) return;
-      drag = { dx: e.clientX - parseFloat(dialog.style.left || 0), dy: e.clientY - parseFloat(dialog.style.top || 0) };
-      bar.setPointerCapture(e.pointerId);
+      if (e.button != null && e.button !== 0) return;
+      if (e.target.closest && e.target.closest('button, a, input, select, textarea, .pv-devices')) return;
+      e.preventDefault();
+      drag = { pointerId: e.pointerId, x: e.clientX, y: e.clientY,
+        left: parseFloat(dialog.style.left || 0), top: parseFloat(dialog.style.top || 0) };
+      try { if (e.pointerId != null && bar.setPointerCapture) bar.setPointerCapture(e.pointerId); } catch (err) { /* window listeners remain */ }
       dialog.classList.add('dragging');
     });
-    bar.addEventListener('pointermove', function (e) {
-      if (!drag) return;
-      place(e.clientX - drag.dx, e.clientY - drag.dy, dialog.offsetWidth, dialog.offsetHeight);
-    });
-    bar.addEventListener('pointerup', function (e) { drag = null; dialog.classList.remove('dragging'); try { bar.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ } });
+    window.addEventListener('pointermove', function (e) {
+      if (!drag || (e.pointerId != null && drag.pointerId != null && e.pointerId !== drag.pointerId)) return;
+      e.preventDefault();
+      pendingMove = { x: e.clientX, y: e.clientY };
+      if (!moveFrame) moveFrame = requestAnimationFrame(flushDrag);
+    }, { passive: false });
+    window.addEventListener('pointerup', stopDrag);
+    window.addEventListener('pointercancel', stopDrag);
 
     // --- resizing from the bottom-left corner (the side a Persian window grows from) ---
     var resize = null;
@@ -2152,17 +2208,20 @@
       // otherwise «تبلت» and «گوشی» would look the same and the buttons would be a lie.
       frame.style.width = px ? px + 'px' : '100%';
       frame.style.maxWidth = 'none';
-      // «تمام عرض» means the whole panel, not the whole of a 460px column: the split itself is released while it is
-      // chosen, otherwise all three buttons would give the same size and none of them would do anything visible.
+      // «تمام‌عرض» means the whole panel, not the whole of a 460px column: the split itself is released while it is
+      // chosen, otherwise every width button would give the same size and none of them would do anything visible.
       edWrap.classList.toggle('wide-preview', !px);
     }
-    // The width buttons belong on the toolbar, not above the lesson: they are settings of the frame, not part of what
-    // the reader sees (a professor said so about the buttons sitting over the text).
-    var ctl = previewControls(function () { applyWidth(); refresh(true); });
+    // The width buttons now travel with the window (inside its own title bar): they are settings of the frame, not
+    // part of what the reader sees, and they must work without closing the window. The editor's toolbar keeps only
+    // the justify switch so the two places don't both own the same setting.
+    var ctl = previewControls(function () { applyWidth(); refresh(true); }, { hideWidths: true });
     edBar.appendChild(h('span', { class: 'sep' }));
-    edBar.appendChild(ctl.el);
-    // The window: the preview out of the 460px column, free on the page, movable and resizable.
-    var win = previewWindow({ frame: frame, title: 'پیش‌نمایش فصل', onOpen: function () { applyWidth(); refresh(true); } });
+    edBar.appendChild(ctl.el);   // text alignment stays with the editor; device sizes are in the window's own title bar
+    var devices = deviceControls(function () { applyWidth(); refresh(true); });
+    // The window: the preview out of the 460px column, free on the page, draggable in every direction and resizable.
+    var win = previewWindow({ frame: frame, title: 'پیش‌نمایش فصل', controls: devices,
+      onOpen: function () { applyWidth(); refresh(true); } });
     var winBtn = h('button', { class: 'btn small pv-open', type: 'button', title: 'پیش‌نمایش در پنجره‌ی جدا',
       onclick: function (e) {
         e.preventDefault();
