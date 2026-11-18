@@ -1263,3 +1263,34 @@ class BookEditorAccessTests(_Base):
         row = BookEditor(book=self.chapter, user=self.admin)
         with self.assertRaises(ValidationError):
             row.full_clean()
+
+
+class ImportPreviewBeforeSaveTests(TestCase):
+    """«فصل از فایل» draws the chapter before anything is saved.
+
+    The drawing is JavaScript (checked in a browser); these tests keep the page wired to it — a preview that stayed an
+    empty grey box would be invisible in the test runner, so the data it reads and the frame it draws into are pinned.
+    """
+
+    def setUp(self):
+        Major.objects.create(name="اقتصاد", slug="economics")
+        self.admin = User.objects.create_superuser("09120000001", "pw-123456")
+        self.client.force_login(self.admin)
+        self.book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, slug="med", title="تصویربرداری پزشکی")
+        self.url = reverse("admin:catalog_book_import", args=[self.book.pk])
+
+    def _upload(self, data: bytes, name: str):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        return self.client.post(self.url, {"file": SimpleUploadedFile(name, data)})
+
+    def test_a_read_file_gets_a_preview_and_its_text(self):
+        tex = (r"\begin{document}" "\n" r"\section*{نقشه‌ی کتاب}" "\n" "متن درس." "\n" r"\end{document}").encode()
+        html = self._upload(tex, "ch1.tex").content.decode()
+        self.assertIn('id="import-pv"', html)
+        self.assertIn('id="import-pv-ctl"', html)
+        self.assertIn('id="import-md"', html)
+
+    def test_a_broken_file_gets_no_preview(self):
+        html = self._upload(b"not latex at all {{{", "bad.tex").content.decode()
+        self.assertNotIn('id="import-pv"', html)

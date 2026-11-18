@@ -732,6 +732,9 @@ def import_view(admin_site, request, book_id=None):
                     },
                     plan=editing.plan_changes(editing.load(existing) if existing else None, parsed),
                     diff=editing.text_diff(export_chapter(existing), write_chapter(parsed)) if existing else None,
+                    # What the chapter will LOOK like, before anything is saved. A professor could not see this until
+                    # after «اعمال تغییرات», which is where a mis-read \note or a lost table was found — too late.
+                    markdown=write_chapter(parsed),
                 )
     return TemplateResponse(
         request,
