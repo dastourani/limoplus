@@ -229,6 +229,134 @@ class AdminLoginThrottleTests(TestCase):
         self.assertEqual(r.status_code, 429)
 
 
+class AdminOTPLoginTests(TestCase):
+    """Django admin uses SMS OTP for active staff; only a superuser may use the password break-glass path."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user("09120000601", is_staff=True)
+        self.client = Client()
+
+    def request_code(self, phone=None, next_url=""):
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            response = self.client.post(
+                "/admin/login/",
+                {"action": "send_otp", "phone": phone or self.staff.phone, "next": next_url},
+            )
+        code = send.call_args.args[1] if send.called else None
+        return response, code, send
+
+    def test_login_page_has_sms_and_superuser_only_break_glass_forms(self):
+        page = self.client.get("/admin/login/")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "ورود با پیامک")
+        self.assertContains(page, "ورود اضطراری با گذرواژه (فقط مدیر کل)")
+        self.assertContains(page, 'name="action" value="send_otp"')
+
+    def test_active_staff_can_sign_in_with_a_single_use_otp(self):
+        response, code, send = self.request_code(next_url="https://evil.example/steal")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(send.called)
+        self.assertEqual(OTPCode.objects.filter(phone=self.staff.phone).count(), 1)
+
+        response = self.client.post("/admin/login/", {
+            "action": "verify_otp", "phone": self.staff.phone, "code": code,
+            "next": "https://evil.example/steal",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/admin/")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.staff.pk)
+        self.assertIsNotNone(OTPCode.objects.get(phone=self.staff.phone).consumed_at)
+        self.assertFalse(DeviceSession.objects.filter(user=self.staff).exists())
+
+        replay = Client()
+        session = replay.session
+        session["admin_login_phone"] = self.staff.phone
+        session.save()
+        response = replay.post("/admin/login/", {
+            "action": "verify_otp", "phone": self.staff.phone, "code": code,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("_auth_user_id", replay.session)
+
+    def test_non_staff_and_unknown_numbers_get_no_sms_and_create_no_account(self):
+        learner = User.objects.create_user("09120000602")
+        response, code, send = self.request_code(learner.phone)
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(code)
+        send.assert_not_called()
+        self.assertFalse(OTPCode.objects.filter(phone=learner.phone).exists())
+
+        unknown = "09120000603"
+        response, code, send = self.request_code(unknown)
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(code)
+        send.assert_not_called()
+        self.assertFalse(User.objects.filter(phone=unknown).exists())
+
+    def test_valid_sms_code_cannot_sign_in_a_learner(self):
+        learner = User.objects.create_user("09120000604")
+        self.request_code(learner.phone)
+        _otp, code = OTPCode.issue(learner.phone)  # even a code from the public learner flow grants no admin access
+        response = self.client.post("/admin/login/", {
+            "action": "verify_otp", "phone": learner.phone, "code": code,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_inactive_staff_cannot_request_or_use_an_otp(self):
+        inactive = User.objects.create_user("09120000606", is_staff=True, is_active=False)
+        response, code, send = self.request_code(inactive.phone)
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(code)
+        send.assert_not_called()
+        _otp, code = OTPCode.issue(inactive.phone)
+        response = self.client.post("/admin/login/", {
+            "action": "verify_otp", "phone": inactive.phone, "code": code,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_login_post_is_csrf_protected(self):
+        client = Client(enforce_csrf_checks=True)
+        response = client.post("/admin/login/", {
+            "action": "send_otp", "phone": self.staff.phone,
+        })
+        self.assertEqual(response.status_code, 403)
+
+    def test_wrong_otp_attempts_use_the_shared_ip_and_code_limits(self):
+        with override_settings(OTP_WRONG_PER_IP_PER_HOUR=2):
+            _response, code, _send = self.request_code()
+            wrong = "000000" if code != "000000" else "111111"
+            for _ in range(2):
+                response = self.client.post("/admin/login/", {
+                    "action": "verify_otp", "phone": self.staff.phone, "code": wrong,
+                })
+                self.assertEqual(response.status_code, 200)
+            response = self.client.post("/admin/login/", {
+                "action": "verify_otp", "phone": self.staff.phone, "code": code,
+            })
+            self.assertContains(response, "تلاش‌های ناموفق زیاد است")
+            self.assertNotIn("_auth_user_id", self.client.session)
+            self.assertEqual(OTPCode.objects.get(phone=self.staff.phone).attempts, 2)
+
+    def test_staff_password_is_rejected_but_superuser_break_glass_works(self):
+        self.staff.set_password("Staff-Password-123")
+        self.staff.save(update_fields=["password"])
+        response = self.client.post("/admin/login/", {
+            "action": "password", "username": self.staff.phone, "password": "Staff-Password-123",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        boss = User.objects.create_superuser("09120000605", password="Boss-Password-123")
+        response = self.client.post("/admin/login/", {
+            "action": "password", "username": boss.phone, "password": "Boss-Password-123",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/admin/")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), boss.pk)
+
+
 class OtpHashSettingTests(TestCase):
     def test_hash_line_can_be_turned_off(self):
         from django.test import override_settings

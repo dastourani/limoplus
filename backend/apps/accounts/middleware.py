@@ -30,8 +30,8 @@ ADMIN_FAILS_PER_PHONE_PER_HOUR = 5
 
 class AdminLoginThrottleMiddleware:
     """
-    Blocks password guessing on the admin login: after 10 wrong passwords from one address, or 5 for one admin phone,
-    in an hour, further attempts are refused. Failures are counted by the user_login_failed signal (accounts/apps.py).
+    Blocks guesses on the superuser-only password fallback: after 10 wrong passwords from one address, or 5 for one
+    admin phone in an hour, further password attempts are refused. OTP attempts use the shared OTP rate limits.
     """
 
     def __init__(self, get_response):
@@ -44,8 +44,19 @@ class AdminLoginThrottleMiddleware:
         from . import ratelimit
         from .views import _client_ip
 
-        if request.method == "POST" and request.path == reverse("admin:login"):
-            phone = (request.POST.get("username") or "").strip()
+        if (
+            request.method == "POST"
+            and request.path == reverse("admin:login")
+            and request.POST.get("action", "password") in ("", "password")
+        ):
+            from .phone import InvalidPhone, normalize_phone
+
+            raw_phone = (request.POST.get("username") or "").strip()
+            try:
+                phone = normalize_phone(raw_phone)
+            except InvalidPhone:
+                phone = raw_phone
+            phone = phone[:100]  # Keep the lookup key within RateBucket.key's 120-character column.
             if (
                 ratelimit.count(f"admin-fail-ip:{_client_ip(request)}") >= ADMIN_FAILS_PER_IP_PER_HOUR
                 or ratelimit.count(f"admin-fail-phone:{phone}") >= ADMIN_FAILS_PER_PHONE_PER_HOUR
