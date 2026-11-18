@@ -1378,6 +1378,34 @@ class PreviewWindowTests(_Base):
         html = self.client.get(self.url).content.decode()
         self.assertNotIn('md-prev file-prev-wrap', html)
 
+    def test_the_device_widths_travel_with_the_window_not_the_editor_toolbar(self):
+        # A professor asked for a Windows-style window they cannot pick «گوشی/تبلت» from while it is open. The width
+        # buttons now live in the dialog's own title bar (deviceControls), so switching never needs a close first, and
+        # the editor toolbar only keeps the justify switch.
+        panel = (settings.BASE_DIR / "apps/catalog/static/catalog/panel.js").read_text(encoding="utf-8")
+        css = (settings.BASE_DIR / "apps/catalog/static/catalog/panel.css").read_text(encoding="utf-8")
+        self.assertIn("function deviceControls(", panel)
+        self.assertIn("previewWindow({ frame: frame, title: 'پیش‌نمایش فصل', controls: devices", panel)
+        self.assertIn("'aria-pressed'", panel)
+        # The file editor still builds its toolbar controls, but with the widths hidden.
+        self.assertIn("{ hideWidths: true }", panel)
+        self.assertIn(".pv-devices", css)
+        self.assertIn(".pv-device.on", css)
+
+    def test_dragging_listens_on_the_window_and_moves_in_both_axes(self):
+        # pointerdown on the bar alone used to strand the drag when the pointer outran it (and only feel right in one
+        # direction). Movement is listened for on `window`, coalesced through requestAnimationFrame for smoothness, and
+        # both axes go through the same place() call.
+        panel = (settings.BASE_DIR / "apps/catalog/static/catalog/panel.js").read_text(encoding="utf-8")
+        drag = panel[panel.index("// --- Windows-style drag"):panel.index("// --- resizing")]
+        self.assertIn("window.addEventListener('pointermove'", drag)
+        self.assertIn("window.addEventListener('pointerup'", drag)
+        self.assertIn("window.addEventListener('pointercancel'", drag)
+        self.assertIn("moveFrame = requestAnimationFrame(flushDrag)", drag)
+        self.assertIn("place(drag.left + p.x - drag.x, drag.top + p.y - drag.y", drag)
+        # Clickable controls inside the bar must not start a drag.
+        self.assertIn("e.target.closest('button, a, input, select, textarea, .pv-devices')", drag)
+
 
 class PublishGateTests(_Base):
     """«انتشار» is its own gate, separate from writing.
