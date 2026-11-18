@@ -897,7 +897,17 @@ def _assets_version() -> str:
     from django.contrib.staticfiles import finders
 
     newest = 0.0
-    for name in ("catalog/panel.css", "catalog/panel.js", "catalog/limo-preview.js", "catalog/limo-editor.js"):
+    for name in (
+        "catalog/panel.css",
+        "catalog/panel.js",
+        "catalog/preview-pane.js",
+        "catalog/limo-preview.js",
+        "catalog/limo-editor.js",
+        "catalog/fonts/Vazirmatn_400Regular.ttf",
+        "catalog/fonts/Vazirmatn_700Bold.ttf",
+        "catalog/fonts/Vazirmatn_800ExtraBold.ttf",
+        "catalog/fonts/Vazirmatn_900Black.ttf",
+    ):
         path = finders.find(name)
         if path:
             try:

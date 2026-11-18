@@ -4,6 +4,18 @@
   'use strict';
   var P = window.LimoPreview;
   var STATIC = (document.currentScript && document.currentScript.src.replace(/panel\.js.*$/, '')) || '/static/catalog/';
+  // The stamp the page asked for (?v=... on this script). The preview's document is written from a string, so its
+  // font URLs need the stamp too — otherwise a changed font keeps arriving from the browser cache.
+  var STATIC_V = (function () { try { var m = document.currentScript && document.currentScript.src.match(/[?&]v=([0-9]+)/); return m ? '?v=' + m[1] : ''; } catch (e) { return ''; } })();
+  function previewFontFace(weight, file) {
+    return '@font-face{font-family:Vazirmatn;font-weight:' + weight + ';font-style:normal;font-display:swap;src:url("' + STATIC + 'fonts/' + file + STATIC_V + '") format("truetype")}';
+  }
+  // The app ships four weights of Vazirmatn; the lesson's boxes and headings use 800/900, so a document with only
+  // 400/700 renders them synthetically (or falls back) instead of the real ExtraBold and Black.
+  var PREVIEW_FONTS = previewFontFace(400, 'Vazirmatn_400Regular.ttf')
+    + previewFontFace(700, 'Vazirmatn_700Bold.ttf')
+    + previewFontFace(800, 'Vazirmatn_800ExtraBold.ttf')
+    + previewFontFace(900, 'Vazirmatn_900Black.ttf');
   var MEDIA = '/media/';
 
   // ---------- small helpers ----------
@@ -123,9 +135,10 @@
   }
   function previewDoc(html, extraCss) {
     var lesson = 'lesson' + (readingJustify() ? '' : ' ragged');
-    return '<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>' +
-      '@font-face{font-family:Vazirmatn;font-weight:400;src:url("' + STATIC + 'fonts/Vazirmatn_400Regular.ttf")}' +
-      '@font-face{font-family:Vazirmatn;font-weight:700;src:url("' + STATIC + 'fonts/Vazirmatn_700Bold.ttf")}' +
+    return '<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>' + PREVIEW_FONTS +
+      // The frame is sized to its content (see preview-pane.js); it can never scroll, so a wheel over the lesson
+      // reaches the page instead of being swallowed by a 4px of slack in the frame.
+      'html,body{overflow:hidden}' +
       P.CONTENT_CSS + 'body{background:#F6F7F2;padding:14px 0}.lesson{padding:4px 16px 24px}' + (extraCss || '') +
       '</style></head><body><div class="' + lesson + '">' + html + '</div></body></html>';
   }
@@ -2273,7 +2286,7 @@
   var fontCss = null;
   function inlineFonts() {
     if (fontCss !== null) return Promise.resolve(fontCss);
-    var faces = [['Vazirmatn_400Regular.ttf', 400], ['Vazirmatn_700Bold.ttf', 700], ['Vazirmatn_700Bold.ttf', 900]];
+    var faces = [['Vazirmatn_400Regular.ttf', 400], ['Vazirmatn_700Bold.ttf', 700], ['Vazirmatn_800ExtraBold.ttf', 800], ['Vazirmatn_900Black.ttf', 900]];
     return Promise.all(faces.map(function (f) {
       return fetch(FONTS + f[0]).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
         var bin = '', bytes = new Uint8Array(buf);

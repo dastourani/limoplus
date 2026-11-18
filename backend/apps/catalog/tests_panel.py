@@ -1429,6 +1429,57 @@ class PreviewPaneTests(_Base):
             self.assertNotIn(gone, css)
 
 
+class PreviewTypeAndScrollTests(_Base):
+    """The preview renders in the app's own type, and the wheel belongs to whatever is under it.
+
+    The lesson's boxes and headings use Vazirmatn 800/900. The preview document used to declare only 400 and 700,
+    so «تعریف» and «نکته» came out from a synthesized ExtraBold next to the app's real Black. The font files are
+    shared with the app verbatim, the preview document carries all four weights with `font-display: swap`, and the
+    page's cache stamp (?v=) covers the fonts and the pane so a changed font is a changed URL.
+
+    Scroll rule (no JavaScript intercepts the wheel anywhere): over the preview nothing can scroll, so the page does;
+    over the editor CodeMirror scrolls itself and `overscroll-behavior: contain` keeps it from jerking the page;
+    everywhere else the page scrolls.
+    """
+
+    def assets(self, name):
+        return (settings.BASE_DIR / "apps/catalog/static/catalog" / name).read_text(encoding="utf-8")
+
+    def test_the_preview_document_declares_all_four_weights_with_swap_and_a_stamp(self):
+        panel = self.assets("panel.js")
+        for face in ("font-weight:' + weight + '", "font-display:swap", "Vazirmatn_400Regular.ttf",
+                     "Vazirmatn_700Bold.ttf", "Vazirmatn_800ExtraBold.ttf", "Vazirmatn_900Black.ttf", "STATIC_V"):
+            self.assertIn(face, panel)
+        self.assertIn("html,body{overflow:hidden}", panel)   # the frame cannot scroll, so the wheel reaches the page
+
+    def test_the_panel_stylesheet_declares_all_four_weights_with_swap(self):
+        css = self.assets("panel.css")
+        self.assertEqual(css.count("@font-face"), 4)
+        self.assertEqual(css.count("font-display: swap"), 4)
+
+    def test_the_four_font_files_are_shipped_with_the_catalog_static(self):
+        fonts = settings.BASE_DIR / "apps/catalog/static/catalog/fonts"
+        for name in ("Vazirmatn_400Regular.ttf", "Vazirmatn_700Bold.ttf", "Vazirmatn_800ExtraBold.ttf", "Vazirmatn_900Black.ttf"):
+            self.assertTrue((fonts / name).is_file(), name)
+
+    def test_the_cache_stamp_covers_the_pane_and_the_fonts(self):
+        admin = (settings.BASE_DIR / "apps/catalog/admin.py").read_text(encoding="utf-8")
+        for name in ("catalog/preview-pane.js", "catalog/fonts/Vazirmatn_400Regular.ttf",
+                     "catalog/fonts/Vazirmatn_700Bold.ttf", "catalog/fonts/Vazirmatn_800ExtraBold.ttf",
+                     "catalog/fonts/Vazirmatn_900Black.ttf"):
+            self.assertIn('"%s"' % name, admin)
+
+    def test_the_editor_scrolls_itself_and_never_jerks_the_page(self):
+        css = self.assets("panel.css")
+        self.assertIn(".md-ed .limo-cm .cm-scroller { max-height: 70vh; overscroll-behavior: contain; }", css)
+        self.assertIn(".file-ed + .limo-cm .cm-scroller { max-height: 75vh; overscroll-behavior: contain; }", css)
+
+    def test_no_wheel_listener_is_registered_anywhere_in_the_panel(self):
+        for name in ("panel.js", "preview-pane.js", "limo-preview.js"):
+            self.assertNotIn("addEventListener('wheel'", self.assets(name))
+            self.assertNotIn('addEventListener("wheel"', self.assets(name))
+
+
 class PublishGateTests(_Base):
     """«انتشار» is its own gate, separate from writing.
 

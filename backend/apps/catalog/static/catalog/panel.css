@@ -1,6 +1,8 @@
 /* LimooKhan panel: book page, chapter manager, file editor, versions. Works with the admin's light and dark themes. */
 @font-face { font-family: Vazirmatn; font-weight: 400; src: url("fonts/Vazirmatn_400Regular.ttf") format("truetype"); font-display: swap; }
 @font-face { font-family: Vazirmatn; font-weight: 700; src: url("fonts/Vazirmatn_700Bold.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: Vazirmatn; font-weight: 800; src: url("fonts/Vazirmatn_800ExtraBold.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: Vazirmatn; font-weight: 900; src: url("fonts/Vazirmatn_900Black.ttf") format("truetype"); font-display: swap; }
 
 .lp { --lemon: #F5C518; --ink: #17201A; --ok: #1f7a55; --err: #ba2121; --warn: #9a6312; --line: var(--hairline-color, #e3e8de);
   --soft: var(--darkened-bg, #f6f7f2); --card: var(--body-bg, #fff); font-family: Vazirmatn, Tahoma, sans-serif; }
@@ -17,8 +19,10 @@
 .md-ed .limo-cm { border: 0 !important; border-radius: 0 !important; min-height: 260px; height: 100%; }
 .md-ed.compact .limo-cm { min-height: 110px; }
 .md-ed.preview-only .limo-cm, .md-ed.preview-only textarea { display: none; }
-.md-ed .limo-cm .cm-scroller { max-height: 70vh; }
-.file-ed + .limo-cm .cm-scroller { max-height: 75vh; }
+/* CodeMirror owns its own scroll. `overscroll-behavior: contain` keeps the wheel on the editor when it reaches its
+   end, instead of jerking the page underneath the cursor; everything outside the editors scrolls the page. */
+.md-ed .limo-cm .cm-scroller { max-height: 70vh; overscroll-behavior: contain; }
+.file-ed + .limo-cm .cm-scroller { max-height: 75vh; overscroll-behavior: contain; }
 .lp label.f { display: block; font-weight: 700; margin: 12px 0 4px; font-size: 13px; }
 .lp .hint { color: var(--body-quiet-color, #666); font-size: 12px; font-weight: 400; }
 .lp .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
