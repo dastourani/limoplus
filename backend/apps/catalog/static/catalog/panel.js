@@ -3,12 +3,21 @@
 (function () {
   'use strict';
   var P = window.LimoPreview;
-  var STATIC = (document.currentScript && document.currentScript.src.replace(/panel\.js.*$/, '')) || '/static/catalog/';
+  // The manifest in production renames panel.<hash>.js, so the base cannot be recovered from <script src> any
+  // more; _assets.html injects window.LIMO_STATIC and, better, the exact font URLs (window.LIMO_FONTS). The
+  // src-based guess below is only the fallback for a page that somehow misses the injection.
+  var LIMO_FONTS = window.LIMO_FONTS || null;
+  var STATIC = (function () {
+    var injected = window.LIMO_STATIC || '';
+    if (injected) return injected.replace(/\/?$/, '/');
+    return (document.currentScript && document.currentScript.src.replace(/\/[^/]*$/, '/')) || '/static/catalog/';
+  })();
   // The stamp the page asked for (?v=... on this script). The preview's document is written from a string, so its
   // font URLs need the stamp too — otherwise a changed font keeps arriving from the browser cache.
   var STATIC_V = (function () { try { var m = document.currentScript && document.currentScript.src.match(/[?&]v=([0-9]+)/); return m ? '?v=' + m[1] : ''; } catch (e) { return ''; } })();
   function previewFontFace(weight, file) {
-    return '@font-face{font-family:Vazirmatn;font-weight:' + weight + ';font-style:normal;font-display:swap;src:url("' + STATIC + 'fonts/' + file + STATIC_V + '") format("truetype")}';
+    var url = (LIMO_FONTS && LIMO_FONTS[weight]) || (STATIC + 'fonts/' + file + STATIC_V);
+    return '@font-face{font-family:Vazirmatn;font-weight:' + weight + ';font-style:normal;font-display:swap;src:url("' + url + '") format("truetype")}';
   }
   // The app ships four weights of Vazirmatn; the lesson's boxes and headings use 800/900, so a document with only
   // 400/700 renders them synthetically (or falls back) instead of the real ExtraBold and Black.
@@ -2279,7 +2288,15 @@
   'use strict';
   var P = window.LimoPreview;
   if (!P || !P.coverHtml) return;
-  var FONTS = ((document.currentScript && document.currentScript.src.replace(/panel\.js.*$/, '')) || '/static/catalog/') + 'fonts/';
+  // The manifest renames panel.<hash>.js in production, so the base cannot be recovered from <script src>; use the
+  // exact URLs the server injected (_assets.html) when present, and a last-slash guess only as the fallback.
+  var LIMO_FONTS = window.LIMO_FONTS || null;
+  var STATIC = (function () {
+    var injected = window.LIMO_STATIC || '';
+    if (injected) return injected.replace(/\/?$/, '/');
+    return (document.currentScript && document.currentScript.src.replace(/\/[^/]*$/, '/')) || '/static/catalog/';
+  })();
+  function fontUrl(file, weight) { return (LIMO_FONTS && LIMO_FONTS[weight]) || (STATIC + 'fonts/' + file); }
 
   function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
 
@@ -2288,7 +2305,7 @@
     if (fontCss !== null) return Promise.resolve(fontCss);
     var faces = [['Vazirmatn_400Regular.ttf', 400], ['Vazirmatn_700Bold.ttf', 700], ['Vazirmatn_800ExtraBold.ttf', 800], ['Vazirmatn_900Black.ttf', 900]];
     return Promise.all(faces.map(function (f) {
-      return fetch(FONTS + f[0]).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+      return fetch(fontUrl(f[0], f[1])).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
         var bin = '', bytes = new Uint8Array(buf);
         for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
         return '@font-face{font-family:Vazirmatn;font-weight:' + f[1] + ';src:url(data:font/ttf;base64,' + btoa(bin) + ')}';

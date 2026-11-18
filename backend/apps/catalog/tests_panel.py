@@ -1407,7 +1407,8 @@ class PreviewPaneTests(_Base):
         self.assertIn("preview-only", css)
         # The pane is capped to the editor's working height; its body scrolls (like the editor), the bar stays put,
         # and the page never grows to the lesson's full height. A short lesson still shows exactly its content.
-        self.assertIn(".pv-pane-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;", css)
+        self.assertIn(".pv-pane-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: auto;", css)
+        self.assertIn("pointer-events: none", css)
         self.assertIn("height: max-content; max-height: 70vh;", css)
         self.assertIn(".md-ed.file .pv-pane { max-height: 75vh; }", css)
 
@@ -1445,8 +1446,10 @@ class PreviewTypeAndScrollTests(_Base):
     page's cache stamp (?v=) covers the fonts and the pane so a changed font is a changed URL.
 
     Scroll rule (no JavaScript intercepts the wheel anywhere): the preview pane is capped to the editor's working
-    height and its body scrolls over `overscroll-behavior: contain`, the editor's CodeMirror scroller does the same,
-    and everywhere else the page scrolls.
+    height and its body scrolls with `overscroll-behavior: contain` ONLY while it is actually scrollable (its
+    `scrollHeight` exceeds its `clientHeight`, toggled by preview-pane.js on every layout) and `auto` otherwise;
+    the editor's CodeMirror scroller keeps `contain`; the preview frames ignore the pointer (`pointer-events: none`)
+    so the wheel/touch always lands on the pane or the page.
     """
 
     def assets(self, name):
@@ -1482,10 +1485,22 @@ class PreviewTypeAndScrollTests(_Base):
         self.assertIn(".file-ed + .limo-cm .cm-scroller { max-height: 75vh; overscroll-behavior: contain; }", css)
 
     def test_the_preview_pane_is_capped_and_scrolls_itself_instead_of_growing_the_page(self):
+        pane = self.assets("preview-pane.js")
         css = self.assets("panel.css")
         self.assertIn("height: max-content; max-height: 70vh;", css)
         self.assertIn(".md-ed.file .pv-pane { max-height: 75vh; }", css)
-        self.assertIn("overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;", css)
+        # `contain` only while the pane is scrollable; otherwise `auto` lets the wheel chain to the page.
+        self.assertIn("body.scrollHeight > body.clientHeight + 1 ? 'contain' : 'auto'", pane)
+        self.assertIn("overscroll-behavior: auto;", css)
+
+    def test_the_preview_frames_ignore_the_pointer_so_the_page_keeps_the_wheel(self):
+        pane = self.assets("preview-pane.js")
+        panel = self.assets("panel.js")
+        css = self.assets("panel.css")
+        self.assertIn(".pv-frame, iframe.phone { pointer-events: none; }", css)
+        # The frames are srcdoc renders (no links/forms): the wheel must never dead-end over the lesson.
+        self.assertNotIn("addEventListener('wheel'", panel)
+        self.assertNotIn("addEventListener('wheel'", pane)
 
     def test_no_wheel_listener_is_registered_anywhere_in_the_panel(self):
         for name in ("panel.js", "preview-pane.js", "limo-preview.js"):

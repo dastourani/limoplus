@@ -154,6 +154,12 @@
       }
     }
 
+    // اسکرول: `overscroll-behavior` را فقط زمانی «contain» نگه دار که این پنل واقعاً اسکرول دارد؛
+    // وگرنه «auto» بگذار تا چرخ/لمس به خود صفحه زنجیره شود (یک `contain` روی پنلِ غیرقابل‌اسکرول، چرخ را می‌بلعد).
+    function updateOverscroll() {
+      try { body.style.overscrollBehavior = body.scrollHeight > body.clientHeight + 1 ? 'contain' : 'auto'; } catch (e) { /* ignore */ }
+    }
+
     function applyLayout() {
       var w = logicalWidth(device);
       var available = Math.max(260, (body.clientWidth || options.minWidth || 320) - 20);
@@ -169,6 +175,7 @@
         frame.style.maxWidth = '1024px';
         frame.style.transform = '';
         frame.style.margin = '0 auto';
+        updateOverscroll();
         return;
       }
 
@@ -181,6 +188,7 @@
       frame.style.margin = '0';
       frame.style.transformOrigin = 'top left';
       frame.style.transform = scale < 0.999 ? 'scale(' + scale + ')' : '';
+      updateOverscroll();
     }
 
     var scheduled = 0;

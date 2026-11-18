@@ -1,4 +1,16 @@
 {% load static %}
+<script>
+  // Where the panel's own static files really live, straight from Django. In production the manifest renames them
+  // (panel.<hash>.js), so panel.js cannot work the base out of its own <script src> any more; the fonts especially
+  // need the exact URLs — a guessed one arrives as a 404 on the preview while everything else looks fine.
+  window.LIMO_STATIC = '{% static "catalog/" %}';
+  window.LIMO_FONTS = {
+    '400': '{% static "catalog/fonts/Vazirmatn_400Regular.ttf" %}',
+    '700': '{% static "catalog/fonts/Vazirmatn_700Bold.ttf" %}',
+    '800': '{% static "catalog/fonts/Vazirmatn_800ExtraBold.ttf" %}',
+    '900': '{% static "catalog/fonts/Vazirmatn_900Black.ttf" %}'
+  };
+</script>
 {% comment %}
   The panel's stylesheet and scripts, with the file's own modification time as a version.
 
