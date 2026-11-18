@@ -3,11 +3,16 @@
 name: Backend tests (PostgreSQL)
 
 on:
+  # Every push to a branch, then the pull request that follows it, ran the same tests twice: ~3 minutes each. Here a
+  # new push to the same branch replaces the run still going (its answer is already old), and the pull request event
+  # is left out because the push already answered for that commit.
   push:
     paths: ["backend/**", ".github/workflows/backend-tests.yml"]
-  pull_request:
-    paths: ["backend/**"]
   workflow_dispatch:
+
+concurrency:
+  group: backend-tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
