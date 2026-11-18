@@ -165,6 +165,24 @@
 .diff { font-family: Vazirmatn, Tahoma, sans-serif; font-size: 13px; border: 1px solid var(--line); border-radius: 10px; max-height: 480px; overflow: auto; background: var(--card); }
 .diff div { padding: 1px 10px; white-space: pre-wrap; } .diff .a { background: #e6f6ec; } .diff .d { background: #fdecea; text-decoration: line-through; text-decoration-color: rgba(186,33,33,.4); }
 .diff .g { color: #999; text-align: center; }
+/* «مشخصات فصل» above the whole-file box. The card is where the three details a person edits live; the header of the
+   file (ids, book, majors) is built by the page and never typed. */
+.ch-head { margin-bottom: 12px; }
+.ch-head-top { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 10px; }
+.ch-fields { display: grid; grid-template-columns: minmax(0, 2.2fr) 110px auto; gap: 10px; align-items: end; }
+@media (max-width: 720px) { .ch-fields { grid-template-columns: 1fr 1fr; } .ch-fields .ch-f:first-child { grid-column: 1 / -1; } }
+.ch-f { display: block; }
+.ch-l { display: block; font-size: 12px; font-weight: 700; color: var(--body-quiet-color, #666); margin-bottom: 4px; }
+.ch-free { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; }
+.ch-free .ch-l { margin: 0; }
+.ch-free input[type=checkbox] { width: 18px; height: 18px; margin: 0; }
+.ch-num input { text-align: center; }
+.ch-f input.bad { border-color: var(--err); background: #fdecea; }
+.ch-note { display: block; margin-top: 8px; }
+.ch-note.warn { color: var(--warn, #9a6312); }
+.ch-note.err { color: var(--err); }
+.ch-fixed, .ch-ids { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; font-size: 12px; }
+.ch-ids code { background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; direction: ltr; }
 .file-ed { width: 100%; min-height: 70vh; font-size: 15px; line-height: 1.9; }
 table.lp-table { width: 100%; border-collapse: collapse; } table.lp-table td, table.lp-table th { padding: 8px; border-bottom: 1px solid var(--line); text-align: right; vertical-align: middle; }
 .chapters-box { margin-top: 28px; }

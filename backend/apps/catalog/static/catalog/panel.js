@@ -34,18 +34,77 @@
   function plain(s) { return (s || '').replace(/[*_`]/g, '').replace(/\s+/g, ' '); }
 
   // The chapter file starts with its own details between two «---» lines (شناسه-کتاب، فصل، عنوان …). They are the
-  // panel's business, not the reader's: «ویرایش کل فایل» shows the file, so it must show them, but the PREVIEW must
-  // not — rendered as Markdown they become a giant heading and push the lesson down (that is what a professor saw).
-  // A «---» further down the file is a horizontal rule and stays; only the header at the very top is taken.
+  // panel's business, not the reader's: the PREVIEW must not show them — rendered as Markdown they become a giant
+  // heading and push the lesson down (that is what a professor saw). A «---» further down the file is a horizontal
+  // rule and stays; only the header at the very top is taken.
   var FRONT_KEYS = /^(شناسه-کتاب|کتاب|قیمت-کتاب|رشته‌ها|شناسه-فصل|فصل|عنوان|عنوان-انگلیسی|رایگان)\s*:/;
-  function stripFrontMatter(text) {
+  // Where the header ends: the character after the closing «---» and its line break. -1 when there is none.
+  function frontMatterEnd(text) {
     var body = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
     var m = /^[ \t]*---[ \t]*\n([\s\S]*?)\n[ \t]*---[ \t]*(?:\n|$)/.exec(body);
-    if (!m) return body;
+    if (!m) return -1;
     // Only when the block really holds the chapter's keys: a bare «---» pair around prose is not a header.
     var lines = m[1].split('\n').filter(function (line) { return line.trim(); });
-    if (!lines.length || !lines.every(function (line) { return FRONT_KEYS.test(line.trim()); })) return body;
-    return body.slice(m[0].length);
+    if (!lines.length || !lines.every(function (line) { return FRONT_KEYS.test(line.trim()); })) return -1;
+    return m[0].length;
+  }
+  function stripFrontMatter(text) {
+    var end = frontMatterEnd(text);
+    return end < 0 ? String(text || '') : String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').slice(end);
+  }
+  // One header line per key. The panel compares lines by key, never by the exact spaces a person typed: «رایگان :بله»
+  // and «رایگان:  بله» are the same line to the server (it strips them), and so they are here.
+  var FRONT_KEY_KEYS = {
+    'شناسه-کتاب': 'book_slug', 'کتاب': 'book_title', 'قیمت-کتاب': 'book_price', 'رشته‌ها': 'majors',
+    'شناسه-فصل': 'chapter_slug', 'فصل': 'chapter_number', 'عنوان': 'chapter_title', 'عنوان-انگلیسی': 'title_en',
+    'رایگان': 'chapter_free',
+  };
+  function frontKeyOf(line) {
+    var at = line.indexOf(':');
+    if (at < 0) return null;
+    var raw = line.slice(0, at).replace(/[\s\-_‌]/g, '');
+    for (var k in FRONT_KEY_KEYS) if (k.replace(/[\s\-_‌]/g, '') === raw) return FRONT_KEY_KEYS[k];
+    return null;
+  }
+  // The header with the three details of the card put into it. Every other line is left exactly as the server wrote it
+  // (a hand-typed extra space stays; the server accepts it), and a line the file never had is added in the file's own
+  // order, so a chapter whose file lacked «فصل» gains one instead of losing the number.
+  function headerWith(text, meta) {
+    var CANON = { chapter_number: 'فصل: ', chapter_title: 'عنوان: ', chapter_free: 'رایگان: ' };
+    function value(key) {
+      if (key === 'chapter_free') return meta.chapter_free ? 'بله' : 'خیر';
+      return meta[key] == null ? '' : String(meta[key]);
+    }
+    if (!text) {
+      var initial = ['---'];
+      if (meta.book_slug) initial.push('شناسه-کتاب: ' + meta.book_slug);
+      if (meta.book_title) initial.push('کتاب: ' + meta.book_title);
+      if (meta.majors && meta.majors.length) initial.push('رشته‌ها: ' + meta.majors.map(function (m) { return m.slug || m; }).join(', '));
+      if (meta.chapter_slug) initial.push('شناسه-فصل: ' + meta.chapter_slug);
+      ['chapter_number', 'chapter_title', 'chapter_free'].forEach(function (key) {
+        if (key === 'chapter_number' && meta.chapter_number == null) return;
+        initial.push(CANON[key] + value(key));
+      });
+      initial.push('---');
+      return initial.join('\n') + '\n';
+    }
+    var lines = String(text).split('\n'), out = [], seen = {};
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (i > 0 && line.trim() === '---') { out.push(line); break; }
+      if (i === 0) { out.push(line); continue; }
+      var key = line.trim() ? frontKeyOf(line) : null;
+      if (key === null || !(key in CANON)) { out.push(line); continue; }
+      seen[key] = true;
+      if (key === 'chapter_number' && meta.chapter_number == null) continue;   // «فصل» with no number: left out, as the exporter does
+      out.push(line.slice(0, line.indexOf(':') + 1) + ' ' + value(key));
+    }
+    if (out[out.length - 1].trim() !== '---') out.push('---');
+    ['chapter_number', 'chapter_title', 'chapter_free'].forEach(function (key) {
+      if (key === 'chapter_number' && meta.chapter_number == null) return;
+      if (!seen[key]) out.splice(out.length - 1, 0, CANON[key] + value(key));
+    });
+    return out.join('\n') + '\n';
   }
 
   // «## مفهوم حد {#limit-idea}»: the {#slug} is how the file remembers a section's id, not part of its title. The
@@ -257,6 +316,113 @@
     return row;
   }
   // The panel's text boxes are CodeMirror editors (limo-editor.js): Persian lines right to left, formulas left to right.
+  // ---------- The chapter's own details, as a card above the text ----------
+  // «ویرایش کل فایل» used to open on a file: the header («--- شناسه-کتاب: … ---») sat in the box as code, and the
+  // three details a person actually edits — عنوان، شماره‌ی فصل، رایگان — were somewhere inside it. The header is a
+  // contract for a file coming from outside, not something to type while editing a chapter that already exists, so
+  // the box now holds only the body and these details sit above it as fields. The file format does not change: the
+  // header is put back, with only the card's three values changed (headerWith above).
+  var DIGIT_MAP = { '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+  function asciiDigits(s) {
+    return String(s || '').replace(/[۰-۹]/g, function (d) { return DIGIT_MAP[d]; }).replace(/\s+/g, '');
+  }
+  function chapterCard(meta, bookUrl) {
+    var el = h('div', { class: 'cm-card ch-head' });
+    var titleIn = h('input', { type: 'text', value: meta.chapter_title || '', 'aria-label': 'عنوان فصل' });
+    var numIn = h('input', { type: 'text', inputmode: 'numeric', dir: 'ltr',
+      value: meta.chapter_number == null ? '' : String(meta.chapter_number), 'aria-label': 'شماره‌ی فصل' });
+    var freeIn = h('input', { type: 'checkbox', checked: !!meta.chapter_free });
+    var note = h('span', { class: 'hint ch-note', style: 'display:none' });
+    var bad = false;
+
+    // Editing the value here cannot break the file's «عنوان:» key. A title with «:» in it is fine — the parser only
+    // splits on the first one. Selecting the number on focus makes it quick to replace without forcing title selection.
+    numIn.addEventListener('focus', function () { numIn.select(); });
+
+    function values() {
+      var n = asciiDigits(numIn.value);
+      return {
+        chapter_title: titleIn.value.replace(/\s+/g, ' ').trim(),
+        chapter_number: n === '' ? null : (/^\d+$/.test(n) ? Number(n) : NaN),
+        chapter_free: freeIn.checked,
+      };
+    }
+    function paintBad() {
+      numIn.classList.toggle('bad', bad);
+      note.style.display = bad ? '' : 'none';
+      if (bad) { note.className = 'hint ch-note err'; note.textContent = 'شماره‌ی فصل باید عدد باشد (مثلاً ۲ یا ۱۲).'; }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    // The file accepts Persian and Arabic digits too («فصل: ۲»), so the box does as well; anything else is refused
+    // before saving instead of becoming a chapter with no number.
+    function normNum() {
+      var n = asciiDigits(numIn.value);
+      bad = n !== '' && !/^\d+$/.test(n);
+      if (!bad && n !== numIn.value) numIn.value = n;   // «۲» shown as «2»: the value the file will carry
+      paintBad();
+    }
+    numIn.addEventListener('input', normNum);
+    numIn.addEventListener('blur', normNum);
+    titleIn.addEventListener('input', paintBad);
+    freeIn.addEventListener('change', paintBad);
+
+    el.appendChild(h('div', { class: 'ch-head-top' }, h('b', null, 'مشخصات فصل'),
+      h('span', { class: 'hint' }, 'این‌ها در فصل ذخیره می‌شوند؛ سرصفحه‌ی فایل خودکار ساخته می‌شود.')));
+    el.appendChild(h('div', { class: 'ch-fields' },
+      h('label', { class: 'ch-f' }, h('span', { class: 'ch-l' }, 'عنوان'), titleIn),
+      h('label', { class: 'ch-f ch-num' }, h('span', { class: 'ch-l' }, 'شماره‌ی فصل'), numIn),
+      h('label', { class: 'ch-f ch-free' }, h('span', { class: 'ch-l' }, 'رایگان'), freeIn)));
+    el.appendChild(note);
+
+    // The book's own details: they belong to the book page, not to one chapter, so they are shown and linked, never
+    // edited here (the ids are never editable at all: learners' progress and stats hang from them).
+    var fixed = h('div', { class: 'ch-fixed' });
+    if (meta.majors && meta.majors.length) {
+      fixed.appendChild(h('span', { class: 'ch-l' }, 'رشته‌ها'));
+      meta.majors.forEach(function (m) { fixed.appendChild(h('span', { class: 'pill' }, typeof m === 'string' ? m : m.name)); });
+    }
+    var bookLabel = h('span', { class: 'ch-book-link' }, 'کتاب: ' + (meta.book_title || meta.book_slug || '—'));
+    if (bookUrl) {
+      var link = h('a', { href: bookUrl, title: 'رفتن به صفحه‌ی کتاب' }, bookLabel);
+      fixed.appendChild(link);
+    } else {
+      fixed.appendChild(bookLabel);
+    }
+    el.appendChild(fixed);
+    el.appendChild(h('div', { class: 'ch-ids' },
+      h('span', { class: 'ch-l' }, 'شناسه‌های ثابت'),
+      h('code', null, 'کتاب: ' + (meta.book_slug || '—')),
+      h('code', null, 'فصل: ' + (meta.chapter_slug || '—')),
+      h('span', { class: 'hint' }, 'تغییر نمی‌کنند؛ آمار کاربران به آن‌ها وصل است.')));
+
+    return {
+      el: el,
+      meta: values,
+      focus: function (which) {
+        if (which === 'title') { titleIn.focus(); }
+        else if (which === 'number') { numIn.focus(); }
+        else if (which === 'free') { freeIn.focus(); }
+      },
+      set: function (m) {
+        if (m.chapter_title != null) titleIn.value = m.chapter_title;
+        numIn.value = m.chapter_number == null ? '' : String(m.chapter_number);
+        freeIn.checked = !!m.chapter_free;
+        bad = false;
+        note.style.display = 'none';
+        numIn.classList.remove('bad');
+      },
+      // «شماره‌ی تکراری»: _order_chapters sorts the book by this number, so a second chapter with the same one
+      // reorders the whole book with no error at all. Said while the person can still change it.
+      warn: function (text, kind) {
+        if (!text) { note.style.display = 'none'; return; }
+        note.style.display = '';
+        note.className = 'hint ch-note ' + (kind || 'warn');
+        note.textContent = text;
+      },
+      hasProblem: function () { return bad || titleIn.value.trim() === '' || note.classList.contains('err'); },
+    };
+  }
+
   function cmUpgrade(ta, lines) { if (window.LimoCM) window.LimoCM.upgrade(ta, lines ? { minLines: lines } : {}); return ta; }
   // Text put in as one edit, so Ctrl+Z can take it back (setting .value would wipe the history).
   function typeIn(ta, text) {
@@ -1194,6 +1360,9 @@
     var number = prompt('شماره‌ی فصل (عدد):', c.number == null ? '' : c.number);
     if (number == null) return;
     var free = confirm('این فصل رایگان باشد؟ (تأیید = رایگان، انصراف = پولی)');
+    var ascii = String(number || '').replace(/[۰-۹]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); }).trim();
+    var twin = /^\d+$/.test(ascii) && (this.state.sibling_chapters || []).find(function (x) { return Number(x.position) === Number(ascii); });
+    if (twin && !confirm('شماره‌ی ' + fa(ascii) + ' پیش‌تر به فصل «' + twin.title + '» داده شده است. ذخیره، ترتیب فصل‌های کتاب را عوض می‌کند. ادامه می‌دهید؟')) return;
     this.call({ op: 'chapter.update', title: title, number: number, is_free: free }).then(function () { self.render(); toast('مشخصات فصل ذخیره شد.'); }).catch(function () {});
   };
 
@@ -1932,6 +2101,18 @@
 
   window.LimoFileEditor = function (opts) {
     var ta = document.getElementById('file-text'), out = document.getElementById('file-result');
+    // The header is not code to edit: the box holds the chapter's body, and the details a person does edit (عنوان،
+    // شماره، رایگان) sit above it as fields. The header itself is kept here and goes back on top, unchanged, on every
+    // check and save — so the file that leaves the page is still a whole chapter.md (`headerWith`).
+    var whole = String(ta.value || '').replace(/\r\n/g, '\n');
+    var end = frontMatterEnd(whole);
+    var header = opts.meta && opts.meta.header ? String(opts.meta.header).replace(/\r\n/g, '\n')
+      : (end >= 0 ? whole.slice(0, end) : headerWith('', opts.meta || {}));
+    // Backwards-compatible if a cached page still put the complete file in the textarea.
+    ta.value = end >= 0 ? whole.slice(end) : whole;
+    var card = opts.meta ? chapterCard(opts.meta, opts.book_url) : null;
+    if (card) ta.parentNode.insertBefore(card.el, ta);
+    function fullText() { return header + ta.value; }
     // The same tools as the chapter manager's boxes (find and replace here is over the whole chapter), and the same
     // live preview. Rendering a whole chapter is cheap (11 ms for 6000 characters, measured), so the preview is the
     // chapter — not a part of it: what a professor checks here is the chapter as a reader will get it.
@@ -1957,7 +2138,9 @@
       clearTimeout(prevTimer);
       var draw = function () {
         var html;
-        try { html = render(stripHeadingIds(stripFrontMatter(ta.value)), 'notes'); }
+        // The box holds the body; check and save put the header back on. The stripe keeps the panel from ever
+        // rebuilding a header by guesswork.
+        try { html = render(stripHeadingIds(ta.value), 'notes'); }
         catch (e) { html = '<p style="color:#ba2121">خطا در نمایش: ' + e.message + '</p>'; }
         frame.srcdoc = previewDoc(html);
       };
@@ -2013,7 +2196,7 @@
     var checkBtn = document.getElementById('file-check'), saveBtn = document.getElementById('file-save');
     var fresh = freshControls();
     if (!opts.restore) saveBtn.parentNode.insertBefore(fresh.el, saveBtn.nextSibling);
-    var checked = null, hides = [];
+    var checked = null, checkedMeta = null, hides = [];
     function post(body) {
       return fetch(opts.api, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify(body) })
         .then(function (r) { return r.json(); });
@@ -2025,7 +2208,7 @@
       textOnly = h('button', { class: 'btn', type: 'button', onclick: function () {
         if (!confirm('متن درسنامه و چکیده‌ی بخش‌هایی که الان هستند به این نسخه برمی‌گردد. هیچ بخش، تست یا فلش‌کارتی پنهان نمی‌شود. ادامه می‌دهید؟')) return;
         textOnly.disabled = true;
-        post({ op: 'file.restore_text', text: ta.value, version: opts.version, note: opts.note + ' (فقط متن بخش‌ها)' }).then(function (d) {
+        post({ op: 'file.restore_text', text: bodyOnly(ta.value), version: opts.version, note: opts.note + ' (فقط متن بخش‌ها)' }).then(function (d) {
           textOnly.disabled = false;
           if (d.errors) { out.prepend(h('div', { class: 'msg err' }, d.errors.join(' '))); return; }
           location.href = opts.done;
@@ -2033,12 +2216,30 @@
       } }, 'فقط متن بخش‌ها را برگردان، چیزی پنهان نشود');
       saveBtn.parentNode.insertBefore(textOnly, saveBtn.nextSibling);
     }
-    ta.addEventListener('input', function () { if (checked !== null) { checked = null; saveBtn.disabled = true; } });
+    function dirty() { if (checked !== null) { checked = null; saveBtn.disabled = true; } }
+    ta.addEventListener('input', dirty);
+    if (card) card.el.addEventListener('input', dirty);
+    // Restoring the *text* of a version must not carry its header: the chapter's details stay as they are (an old
+    // version can be from before a rename, and putting its header back would undo the rename silently).
+    function bodyOnly(text) {
+      var at = frontMatterEnd(text);
+      return at < 0 ? String(text || '') : String(text).slice(at);
+    }
     checkBtn.onclick = function () {
       out.innerHTML = 'در حال بررسی…';
-      post({ op: 'file.check', text: ta.value }).then(function (d) {
+      var m = card ? card.meta() : null;
+      if (m && m.chapter_number !== null && !(m.chapter_number >= 0 && m.chapter_number <= 32767)) {
+        out.innerHTML = '';
+        card.warn('شماره‌ی فصل باید عددی بین ۰ و ۳۲۷۶۷ باشد.', 'err');
+        return;
+      }
+      var checkBody = ta.value, checkMeta = JSON.stringify(m || null);
+      if (card) header = headerWith(header, m);
+      var checkText = fullText();
+      post({ op: 'file.check', text: checkText, meta: m || undefined }).then(function (d) {
         out.innerHTML = '';
         hides = [];
+        if (card) card.warn((d.meta && d.meta.clash) || '', 'warn');
         if (d.plan) ['sections', 'questions', 'flashcards'].forEach(function (k) {
           d.plan[k].forEach(function (r) { if (typeof r !== 'string' && r[0] === 'archived') hides.push({ sections: 'بخش', questions: 'تست', flashcards: 'فلش‌کارت' }[k] + ' ' + r[1]); });
         });
@@ -2049,16 +2250,21 @@
             h('ul', null, hides.map(function (x) { return h('li', null, x); }))));
         }
         out.appendChild(window.LimoReport(d));
-        checked = d.errors.length ? null : ta.value;
-        saveBtn.disabled = !!d.errors.length || !d.plan || (!d.plan.count && !d.plan.notes.length);
+        checked = d.errors.length ? null : checkBody;
+        checkedMeta = d.errors.length ? null : checkMeta;
+        saveBtn.disabled = !!d.errors.length || !d.plan || (!d.plan.count && !d.plan.notes.length)
+          || ta.value !== checkBody || (card && JSON.stringify(card.meta()) !== checkMeta);
         if (!d.errors.length && d.plan && !d.plan.count && !d.plan.notes.length) out.appendChild(h('div', { class: 'msg ok' }, 'با فصل فعلی فرقی ندارد.'));
       });
     };
     saveBtn.onclick = function () {
-      if (checked === null || checked !== ta.value) return;
+      var m = card ? card.meta() : null;
+      if (checked === null || checked !== ta.value || (card && JSON.stringify(m) !== checkedMeta)) return;
+      if (card && m.chapter_number !== null && !(m.chapter_number >= 0 && m.chapter_number <= 32767)) { card.warn('شماره‌ی فصل باید عددی بین ۰ و ۳۲۷۶۷ باشد.', 'err'); return; }
       if (opts.restore && hides.length && !confirm(fa(hides.length) + ' مورد از دید کاربران پنهان می‌شود (پاک نمی‌شود و برمی‌گردد). کل نسخه برگردد؟')) return;
       saveBtn.disabled = true;
-      post(Object.assign({ op: 'file.apply', text: ta.value, version: opts.version, restore: opts.restore, note: opts.note }, fresh.value())).then(function (d) {
+      if (card) header = headerWith(header, m);
+      post(Object.assign({ op: 'file.apply', text: fullText(), meta: m || undefined, version: opts.version, restore: opts.restore, note: opts.note }, fresh.value())).then(function (d) {
         if (d.errors) { out.prepend(h('div', { class: 'msg err' }, d.errors.join(' '))); return; }
         keeper.saved();
         location.href = opts.done;
