@@ -1294,3 +1294,29 @@ class ImportPreviewBeforeSaveTests(TestCase):
     def test_a_broken_file_gets_no_preview(self):
         html = self._upload(b"not latex at all {{{", "bad.tex").content.decode()
         self.assertNotIn('id="import-pv"', html)
+
+
+class PreviewWindowTests(_Base):
+    """The whole-file preview lives in its own window, opened from the editor's toolbar.
+
+    The window itself is JavaScript (checked against the real page in jsdom); what is guarded here is the page it is
+    built on: the toolbar the button sits in, the frame it holds, and the fact that the width buttons are no longer
+    laid over the lesson — a professor asked for exactly that.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse("admin:catalog_chapter_file", args=[self.chapter.pk])
+
+    def test_the_page_gives_the_editor_what_it_needs_to_build_the_window(self):
+        # The window and its frame are built in JavaScript (there is no <iframe> in the served HTML), so what can be
+        # checked here is what the script reads: the text box it previews and the script tag that starts it.
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('id="file-text"', html)
+        self.assertIn("LimoFileEditor", html)
+        self.assertIn("panel.js", html)
+
+    def test_the_width_controls_are_not_inside_the_preview_column(self):
+        # They are settings of the frame, not part of what the reader sees: they belong on the toolbar.
+        html = self.client.get(self.url).content.decode()
+        self.assertNotIn('md-prev file-prev-wrap', html)
