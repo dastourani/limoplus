@@ -48,7 +48,7 @@
 .md-ed .md-bar select.file-go { max-width: 260px; font: inherit; font-size: 13px; padding: 2px 6px; border: 1px solid var(--line, #dde2d8); border-radius: 6px; background: var(--card, #fff); color: var(--body-fg, #333); }
 .md-ed .md-bar .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
 .md-ed .md-bar .pv-toggle { display: inline-flex; gap: 5px; align-items: center; margin-inline-start: auto; }
-.md-ed .md-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(330px, 410px); min-height: 260px; }
+.md-ed .md-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(330px, 410px); min-height: 260px; align-items: start; }
 .md-ed.device-tablet .md-body { grid-template-columns: minmax(0, 1fr) minmax(430px, 788px); }
 .md-ed.device-web .md-body { grid-template-columns: minmax(260px, 0.72fr) minmax(360px, 1.28fr); }
 .md-ed.preview-off .md-body, .md-ed.preview-only .md-body { grid-template-columns: 1fr; }
@@ -62,10 +62,10 @@
 .md-ed .md-bar .pv-justify-toggle { margin-inline-start: 4px; }
 /* The lesson keeps the app's own typography. If the pane is narrower than the chosen device, the frame is laid out at
    its honest CSS width and shrunk as a whole; text never reflows to a width no learner has. */
-.md-ed .pv-pane { border-right: 1px solid var(--line); background: #e9ece4; min-width: 0; min-height: 260px; display: flex; flex-direction: column; }
+.md-ed .pv-pane { border-right: 1px solid var(--line); background: #e9ece4; min-width: 0; min-height: 240px; display: flex; flex-direction: column; align-self: start; height: max-content; }
 .pv-pane-bar { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 6px 8px; background: #17201A; color: #F6F7F2; flex: 0 0 auto; }
 .pv-pane-title { font-size: 12px; font-weight: 700; flex: 1 1 auto; min-width: 48px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pv-pane-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 10px; }
+.pv-pane-body { flex: 0 0 auto; min-height: 0; overflow: visible; display: flex; justify-content: center; align-items: flex-start; padding: 10px; }
 .pv-pane-stage { flex: 0 0 auto; }
 .pv-frame { display: block; border: 0; border-radius: 14px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
 .pv-devices { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; overflow-x: auto; padding: 2px;
@@ -88,9 +88,6 @@
 .md-ed.file.device-web .md-body { grid-template-columns: minmax(240px, 0.65fr) minmax(360px, 1.35fr); }
 .md-ed.file.preview-only .md-body { grid-template-columns: 1fr; }
 .md-ed.file textarea { min-height: 60vh; }
-/* The whole-file preview is as tall as the editor, not a short strip: a chapter is long, and a 260px window on it
-   shows three lines and hides the rest. */
-.md-ed.file .pv-pane { min-height: 60vh; }
 .md-ed.file.preview-off .pv-pane { display: none; }
 .md-ed.compact .md-body { grid-template-columns: 1fr; }
 .md-ed.compact .pv-pane { display: none; }

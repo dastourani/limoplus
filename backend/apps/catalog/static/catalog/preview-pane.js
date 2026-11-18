@@ -137,20 +137,38 @@
       applyLayout();
     }
 
-    // Recompute only the visual scale. A hidden pane has no measurable size; call again once it is shown.
+    // The iframe is sized to the rendered lesson, not to the editor's height. Otherwise a short preview inside a
+    // very long chapter leaves a full column of white and a pointless scrollbar. The page itself may grow, exactly
+    // like the text editor does; there is no useless inner scroll.
+    function contentHeight() {
+      try {
+        var doc = frame.contentDocument;
+        if (!doc) return 240;
+        var body = doc.body, root = doc.documentElement;
+        return Math.max(240, Math.ceil(Math.max(
+          body ? body.scrollHeight : 0,
+          body ? body.offsetHeight : 0,
+          root ? root.scrollHeight : 0,
+          root ? root.offsetHeight : 0
+        )) + 4);
+      } catch (e) {
+        return 240;
+      }
+    }
+
     function applyLayout() {
       var w = logicalWidth(device);
       var available = Math.max(260, (body.clientWidth || options.minWidth || 320) - 20);
-      var availableHeight = Math.max(240, body.clientHeight || options.minHeight || 480);
+      var height = contentHeight();
       pane.setAttribute('data-device', device);
+      frame.style.height = height + 'px';
 
       if (!w) {                       // web: fill the column, never scale and never reflow beyond 1024px
         stage.style.width = '100%';
         stage.style.maxWidth = '1024px';
-        stage.style.height = availableHeight + 'px';
+        stage.style.height = height + 'px';
         frame.style.width = '100%';
         frame.style.maxWidth = '1024px';
-        frame.style.height = availableHeight + 'px';
         frame.style.transform = '';
         frame.style.margin = '0 auto';
         return;
@@ -159,10 +177,9 @@
       var scale = Math.min(1, available / w);
       stage.style.width = Math.round(w * scale) + 'px';
       stage.style.maxWidth = 'none';
-      stage.style.height = Math.round(availableHeight * scale) + 'px';
+      stage.style.height = Math.round(height * scale) + 'px';
       frame.style.width = w + 'px';
       frame.style.maxWidth = 'none';
-      frame.style.height = availableHeight + 'px';
       frame.style.margin = '0';
       frame.style.transformOrigin = 'top left';
       frame.style.transform = scale < 0.999 ? 'scale(' + scale + ')' : '';
@@ -180,7 +197,7 @@
     } else {
       window.addEventListener('resize', scheduleLayout);
     }
-    frame.addEventListener('load', scheduleLayout);
+    frame.addEventListener('load', function () { scheduleLayout(); setTimeout(scheduleLayout, 250); });
 
     paintButtons();
     setExpanded(expanded);
