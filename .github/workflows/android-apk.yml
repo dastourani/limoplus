@@ -13,7 +13,10 @@ permissions:
 
 concurrency:
   group: android-apk
-  cancel-in-progress: false  # never cancel a build in progress; the next one waits
+  # A build already running is not cut off — the newest waits and goes next, so the newest code still gets the APK.
+  # Older ones waiting behind it are dropped (they would publish an APK the newest one replaces a minute later): on
+  # 17 Nov that queue was five builds of ~150 minutes together.
+  cancel-in-progress: false
 
 jobs:
   build:

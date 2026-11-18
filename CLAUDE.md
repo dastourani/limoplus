@@ -161,6 +161,13 @@ by major, never inside reading or quiz screens. AI assistant is shown as "coming
   `cd app && npm run typecheck`. Run backend management commands locally with `DEBUG=True`.
   The same backend tests also run on PostgreSQL in CI (`.github/workflows/backend-tests.yml`): SQLite silently skips some
   things PostgreSQL refuses (e.g. `select_for_update` across nullable joins), so payment and locking code must pass there.
+  CI runs on the owner's own Actions minutes (2,000 a month), so it is kept lean: the backend tests run on push (not a
+  second time on the pull request) and a newer push cancels a running one. Free minutes: a **private** repository on the
+  free plan has none — making the repository public is the way round a spent month (or run it locally, below).
+- **Panel JavaScript needs a browser run, not only tests.** The chapter manager's bugs do not raise on the server and
+  Django tests cannot see them: «فصل باز نشد» was `applyWidth()` running before `this.frame` existed, and a missing
+  `destinations` answer made the panel re-render itself for ever. Run the real page (jsdom + the real `page.html` and
+  chapter API state, as was done to find them); `tests_panel.ChapterManagerScriptTests` guards the two that happened.
 - In this cloud environment `npx expo install` cannot reach Expo's version API; pin versions manually and ask the
   owner to run `npx expo install --fix` locally if needed.
 - Payment, auth and data-migration changes get an independent review before merge.

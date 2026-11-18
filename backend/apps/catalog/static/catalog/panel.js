@@ -716,6 +716,10 @@
     // The width and the alignment of the preview, above it; both remembered between visits. Defined before setMode,
     // which the constructor calls at its end.
     var self2 = self;
+    // The frame comes first: previewControls() sizes the preview while it is being built, and it used to run before
+    // this.frame existed — «Cannot read properties of undefined (reading 'style')» on every open of a chapter, which
+    // the chapter manager then showed as «فصل باز نشد». (Found by running the real page, not by reading the code.)
+    this.frame = h('iframe', { title: 'پیش‌نمایش مثل گوشی' });
     this.applyWidth = function () {
       var px = widthPx(previewWidth());
       self2.frame.style.width = px ? px + 'px' : '100%';
@@ -732,7 +736,6 @@
       if (m !== 'text') self.refresh();
       self.applyWidth();
     };
-    this.frame = h('iframe', { title: 'پیش‌نمایش مثل گوشی' });
     var body = h('div', { class: 'md-body' });
     textarea.parentNode.insertBefore(wrap, textarea);
     body.appendChild(textarea);
@@ -1111,7 +1114,9 @@
       sel.appendChild(h('option', { value: '', disabled: true }, 'در حال گرفتن فهرست…'));
       if (!this.destLoading) {
         this.destLoading = true;
-        this.call({ op: 'destinations' }).then(function (d) { self.dest = d.destinations; self.destLoading = false; self.render(); })
+        // [] when the answer has no list: an answer without it used to leave this.dest unset for ever, so every
+        // render asked again and re-rendered — a page that never finished loading.
+        this.call({ op: 'destinations' }).then(function (d) { self.dest = d.destinations || []; self.destLoading = false; self.render(); })
           .catch(function () { self.destLoading = false; });
       }
       return sel;
@@ -1139,7 +1144,9 @@
       sel.appendChild(h('option', { value: '', disabled: true }, 'در حال گرفتن فهرست…'));
       if (!this.destLoading) {
         this.destLoading = true;
-        this.call({ op: 'destinations' }).then(function (d) { self.dest = d.destinations; self.destLoading = false; self.render(); })
+        // [] when the answer has no list: an answer without it used to leave this.dest unset for ever, so every
+        // render asked again and re-rendered — a page that never finished loading.
+        this.call({ op: 'destinations' }).then(function (d) { self.dest = d.destinations || []; self.destLoading = false; self.render(); })
           .catch(function () { self.destLoading = false; });
       }
       return sel;

@@ -1437,3 +1437,26 @@ class PublishGateTests(_Base):
         before = export_chapter(self.chapter)
         self.client.post(reverse("admin:catalog_book_publish", args=[self.book.pk]), {"value": "0"})
         self.assertEqual(export_chapter(self.chapter), before)
+
+
+class ChapterManagerScriptTests(_Base):
+    """Order-of-lines bugs in panel.js, which the browser only shows as «فصل باز نشد» on every chapter.
+
+    Not a browser test: it reads the script and checks the one order that broke the whole chapter page. The professor
+    saw «Cannot read properties of undefined (reading 'style')» — the editor sized its preview iframe while building
+    itself, before that iframe existed.
+    """
+
+    def setUp(self):
+        self.js = (settings.BASE_DIR / "apps/catalog/static/catalog/panel.js").read_text(encoding="utf-8")
+
+    def test_the_preview_iframe_exists_before_the_editor_sizes_it(self):
+        make = self.js.index("this.frame = h('iframe'")
+        # previewControls() calls the sizer once while it is being built, so the frame must already be there.
+        size = self.js.index("var ctl = previewControls(function () {\n      self2.applyWidth();")
+        self.assertLess(make, size, "the iframe is made after the code that sizes it: every chapter shows «فصل باز نشد»")
+
+    def test_a_missing_destination_list_does_not_re_render_forever(self):
+        # An answer without «destinations» left self.dest unset, so every render asked again and re-rendered itself.
+        self.assertEqual(self.js.count("self.dest = d.destinations || [];"), 2,
+                         "both destination lists must fall back to [] or the panel can loop")
