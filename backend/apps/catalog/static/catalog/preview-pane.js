@@ -197,7 +197,19 @@
     } else {
       window.addEventListener('resize', scheduleLayout);
     }
-    frame.addEventListener('load', function () { scheduleLayout(); setTimeout(scheduleLayout, 250); });
+    frame.addEventListener('load', function () {
+      scheduleLayout();
+      setTimeout(scheduleLayout, 250);
+      // Web fonts swap in after `load`, and the swapped glyphs set different line breaks. The document inside the
+      // frame cannot scroll (see previewDoc), so a stale, shorter frame would clip the lesson instead of offering a
+      // scrollbar — measure again when the fonts are ready.
+      try {
+        var doc = frame.contentDocument;
+        if (doc && doc.fonts && doc.fonts.ready && doc.fonts.ready.then) {
+          doc.fonts.ready.then(function () { scheduleLayout(); setTimeout(scheduleLayout, 150); });
+        }
+      } catch (e) { /* ignore */ }
+    });
 
     paintButtons();
     setExpanded(expanded);

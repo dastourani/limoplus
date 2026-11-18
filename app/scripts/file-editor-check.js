@@ -189,6 +189,20 @@ const headerOf = (text) => { const i = text.indexOf('\n---', 4); return text.sli
   const frame = doc.querySelector('iframe.file-prev');
   if (!frame) fails.push('no preview frame');
   else if (frame.srcdoc && frame.srcdoc.includes('شناسه-کتاب')) fails.push('the preview shows the file header');
+  else if (frame.srcdoc) {
+    // The preview is the app's own type: four weights of Vazirmatn, swapped in without render-blocking, and a document
+    // that cannot scroll — so the wheel over a lesson reaches the page, never a hidden 4px.
+    for (const needle of ['Vazirmatn_400Regular.ttf', 'Vazirmatn_700Bold.ttf', 'Vazirmatn_800ExtraBold.ttf',
+                          'Vazirmatn_900Black.ttf', 'font-display:swap', 'html,body{overflow:hidden}']) {
+      if (!frame.srcdoc.includes(needle)) fails.push('the preview document is missing ' + needle);
+    }
+    for (const file of ['Vazirmatn_400Regular.ttf', 'Vazirmatn_700Bold.ttf', 'Vazirmatn_800ExtraBold.ttf', 'Vazirmatn_900Black.ttf']) {
+      if (!fs.existsSync(path.join(root, 'backend/apps/catalog/static/catalog/fonts', file))) fails.push('font file missing: ' + file);
+    }
+    // Nothing in the panel may intercept the wheel; scroll belongs to the element under the cursor, the page otherwise.
+    if (/addEventListener\(['"]wheel/.test(fs.readFileSync(path.join(root, 'backend/apps/catalog/static/catalog/panel.js'), 'utf8'))) fails.push('panel.js registers a global wheel listener');
+    if (/addEventListener\(['"]wheel/.test(fs.readFileSync(path.join(root, 'backend/apps/catalog/static/catalog/preview-pane.js'), 'utf8'))) fails.push('preview-pane.js registers a global wheel listener');
+  }
 
   // 7. The docked preview: the toolbar toggle hides it (editor full width), the pane's × does the same, its bar carries
   //    گوشی/تبلت/وب, they apply without closing it, and «فقط پیش‌نمایش» uses the whole workspace.
