@@ -8,7 +8,7 @@ from django.shortcuts import redirect
 from django.urls import path, reverse
 from django.utils.html import format_html
 
-from . import bookpanel, panel
+from . import access, bookpanel, panel
 from .drawing import DrawingError, clean_svg
 from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
@@ -96,7 +96,10 @@ class BookAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {"fields": ("title", "title_en", "slug", "author", "edition", "majors")}),
         ("جلد و معرفی", {"fields": ("cover_motif", "drawing_file", "clear_drawing", "cover", "about")}),
-        ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "release_estimate", "position", "is_published", "is_archived")}),
+        # `is_published` is deliberately NOT a form field: writing a book and releasing it are separate gates, and a
+        # checkbox in a form cannot tell the two apart. Publishing goes through the button below the title, which
+        # asks can_publish_book (see publish_book view).
+        ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "release_estimate", "position", "is_archived")}),
         ("اشتراک‌گذاری", {"fields": ("share_link",)}),
     )
 
@@ -229,6 +232,9 @@ class BookAdmin(admin.ModelAdmin):
 
             extra["health"] = book_health(book)
             extra.update(gift_context(book))
+            # The publish box reads this and not `original.is_published` alone: without the gate it cannot know
+            # whether to offer the button or explain why there is none.
+            extra["publish"] = access.publish_state(request.user, book)
         return super().change_view(request, object_id, form_url, extra_context=extra)
 
     def get_urls(self):
@@ -239,6 +245,8 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/export/", site(panel.book_export), name="catalog_book_export"),
             path("orphan/<int:node_id>/archive/", site(panel.archive_orphan), name="catalog_archive_orphan"),
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
+            path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
+                 name="catalog_book_publish"),
             path("inbox/", site(panel.open_inbox), name="catalog_inbox"),
             path("<int:book_id>/gift/", site(bookpanel.book_gift), name="catalog_book_gift"),
             path("<int:book_id>/notify-waitlist/", site(lambda r, book_id: bookpanel.waitlist_notify(self.admin_site, r, book_id)),

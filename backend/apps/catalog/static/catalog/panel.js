@@ -1075,16 +1075,31 @@
     }
     return h('div', { class: 'cm-head' },
       h('h2', null, (c.number ? 'فصل ' + fa(c.number) + ': ' : '') + c.title),
-      h('label', { class: 'btn', title: 'فصل منتشرنشده در اپ دیده نمی‌شود' },
-        h('input', { type: 'checkbox', checked: c.is_published, onchange: function (e) {
-          self.call({ op: 'chapter.publish', value: e.target.checked }).then(function () { self.load(); });
-        } }), ' منتشر شده'),
+      (function () {
+        var p = self.publishBox(c.is_published, function (e) {
+          self.call({ op: 'chapter.publish', value: e.target.checked }).then(function () { self.load(); })
+            .catch(function (err) { e.target.checked = !e.target.checked; alert((err && err.message) || 'منتشر نشد.'); });
+        });
+        return p.el;
+      })(),
       h('button', { class: 'btn', type: 'button', onclick: function () { self.editChapter(); } }, 'مشخصات فصل'),
       h('a', { class: 'btn', href: base + 'file/' }, 'ویرایش کل فایل'),
       h('a', { class: 'btn', href: base + 'export/' }, 'دریافت فایل فصل'),
       h('a', { class: 'btn', href: base + 'history/' }, 'نسخه‌ها (' + fa(st.revisions) + ')'),
       h('a', { class: 'btn', href: '../../' + st.book.id + '/change/#chapters' }, 'کتاب «' + st.book.title + '»'),
       h('a', { class: 'btn', href: '../../inbox/', title: 'تست‌هایی که هنوز جایشان معلوم نیست' }, '📥 صندوق تست'));
+  };
+
+  // ----- publishing --------------------------------------------------------------
+  // Writing and releasing are separate gates (access.can_publish_book). The state comes with the chapter, so the
+  // checkbox is disabled — and says why — instead of ticking, failing on the server, and reloading to the same value.
+  Manager.prototype.publishBox = function (isPublished, onChange) {
+    var allowed = this.state.can_publish;
+    var box = h('input', { type: 'checkbox', checked: isPublished, disabled: !allowed, onchange: onChange });
+    var label = h('label', { class: 'btn', title: allowed ? 'منتشرنشده در اپ دیده نمی‌شود'
+      : (this.state.publish_why || 'اجازه‌ی انتشار ندارید') }, box, ' منتشر شده');
+    if (!allowed) label.style.opacity = '.55';
+    return { el: label, why: allowed ? null : h('span', { class: 'hint' }, this.state.publish_why || '') };
   };
 
   // ----- moving tests anywhere (any section of any book, and the «صندوق تست») -----
@@ -1254,9 +1269,14 @@
         h('div', { style: 'width:240px' }, h('label', { class: 'f' }, 'گروه ', h('span', { class: 'hint' }, '(سرتیتر در فهرست کتاب)')), group, dl)));
       card.appendChild(h('div', { class: 'row', style: 'margin-top:10px' },
         h('span', { class: 'hint' }, 'شناسه: ' + s.slug),
-        h('label', { class: 'btn small' }, h('input', { type: 'checkbox', checked: s.is_published, onchange: function (e) {
-          self.call({ op: 'section.publish', slug: s.slug, value: e.target.checked }).then(function () { self.load(); }).catch(function () {});
-        } }), ' منتشر شده'),
+        (function () {
+          var p = self.publishBox(s.is_published, function (e) {
+            self.call({ op: 'section.publish', slug: s.slug, value: e.target.checked }).then(function () { self.load(); })
+              .catch(function (err) { e.target.checked = !e.target.checked; alert((err && err.message) || 'منتشر نشد.'); });
+          });
+          p.el.className = 'btn small';
+          return p.el;
+        })(),
         h('span', { class: 'grow' }),
         this.chapterSelect(function (to, label) { self.moveSectionTo(s, to, label); }),
         h('button', { class: 'btn', type: 'button', onclick: function () {

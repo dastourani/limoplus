@@ -12,6 +12,29 @@
 {{ majors_json|json_script:"lp-majors" }}
 {{ drawing_json|json_script:"lp-drawing" }}
 {% if original %}
+<div class="lp chapters-box" id="publish">
+  <h2>انتشار</h2>
+  {% if publish.can_publish %}
+    <p class="hint">انتشار یعنی کتاب در اپ دیده شود. با انتشار، همه‌ی فصل‌های کتاب هم منتشر می‌شوند
+      (کتاب منتشرشده با فصل‌های پیش‌نویس، در اپ فهرستی خالی نشان می‌دهد).</p>
+    {% if book.is_published %}
+      <p class="lp-ok">✓ این کتاب الآن در اپ دیده می‌شود.</p>
+      <form method="post" action="{% url 'admin:catalog_book_publish' original.pk %}">{% csrf_token %}
+        <input type="hidden" name="value" value="0">
+        <button class="btn small danger" type="submit">از انتشار خارج کن</button>
+        <span class="hint">متن پاک نمی‌شود؛ فقط از اپ پنهان می‌شود.</span>
+      </form>
+    {% else %}
+      <p class="hint">این کتاب پیش‌نویس است و در اپ دیده نمی‌شود.</p>
+      <form method="post" action="{% url 'admin:catalog_book_publish' original.pk %}">{% csrf_token %}
+        <input type="hidden" name="value" value="1">
+        <button class="btn primary" type="submit">انتشار کتاب</button>
+      </form>
+    {% endif %}
+  {% else %}
+    <p class="hint">{{ publish.why }}</p>
+  {% endif %}
+</div>
 <div class="lp chapters-box" id="check">
   <h2>بررسی کتاب</h2>
   {% if health %}

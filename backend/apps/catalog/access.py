@@ -108,7 +108,15 @@ def can_edit_book(user, book: ContentNode) -> bool:
 
 
 def can_publish_book(user, book: ContentNode) -> bool:
-    """Superusers, or an editor trusted with publishing. Drafting is open to every editor of the book."""
+    """May this user put this book's content in front of learners?
+
+    Writing and publishing are two separate gates, and that is the point: a professor may be trusted to draft a book
+    long before being trusted to release it, and the reviewer who says «منتشر کن» is usually someone else. So a
+    «استاد کتاب» row gets you can_edit_book; only `can_publish` (or a superuser) gets you here.
+
+    Every path that sets `is_published` on a book, chapter or section must ask this first — a checkbox that is
+    visible to everybody is not a gate. See panel.py and admin.py for the callers.
+    """
     if not (user and user.is_authenticated and user.is_active):
         return False
     if user.is_superuser:
@@ -116,6 +124,22 @@ def can_publish_book(user, book: ContentNode) -> bool:
     from .models import BookEditor
 
     return BookEditor.objects.filter(book=book, user=user, can_publish=True).exists()
+
+
+def publish_state(user, book: ContentNode) -> dict:
+    """What the panel needs to draw publishing honestly: the gate, and why it is closed.
+
+    Returned as a dict because the JS renders from it, and every page that shows a publish control needs the same
+    three facts — otherwise one of them drifts and shows a button the server will refuse.
+    """
+    allowed = can_publish_book(user, book)
+    if allowed:
+        reason = ""
+    elif not (user and user.is_authenticated and user.is_staff):
+        reason = "برای انتشار باید عضو پنل باشید."
+    else:
+        reason = "انتشار کتاب را مدیر کل انجام می‌دهد؛ شما می‌نویسید و آماده می‌کنید."
+    return {"can_publish": allowed, "why": reason}
 
 
 _UNSET = object()
