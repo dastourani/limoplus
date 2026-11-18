@@ -11,6 +11,60 @@ AccessMap loads a whole book in one query, so lists of questions or sections cos
 from .models import ContentNode
 
 
+BOOK_EDITOR_GROUP = "استاد کتاب"
+
+
+def is_book_teacher(user) -> bool:
+    """A manager-approved, invited panel user; a staff flag or an editor row alone is never an approval."""
+    return bool(
+        user and user.is_authenticated and user.is_active and user.is_staff
+        and user.groups.filter(name=BOOK_EDITOR_GROUP).exists()
+    )
+
+
+def book_editor_ids(user):
+    """Book IDs this approved editor may see; superusers see all books."""
+    if user and user.is_authenticated and user.is_active and user.is_superuser:
+        return ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1).values("pk")
+    if not is_book_teacher(user) or not user.has_perm("catalog.change_contentnode"):
+        return ContentNode.objects.none().values("pk")
+    from .models import BookEditor
+
+    return BookEditor.objects.filter(
+        user_id=user.pk,
+        book__kind=ContentNode.Kind.BOOK,
+        book__depth=1,
+        book__is_inbox=False,
+    ).values("book_id")
+
+
+def books_for_editor(user):
+    """The books visible to a panel user, as a queryset (so filters never need every title in Python)."""
+    return ContentNode.objects.filter(pk__in=book_editor_ids(user), kind=ContentNode.Kind.BOOK, depth=1)
+
+
+def scope_to_editor_books(queryset, user, path_field="path"):
+    """Restrict a related-object queryset to rows beneath this editor's assigned book roots.
+
+    `path_field` can be `path`, `node__path`, `chapter__path`, or a previously annotated `item_path`.
+    The root lookup stays in SQL and works for any number of assigned books.
+    """
+    if user and user.is_authenticated and user.is_active and user.is_superuser:
+        return queryset
+    if not is_book_teacher(user) or not user.has_perm("catalog.change_contentnode"):
+        return queryset.none()
+    from django.db.models import OuterRef, Subquery
+    from django.db.models.functions import Substr
+
+    roots = ContentNode.objects.filter(
+        path=Substr(OuterRef(path_field), 1, ContentNode.steplen),
+        kind=ContentNode.Kind.BOOK,
+        depth=1,
+        pk__in=book_editor_ids(user),
+    ).order_by()
+    return queryset.annotate(_lp_editor_book_id=Subquery(roots.values("pk")[:1])).filter(_lp_editor_book_id__isnull=False)
+
+
 def acts_as_staff(user) -> bool:
     """Staff, unless they asked to see the app as a learner does."""
     return bool(user and user.is_authenticated and user.is_staff and not getattr(user, "view_as_learner", False))
@@ -93,37 +147,39 @@ def book_of(node: ContentNode) -> ContentNode:
 def can_edit_book(user, book: ContentNode) -> bool:
     """May this user WRITE this book's content?
 
-    Superusers, always. Otherwise a staff member must hold the catalog change permission AND a «استاد کتاب»
-    row for this very book. Reading other books is allowed; writing them is not. (See BookEditor.)
+    Superusers always can. Everyone else must be an approved member of «استاد کتاب», have the narrow
+    content-editor permission, and have a «استاد کتاب» row for this exact book. A staff flag or a stray
+    per-user permission cannot approve somebody or give them a book. Archived books are manager-only.
     """
     if not (user and user.is_authenticated and user.is_active):
         return False
     if user.is_superuser:
         return True
-    if not (user.is_staff and user.has_perm("catalog.change_contentnode")):
+    if book.is_archived or book.is_inbox or not is_book_teacher(user) or not user.has_perm("catalog.change_contentnode"):
         return False
     from .models import BookEditor
 
-    return BookEditor.objects.filter(book=book, user=user).exists()
+    return BookEditor.objects.filter(
+        book=book, user=user, book__kind=ContentNode.Kind.BOOK, book__depth=1
+    ).exists()
+
+
+def can_edit_chapter(user, chapter: ContentNode) -> bool:
+    """Editors may work only on drafts; published or archived content remains under the manager's control."""
+    if not can_edit_book(user, chapter.book()):
+        return False
+    if user.is_superuser:
+        return True
+    return not chapter.is_published and not chapter.is_archived
 
 
 def can_publish_book(user, book: ContentNode) -> bool:
-    """May this user put this book's content in front of learners?
+    """Only the active superuser (the manager) may change publication state.
 
-    Writing and publishing are two separate gates, and that is the point: a professor may be trusted to draft a book
-    long before being trusted to release it, and the reviewer who says «منتشر کن» is usually someone else. So a
-    «استاد کتاب» row gets you can_edit_book; only `can_publish` (or a superuser) gets you here.
-
-    Every path that sets `is_published` on a book, chapter or section must ask this first — a checkbox that is
-    visible to everybody is not a gate. See panel.py and admin.py for the callers.
+    `BookEditor.can_publish` is retained as a manually maintained legacy/review flag, but it does not grant
+    publication rights. Teachers can prepare drafts; the manager alone publishes or withdraws them.
     """
-    if not (user and user.is_authenticated and user.is_active):
-        return False
-    if user.is_superuser:
-        return True
-    from .models import BookEditor
-
-    return BookEditor.objects.filter(book=book, user=user, can_publish=True).exists()
+    return bool(user and user.is_authenticated and user.is_active and user.is_superuser)
 
 
 def publish_state(user, book: ContentNode) -> dict:
@@ -138,7 +194,7 @@ def publish_state(user, book: ContentNode) -> dict:
     elif not (user and user.is_authenticated and user.is_staff):
         reason = "برای انتشار باید عضو پنل باشید."
     else:
-        reason = "انتشار کتاب را مدیر کل انجام می‌دهد؛ شما می‌نویسید و آماده می‌کنید."
+        reason = "انتشار و بازکردن دسترسی دانشجویان فقط با مدیر کل است؛ استاد محتوا را پیش‌نویس و آماده می‌کند."
     return {"can_publish": allowed, "why": reason}
 
 

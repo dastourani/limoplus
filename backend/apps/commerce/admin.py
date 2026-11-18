@@ -71,7 +71,7 @@ class OrderBookFilter(admin.SimpleListFilter):
     def lookups(self, request, model_admin):
         from apps.catalog.filters import _book_choices
 
-        return _book_choices()
+        return _book_choices(user=request.user)
 
     def queryset(self, request, queryset):
         return queryset.filter(book_id=self.value()) if self.value() else queryset
@@ -251,6 +251,18 @@ class EntitlementAdmin(admin.ModelAdmin):
     autocomplete_fields = ("user",)
     raw_id_fields = ("book", "order")
     readonly_fields = ("order", "granted_by", "created_at")
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     @admin.display(description="کاربر", ordering="user__phone")
     def owner(self, obj):

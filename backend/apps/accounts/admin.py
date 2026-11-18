@@ -2,7 +2,10 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import admin
+from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.models import Group
+from django.contrib.admin.sites import NotRegistered
 from django.db.models import Count, Q
 from django.utils import timezone
 
@@ -137,6 +140,27 @@ class UserAdmin(BaseUserAdmin):
     )
     add_fieldsets = ((None, {"classes": ("wide",), "fields": ("phone", "password1", "password2")}),)
     inlines = [DeviceSessionInline]
+
+    def has_add_permission(self, request):
+        # Creating accounts and granting panel status happen only through the manager-approved onboarding flow.
+        return bool(request.user.is_superuser)
+
+    def get_fieldsets(self, request, obj=None):
+        if request.user.is_superuser:
+            return self.add_fieldsets if obj is None else self.fieldsets
+        return (
+            ("خلاصه", {"fields": ("overview",)}),
+            (None, {"fields": ("phone",)}),
+            ("مشخصات", {"fields": ("first_name", "last_name", "email")}),
+            ("محدودیت‌ها و وضعیت حساب", {"fields": ("is_active", "can_copy", "can_report", "admin_note")}),
+            ("تاریخ‌ها", {"classes": ("collapse",), "fields": ("last_login", "date_joined")}),
+        )
+
+    def get_readonly_fields(self, request, obj=None):
+        if request.user.is_superuser:
+            return self.readonly_fields
+        return tuple(dict.fromkeys((*self.readonly_fields, "phone", "first_name", "last_name", "email", "is_active",
+                                    "can_copy", "can_report", "admin_note", "last_login", "date_joined")))
 
     def has_delete_permission(self, request, obj=None):
         # A learner's purchases, progress and notes must never be lost: «فعال» off signs them out instead.
@@ -333,3 +357,7 @@ class DeviceSessionAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+# Group membership is an approval boundary: only the manager may grant or edit it.
+from . import admin_groups as _protected_group_admin  # noqa: E402,F401

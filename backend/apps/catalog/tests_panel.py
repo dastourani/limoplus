@@ -1231,19 +1231,23 @@ class FileEditorPreviewTests(_Base):
 
 
 class BookEditorAccessTests(_Base):
-    """«استاد کتاب»: a staff member writes only the books they are the editor of, and only edits to other books are refused."""
+    """«استاد کتاب»: a manager-approved group member writes only assigned draft books."""
 
     def clerk(self, *books, can_publish=False):
-        from django.contrib.auth.models import Permission
+        from django.contrib.auth.models import Group
 
+        from . import access
         from .models import BookEditor
 
         user = User.objects.create_user("09120000002", is_staff=True)
-        user.user_permissions.add(Permission.objects.get(codename="change_contentnode"))
-        user.refresh_from_db()
+        user.groups.add(Group.objects.get(name=access.BOOK_EDITOR_GROUP))
         for book in books:
             BookEditor.objects.create(book=book, user=user, can_publish=can_publish)
         return user
+
+    def make_draft(self, chapter):
+        ContentNode.objects.filter(pk=chapter.pk).update(is_published=False)
+        chapter.refresh_from_db()
 
     def other_book(self):
         from .importer import import_file
@@ -1264,7 +1268,71 @@ class BookEditorAccessTests(_Base):
         self.chapter.refresh_from_db()
         self.assertEqual(export_chapter(self.chapter), before)
 
+    def test_group_has_only_its_minimum_permissions_and_migration_adds_no_users(self):
+        from django.contrib.auth.models import Group
+
+        from . import access
+
+        group = Group.objects.get(name=access.BOOK_EDITOR_GROUP)
+        actual = set(group.permissions.values_list("content_type__app_label", "codename"))
+        expected = {
+            ("catalog", "view_book"), ("catalog", "view_contentnode"), ("catalog", "change_contentnode"),
+            ("catalog", "view_section"), ("catalog", "view_chapterrevision"),
+            ("learning", "view_question"), ("learning", "view_flashcard"), ("learning", "view_examsource"),
+            ("learning", "view_report"), ("learning", "change_report"),
+        }
+        self.assertEqual(actual, expected)
+        self.assertFalse(group.user_set.exists(), "the role migration must not promote any existing staff user")
+
+    def test_book_teacher_cannot_reach_the_user_password_change_view(self):
+        from django.contrib import admin
+        from django.test import RequestFactory
+
+        teacher = self.clerk(self.book)
+        request = RequestFactory().get("/admin/accounts/user/")
+        request.user = teacher
+        user_admin = admin.site._registry[User]
+        self.assertFalse(user_admin.has_change_permission(request, teacher))
+
+        self.client.force_login(teacher)
+        password_url = reverse("admin:auth_user_password_change", args=[teacher.pk])
+        self.assertEqual(self.client.get(password_url).status_code, 403)
+
+    def test_direct_permission_and_book_row_without_teacher_group_do_not_approve(self):
+        from django.contrib import admin
+        from django.contrib.auth.models import Permission
+        from django.test import RequestFactory
+
+        from . import access
+        from .models import Book, BookEditor
+
+        unapproved = User.objects.create_user("09120000009", is_staff=True)
+        unapproved.user_permissions.add(Permission.objects.get(codename="change_contentnode"))
+        BookEditor.objects.create(book=self.book, user=unapproved)
+        self.assertFalse(access.can_edit_book(unapproved, self.book))
+        self.client.force_login(unapproved)
+        self.assertEqual(self.client.get(self.api).status_code, 403)
+        request = RequestFactory().get("/admin/catalog/book/")
+        request.user = unapproved
+        self.assertFalse(admin.site._registry[Book].get_queryset(request).exists())
+
+    def test_inbox_is_manager_only_even_if_an_legacy_editor_row_exists(self):
+        from . import access
+        from .inbox import inbox_chapter
+        from .models import BookEditor
+
+        inbox = inbox_chapter()
+        book = inbox.book()
+        teacher = self.clerk()
+        # Simulate a legacy row predating the new model validation; authorization must still be safe.
+        BookEditor.objects.bulk_create([BookEditor(book=book, user=teacher)])
+        self.assertFalse(access.can_edit_book(teacher, book))
+        self.client.force_login(teacher)
+        self.assertEqual(self.client.get(reverse("admin:catalog_chapter_manager", args=[inbox.pk])).status_code, 403)
+
     def test_editor_of_the_book_may_open_and_write_it(self):
+        self.make_draft(self.chapter)
+        ContentNode.objects.filter(pk=self.chapter.pk).update(is_free=False)
         self.client.force_login(self.clerk(self.book))
         self.assertEqual(self.client.get(self.api).status_code, 200)
         r = self.client.post(self.api, json.dumps({"op": "chapter.update", "title": "عنوان تازه", "number": 1, "is_free": True}),
@@ -1272,15 +1340,201 @@ class BookEditorAccessTests(_Base):
         self.assertEqual(r.status_code, 200, r.content)
         self.chapter.refresh_from_db()
         self.assertEqual(self.chapter.title, "عنوان تازه")
+        self.assertFalse(self.chapter.is_free, "a teacher cannot make the chapter free through the chapter-update payload")
+
+    def test_teacher_cannot_mark_questions_sample_through_either_admin_surface(self):
+        from django.contrib import admin
+        from django.test import RequestFactory
+
+        question = Question.objects.get(slug="q1")
+        question.is_sample = False
+        question.save(update_fields=["is_sample"])
+        self.make_draft(self.chapter)
+        teacher = self.clerk(self.book)
+        self.client.force_login(teacher)
+
+        question_admin = admin.site._registry[Question]
+        request = RequestFactory().post(reverse("admin:learning_question_changelist"), {
+            "action": "make_sample", "_selected_action": [str(question.pk)],
+        })
+        request.user = teacher
+        self.assertNotIn("make_sample", question_admin.get_actions(request))
+        self.assertNotIn("unmake_sample", question_admin.get_actions(request))
+
+        response = self.client.post(reverse("admin:learning_question_changelist"), {
+            "action": "make_sample", "_selected_action": [question.pk],
+        })
+        self.assertEqual(response.status_code, 200)  # forged action is discarded, not run
+        question.refresh_from_db()
+        self.assertFalse(question.is_sample)
+
+        response = self.op(op="question.sample", slug=question.slug, value=True)
+        self.assertEqual(response.status_code, 403)
+        question.refresh_from_db()
+        self.assertFalse(question.is_sample)
+
+    def test_free_access_flags_are_locked_for_a_teacher(self):
+        self.make_draft(self.chapter)
+        ContentNode.objects.filter(pk=self.chapter.pk).update(is_free=False)
+        self.client.force_login(self.clerk(self.book))
+        chapter = self.op(op="chapter.update", title=self.chapter.title, number=1, is_free=True)
+        self.assertEqual(chapter.status_code, 200, chapter.content)
+        self.chapter.refresh_from_db()
+        self.assertFalse(self.chapter.is_free)
+
+        existing = self.state()["sections"][0]["questions"][0]
+        existing["is_free"] = True
+        saved = self.op(op="question.save", slug=existing["slug"], data=existing)
+        self.assertEqual(saved.status_code, 200, saved.content)
+        self.assertFalse(Question.objects.get(slug=existing["slug"]).is_free)
+
+        new_question = {"stem": "آیا دسترسی رایگان می‌شود؟", "choices": [{"text": "بله", "correct": True}, {"text": "نه"}],
+                        "explanation": "پاسخ", "difficulty": "easy", "is_free": True}
+        created = self.op(op="question.save", new=True, section="two", slug="teacher-free-test", data=new_question)
+        self.assertEqual(created.status_code, 200, created.content)
+        self.assertFalse(Question.objects.get(slug="teacher-free-test").is_free)
+
+    def test_teacher_cannot_change_book_distribution_or_grant_student_access(self):
+        from django.contrib import admin
+        from django.contrib.auth.models import Permission
+        from django.urls import reverse
+
+        from apps.commerce.models import Entitlement
+        from .models import BookEditor
+
+        teacher = self.clerk(self.book)
+        legacy_permissions = Permission.objects.filter(
+            content_type__app_label__in=("catalog", "commerce", "accounts", "auth"),
+            codename__in=("change_book", "add_entitlement", "change_entitlement", "add_user", "change_user", "change_group"),
+        )
+        teacher.user_permissions.add(*legacy_permissions)
+        self.client.force_login(teacher)
+
+        book_url = reverse("admin:catalog_book_change", args=[self.book.pk])
+        self.assertEqual(self.client.get(book_url).status_code, 200)  # assigned-book navigation is view-only
+        response = self.client.post(book_url, {"title": "دست‌کاری", "price": "0", "is_free": "on"})
+        self.assertEqual(response.status_code, 403)
+        self.book.refresh_from_db()
+        self.assertEqual(self.book.title, "کتاب آزمایشی")
+        self.assertIsNone(self.book.price)
+        self.assertFalse(self.book.is_free)
+
+        gift = reverse("admin:catalog_book_gift", args=[self.book.pk])
+        self.assertEqual(self.client.post(gift, {"phone": "09120000099", "days": "forever"}).status_code, 403)
+        self.assertFalse(Entitlement.objects.filter(user__phone="09120000099", book=self.book).exists())
+        self.assertEqual(self.client.get(reverse("admin:commerce_entitlement_add")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("admin:auth_group_changelist")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("admin:catalog_bookeditor_changelist")).status_code, 403)
+        self.assertFalse(admin.site._registry[Entitlement].has_add_permission(type("R", (), {"user": teacher})()))
+        self.assertFalse(BookEditor.objects.filter(book=self.book, user=teacher, can_publish=True).exists())
+
+    def _new_import_text(self):
+        return (GOOD.replace("شناسه-فصل: ch1", "شناسه-فصل: teacher-ch2")
+                .replace("عنوان: فصل یک", "عنوان: پیش‌نویس استاد")
+                .replace("رایگان: بله", "رایگان: بله\nقیمت-کتاب: 1")
+                .replace("{#one}", "{#teacher-one}").replace("{#two}", "{#teacher-two}")
+                .replace("{#q1}", "{#teacher-q2}").replace("card1", "teacher-card2")
+                .replace("توضیح: جمع ساده.", "توضیح: جمع ساده.\nرایگان: بله")
+                .replace("فرمول: 2+2=4", "فرمول: 2+2=4\nرایگان: بله"))
+
+    def _preview_import(self, text):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        url = reverse("admin:catalog_book_import", args=[self.book.pk])
+        response = self.client.post(url, {"file": SimpleUploadedFile("draft.md", text.encode("utf-8"))})
+        self.assertEqual(response.status_code, 200, response.content)
+        report = response.context["report"]
+        self.assertEqual(report["errors"], [])
+        return url, report["token"], response
+
+    def test_teacher_import_creates_only_a_locked_down_draft(self):
+        from apps.learning.models import Flashcard
+
+        from .models import Major
+
+        Major.objects.create(name="رشته‌ی ناخواسته", slug="unwanted-major")
+        self.book.title = "نام رسمی کتاب"
+        self.book.price = 234567
+        self.book.save(update_fields=["title", "price"])
+        ContentNode.objects.filter(pk=self.chapter.pk).update(position=10)
+        self.client.force_login(self.clerk(self.book))
+        text = (self._new_import_text()
+                .replace("کتاب: کتاب آزمایشی", "کتاب: عنوان جعلی")
+                .replace("رشته‌ها: economics", "رشته‌ها: unwanted-major")
+                .replace("شناسه-فصل: teacher-ch2", "شناسه-فصل: teacher-ch2\nفصل: 88"))
+        url, token, preview = self._preview_import(text)
+        self.assertNotIn('name="publish"', preview.content.decode())
+        self.assertIn("انتشار و بازکردن دسترسی دانشجویان فقط با مدیر کل است", preview.content.decode())
+        response = self.client.post(url, {"token": token, "filename": "draft.md"})
+        self.assertEqual(response.status_code, 302)
+
+        chapter = ContentNode.objects.get(slug="teacher-ch2", kind=ContentNode.Kind.CHAPTER)
+        self.assertFalse(chapter.is_published)
+        self.assertFalse(chapter.is_free)
+        self.assertEqual(chapter.position, 11, "new chapters in a released book receive the next number, not the uploaded one")
+        self.book.refresh_from_db()
+        self.assertEqual(self.book.title, "نام رسمی کتاب")
+        self.assertEqual(self.book.price, 234567)
+        self.assertEqual(list(self.book.majors.values_list("slug", flat=True)), ["economics"])
+        question = Question.objects.get(slug="teacher-q2", node__path__startswith=self.book.path)
+        card = Flashcard.objects.get(slug="teacher-card2", node__path__startswith=self.book.path)
+        self.assertFalse(question.is_free)
+        self.assertFalse(card.is_free)
+
+    def test_teacher_import_preserves_existing_chapter_number_and_access_flags(self):
+        from apps.learning.models import Flashcard
+
+        self.chapter.is_published = False
+        self.chapter.is_free = False
+        self.chapter.position = 14
+        self.chapter.save(update_fields=["is_published", "is_free", "position"])
+        Question.objects.filter(slug="q1").update(is_free=False)
+        Flashcard.objects.filter(slug="card1").update(is_free=False)
+        self.client.force_login(self.clerk(self.book))
+        text = (GOOD.replace("شناسه-فصل: ch1", "شناسه-فصل: ch1\nفصل: 88")
+                .replace("توضیح: جمع ساده.", "توضیح: جمع ساده.\nرایگان: بله")
+                .replace("فرمول: 2+2=4", "فرمول: 2+2=4\nرایگان: بله"))
+        url, token, _preview = self._preview_import(text)
+        response = self.client.post(url, {"token": token, "filename": "update.md"})
+        self.assertEqual(response.status_code, 302)
+
+        self.chapter.refresh_from_db()
+        self.assertEqual(self.chapter.position, 14)
+        self.assertFalse(self.chapter.is_free)
+        self.assertFalse(self.chapter.is_published)
+        self.assertFalse(Question.objects.get(slug="q1").is_free)
+        self.assertFalse(Flashcard.objects.get(slug="card1").is_free)
+
+    def test_teacher_import_cannot_change_book_identity(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        self.client.force_login(self.clerk(self.book))
+        url = reverse("admin:catalog_book_import", args=[self.book.pk])
+        forged = self._new_import_text().replace("شناسه-کتاب: test-book", "شناسه-کتاب: another-book")
+        response = self.client.post(url, {"file": SimpleUploadedFile("foreign.md", forged.encode("utf-8"))})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["report"]["errors"])
+        self.assertFalse(ContentNode.objects.filter(slug="another-book", kind=ContentNode.Kind.BOOK).exists())
+
+    def test_forged_immediate_publish_import_is_refused_cleanly(self):
+        self.client.force_login(self.clerk(self.book))
+        url, token, _preview = self._preview_import(self._new_import_text())
+        response = self.client.post(url, {"token": token, "filename": "draft.md", "publish": "on"}, follow=True)
+        self.assertContains(response, "انتشار را مدیر کل انجام می‌دهد")
+        self.assertFalse(ContentNode.objects.filter(slug="teacher-ch2", kind=ContentNode.Kind.CHAPTER).exists())
 
     def test_editor_of_one_book_cannot_reach_another(self):
         _, other_chapter = self.other_book()
+        self.make_draft(self.chapter)
+        self.make_draft(other_chapter)
         self.client.force_login(self.clerk(self.book))
         for name in ("admin:catalog_chapter_manager", "admin:catalog_chapter_api", "admin:catalog_chapter_file"):
             self.assertEqual(self.client.get(reverse(name, args=[other_chapter.pk])).status_code, 403, name)
 
     def test_cannot_move_content_into_a_book_one_may_not_edit(self):
         _, other_chapter = self.other_book()
+        self.make_draft(self.chapter)
+        self.make_draft(other_chapter)
         self.client.force_login(self.clerk(self.book))
         r = self.client.post(self.api, json.dumps({"op": "section.relocate", "slug": "one", "to": other_chapter.pk, "dry": True}),
                              content_type="application/json")
@@ -1288,6 +1542,7 @@ class BookEditorAccessTests(_Base):
 
     def test_destination_list_only_shows_own_books(self):
         other_book, _ = self.other_book()
+        self.make_draft(self.chapter)
         self.client.force_login(self.clerk(self.book))
         r = self.client.post(self.api, json.dumps({"op": "destinations"}), content_type="application/json")
         self.assertEqual(r.status_code, 200)
@@ -1509,24 +1764,16 @@ class PreviewTypeAndScrollTests(_Base):
 
 
 class PublishGateTests(_Base):
-    """«انتشار» is its own gate, separate from writing.
-
-    A professor may be trusted to write a book long before being trusted to put it in front of learners, and the
-    reviewer is usually someone else. `BookEditor.can_publish` says which one a person is; until this gate existed the
-    checkbox was visible to every editor and the server never asked, so the flag meant nothing.
-    """
+    """Only the manager can release content, regardless of a teacher's separate review flag."""
 
     def professor(self, can_publish):
-        from django.contrib.auth.models import Permission
+        from django.contrib.auth.models import Group
 
+        from . import access
         from .models import BookEditor
 
         user = User.objects.create_user("09120000003", is_staff=True)
-        # change_book too: without it the admin view wrapper answers 403 before the publishing gate is even
-        # reached, and this test would pass for the wrong reason.
-        user.user_permissions.add(Permission.objects.get(codename="change_contentnode"),
-                                 Permission.objects.get(codename="change_book"))
-        user.refresh_from_db()
+        user.groups.add(Group.objects.get(name=access.BOOK_EDITOR_GROUP))
         BookEditor.objects.create(book=self.book, user=user, can_publish=can_publish)
         return user
 
@@ -1559,22 +1806,25 @@ class PublishGateTests(_Base):
         r = self.op(op="section.publish", slug="one", value=True)
         self.assertEqual(r.status_code, 400)
 
-    def test_hiding_what_you_wrote_needs_no_permission(self):
-        # Taking something down is never the dangerous direction, and refusing it would leave a wrong draft live.
+    def test_a_teacher_cannot_withdraw_a_chapter_from_learners(self):
+        self.draft()
         self.client.force_login(self.professor(can_publish=False))
         r = self.op(op="chapter.publish", value=False)
-        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("مدیر کل", r.json()["errors"][0])
         self.chapter.refresh_from_db()
         self.assertFalse(self.chapter.is_published)
 
-    def test_with_can_publish_the_same_call_works(self):
+    def test_can_publish_flag_is_not_publication_authority(self):
         self.draft()
         self.client.force_login(self.professor(can_publish=True))
-        self.assertTrue(self.state()["can_publish"])
+        state = self.state()
+        self.assertFalse(state["can_publish"])
+        self.assertIn("مدیر کل", state["publish_why"])
         r = self.op(op="chapter.publish", value=True)
-        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.status_code, 400)
         self.chapter.refresh_from_db()
-        self.assertTrue(self.chapter.is_published)
+        self.assertFalse(self.chapter.is_published)
 
     def test_the_form_post_asks_the_same_question(self):
         # The «فهرست فصل‌ها» page has its own publish button; a gate on only one of two doors is not a gate.
@@ -1608,12 +1858,12 @@ class PublishGateTests(_Base):
         self.assertTrue(self.book.is_published)
         self.assertFalse(self.book.get_descendants().filter(is_published=False).exists())
 
-    def test_book_publish_refuses_an_editor_who_may_only_write(self):
+    def test_book_publish_refuses_every_teacher_even_with_the_review_flag(self):
         self.draft()
-        self.client.force_login(self.professor(can_publish=False))
+        self.client.force_login(self.professor(can_publish=True))
         url = reverse("admin:catalog_book_publish", args=[self.book.pk])
         response = self.client.post(url, {"value": "1"}, follow=True)
-        self.assertIn("اجازه‌ی انتشار", response.content.decode())
+        self.assertIn("انتشار را مدیر کل انجام می‌دهد", response.content.decode())
         self.chapter.refresh_from_db()
         self.assertFalse(self.chapter.is_published)
 

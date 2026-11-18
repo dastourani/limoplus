@@ -35,10 +35,12 @@ class PanelDisplayTests(TestCase):
 
     def test_book_filter_hides_the_inbox_and_chapters_wait_for_a_book(self):
         request = RequestFactory().get("/")
+        request.user = self.boss
         books = BookFilter(request, {}, ContentNode, admin.site._registry[ContentNode] if ContentNode in admin.site._registry else None).lookups(request, None)
         self.assertEqual([t for _, t in books], ["کتاب الف"])
         self.assertEqual(ChapterFilter(request, {}, ContentNode, None).lookups(request, None), [])
         with_book = RequestFactory().get("/", {"book": str(self.book.pk)})
+        with_book.user = self.boss
         self.assertEqual(len(ChapterFilter(with_book, {}, ContentNode, None).lookups(with_book, None)), 1)
 
     def test_long_filters_become_a_drop_down(self):

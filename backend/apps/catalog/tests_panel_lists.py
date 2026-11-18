@@ -357,3 +357,92 @@ class WaitlistSMSTests(Base):
     def test_only_staff_with_book_rights(self):
         self.client.force_login(User.objects.create(phone="09123000099", is_staff=True))
         self.assertEqual(self.client.get(self.url).status_code, 403)
+
+
+class BookTeacherAdminScopeTests(Base):
+    """Every content list is scoped to the teacher's assigned books; direct routes cannot hop to another book."""
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.auth.models import Group
+
+        from apps.catalog.access import BOOK_EDITOR_GROUP
+        from apps.catalog.models import BookEditor, ChapterRevision
+
+        self.other_book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب محرمانه", slug="secret-book")
+        self.other_chapter = self.other_book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل پنهان", slug="secret-ch", is_published=False)
+        self.other_section = self.other_chapter.add_child(kind=ContentNode.Kind.SECTION, title="بخش پنهان", slug="secret-sec")
+        self.own_question = self.question(301, self.sec)
+        self.other_question = self.question(302, self.other_section)
+        self.own_card = Flashcard.objects.create(node=self.sec, slug="own-card", title="کارت من", point="نکته")
+        self.other_card = Flashcard.objects.create(node=self.other_section, slug="secret-card", title="کارت محرمانه", point="نکته")
+        self.own_revision = ChapterRevision.objects.create(chapter=self.ch1, text="نسخه‌ی خودم", source="panel")
+        self.other_revision = ChapterRevision.objects.create(chapter=self.other_chapter, text="نسخه‌ی محرمانه", source="panel")
+        self.own_report = Report.objects.create(user=self.learner, question=self.own_question, reason=Report.Reason.TYPO, note="گزارش خودم")
+        self.other_report = Report.objects.create(user=self.learner, question=self.other_question, reason=Report.Reason.TYPO, note="گزارش محرمانه")
+        self.own_source = ExamSource.objects.create(name="منبع کتاب من", year=1401)
+        self.other_source = ExamSource.objects.create(name="منبع محرمانه", year=1402)
+        QuestionSource.objects.create(question=self.own_question, source=self.own_source)
+        QuestionSource.objects.create(question=self.other_question, source=self.other_source)
+
+        self.teacher = User.objects.create_user("09123000111", is_staff=True)
+        self.teacher.groups.add(Group.objects.get(name=BOOK_EDITOR_GROUP))
+        BookEditor.objects.create(book=self.book, user=self.teacher)
+        self.client.force_login(self.teacher)
+
+    def admin_request(self):
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/admin/")
+        request.user = self.teacher
+        return request
+
+    def test_each_content_admin_queryset_stays_inside_the_assigned_book(self):
+        from django.contrib import admin
+
+        from apps.catalog.models import Book, ChapterRevision, Section
+
+        request = self.admin_request()
+        cases = (
+            (Book, {self.book.pk}),
+            (Section, {self.sec.pk, self.sec2.pk}),
+            (ChapterRevision, {self.own_revision.pk}),
+            (Question, {self.own_question.pk}),
+            (Flashcard, {self.own_card.pk}),
+            (Report, {self.own_report.pk}),
+            (ExamSource, {self.own_source.pk}),
+        )
+        for model, expected in cases:
+            with self.subTest(model=model.__name__):
+                rows = admin.site._registry[model].get_queryset(request)
+                self.assertEqual(set(rows.values_list("pk", flat=True)), expected)
+
+    def test_report_list_hides_other_books_and_reporter_identity(self):
+        from django.contrib import admin
+
+        response = self.client.get("/admin/learning/report/")
+        self.assertEqual(response.status_code, 200)
+        page = response.content.decode()
+        self.assertIn("گزارش خودم", page)
+        self.assertNotIn("گزارش محرمانه", page)
+        self.assertNotIn(self.learner.phone, page)
+        actions = admin.site._registry[Report].get_actions(self.admin_request())
+        self.assertNotIn("block_reporter", actions)
+        self.assertNotIn("unblock_reporter", actions)
+
+    def test_other_book_routes_are_not_reachable_even_with_forged_ids(self):
+        from django.urls import reverse
+
+        response = self.client.get(reverse("admin:catalog_book_change", args=[self.other_book.pk]))
+        self.assertIn(response.status_code, (302, 403, 404))
+        if response.status_code == 302:
+            self.assertIn(response["Location"], ("/admin/", "/admin/catalog/book/"))
+            page = self.client.get(response["Location"]).content.decode()
+            self.assertNotIn("کتاب محرمانه", page)
+        response = self.client.get(reverse("admin:catalog_chapter_manager", args=[self.other_chapter.pk]))
+        self.assertEqual(response.status_code, 403)
+        response = self.client.get(reverse("admin:catalog_chapter_api", args=[self.other_chapter.pk]))
+        self.assertEqual(response.status_code, 403)
+        from apps.catalog.filters import _book_choices
+
+        self.assertEqual({int(pk) for pk, _title in _book_choices(user=self.teacher)}, {self.book.pk})

@@ -5,9 +5,11 @@ from django.contrib import admin
 from .models import ContentNode
 
 
-def _book_choices(with_inbox=False):
-    """The books, by title. The hidden «صندوق تست» only where tests and cards are listed (it holds pasted ones)."""
-    books = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1)
+def _book_choices(with_inbox=False, user=None):
+    """Books by title; a teacher sees only the books assigned to their approved panel account."""
+    from . import access
+
+    books = access.books_for_editor(user) if user is not None else ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1)
     if not with_inbox:
         books = books.filter(is_inbox=False)
     return [(str(b.pk), b.title) for b in books.order_by("title")]
@@ -22,7 +24,7 @@ class BookFKFilter(admin.SimpleListFilter):
     lp_list = True  # book names are long: a list, not a row of chips (templates/admin/filter.html)
 
     def lookups(self, request, model_admin):
-        return _book_choices()
+        return _book_choices(user=request.user)
 
     def queryset(self, request, queryset):
         if self.value():
@@ -38,7 +40,7 @@ class BookFilter(admin.SimpleListFilter):
     with_inbox = False
 
     def lookups(self, request, model_admin):
-        return _book_choices(self.with_inbox)
+        return _book_choices(self.with_inbox, request.user)
 
     def queryset(self, request, queryset):
         if self.value():
@@ -55,11 +57,13 @@ class ChapterFilter(admin.SimpleListFilter):
     path_field = "path"
 
     def lookups(self, request, model_admin):
-        # Chapters only once a book is chosen: a list of every chapter of every book helps nobody.
+        # Chapters only once an accessible book is chosen: a list of every chapter of every book helps nobody.
+        from . import access
+
         book_id = request.GET.get("book")
         if not book_id:
             return []
-        book = ContentNode.objects.filter(pk=book_id).first()
+        book = access.books_for_editor(request.user).filter(pk=book_id).first()
         chapters = ContentNode.objects.filter(kind=ContentNode.Kind.CHAPTER)
         chapters = chapters.filter(path__startswith=book.path) if book else chapters.none()
         out = []

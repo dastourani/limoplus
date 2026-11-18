@@ -52,6 +52,8 @@ def destinations(user=None) -> list[dict]:
     for book in books:
         chapters = []
         for c in book.get_children().filter(kind=ContentNode.Kind.CHAPTER, is_archived=False):
+            if user is not None and not access.can_edit_chapter(user, c):
+                continue
             sections = [{"id": s.pk, "title": s.title} for s in c.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False)]
             chapters.append({"id": c.pk, "title": c.title, "number": c.position, "sections": sections})
         out.append({"id": book.pk, "title": book.title, "inbox": book.is_inbox, "chapters": chapters})

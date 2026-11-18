@@ -1,8 +1,10 @@
 {% extends "admin/change_list.html" %}
 {% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
 {% block object-tools-items %}
-  <li><a href="{% url 'admin:catalog_inbox' %}" title="تست‌های تازه را یکجا اینجا بگذارید و بعد به بخش‌هایشان بفرستید">صندوق تست</a></li>
-  <li><a href="{% url 'admin:catalog_import' %}">افزودن فصل از فایل</a></li>
+  {% if can_manage_access %}
+    <li><a href="{% url 'admin:catalog_inbox' %}" title="تست‌های تازه را یکجا اینجا بگذارید و بعد به بخش‌هایشان بفرستید">صندوق تست</a></li>
+    <li><a href="{% url 'admin:catalog_import' %}">افزودن فصل از فایل</a></li>
+  {% endif %}
   {{ block.super }}
 {% endblock %}
 {% block search %}

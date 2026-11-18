@@ -474,10 +474,10 @@ class FormulaCommand(models.Model):
 
 
 class BookEditor(models.Model):
-    """«استادِ کتاب»: who may write this book's content, besides superusers.
+    """«استادِ کتاب»: a manager-approved editor for one book, in addition to the required group and staff status.
 
-    One row per (book, user). Without a row a staff member with the change permission can only READ.
-    `can_publish` is separate: many professors may draft, but only some may put a book in front of learners.
+    One row per (book, user). The separately maintained `can_publish` flag is an audit/review decision only:
+    final publishing remains a superuser action and the flag never grants it to a teacher.
     """
 
     book = models.ForeignKey(
@@ -487,7 +487,8 @@ class BookEditor(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="edited_books", verbose_name="کاربر"
     )
     can_publish = models.BooleanField(
-        "اجازه‌ی انتشار", default=False, help_text="اگر برداشته شود، می‌نویسد ولی کتاب را منتشر نمی‌کند."
+        "تصمیم انتشار مدیر", default=False,
+        help_text="تصمیم دستی و جداگانه‌ی مدیر برای بازبینی؛ این فیلد به استاد اختیار انتشار نمی‌دهد. Publish نهایی فقط دست مدیر کل است.",
     )
     note = models.CharField("یادداشت", max_length=200, blank=True)
     created_at = models.DateTimeField("زمان", auto_now_add=True)
@@ -506,3 +507,5 @@ class BookEditor(models.Model):
 
         if self.book_id and (self.book.kind != ContentNode.Kind.BOOK or self.book.depth != 1):
             raise ValidationError({"book": "فقط یک کتاب (نه فصل یا بخش) می‌تواند اینجا باشد."})
+        if self.book_id and self.book.is_inbox:
+            raise ValidationError({"book": "صندوق تست دسترسی استاد کتاب نمی‌گیرد؛ فقط مدیر کل آن را باز می‌کند."})
