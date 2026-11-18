@@ -54,7 +54,14 @@
 .md-ed textarea { border: 0 !important; border-radius: 0 !important; min-height: 260px; height: 100%; padding: 12px 14px !important; font-size: 15px !important; }
 /* The column may hold a preview wider than itself (a tablet is 768px in a 460px column): it scrolls sideways
    rather than shrinking the preview, because a shrunken preview is a lie about the layout. */
-.md-ed .md-prev { border-right: 1px solid var(--line); background: #e9ece4; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; overflow-x: auto; overflow-y: auto; }
+/* NOT align-items:center. A 768px tablet inside a 440px column overflows 328px; centring splits that 164px on each
+   side, and scrolling can only ever reach one of them — so the right-hand 164px of a Persian preview could not be
+   seen at any scroll position (reported from a real screenshot). align-items:flex-start lets the overflow go one way
+   only, which is exactly what scrolling can follow; the frame is centred by margin auto instead, which does nothing
+   when it does not fit. */
+.md-ed .md-prev { border-right: 1px solid var(--line); background: #e9ece4; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px; overflow-x: auto; overflow-y: auto; }
+.md-ed .md-prev > * { flex: 0 0 auto; }
+.md-ed .md-prev iframe { margin-inline: auto; }
 .md-ed .md-prev iframe { width: 380px; max-width: 100%; height: 100%; min-height: 260px; border: 0; border-radius: 18px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
 /* The preview's own controls: how wide, and aligned which way. A phone is the only width where the preview is really
    «مثل اپ»; a tablet and the full panel are there for tables and long formulas. */
@@ -252,3 +259,26 @@ html[data-theme="dark"] .plot-menu button:hover { background: #F5C518; color: #1
 .import-preview .pv-ctl { padding: 8px 12px; justify-content: flex-start; }
 .import-pv-wrap { display: flex; justify-content: center; overflow: auto; padding: 10px; background: #e9ece4; }
 .import-pv { width: 100%; height: 70vh; min-height: 320px; border: 0; border-radius: 14px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+
+/* ---------- The preview as a movable window ---------- */
+/* A real <dialog> on top of the panel, not a box inside the editor's column: that is the only way «تمام عرض» can mean
+   the whole screen and «تبلت» is not clipped by a 460px column. Free of the column, the frame keeps its width. */
+.pv-win { position: fixed; margin: 0; padding: 0; border: 1px solid #b9c2b4; border-radius: 10px; background: #e9ece4;
+  box-shadow: 0 24px 60px rgba(0,0,0,.28); overflow: hidden; display: flex; flex-direction: column; }
+.pv-win:not([open]) { display: none; }
+.pv-win::backdrop { background: rgba(23,32,26,.28); }
+.pv-win-bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: #17201A; color: #F6F7F2;
+  cursor: grab; user-select: none; flex: 0 0 auto; }
+.pv-win.dragging .pv-win-bar { cursor: grabbing; }
+.pv-win-title { font-size: 12.5px; font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-win-x { border: 0; background: transparent; color: #F6F7F2; font-size: 20px; line-height: 1; cursor: pointer;
+  border-radius: 6px; width: 26px; height: 24px; padding: 0; }
+.pv-win-x:hover { background: #b3261e; }
+.pv-win-body { flex: 1 1 auto; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 10px; }
+/* The frame inside the window: width comes from the toolbar's buttons, height fills the window. */
+.pv-win-body iframe { border: 0; border-radius: 12px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+  height: 100%; min-height: 200px; flex: 0 0 auto; }
+.pv-win-grip { position: absolute; left: 0; bottom: 0; width: 18px; height: 18px; cursor: nesw-resize;
+  background: linear-gradient(45deg, transparent 45%, #8a968c 45%, #8a968c 55%, transparent 55%, transparent 68%, #8a968c 68%, #8a968c 78%, transparent 78%); }
+/* The toolbar button that opens the window: it belongs to the editor, next to the width buttons. */
+.md-bar .pv-open { display: inline-flex; }

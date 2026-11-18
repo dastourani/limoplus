@@ -123,6 +123,123 @@
     return { el: row, repaint: paint };
   }
 
+  // ---------- The preview as a window you can move ----------
+  // The preview used to live inside the editor's right-hand column, so «تمام عرض» could never be wider than that
+  // column and «تبلت» was cut off. A professor asked for a real window: a title bar, an × to close, movable by its
+  // bar, and the width buttons on the EDITOR's toolbar rather than above the lesson (they are settings of the frame,
+  // not part of what the reader sees).
+  //
+  // Built on <dialog>: the browser already handles Escape, focus and the backdrop, so the only things written here are
+  // the ones it does not have — dragging and resizing.
+  var WIN_POS_KEY = 'limo.panel.win';
+  function savedWin() {
+    try { var v = localStorage.getItem(WIN_POS_KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; }
+  }
+  function saveWin(x, y, w, h) {
+    try { localStorage.setItem(WIN_POS_KEY, JSON.stringify({ x: x, y: y, w: w, h: h })); } catch (e) { /* ignore */ }
+  }
+  function previewWindow(opts) {
+    var frame = opts.frame;                // the iframe that is moved inside the window
+    var dialog = document.createElement('dialog');
+    dialog.className = 'pv-win';
+    var title = h('span', { class: 'pv-win-title' }, opts.title || 'پیش‌نمایش فصل');
+    var closeBtn = h('button', { type: 'button', class: 'pv-win-x', title: 'بستن (Esc)', onclick: function () { close(); } }, '×');
+    var bar = h('div', { class: 'pv-win-bar' }, title, closeBtn);
+    var body = h('div', { class: 'pv-win-body' });
+    var grip = h('div', { class: 'pv-win-grip', title: 'برای تغییر اندازه بکشید' });
+    dialog.appendChild(bar);
+    dialog.appendChild(body);
+    dialog.appendChild(grip);
+    document.body.appendChild(dialog);
+    // The frame may not be in the page at all (the whole-file editor keeps it out of the layout until the window
+    // opens); the placeholder then goes into the dialog's body, which is where it will be handed back to.
+    var placeholder = document.createComment('preview window closed');
+    var host = frame.parentNode || body;
+    if (host === body) { body.appendChild(placeholder); body.appendChild(frame); }
+    else host.insertBefore(placeholder, frame);
+
+    function place(x, y, w, hgt) {
+      var maxW = Math.max(320, window.innerWidth - 24), maxH = Math.max(240, window.innerHeight - 24);
+      w = Math.min(Math.max(320, w || 0), maxW);
+      hgt = Math.min(Math.max(240, hgt || 0), maxH);
+      if (typeof x !== 'number' || isNaN(x)) x = (window.innerWidth - w) / 2;
+      if (typeof y !== 'number' || isNaN(y)) y = Math.max(12, (window.innerHeight - hgt) / 2);
+      dialog.style.left = Math.max(0, Math.min(x, window.innerWidth - w)) + 'px';
+      dialog.style.top = Math.max(0, Math.min(y, window.innerHeight - hgt)) + 'px';
+      dialog.style.width = w + 'px';
+      dialog.style.height = hgt + 'px';
+    }
+    var saved = savedWin();
+    place(saved && saved.x, saved && saved.y, saved && saved.w, saved && saved.h);
+    var api;   // filled at the end; close() reads `api.onClosed` at call time
+
+    // --- dragging by the title bar ---
+    var drag = null;
+    bar.addEventListener('pointerdown', function (e) {
+      if (e.target === closeBtn) return;
+      drag = { dx: e.clientX - parseFloat(dialog.style.left || 0), dy: e.clientY - parseFloat(dialog.style.top || 0) };
+      bar.setPointerCapture(e.pointerId);
+      dialog.classList.add('dragging');
+    });
+    bar.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      place(e.clientX - drag.dx, e.clientY - drag.dy, dialog.offsetWidth, dialog.offsetHeight);
+    });
+    bar.addEventListener('pointerup', function (e) { drag = null; dialog.classList.remove('dragging'); try { bar.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ } });
+
+    // --- resizing from the bottom-left corner (the side a Persian window grows from) ---
+    var resize = null;
+    grip.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      resize = { x: e.clientX, y: e.clientY, l: parseFloat(dialog.style.left || 0), t: parseFloat(dialog.style.top || 0),
+                 w: dialog.offsetWidth, h: dialog.offsetHeight };
+      grip.setPointerCapture(e.pointerId);
+    });
+    grip.addEventListener('pointermove', function (e) {
+      if (!resize) return;
+      var dw = resize.x - e.clientX;            // RTL: the grip is on the left, so a leftward drag makes it wider
+      place(resize.l - dw, resize.t, resize.w + dw, resize.h + (e.clientY - resize.y));
+    });
+    grip.addEventListener('pointerup', function (e) { resize = null; try { grip.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ } });
+
+    function keep() {
+      if (!dialog.open) return;
+      saveWin(parseFloat(dialog.style.left || 0), parseFloat(dialog.style.top || 0), dialog.offsetWidth, dialog.offsetHeight);
+    }
+    dialog.addEventListener('pointerup', keep);
+    window.addEventListener('resize', function () { if (dialog.open) place(parseFloat(dialog.style.left), parseFloat(dialog.style.top), dialog.offsetWidth, dialog.offsetHeight); });
+
+    function open() {
+      body.appendChild(frame);
+      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+      if (opts.onOpen) opts.onOpen();
+    }
+    function close() {
+      if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
+      // Back where it came from, so the editor is unchanged when the window is closed.
+      if (placeholder.parentNode && frame.parentNode === body) {
+        placeholder.parentNode.insertBefore(frame, placeholder.nextSibling);
+      }
+      if (opts.onClose) opts.onClose();
+      // Read from `api` and not `opts`: the caller assigns `win.onClosed` after this function returns (it needs the
+      // toolbar button to exist first), so a copy taken now would still be undefined at close time.
+      if (api.onClosed) api.onClosed();
+    }
+    dialog.addEventListener('close', function () {
+      if (placeholder.parentNode && frame.parentNode === body) {
+        placeholder.parentNode.insertBefore(frame, placeholder.nextSibling);
+      }
+      if (opts.onClose) opts.onClose();
+      if (api.onClosed) api.onClosed();
+    });
+    api = {
+      el: dialog, open: open, close: close,
+      isOpen: function () { return !!dialog.open; },
+      frame: frame,
+    };
+    return api;
+  }
+
   // ---------- labels («برچسب‌های متن», managed in admin) ----------
   // The same list as the app's renderer. In «درسنامه» a label is a box (:::تعریف … :::); in «چکیده» a part (تعریف: - …).
   function labelList() { return (P && P.allLabels ? P.allLabels() : []).filter(function (l) { return !l.hidden; }); }
@@ -1793,12 +1910,10 @@
     // chapter — not a part of it: what a professor checks here is the chapter as a reader will get it.
     var edBar = h('div', { class: 'md-bar' }), edHost = h('div', { class: 'md-host' });
     var frame = h('iframe', { class: 'file-prev', title: 'پیش‌نمایش فصل' });
-    var prevWrap = h('div', { class: 'md-prev file-prev-wrap' }, frame);
     var edBody = h('div', { class: 'md-body' });
     var edWrap = h('div', { class: 'md-ed mode-split file' }, edBar, edHost, edBody);
     ta.parentNode.insertBefore(edWrap, ta);
     edBody.appendChild(ta);
-    edBody.appendChild(prevWrap);
     addTools(ta, edBar, edHost, {});
     fileNav(ta, edBar);
 
@@ -1831,27 +1946,37 @@
       // chosen, otherwise all three buttons would give the same size and none of them would do anything visible.
       edWrap.classList.toggle('wide-preview', !px);
     }
+    // The width buttons belong on the toolbar, not above the lesson: they are settings of the frame, not part of what
+    // the reader sees (a professor said so about the buttons sitting over the text).
     var ctl = previewControls(function () { applyWidth(); refresh(true); });
-    prevWrap.insertBefore(ctl.el, frame);
-    ta.addEventListener('input', function () { refresh(false); });
-    // The same three modes as the section editors: both, text only, preview only.
-    [['split', 'هر دو'], ['text', 'فقط متن'], ['preview', 'فقط پیش‌نمایش']].forEach(function (m) {
-      var b = h('button', { type: 'button', onclick: function (e) {
+    edBar.appendChild(h('span', { class: 'sep' }));
+    edBar.appendChild(ctl.el);
+    // The window: the preview out of the 460px column, free on the page, movable and resizable.
+    var win = previewWindow({ frame: frame, title: 'پیش‌نمایش فصل', onOpen: function () { applyWidth(); refresh(true); } });
+    var winBtn = h('button', { class: 'btn small pv-open', type: 'button', title: 'پیش‌نمایش در پنجره‌ی جدا',
+      onclick: function (e) {
         e.preventDefault();
-        edWrap.classList.remove('mode-split', 'mode-text', 'mode-preview');
-        edWrap.classList.add('mode-' + m[0]);
-        modes.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
-        try { localStorage.setItem('limo.panel.file.mode', m[0]); } catch (err) { /* ignore */ }
-        if (m[0] !== 'text') { applyWidth(); refresh(true); }
-      } }, m[1]);
-      modes.appendChild(b);
-      if (m[0] === startMode) b.classList.add('on');
-    });
+        if (win.isOpen()) win.close(); else win.open();
+        winBtn.classList.toggle('on', win.isOpen());
+        rememberWin();
+      } }, 'پیش‌نمایش در پنجره');
+    edBar.appendChild(winBtn);
+    function rememberWin() {
+      try { localStorage.setItem('limo.panel.file.mode', win.isOpen() ? 'preview' : 'text'); } catch (err) { /* ignore */ }
+    }
+    ta.addEventListener('input', function () { refresh(false); });
+    // With the preview in its own window there is no column to split, so «هر دو / فقط متن / فقط پیش‌نمایش» no longer
+    // means anything here: the text always fills the page, and the preview is either open in its window or not.
+    // The section editors keep their three modes (they still have the side-by-side column).
     edWrap.classList.remove('mode-split');
-    edWrap.classList.add('mode-' + startMode);
-    edBar.appendChild(modes);
+    edWrap.classList.add('mode-text');
     applyWidth();
     refresh(true);
+    // A window left open last time is reopened: a professor who works with it open should not have to open it daily.
+    try { if (localStorage.getItem('limo.panel.file.mode') === 'preview') win.open(); } catch (err) { /* ignore */ }
+    // Closing with × or Escape must remember that too, not just the toolbar button.
+    win.onClosed = function () { winBtn.classList.remove('on'); rememberWin(); };
+    if (win.isOpen()) winBtn.classList.add('on');
     fetch(opts.api, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) { setCtx(d.state); }).catch(function () {});
     var keeper = opts.restore ? { el: null, changed: function () {}, saved: function () {} }
       : draftKeeper(opts.api + '|file', ta.value, function () { return ta.value; }, function (text) { replaceRange(ta, 0, ta.value.length, text); });
