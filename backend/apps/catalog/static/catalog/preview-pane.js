@@ -137,20 +137,18 @@
       applyLayout();
     }
 
-    // The iframe is sized to the rendered lesson, not to the editor's height. Otherwise a short preview inside a
-    // very long chapter leaves a full column of white and a pointless scrollbar. The page itself may grow, exactly
-    // like the text editor does; there is no useless inner scroll.
+    // The iframe is sized to the rendered lesson, not to the editor's height. The pane caps its own height to the
+    // editor's working height (see panel.css) and its body scrolls, so: a short lesson makes the pane exactly as tall
+    // as its content (no fake whitespace, no scrollbar); a long lesson keeps the pane at the cap and scrolls like the
+    // editor beside it. The page itself never grows past what the columns need.
+    // Only the body is measured. The root's own offsetHeight equals the frame's current height, so including it
+    // ratcheted the frame: it could grow but never shrink back («the page never stops growing»).
     function contentHeight() {
       try {
         var doc = frame.contentDocument;
         if (!doc) return 240;
-        var body = doc.body, root = doc.documentElement;
-        return Math.max(240, Math.ceil(Math.max(
-          body ? body.scrollHeight : 0,
-          body ? body.offsetHeight : 0,
-          root ? root.scrollHeight : 0,
-          root ? root.offsetHeight : 0
-        )) + 4);
+        var body = doc.body;
+        return Math.max(240, Math.ceil(Math.max(body ? body.scrollHeight : 0, body ? body.offsetHeight : 0)) + 4);
       } catch (e) {
         return 240;
       }

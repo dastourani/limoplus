@@ -65,11 +65,15 @@
 .limo-cm { width: 100%; }
 .md-ed .md-bar .pv-justify-toggle { margin-inline-start: 4px; }
 /* The lesson keeps the app's own typography. If the pane is narrower than the chosen device, the frame is laid out at
-   its honest CSS width and shrunk as a whole; text never reflows to a width no learner has. */
-.md-ed .pv-pane { border-right: 1px solid var(--line); background: #e9ece4; min-width: 0; min-height: 240px; display: flex; flex-direction: column; align-self: start; height: max-content; }
+   its honest CSS width and shrunk as a whole; text never reflows to a width no learner has.
+   The pane is capped to the editor's own working height (70vh; 75vh for «کل فایل», matching `.cm-scroller`): the page
+   never grows to the lesson's full height. A short lesson makes the pane exactly as tall as its content (no fake
+   whitespace, no scrollbar); a long one keeps the pane at the cap and the pane's body scrolls itself. */
+.md-ed .pv-pane { border-right: 1px solid var(--line); background: #e9ece4; min-width: 0; min-height: 240px; display: flex; flex-direction: column; align-self: start; height: max-content; max-height: 70vh; }
 .pv-pane-bar { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 6px 8px; background: #17201A; color: #F6F7F2; flex: 0 0 auto; }
 .pv-pane-title { font-size: 12px; font-weight: 700; flex: 1 1 auto; min-width: 48px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pv-pane-body { flex: 0 0 auto; min-height: 0; overflow: visible; display: flex; justify-content: center; align-items: flex-start; padding: 10px; }
+/* The bar never scrolls: the body below it is the scroller (wheel over a lesson scrolls the preview, like the editor). */
+.pv-pane-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; display: flex; justify-content: center; align-items: flex-start; padding: 10px; }
 .pv-pane-stage { flex: 0 0 auto; }
 .pv-frame { display: block; border: 0; border-radius: 14px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
 .pv-devices { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; overflow-x: auto; padding: 2px;
@@ -87,6 +91,7 @@
 .pv-expand:focus-visible, .pv-pane-x:focus-visible, .pv-device:focus-visible, .pv-toggle:focus-visible { outline: 2px solid #E8B923; outline-offset: 1px; }
 .pv-hint { font-size: 11px; color: #56655B; text-align: center; line-height: 1.6; max-width: 360px; }
 /* «ویرایش کل فایل»: the same split, over a whole chapter. */
+.md-ed.file .pv-pane { max-height: 75vh; }
 .md-ed.file .md-body { grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); }
 .md-ed.file.device-tablet .md-body { grid-template-columns: minmax(0, 1fr) minmax(430px, 788px); }
 .md-ed.file.device-web .md-body { grid-template-columns: minmax(240px, 0.65fr) minmax(360px, 1.35fr); }
