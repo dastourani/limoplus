@@ -1353,58 +1353,75 @@ class ImportPreviewBeforeSaveTests(TestCase):
         self.assertNotIn('id="import-pv"', html)
 
 
-class PreviewWindowTests(_Base):
-    """The whole-file preview lives in its own window, opened from the editor's toolbar.
+class PreviewPaneTests(_Base):
+    """The live preview is a docked pane, not a floating window.
 
-    The window itself is JavaScript (checked against the real page in jsdom); what is guarded here is the page it is
-    built on: the toolbar the button sits in, the frame it holds, and the fact that the width buttons are no longer
-    laid over the lesson — a professor asked for exactly that.
+    A professor asked to drag the preview anywhere, but then reversed the decision: the pane should sit in the
+    editor's own layout, with the same «نمایش زنده» switch, device widths گوشی/تبلت/وب and «فقط پیش‌نمایش» available
+    without leaving the page. The movable <dialog>, its drag code and the old «تمام‌عرض» button are gone.
     """
 
     def setUp(self):
         super().setUp()
         self.url = reverse("admin:catalog_chapter_file", args=[self.chapter.pk])
 
-    def test_the_page_gives_the_editor_what_it_needs_to_build_the_window(self):
-        # The window and its frame are built in JavaScript (there is no <iframe> in the served HTML), so what can be
-        # checked here is what the script reads: the text box it previews and the script tag that starts it.
+    def assets(self, name):
+        return (settings.BASE_DIR / "apps/catalog/static/catalog" / name).read_text(encoding="utf-8")
+
+    def test_the_page_loads_the_shared_preview_pane_before_the_panel(self):
         html = self.client.get(self.url).content.decode()
+        pane = html.find("catalog/preview-pane.js")
+        panel = html.find("catalog/panel.js")
         self.assertIn('id="file-text"', html)
         self.assertIn("LimoFileEditor", html)
-        self.assertIn("panel.js", html)
+        self.assertGreaterEqual(pane, 0, "the shared preview pane script is not included")
+        self.assertGreater(panel, pane, "panel.js must load after preview-pane.js")
 
-    def test_the_width_controls_are_not_inside_the_preview_column(self):
-        # They are settings of the frame, not part of what the reader sees: they belong on the toolbar.
+    def test_the_width_controls_are_not_inside_the_preview_column_or_toolbar(self):
+        # Device widths belong inside the pane's own title bar (so they work while it is open), never as settings
+        # laid over the lesson.
         html = self.client.get(self.url).content.decode()
         self.assertNotIn('md-prev file-prev-wrap', html)
+        self.assertNotIn("pv-open", html)
 
-    def test_the_device_widths_travel_with_the_window_not_the_editor_toolbar(self):
-        # A professor asked for a Windows-style window they cannot pick «گوشی/تبلت» from while it is open. The width
-        # buttons now live in the dialog's own title bar (deviceControls), so switching never needs a close first, and
-        # the editor toolbar only keeps the justify switch.
-        panel = (settings.BASE_DIR / "apps/catalog/static/catalog/panel.js").read_text(encoding="utf-8")
-        css = (settings.BASE_DIR / "apps/catalog/static/catalog/panel.css").read_text(encoding="utf-8")
-        self.assertIn("function deviceControls(", panel)
-        self.assertIn("previewWindow({ frame: frame, title: 'پیش‌نمایش فصل', controls: devices", panel)
-        self.assertIn("'aria-pressed'", panel)
-        # The file editor still builds its toolbar controls, but with the widths hidden.
-        self.assertIn("{ hideWidths: true }", panel)
-        self.assertIn(".pv-devices", css)
+    def test_the_shared_pane_owns_the_toggle_device_widths_and_expand_button(self):
+        panel = self.assets("panel.js")
+        pane = self.assets("preview-pane.js")
+        css = self.assets("panel.css")
+        # One toggle, one pane, three devices — no modal and no تمام‌عرض.
+        self.assertNotIn("function previewWindow(", panel)
+        self.assertNotIn("pv-win", panel)
+        self.assertNotIn("pv-win", css)
+        self.assertNotIn("تمام‌عرض", panel)
+        self.assertIn("LimoPreviewPane.create({", panel)
+        self.assertIn("title: 'پیش‌نمایش فصل'", panel)
+        self.assertIn("function create(options)", pane)
+        self.assertIn("{ id: 'phone', label: 'گوشی', width: 390 }", pane)
+        self.assertIn("{ id: 'tablet', label: 'تبلت', width: 768 }", pane)
+        self.assertIn("{ id: 'web', label: 'وب', width: 0 }", pane)
+        self.assertIn("pv-expand", pane)
+        self.assertIn("pv-pane-x", pane)
+        self.assertIn("'aria-pressed'", pane)
+        self.assertIn(".pv-pane", css)
         self.assertIn(".pv-device.on", css)
+        self.assertIn("preview-only", css)
 
-    def test_dragging_listens_on_the_window_and_moves_in_both_axes(self):
-        # pointerdown on the bar alone used to strand the drag when the pointer outran it (and only feel right in one
-        # direction). Movement is listened for on `window`, coalesced through requestAnimationFrame for smoothness, and
-        # both axes go through the same place() call.
-        panel = (settings.BASE_DIR / "apps/catalog/static/catalog/panel.js").read_text(encoding="utf-8")
-        drag = panel[panel.index("// --- Windows-style drag"):panel.index("// --- resizing")]
-        self.assertIn("window.addEventListener('pointermove'", drag)
-        self.assertIn("window.addEventListener('pointerup'", drag)
-        self.assertIn("window.addEventListener('pointercancel'", drag)
-        self.assertIn("moveFrame = requestAnimationFrame(flushDrag)", drag)
-        self.assertIn("place(drag.left + p.x - drag.x, drag.top + p.y - drag.y", drag)
-        # Clickable controls inside the bar must not start a drag.
-        self.assertIn("e.target.closest('button, a, input, select, textarea, .pv-devices')", drag)
+    def test_phone_and_tablet_lay_out_at_their_logical_width_and_only_shrink_visually(self):
+        pane = self.assets("preview-pane.js")
+        # 390/768 are the layout viewport, not merely a smaller font or a squeezed iframe. If the column is too
+        # narrow, only the visual transform changes; the lines break exactly as they do on the device.
+        self.assertIn("frame.style.width = w + 'px'", pane)
+        self.assertIn("frame.style.transform = scale < 0.999 ? 'scale(' + scale + ')' : ''", pane)
+        self.assertIn("stage.style.width = Math.round(w * scale) + 'px'", pane)
+        self.assertIn("var scale = Math.min(1, available / w)", pane)
+        self.assertIn("if (!w)", pane)   # «وب» stays flexible instead of pretending to be a phone at another width
+
+    def test_the_floating_window_and_its_drag_code_are_gone(self):
+        panel = self.assets("panel.js")
+        css = self.assets("panel.css")
+        for gone in ("previewWindow", "WIN_POS_KEY", "Windows-style drag", "pointermove", "pv-win-grip", ".pv-win"):
+            self.assertNotIn(gone, panel)
+            self.assertNotIn(gone, css)
 
 
 class PublishGateTests(_Base):
@@ -1534,11 +1551,16 @@ class ChapterManagerScriptTests(_Base):
     def setUp(self):
         self.js = (settings.BASE_DIR / "apps/catalog/static/catalog/panel.js").read_text(encoding="utf-8")
 
-    def test_the_preview_iframe_exists_before_the_editor_sizes_it(self):
-        make = self.js.index("this.frame = h('iframe'")
-        # previewControls() calls the sizer once while it is being built, so the frame must already be there.
-        size = self.js.index("var ctl = previewControls(function () {\n      self2.applyWidth();")
-        self.assertLess(make, size, "the iframe is made after the code that sizes it: every chapter shows «فصل باز نشد»")
+    def test_the_preview_iframe_exists_before_the_shared_pane_is_created(self):
+        make = self.js.index("LimoPreviewPane.create({")
+        # The pane creates its iframe before any caller can ask it to refresh or measure it.
+        pane = (settings.BASE_DIR / "apps/catalog/static/catalog/preview-pane.js").read_text(encoding="utf-8")
+        create = pane.index("function create(options)")
+        make = pane.index("var frame =", create)
+        bind = pane.index("frame.addEventListener('load', scheduleLayout)", make)
+        self.assertLess(make, bind)
+        self.assertLess(self.js.index("LimoPreviewPane.create({"), self.js.index("this.frame = preview.frame;"))
+        self.assertLess(self.js.index("var preview = window.LimoPreviewPane.create({"), self.js.index("body.appendChild(preview.el);"))
 
     def test_a_missing_destination_list_does_not_re_render_forever(self):
         # An answer without «destinations» left self.dest unset, so every render asked again and re-rendered itself.

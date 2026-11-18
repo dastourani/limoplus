@@ -142,21 +142,20 @@
   }
 
   // ---------- the preview's own controls: how wide, and aligned which way ----------
-  // A phone, a tablet, a desktop web page, or the whole panel. «دقیقاً مثل اپ» is only true at a phone's width: the
-  // same text breaks its lines elsewhere. Choosing the width is the honest answer — the professor sees the layout a
-  // learner gets. «تمام‌عرض» releases the frame to the window's width.
-  var WIDTHS = [['phone', 'گوشی', 390], ['tablet', 'تبلت', 768], ['web', 'وب', 1024], ['wide', 'تمام‌عرض', 0]];
+  // A phone, a tablet or a desktop web page. «دقیقاً مثل اپ» is only true at a phone's width: the same text breaks its
+  // lines elsewhere. Choosing the width is the honest answer — the professor sees the layout a learner gets. The list
+  // is shared by the import preview; the editors themselves get the docked pane from preview-pane.js.
+  var WIDTHS = [['phone', 'گوشی', 390], ['tablet', 'تبلت', 768], ['web', 'وب', 0]];
   function previewWidth() {
-    try { var v = localStorage.getItem('limo.panel.width'); if (v) return v; } catch (e) { /* ignore */ }
+    try { var v = localStorage.getItem('limo.panel.width'); if (v === 'wide') return 'web'; if (v) return v; } catch (e) { /* ignore */ }
     return 'phone';
   }
   function widthPx(name) {
     for (var i = 0; i < WIDTHS.length; i++) if (WIDTHS[i][0] === name) return WIDTHS[i][2];
     return 390;
   }
-  // The controls that sit above a preview: width buttons and the justify switch. `onChange` redraws it.
-  function previewControls(onChange, options) {
-    options = options || {};
+  // The controls that sit above the import preview: width buttons and the justify switch. `onChange` redraws it.
+  function previewControls(onChange) {
     var row = h('div', { class: 'pv-ctl' });
     var widthBtns = {};
     function paint() {
@@ -165,7 +164,7 @@
       justifyBtn.classList.toggle('on', readingJustify());
       onChange();
     }
-    if (!options.hideWidths) WIDTHS.forEach(function (w) {
+    WIDTHS.forEach(function (w) {
       widthBtns[w[0]] = h('button', { type: 'button', title: 'عرض پیش‌نمایش: ' + w[1], onclick: function (e) {
         e.preventDefault();
         try { localStorage.setItem('limo.panel.width', w[0]); } catch (err) { /* ignore */ }
@@ -184,175 +183,34 @@
     return { el: row, repaint: paint };
   }
 
-  // The whole-file preview has its own window, so device widths belong in that window's title bar. Unlike the old
-  // toolbar buttons outside the modal, these stay reachable while the preview is open and apply immediately.
-  function deviceControls(onChange) {
-    var row = h('div', { class: 'pv-devices', role: 'group', 'aria-label': 'اندازه‌ی پیش‌نمایش' });
-    var buttons = {};
-    function paint() {
-      var active = previewWidth();
-      for (var key in buttons) {
-        buttons[key].classList.toggle('on', key === active);
-        buttons[key].setAttribute('aria-pressed', key === active ? 'true' : 'false');
+  // Remembered visibility of the docked preview, per kind of editor. Old keys are read once and then ignored.
+  function previewState(key, legacy) {
+    try {
+      var saved = JSON.parse(localStorage.getItem(key) || 'null');
+      if (saved && typeof saved === 'object') {
+        return { visible: saved.visible !== false, expanded: !!saved.expanded };
       }
-    }
-    WIDTHS.forEach(function (item) {
-      var key = item[0], label = item[1];
-      buttons[key] = h('button', { type: 'button', class: 'pv-device', title: 'نمایش در اندازه‌ی ' + label,
-        onclick: function (e) {
-          e.preventDefault();
-          try { localStorage.setItem('limo.panel.width', key); } catch (err) { /* ignore */ }
-          paint();
-          onChange(key);
-        } }, label);
-      row.appendChild(buttons[key]);
-    });
-    paint();
-    return row;
-  }
-
-  // ---------- The preview as a window you can move ----------
-  // The preview used to live inside the editor's right-hand column, so «تمام‌عرض» could never be wider than that
-  // column and «تبلت» was cut off. It now lives in its own real window: a title bar, device-width buttons inside
-  // that bar (always reachable while the window is open), an × to close, and free dragging in every direction.
-  //
-  // Built on <dialog>: the browser already handles Escape, focus and the backdrop, so the only things written here are
-  // the ones it does not have — dragging and resizing.
-  var WIN_POS_KEY = 'limo.panel.win';
-  function savedWin() {
-    try { var v = localStorage.getItem(WIN_POS_KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; }
-  }
-  function saveWin(x, y, w, h) {
-    try { localStorage.setItem(WIN_POS_KEY, JSON.stringify({ x: x, y: y, w: w, h: h })); } catch (e) { /* ignore */ }
-  }
-  function previewWindow(opts) {
-    var frame = opts.frame;                // the iframe that is moved inside the window
-    var dialog = document.createElement('dialog');
-    dialog.className = 'pv-win';
-    var title = h('span', { class: 'pv-win-title' }, opts.title || 'پیش‌نمایش فصل');
-    var closeBtn = h('button', { type: 'button', class: 'pv-win-x', title: 'بستن (Esc)', onclick: function () { close(); } }, '×');
-    var bar = h('div', { class: 'pv-win-bar' }, title, opts.controls || null, closeBtn);
-    var body = h('div', { class: 'pv-win-body' });
-    var grip = h('div', { class: 'pv-win-grip', title: 'برای تغییر اندازه بکشید' });
-    dialog.appendChild(bar);
-    dialog.appendChild(body);
-    dialog.appendChild(grip);
-    document.body.appendChild(dialog);
-    // The frame may not be in the page at all (the whole-file editor keeps it out of the layout until the window
-    // opens); the placeholder then goes into the dialog's body, which is where it will be handed back to.
-    var placeholder = document.createComment('preview window closed');
-    var host = frame.parentNode || body;
-    if (host === body) { body.appendChild(placeholder); body.appendChild(frame); }
-    else host.insertBefore(placeholder, frame);
-
-    function place(x, y, w, hgt) {
-      var maxW = Math.max(320, window.innerWidth - 24), maxH = Math.max(240, window.innerHeight - 24);
-      w = Math.min(Math.max(320, w || 0), maxW);
-      hgt = Math.min(Math.max(240, hgt || 0), maxH);
-      if (typeof x !== 'number' || isNaN(x)) x = (window.innerWidth - w) / 2;
-      if (typeof y !== 'number' || isNaN(y)) y = Math.max(12, (window.innerHeight - hgt) / 2);
-      dialog.style.left = Math.max(0, Math.min(x, window.innerWidth - w)) + 'px';
-      dialog.style.top = Math.max(0, Math.min(y, window.innerHeight - hgt)) + 'px';
-      dialog.style.width = w + 'px';
-      dialog.style.height = hgt + 'px';
-    }
-    var saved = savedWin();
-    place(saved && saved.x, saved && saved.y, saved && saved.w, saved && saved.h);
-    var api;   // filled at the end; close() reads `api.onClosed` at call time
-
-    // --- Windows-style drag: grab anywhere on the non-control part of the title bar and move freely in both axes.
-    // Listen on window as well as capturing on the bar so a fast pointer that leaves the bar cannot lose the window.
-    // Position updates are coalesced to one per animation frame, which avoids the stutter of laying out on every
-    // high-frequency pointer event and feels the same with a mouse, pen or touch.
-    var drag = null, moveFrame = 0, pendingMove = null;
-    function flushDrag() {
-      moveFrame = 0;
-      if (!drag || !pendingMove) return;
-      var p = pendingMove;
-      pendingMove = null;
-      place(drag.left + p.x - drag.x, drag.top + p.y - drag.y, dialog.offsetWidth || parseFloat(dialog.style.width),
-        dialog.offsetHeight || parseFloat(dialog.style.height));
-    }
-    function stopDrag(e) {
-      if (!drag || (e && e.pointerId != null && drag.pointerId != null && e.pointerId !== drag.pointerId)) return;
-      if (pendingMove) flushDrag();
-      var id = drag.pointerId;
-      drag = null;
-      pendingMove = null;
-      if (moveFrame) { cancelAnimationFrame(moveFrame); moveFrame = 0; }
-      dialog.classList.remove('dragging');
-      try { if (id != null && bar.hasPointerCapture && bar.hasPointerCapture(id)) bar.releasePointerCapture(id); } catch (err) { /* ignore */ }
-      keep();
-    }
-    bar.addEventListener('pointerdown', function (e) {
-      if (e.button != null && e.button !== 0) return;
-      if (e.target.closest && e.target.closest('button, a, input, select, textarea, .pv-devices')) return;
-      e.preventDefault();
-      drag = { pointerId: e.pointerId, x: e.clientX, y: e.clientY,
-        left: parseFloat(dialog.style.left || 0), top: parseFloat(dialog.style.top || 0) };
-      try { if (e.pointerId != null && bar.setPointerCapture) bar.setPointerCapture(e.pointerId); } catch (err) { /* window listeners remain */ }
-      dialog.classList.add('dragging');
-    });
-    window.addEventListener('pointermove', function (e) {
-      if (!drag || (e.pointerId != null && drag.pointerId != null && e.pointerId !== drag.pointerId)) return;
-      e.preventDefault();
-      pendingMove = { x: e.clientX, y: e.clientY };
-      if (!moveFrame) moveFrame = requestAnimationFrame(flushDrag);
-    }, { passive: false });
-    window.addEventListener('pointerup', stopDrag);
-    window.addEventListener('pointercancel', stopDrag);
-
-    // --- resizing from the bottom-left corner (the side a Persian window grows from) ---
-    var resize = null;
-    grip.addEventListener('pointerdown', function (e) {
-      e.preventDefault();
-      resize = { x: e.clientX, y: e.clientY, l: parseFloat(dialog.style.left || 0), t: parseFloat(dialog.style.top || 0),
-                 w: dialog.offsetWidth, h: dialog.offsetHeight };
-      grip.setPointerCapture(e.pointerId);
-    });
-    grip.addEventListener('pointermove', function (e) {
-      if (!resize) return;
-      var dw = resize.x - e.clientX;            // RTL: the grip is on the left, so a leftward drag makes it wider
-      place(resize.l - dw, resize.t, resize.w + dw, resize.h + (e.clientY - resize.y));
-    });
-    grip.addEventListener('pointerup', function (e) { resize = null; try { grip.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ } });
-
-    function keep() {
-      if (!dialog.open) return;
-      saveWin(parseFloat(dialog.style.left || 0), parseFloat(dialog.style.top || 0), dialog.offsetWidth, dialog.offsetHeight);
-    }
-    dialog.addEventListener('pointerup', keep);
-    window.addEventListener('resize', function () { if (dialog.open) place(parseFloat(dialog.style.left), parseFloat(dialog.style.top), dialog.offsetWidth, dialog.offsetHeight); });
-
-    function open() {
-      body.appendChild(frame);
-      if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
-      if (opts.onOpen) opts.onOpen();
-    }
-    function close() {
-      if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
-      // Back where it came from, so the editor is unchanged when the window is closed.
-      if (placeholder.parentNode && frame.parentNode === body) {
-        placeholder.parentNode.insertBefore(frame, placeholder.nextSibling);
+      if (legacy) {
+        var oldMode = localStorage.getItem(legacy);
+        if (oldMode === 'text') return { visible: false, expanded: false };
+        if (oldMode === 'preview') return { visible: true, expanded: true };
       }
-      if (opts.onClose) opts.onClose();
-      // Read from `api` and not `opts`: the caller assigns `win.onClosed` after this function returns (it needs the
-      // toolbar button to exist first), so a copy taken now would still be undefined at close time.
-      if (api.onClosed) api.onClosed();
-    }
-    dialog.addEventListener('close', function () {
-      if (placeholder.parentNode && frame.parentNode === body) {
-        placeholder.parentNode.insertBefore(frame, placeholder.nextSibling);
-      }
-      if (opts.onClose) opts.onClose();
-      if (api.onClosed) api.onClosed();
-    });
-    api = {
-      el: dialog, open: open, close: close,
-      isOpen: function () { return !!dialog.open; },
-      frame: frame,
-    };
-    return api;
+    } catch (e) { /* ignore */ }
+    return { visible: true, expanded: false };
+  }
+  function savePreviewState(key, state) {
+    try { localStorage.setItem(key, JSON.stringify({ visible: state.visible, expanded: state.expanded })); } catch (e) { /* ignore */ }
+  }
+  function justifyControl(onChange) {
+    var btn = h('button', { type: 'button', class: 'pv-just pv-justify-toggle', title: 'متن درس تراز باشد (مثل تنظیم پروفایل در اپ)',
+      onclick: function (e) {
+        e.preventDefault();
+        try { localStorage.setItem('limo.panel.justify', readingJustify() ? '0' : '1'); } catch (err) { /* ignore */ }
+        btn.classList.toggle('on', readingJustify());
+        onChange();
+      } }, '⇔ تراز دو طرفه');
+    btn.classList.toggle('on', readingJustify());
+    return btn;
   }
 
   // ---------- labels («برچسب‌های متن», managed in admin) ----------
@@ -926,42 +784,63 @@
       }
       if (opts.uploadUrl) bar.appendChild(btn('🖼 عکس', 'افزودن عکس', function () { self.pickImage(opts.uploadUrl); }));
     }
-    var modes = h('span', { class: 'modes' });
-    var modeBtns = {};
-    [['split', 'هر دو'], ['text', 'فقط متن'], ['preview', 'فقط پیش‌نمایش']].forEach(function (m) {
-      modeBtns[m[0]] = h('button', { type: 'button', onclick: function (e) { e.preventDefault(); self.setMode(m[0]); } }, m[1]);
-      modes.appendChild(modeBtns[m[0]]);
-    });
-    bar.appendChild(modes);
+    // One switch for the live preview, plus the text-alignment switch. Device widths live in the pane's own bar so
+    // they work while the preview is open (the old «هر دو / فقط متن / فقط پیش‌نمایش» trio is gone).
+    var previewKey = opts.previewKey || (opts.inline ? null : 'limo.panel.preview.section');
+    var initial = previewKey ? previewState(previewKey, 'limo.panel.mode') : { visible: false, expanded: false };
+    if (opts.expanded) { initial.visible = true; initial.expanded = true; }
+    if (opts.mode === 'text') { initial.visible = false; initial.expanded = false; }
+    else if (opts.mode === 'preview') { initial.visible = true; initial.expanded = true; }
+
+    var previewBtn = h('button', { type: 'button', class: 'pv-toggle', title: 'نمایش زنده‌ی درس در کنار ویرایشگر',
+      'aria-pressed': initial.visible ? 'true' : 'false',
+      onclick: function (e) {
+        e.preventDefault();
+        self.setPreview(!previewOn, false);
+      } }, '👁 نمایش زنده');
+    bar.appendChild(previewBtn);
     var host = h('div', { class: 'md-host' });
-    addTools(textarea, bar, host, { before: modes, fileUrl: opts.fileUrl, find: !opts.inline });
-    // The width and the alignment of the preview, above it; both remembered between visits. Defined before setMode,
-    // which the constructor calls at its end.
-    var self2 = self;
-    // The frame comes first: previewControls() sizes the preview while it is being built, and it used to run before
-    // this.frame existed — «Cannot read properties of undefined (reading 'style')» on every open of a chapter, which
-    // the chapter manager then showed as «فصل باز نشد». (Found by running the real page, not by reading the code.)
-    this.frame = h('iframe', { title: 'پیش‌نمایش مثل گوشی' });
-    this.applyWidth = function () {
-      var px = widthPx(previewWidth());
-      self2.frame.style.width = px ? px + 'px' : '100%';
-    };
-    var ctl = previewControls(function () {
-      self2.applyWidth();
-      if (wrap.classList.contains('mode-split') || wrap.classList.contains('mode-preview')) self2.refresh();
-    });
-    this.setMode = function (m) {
-      wrap.classList.remove('mode-split', 'mode-text', 'mode-preview');
-      wrap.classList.add('mode-' + m);
-      for (var k in modeBtns) modeBtns[k].classList.toggle('on', k === m);
-      try { localStorage.setItem('limo.panel.mode', m); } catch (e) { /* ignore */ }
-      if (m !== 'text') self.refresh();
-      self.applyWidth();
-    };
+    addTools(textarea, bar, host, { before: previewBtn, fileUrl: opts.fileUrl, find: !opts.inline });
+    bar.appendChild(justifyControl(function () { if (previewOn) self.refresh(); }));
+    bar.appendChild(h('span', { class: 'sep' }));
+
     var body = h('div', { class: 'md-body' });
     textarea.parentNode.insertBefore(wrap, textarea);
     body.appendChild(textarea);
-    body.appendChild(h('div', { class: 'md-prev' }, ctl.el, this.frame));
+    var preview = window.LimoPreviewPane.create({
+      title: 'پیش‌نمایش',
+      frameTitle: 'پیش‌نمایش درس',
+      expanded: initial.expanded,
+      frameClass: opts.frameClass || '',
+      onClose: function () { self.setPreview(false, false); },
+      onExpandChange: function (expanded) { self.setPreview(true, expanded); },
+      onDeviceChange: function () { if (previewOn) self.refresh(); },
+    });
+    this.preview = preview;
+    this.frame = preview.frame;
+    body.appendChild(preview.el);
+
+    var previewOn = false;
+    this.setPreview = function (visible, expanded) {
+      visible = visible !== false;
+      expanded = visible && !!expanded;
+      previewOn = visible;
+      wrap.classList.toggle('preview-off', !visible);
+      wrap.classList.toggle('preview-only', visible && expanded);
+      wrap.classList.toggle('device-' + preview.getDevice(), true);
+      ['phone', 'tablet', 'web'].forEach(function (id) { wrap.classList.toggle('device-' + id, preview.getDevice() === id); });
+      previewBtn.classList.toggle('on', visible);
+      previewBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+      preview.setExpanded(expanded);
+      if (previewKey) savePreviewState(previewKey, { visible: visible, expanded: expanded });
+      if (visible) { self.refresh(); preview.refreshScale(); }
+    };
+    // Kept as a tiny compatibility shim for older callers and saved pages.
+    this.setMode = function (m) {
+      if (m === 'text') this.setPreview(false, false);
+      else if (m === 'preview') this.setPreview(true, true);
+      else this.setPreview(true, false);
+    };
     // A draft left from last time (closed before «ذخیره»): offered back above the toolbar.
     this.drafts = opts.draft ? draftKeeper(opts.draft, textarea.value, function () { return textarea.value; }, function (text) {
       replaceRange(textarea, 0, textarea.value.length, text);
@@ -1013,9 +892,7 @@
       if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'ذ')) { e.preventDefault(); self.wrap('**', '**', 'متن پررنگ'); }
     });
     cmUpgrade(textarea, opts.inline ? 1 : opts.compact ? 3 : 14);
-    var saved = 'split';
-    try { saved = localStorage.getItem('limo.panel.mode') || 'split'; } catch (e) { /* ignore */ }
-    this.setMode(opts.mode || saved);
+    this.setPreview(initial.visible, initial.expanded);
   }
   MdEditor.prototype.refresh = function () {
     var html;
@@ -2173,21 +2050,10 @@
     // live preview. Rendering a whole chapter is cheap (11 ms for 6000 characters, measured), so the preview is the
     // chapter — not a part of it: what a professor checks here is the chapter as a reader will get it.
     var edBar = h('div', { class: 'md-bar' }), edHost = h('div', { class: 'md-host' });
-    var frame = h('iframe', { class: 'file-prev', title: 'پیش‌نمایش فصل' });
     var edBody = h('div', { class: 'md-body' });
-    var edWrap = h('div', { class: 'md-ed mode-split file' }, edBar, edHost, edBody);
+    var edWrap = h('div', { class: 'md-ed file preview-on device-phone' }, edBar, edHost, edBody);
     ta.parentNode.insertBefore(edWrap, ta);
     edBody.appendChild(ta);
-    addTools(ta, edBar, edHost, {});
-    fileNav(ta, edBar);
-
-    // The mode of this editor is remembered on its own: «فقط متن» over a whole chapter is a usual habit, and it must
-    // not be the same switch as the section editors'.
-    function savedMode() {
-      try { return localStorage.getItem('limo.panel.file.mode') || 'split'; } catch (e) { return 'split'; }
-    }
-    var startMode = savedMode();
-    var modes = h('span', { class: 'modes' });
 
     var prevTimer = null;
     function refresh(now) {
@@ -2202,50 +2068,52 @@
       };
       if (now) draw(); else prevTimer = setTimeout(draw, 350);
     }
-    function applyWidth() {
-      var name = previewWidth(), px = widthPx(name);
-      // No cap and no max-width: a tablet is 768px even when its column is narrower — the column scrolls instead,
-      // otherwise «تبلت» and «گوشی» would look the same and the buttons would be a lie.
-      frame.style.width = px ? px + 'px' : '100%';
-      frame.style.maxWidth = 'none';
-      // «تمام‌عرض» means the whole panel, not the whole of a 460px column: the split itself is released while it is
-      // chosen, otherwise every width button would give the same size and none of them would do anything visible.
-      edWrap.classList.toggle('wide-preview', !px);
-    }
-    // The width buttons now travel with the window (inside its own title bar): they are settings of the frame, not
-    // part of what the reader sees, and they must work without closing the window. The editor's toolbar keeps only
-    // the justify switch so the two places don't both own the same setting.
-    var ctl = previewControls(function () { applyWidth(); refresh(true); }, { hideWidths: true });
-    edBar.appendChild(h('span', { class: 'sep' }));
-    edBar.appendChild(ctl.el);   // text alignment stays with the editor; device sizes are in the window's own title bar
-    var devices = deviceControls(function () { applyWidth(); refresh(true); });
-    // The window: the preview out of the 460px column, free on the page, draggable in every direction and resizable.
-    var win = previewWindow({ frame: frame, title: 'پیش‌نمایش فصل', controls: devices,
-      onOpen: function () { applyWidth(); refresh(true); } });
-    var winBtn = h('button', { class: 'btn small pv-open', type: 'button', title: 'پیش‌نمایش در پنجره‌ی جدا',
+    var preview = window.LimoPreviewPane.create({
+      title: 'پیش‌نمایش فصل',
+      frameTitle: 'پیش‌نمایش فصل',
+      frameClass: 'file-prev',
+      expanded: false,
+      minWidth: 360,
+      onClose: function () { setPreview(false, false); },
+      onExpandChange: function (expanded) { setPreview(true, expanded); },
+      onDeviceChange: function () { syncDeviceClass(); if (previewOn) refresh(true); },
+    });
+    var frame = preview.frame;
+    edBody.appendChild(preview.el);
+
+    var previewKey = 'limo.panel.preview.file';
+    var savedPreview = previewState(previewKey, 'limo.panel.file.mode');
+    var previewOn = false;
+    var previewBtn = h('button', { type: 'button', class: 'pv-toggle', title: 'نمایش زنده‌ی فصل در کنار ویرایشگر',
+      'aria-pressed': savedPreview.visible ? 'true' : 'false',
       onclick: function (e) {
         e.preventDefault();
-        if (win.isOpen()) win.close(); else win.open();
-        winBtn.classList.toggle('on', win.isOpen());
-        rememberWin();
-      } }, 'پیش‌نمایش در پنجره');
-    edBar.appendChild(winBtn);
-    function rememberWin() {
-      try { localStorage.setItem('limo.panel.file.mode', win.isOpen() ? 'preview' : 'text'); } catch (err) { /* ignore */ }
+        setPreview(!previewOn, false);
+      } }, '👁 نمایش زنده');
+    addTools(ta, edBar, edHost, {});
+    fileNav(ta, edBar);
+    edBar.appendChild(h('span', { class: 'sep' }));
+    edBar.appendChild(previewBtn);
+    edBar.appendChild(justifyControl(function () { if (previewOn) refresh(true); }));
+
+    function syncDeviceClass() {
+      ['phone', 'tablet', 'web'].forEach(function (id) { edWrap.classList.toggle('device-' + id, preview.getDevice() === id); });
+    }
+    function setPreview(visible, expanded) {
+      visible = visible !== false;
+      expanded = visible && !!expanded;
+      previewOn = visible;
+      edWrap.classList.toggle('preview-off', !visible);
+      edWrap.classList.toggle('preview-only', visible && expanded);
+      syncDeviceClass();
+      previewBtn.classList.toggle('on', visible);
+      previewBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+      preview.setExpanded(expanded);
+      savePreviewState(previewKey, { visible: visible, expanded: expanded });
+      if (visible) { refresh(true); preview.refreshScale(); }
     }
     ta.addEventListener('input', function () { refresh(false); });
-    // With the preview in its own window there is no column to split, so «هر دو / فقط متن / فقط پیش‌نمایش» no longer
-    // means anything here: the text always fills the page, and the preview is either open in its window or not.
-    // The section editors keep their three modes (they still have the side-by-side column).
-    edWrap.classList.remove('mode-split');
-    edWrap.classList.add('mode-text');
-    applyWidth();
-    refresh(true);
-    // A window left open last time is reopened: a professor who works with it open should not have to open it daily.
-    try { if (localStorage.getItem('limo.panel.file.mode') === 'preview') win.open(); } catch (err) { /* ignore */ }
-    // Closing with × or Escape must remember that too, not just the toolbar button.
-    win.onClosed = function () { winBtn.classList.remove('on'); rememberWin(); };
-    if (win.isOpen()) winBtn.classList.add('on');
+    setPreview(savedPreview.visible, savedPreview.expanded);
     fetch(opts.api, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) { setCtx(d.state); }).catch(function () {});
     var keeper = opts.restore ? { el: null, changed: function () {}, saved: function () {} }
       : draftKeeper(opts.api + '|file', ta.value, function () { return ta.value; }, function (text) { replaceRange(ta, 0, ta.value.length, text); });

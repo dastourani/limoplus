@@ -16,7 +16,7 @@
 .limo-cm { width: 100%; }
 .md-ed .limo-cm { border: 0 !important; border-radius: 0 !important; min-height: 260px; height: 100%; }
 .md-ed.compact .limo-cm { min-height: 110px; }
-.md-ed.mode-preview .limo-cm { display: none; }
+.md-ed.preview-only .limo-cm, .md-ed.preview-only textarea { display: none; }
 .md-ed .limo-cm .cm-scroller { max-height: 70vh; }
 .file-ed + .limo-cm .cm-scroller { max-height: 75vh; }
 .lp label.f { display: block; font-weight: 700; margin: 12px 0 4px; font-size: 13px; }
@@ -47,43 +47,55 @@
 .md-ed .md-bar button.on { background: var(--ink); color: var(--lemon); }
 .md-ed .md-bar select.file-go { max-width: 260px; font: inherit; font-size: 13px; padding: 2px 6px; border: 1px solid var(--line, #dde2d8); border-radius: 6px; background: var(--card, #fff); color: var(--body-fg, #333); }
 .md-ed .md-bar .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
-.md-ed .md-bar .modes { margin-right: auto; display: flex; gap: 2px; }
-.md-ed .md-body { display: grid; grid-template-columns: minmax(0, 1fr) min(400px, 45%); min-height: 260px; }
-.md-ed.mode-text .md-body { grid-template-columns: 1fr; } .md-ed.mode-text .md-prev { display: none; }
-.md-ed.mode-preview .md-body { grid-template-columns: 1fr; } .md-ed.mode-preview textarea { display: none; }
-.md-ed textarea { border: 0 !important; border-radius: 0 !important; min-height: 260px; height: 100%; padding: 12px 14px !important; font-size: 15px !important; }
-/* The column may hold a preview wider than itself (a tablet is 768px in a 460px column): it scrolls sideways
-   rather than shrinking the preview, because a shrunken preview is a lie about the layout. */
-/* NOT align-items:center. A 768px tablet inside a 440px column overflows 328px; centring splits that 164px on each
-   side, and scrolling can only ever reach one of them — so the right-hand 164px of a Persian preview could not be
-   seen at any scroll position (reported from a real screenshot). align-items:flex-start lets the overflow go one way
-   only, which is exactly what scrolling can follow; the frame is centred by margin auto instead, which does nothing
-   when it does not fit. */
-.md-ed .md-prev { border-right: 1px solid var(--line); background: #e9ece4; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px; overflow-x: auto; overflow-y: auto; }
-.md-ed .md-prev > * { flex: 0 0 auto; }
-.md-ed .md-prev iframe { margin-inline: auto; }
-.md-ed .md-prev iframe { width: 380px; max-width: 100%; height: 100%; min-height: 260px; border: 0; border-radius: 18px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
-/* The preview's own controls: how wide, and aligned which way. A phone is the only width where the preview is really
-   «مثل اپ»; a tablet and the full panel are there for tables and long formulas. */
-.pv-ctl { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; align-self: stretch; justify-content: center; }
-.pv-ctl button { border: 1px solid var(--line, #dde2d8); background: var(--card, #fff); border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; color: var(--body-fg, #333); }
-.pv-ctl button:hover { border-color: var(--ink, #17201A); }
-.pv-ctl button.on { background: var(--ink, #17201A); color: var(--lemon, #F5C518); border-color: var(--ink, #17201A); }
-.pv-ctl button.pv-just { margin-right: 4px; }
+.md-ed .md-bar .pv-toggle { display: inline-flex; gap: 5px; align-items: center; margin-inline-start: auto; }
+.md-ed .md-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(330px, 410px); min-height: 260px; }
+.md-ed.device-tablet .md-body { grid-template-columns: minmax(0, 1fr) minmax(430px, 788px); }
+.md-ed.device-web .md-body { grid-template-columns: minmax(260px, 0.72fr) minmax(360px, 1.28fr); }
+.md-ed.preview-off .md-body, .md-ed.preview-only .md-body { grid-template-columns: 1fr; }
+.md-ed.preview-off .pv-pane { display: none; }
+.md-ed.preview-only .md-bar .pv-toggle { margin-inline-start: auto; }
+.md-ed.preview-only .md-host { display: none; }
+.md-ed.preview-only .md-body > :not(.pv-pane), .md-ed.preview-only .limo-cm { display: none !important; }
+.md-ed.preview-only .pv-pane { border-right: 0; width: 100%; }
+.md-ed textarea { border: 0 !important; border-radius: 0 !important; min-height: 260px; height: 100%; padding: 12px 14px !important; font-size: 15px !important; unicode-bidi: plaintext; }
+.limo-cm { width: 100%; }
+.md-ed .md-bar .pv-justify-toggle { margin-inline-start: 4px; }
+/* The lesson keeps the app's own typography. If the pane is narrower than the chosen device, the frame is laid out at
+   its honest CSS width and shrunk as a whole; text never reflows to a width no learner has. */
+.md-ed .pv-pane { border-right: 1px solid var(--line); background: #e9ece4; min-width: 0; min-height: 260px; display: flex; flex-direction: column; }
+.pv-pane-bar { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 6px 8px; background: #17201A; color: #F6F7F2; flex: 0 0 auto; }
+.pv-pane-title { font-size: 12px; font-weight: 700; flex: 1 1 auto; min-width: 48px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-pane-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 10px; }
+.pv-pane-stage { flex: 0 0 auto; }
+.pv-frame { display: block; border: 0; border-radius: 14px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+.pv-devices { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; overflow-x: auto; padding: 2px;
+  border-radius: 8px; background: rgba(255,255,255,.08); scrollbar-width: none; }
+.pv-devices::-webkit-scrollbar { display: none; }
+.pv-device { border: 0; background: transparent; color: #dfe6dc; font-size: 11.5px; line-height: 1; padding: 5px 10px;
+  border-radius: 6px; cursor: pointer; white-space: nowrap; flex: 0 0 auto; }
+.pv-device:hover { background: rgba(255,255,255,.12); color: #fff; }
+.pv-device.on { background: #F6F7F2; color: #17201A; font-weight: 700; }
+.pv-expand, .pv-pane-x { border: 0; background: transparent; color: #F6F7F2; border-radius: 6px; cursor: pointer; line-height: 1; padding: 0; flex: 0 0 auto; }
+.pv-expand { width: 26px; height: 24px; font-size: 15px; }
+.pv-expand.on { background: #F5C518; color: #17201A; }
+.pv-pane-x { width: 26px; height: 24px; font-size: 20px; }
+.pv-pane-x:hover { background: #b3261e; }
+.pv-expand:focus-visible, .pv-pane-x:focus-visible, .pv-device:focus-visible, .pv-toggle:focus-visible { outline: 2px solid #E8B923; outline-offset: 1px; }
 .pv-hint { font-size: 11px; color: #56655B; text-align: center; line-height: 1.6; max-width: 360px; }
 /* «ویرایش کل فایل»: the same split, over a whole chapter. */
-.md-ed.file .md-body { grid-template-columns: minmax(0, 1fr) min(460px, 45%); }
-.md-ed.file.mode-preview .md-body { grid-template-columns: 1fr; }
-.md-ed.file.mode-text .md-prev { display: none; }
+.md-ed.file .md-body { grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); }
+.md-ed.file.device-tablet .md-body { grid-template-columns: minmax(0, 1fr) minmax(430px, 788px); }
+.md-ed.file.device-web .md-body { grid-template-columns: minmax(240px, 0.65fr) minmax(360px, 1.35fr); }
+.md-ed.file.preview-only .md-body { grid-template-columns: 1fr; }
 .md-ed.file textarea { min-height: 60vh; }
-/* «تمام عرض»: the preview takes the panel and the editor steps above it, so «the whole width» is the whole width
-   and not a 460px column. Going back to گوشی or تبلت puts the split back. */
-.md-ed.file.wide-preview .md-body { grid-template-columns: 1fr; }
-.md-ed.file.wide-preview .md-prev { border-right: 0; border-top: 1px solid var(--line); }
 /* The whole-file preview is as tall as the editor, not a short strip: a chapter is long, and a 260px window on it
    shows three lines and hides the rest. */
-.md-ed.file .md-prev iframe { min-height: 60vh; }
-.md-ed.compact .md-body, .md-ed.compact textarea, .md-ed.compact .md-prev iframe { min-height: 110px; }
+.md-ed.file .pv-pane { min-height: 60vh; }
+.md-ed.file.preview-off .pv-pane { display: none; }
+.md-ed.compact .md-body { grid-template-columns: 1fr; }
+.md-ed.compact .pv-pane { display: none; }
+.md-ed.compact textarea { min-height: 110px; }
+
 /* Editor tools: undo/redo, formula toolbox, references, find and replace, drafts. */
 .md-ed .md-bar .tools { display: inline-flex; flex-wrap: wrap; gap: 2px; }
 .md-ed .md-bar button.tool.on { background: var(--ink); color: var(--lemon); }
@@ -107,7 +119,7 @@
 .ref-list button { border: 1px solid var(--line); background: var(--card); color: var(--body-fg, #333); border-radius: 8px; padding: 2px 10px; cursor: pointer; font: inherit; font-size: 13px; }
 .ref-list button:hover { border-color: #b9a23a; }
 .draft-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-@media (max-width: 1100px) { .md-ed .md-body { grid-template-columns: 1fr; } .md-ed .md-prev { border-right: 0; border-top: 1px solid var(--line); } }
+@media (max-width: 1100px) { .md-ed .md-body, .md-ed.device-tablet .md-body, .md-ed.device-web .md-body { grid-template-columns: 1fr; } .md-ed .pv-pane { border-right: 0; border-top: 1px solid var(--line); } }
 
 /* Chapter manager */
 .cm { display: grid; grid-template-columns: 290px 1fr; gap: 18px; align-items: start; }
@@ -277,36 +289,3 @@ html[data-theme="dark"] .plot-menu button:hover { background: #F5C518; color: #1
 .import-preview .pv-ctl { padding: 8px 12px; justify-content: flex-start; }
 .import-pv-wrap { display: flex; justify-content: center; overflow: auto; padding: 10px; background: #e9ece4; }
 .import-pv { width: 100%; height: 70vh; min-height: 320px; border: 0; border-radius: 14px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
-
-/* ---------- The preview as a movable window ---------- */
-/* A real <dialog> on top of the panel, not a box inside the editor's column: that is the only way «تمام عرض» can mean
-   the whole screen and «تبلت» is not clipped by a 460px column. Free of the column, the frame keeps its width. */
-.pv-win { position: fixed; margin: 0; padding: 0; border: 1px solid #b9c2b4; border-radius: 10px; background: #e9ece4;
-  box-shadow: 0 24px 60px rgba(0,0,0,.28); overflow: hidden; display: flex; flex-direction: column; }
-.pv-win:not([open]) { display: none; }
-.pv-win::backdrop { background: rgba(23,32,26,.28); }
-.pv-win-bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: #17201A; color: #F6F7F2;
-  cursor: grab; user-select: none; flex: 0 0 auto; flex-wrap: wrap; row-gap: 6px; }
-.pv-win.dragging .pv-win-bar { cursor: grabbing; }
-.pv-win-title { font-size: 12.5px; font-weight: 700; min-width: 0; flex: 1 1 auto; white-space: nowrap; overflow: hidden;
-  text-overflow: ellipsis; }
-/* Device-width segmented control, inside the title bar: it must survive a narrow window, so it scrolls instead of wrapping. */
-.pv-devices { display: inline-flex; align-items: center; gap: 4px; flex: 0 1 auto; max-width: 100%; overflow-x: auto;
-  padding: 2px; border-radius: 8px; background: rgba(255,255,255,.08); scrollbar-width: none; }
-.pv-devices::-webkit-scrollbar { display: none; }
-.pv-device { border: 0; background: transparent; color: #dfe6dc; font-size: 11.5px; line-height: 1; padding: 5px 10px;
-  border-radius: 6px; cursor: pointer; white-space: nowrap; flex: 0 0 auto; }
-.pv-device:hover { background: rgba(255,255,255,.12); color: #fff; }
-.pv-device.on { background: #F6F7F2; color: #17201A; font-weight: 700; }
-.pv-win-bar .pv-device:focus-visible, .pv-win-bar .pv-win-x:focus-visible { outline: 2px solid #E8B923; outline-offset: 1px; }
-.pv-win-x { border: 0; background: transparent; color: #F6F7F2; font-size: 20px; line-height: 1; cursor: pointer;
-  border-radius: 6px; width: 26px; height: 24px; padding: 0; }
-.pv-win-x:hover { background: #b3261e; }
-.pv-win-body { flex: 1 1 auto; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 10px; }
-/* The frame inside the window: width comes from the toolbar's buttons, height fills the window. */
-.pv-win-body iframe { border: 0; border-radius: 12px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08);
-  height: 100%; min-height: 200px; flex: 0 0 auto; }
-.pv-win-grip { position: absolute; left: 0; bottom: 0; width: 18px; height: 18px; cursor: nesw-resize;
-  background: linear-gradient(45deg, transparent 45%, #8a968c 45%, #8a968c 55%, transparent 55%, transparent 68%, #8a968c 68%, #8a968c 78%, transparent 78%); }
-/* The toolbar button that opens the window: it belongs to the editor, next to the width buttons. */
-.md-bar .pv-open { display: inline-flex; }
