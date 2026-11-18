@@ -9,6 +9,7 @@ import zipfile
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.messages import get_messages
 from django.core.files.storage import default_storage
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -1320,3 +1321,119 @@ class PreviewWindowTests(_Base):
         # They are settings of the frame, not part of what the reader sees: they belong on the toolbar.
         html = self.client.get(self.url).content.decode()
         self.assertNotIn('md-prev file-prev-wrap', html)
+
+
+class PublishGateTests(_Base):
+    """«انتشار» is its own gate, separate from writing.
+
+    A professor may be trusted to write a book long before being trusted to put it in front of learners, and the
+    reviewer is usually someone else. `BookEditor.can_publish` says which one a person is; until this gate existed the
+    checkbox was visible to every editor and the server never asked, so the flag meant nothing.
+    """
+
+    def professor(self, can_publish):
+        from django.contrib.auth.models import Permission
+
+        from .models import BookEditor
+
+        user = User.objects.create_user("09120000003", is_staff=True)
+        # change_book too: without it the admin view wrapper answers 403 before the publishing gate is even
+        # reached, and this test would pass for the wrong reason.
+        user.user_permissions.add(Permission.objects.get(codename="change_contentnode"),
+                                 Permission.objects.get(codename="change_book"))
+        user.refresh_from_db()
+        BookEditor.objects.create(book=self.book, user=user, can_publish=can_publish)
+        return user
+
+    def test_an_editor_without_can_publish_is_told_so_and_sees_no_checkbox(self):
+        self.client.force_login(self.professor(can_publish=False))
+        state = self.state()
+        self.assertFalse(state["can_publish"])
+        self.assertIn("مدیر کل", state["publish_why"])
+
+    def draft(self):
+        # setUp imports with publish=True; a gate test needs something that starts unpublished, or «still false»
+        # would pass for the wrong reason.
+        self.client.force_login(self.admin)
+        self.op(op="chapter.publish", value=False)
+        self.chapter.refresh_from_db()
+        self.assertFalse(self.chapter.is_published)
+
+    def test_an_editor_without_can_publish_cannot_publish_through_the_api(self):
+        self.draft()
+        self.client.force_login(self.professor(can_publish=False))
+        r = self.op(op="chapter.publish", value=True)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("اجازه‌ی انتشار", r.json()["errors"][0])
+        self.chapter.refresh_from_db()
+        self.assertFalse(self.chapter.is_published, "a refused publish must not half-happen")
+
+    def test_an_editor_without_can_publish_cannot_publish_a_section_either(self):
+        self.draft()
+        self.client.force_login(self.professor(can_publish=False))
+        r = self.op(op="section.publish", slug="one", value=True)
+        self.assertEqual(r.status_code, 400)
+
+    def test_hiding_what_you_wrote_needs_no_permission(self):
+        # Taking something down is never the dangerous direction, and refusing it would leave a wrong draft live.
+        self.client.force_login(self.professor(can_publish=False))
+        r = self.op(op="chapter.publish", value=False)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.chapter.refresh_from_db()
+        self.assertFalse(self.chapter.is_published)
+
+    def test_with_can_publish_the_same_call_works(self):
+        self.draft()
+        self.client.force_login(self.professor(can_publish=True))
+        self.assertTrue(self.state()["can_publish"])
+        r = self.op(op="chapter.publish", value=True)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.chapter.refresh_from_db()
+        self.assertTrue(self.chapter.is_published)
+
+    def test_the_form_post_asks_the_same_question(self):
+        # The «فهرست فصل‌ها» page has its own publish button; a gate on only one of two doors is not a gate.
+        self.draft()   # as the admin, who may take it down
+        self.client.force_login(self.professor(can_publish=False))
+        self.client.post(reverse("admin:catalog_book_chapter_action", args=[self.book.pk]),
+                         {"chapter": self.chapter.pk, "action": "publish", "value": "1"})
+        self.chapter.refresh_from_db()
+        self.assertFalse(self.chapter.is_published)
+
+    def test_uploading_with_immediate_publish_asks_the_same_question(self):
+        self.client.force_login(self.professor(can_publish=False))
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        url = reverse("admin:catalog_book_import", args=[self.book.pk])
+        self.client.post(url, {"file": SimpleUploadedFile("ch2.md", GOOD.replace("ch1", "ch2").encode()), "publish": "1"})
+        from .models import ContentNode
+
+        self.assertFalse(ContentNode.objects.filter(slug="ch2", kind=ContentNode.Kind.CHAPTER).exists(),
+                         "a file that may not be published must not be imported as published")
+
+    def test_book_publish_publishes_the_whole_tree(self):
+        # A published book whose chapters are drafts is an empty shelf in the app: publishing must mean the tree.
+        self.client.force_login(self.admin)
+        url = reverse("admin:catalog_book_publish", args=[self.book.pk])
+        self.client.post(url, {"value": "0"})
+        self.book.refresh_from_db()
+        self.assertFalse(self.book.is_published)
+        self.client.post(url, {"value": "1"})
+        self.book.refresh_from_db()
+        self.assertTrue(self.book.is_published)
+        self.assertFalse(self.book.get_descendants().filter(is_published=False).exists())
+
+    def test_book_publish_refuses_an_editor_who_may_only_write(self):
+        self.draft()
+        self.client.force_login(self.professor(can_publish=False))
+        url = reverse("admin:catalog_book_publish", args=[self.book.pk])
+        response = self.client.post(url, {"value": "1"}, follow=True)
+        self.assertIn("اجازه‌ی انتشار", response.content.decode())
+        self.chapter.refresh_from_db()
+        self.assertFalse(self.chapter.is_published)
+
+    def test_unpublishing_a_book_keeps_the_text(self):
+        self.client.force_login(self.admin)
+        before = export_chapter(self.chapter)
+        self.client.post(reverse("admin:catalog_book_publish", args=[self.book.pk]), {"value": "0"})
+        self.assertEqual(export_chapter(self.chapter), before)

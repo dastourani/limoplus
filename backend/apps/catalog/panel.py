@@ -92,6 +92,52 @@ def _require_superuser(request):
         raise PermissionDenied("این کار از این صفحه فقط برای مدیر کل است.")
 
 
+def book_publish(admin_site, request, book_id):
+    """Release a book to learners, or take it back — the only door to `Book.is_published`.
+
+    Publishing a book without publishing its chapters shows an empty shelf, so this publishes the whole tree in the
+    same breath. Taking it back hides the book and leaves the content alone: the reason to unpublish is almost never
+    «delete what I wrote».
+    """
+    # Not @require_POST: this view takes `admin_site` first (BookAdmin.get_urls calls it through admin_view), so a
+    # decorator that reads `request` from position 0 would be handed the site.
+    if request.method != "POST":
+        raise Http404
+    book = _book(book_id)
+    _can_edit(request, book)
+    try:
+        _may_publish(request.user, book)
+    except EditError as e:
+        # A sentence on the page, not a traceback: this is a normal thing to try, and 500 is not an answer.
+        messages.error(request, "؛ ".join(e.messages))
+        return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
+    value = request.POST.get("value") == "1"
+    with transaction.atomic():
+        ContentNode.objects.filter(path__startswith=book.path).update(is_published=value)
+    messages.success(
+        request,
+        f"کتاب «{book.title}» {'منتشر شد و در اپ دیده می‌شود' if value else 'از انتشار خارج شد و در اپ دیده نمی‌شود'}."
+    )
+    return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
+
+
+def _book_by_slug(slug):
+    """The book a file names, without creating it. Used only to ask «may this person publish it?»."""
+    if not slug:
+        return None
+    return ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, slug=slug).first()
+
+
+def _may_publish(user, book):
+    """The publishing gate. Raises with a sentence the professor can act on, not a bare 403."""
+    # A book that does not exist yet has no «استاد کتاب» rows, so it falls to superusers; importing a brand-new
+    # book with «انتشار فوری» as a professor is exactly the case this must refuse.
+    if not access.can_publish_book(user, book):
+        raise EditError(
+            "شما اجازه‌ی انتشار این کتاب را ندارید. نوشتن و آماده‌کردن آزاد است؛ انتشار را مدیر کل انجام می‌دهد."
+        )
+
+
 def _can_edit_destination(node_id, user):
     """«انتقال» moves content into another book, so the destination needs its own permission check."""
     node = ContentNode.objects.filter(pk=node_id).first()
@@ -140,7 +186,8 @@ def _flashcard_json(f, obj):
             "is_free": f.is_free, "raw": "\n".join(flashcard_block(f))}
 
 
-def chapter_state(chapter: ContentNode) -> dict:
+def chapter_state(chapter: ContentNode, user=None) -> dict:
+    """Everything the chapter page draws. `user` decides the publishing gate, so callers must pass request.user."""
     chapter = ContentNode.objects.get(pk=chapter.pk)
     book = chapter.book()
     parsed = editing.load(chapter)
@@ -176,9 +223,14 @@ def chapter_state(chapter: ContentNode) -> dict:
     intro = editing.section(parsed, "")
     archived_q = Question.objects.filter(node_id__in=ids, is_archived=True).select_related("node").order_by("node__path", "order")
     archived_f = Flashcard.objects.filter(node_id__in=ids, is_archived=True).select_related("node").order_by("node__path", "order")
+    may_publish = access.can_publish_book(user, book)
     return {
         "version": version,
-        "book": {"id": book.pk, "slug": book.slug, "title": book.title},
+        # The panel draws the «منتشر» checkboxes from this. A checkbox that the server will refuse is worse than no
+        # checkbox: the professor ticks it, the page reloads, nothing changed, and nobody says why.
+        "can_publish": may_publish,
+        "publish_why": "" if may_publish else access.publish_state(user, book)["why"],
+        "book": {"id": book.pk, "slug": book.slug, "title": book.title, "is_published": book.is_published},
         "chapter": {"id": chapter.pk, "slug": chapter.slug, "title": chapter.title, "number": chapter.position,
                     "is_free": chapter.is_free, "is_published": chapter.is_published},
         "intro": section_json(intro, None),
@@ -276,6 +328,8 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
     # Visibility lives only in the panel (not in the file). The «صندوق تست» is never published.
     if op in ("chapter.publish", "section.publish") and data.get("value") and chapter.is_inbox:
         raise EditError("صندوق تست منتشر نمی‌شود؛ تست‌ها را به بخش‌هایشان منتقل کنید.")
+    if op in ("chapter.publish", "section.publish") and data.get("value"):
+        _may_publish(user, book)   # publishing only; hiding your own chapter is always allowed
     if op == "chapter.publish":
         drafts = set_chapter_published(chapter, bool(data.get("value")))
         return {"ok": True, "note": f"{drafts} بخش پیش‌نویس هم منتشر شد." if drafts else ""}
@@ -489,8 +543,8 @@ def chapter_api(request, chapter_id):
             return JsonResponse({"errors": e.messages}, status=400)
         if "item" in outcome:
             return JsonResponse(outcome)
-        return JsonResponse({**outcome, "state": chapter_state(chapter)})
-    return JsonResponse({"state": chapter_state(chapter)})
+        return JsonResponse({**outcome, "state": chapter_state(chapter, request.user)})
+    return JsonResponse({"state": chapter_state(chapter, request.user)})
 
 
 def _upload_image(request, chapter):
@@ -541,7 +595,7 @@ def _file_apply(request, chapter, data):
             note = _mark_fresh(locked, before, editing.load(locked), data.get("fresh_note") or "") if before is not None else ""
     except editing.Conflict as e:
         return JsonResponse({"errors": e.messages, "conflict": True}, status=409)
-    return JsonResponse({"ok": True, "note": note, "state": chapter_state(chapter)})
+    return JsonResponse({"ok": True, "note": note, "state": chapter_state(chapter, request.user)})
 
 
 def _restore_text(request, chapter, data):
@@ -566,7 +620,7 @@ def _restore_text(request, chapter, data):
         return JsonResponse({"errors": e.messages, "conflict": True}, status=409)
     except EditError as e:
         return JsonResponse({"errors": e.messages}, status=400)
-    return JsonResponse({"ok": True, "changed": changed, "state": chapter_state(chapter)})
+    return JsonResponse({"ok": True, "changed": changed, "state": chapter_state(chapter, request.user)})
 
 
 def open_inbox(request):
@@ -691,11 +745,15 @@ def import_view(admin_site, request, book_id=None):
         if parsed.errors:
             messages.error(request, "فایل خطا دارد؛ چیزی وارد نشد.")
             return redirect(request.path)
+        publish_now = bool(request.POST.get("publish"))
+        if publish_now:
+            # The file names its own book, which may not be one the uploader may publish.
+            _may_publish(request.user, book or _book_by_slug(parsed.meta.get("book_slug")))
         with transaction.atomic():
             existing = _existing_chapter(parsed)
             if existing:
                 editing.ensure_baseline(existing, request.user)
-            result = apply_chapter(parsed, publish=bool(request.POST.get("publish")))
+            result = apply_chapter(parsed, publish=publish_now)
             editing.record_revision(result.chapter, user=request.user, source=ChapterRevision.Source.FILE, note=f"بارگذاری فایل: {request.POST.get('filename', '')}"[:300])
         messages.success(request, f"وارد شد. {result.summary()}")
         return redirect(reverse("admin:catalog_chapter_manager", args=[result.chapter.pk]))
@@ -830,6 +888,8 @@ def _chapter_action(request, book, chapter, action):
             editing.save(chapter, parsed, user=request.user, note="رایگان" if value else "پولی")
             messages.success(request, f"{name} {'رایگان' if value else 'پولی'} شد. بقیه‌ی فصل‌های کتاب تغییری نکردند.")
         elif field == "is_published":
+            if value:
+                _may_publish(request.user, book)
             drafts = set_chapter_published(chapter, value)
             done = f"{name} {'منتشر شد' if value else 'از انتشار خارج شد'}"
             messages.success(request, f"{done}؛ {drafts} بخش پیش‌نویس آن هم منتشر شد." if drafts else f"{done}.")
