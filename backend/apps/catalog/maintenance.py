@@ -21,6 +21,7 @@ from django.db import connection
 from django.utils import timezone
 
 TEMP_SESSION_DAYS = 90
+ACTIVITY_DAYS = 365   # one year of history; agreed when «رویدادها» was built
 KEEP_ALL_REVISIONS_DAYS = 30
 ORPHAN_IMAGE_DAYS = 30
 PENDING_IMPORT_HOURS = 24
@@ -54,6 +55,14 @@ def cleanup_temporary(now=None) -> dict:
     ops = FlashcardReviewOp.objects.filter(created_at__lt=now - timedelta(days=30)).delete()[0]
     ops += StudyTimeReport.objects.filter(created_at__lt=now - timedelta(days=35)).delete()[0]
     return {"codes": codes, "rate_counters": buckets, "sessions": sessions, "pending_imports": pending, "review_ids": ops}
+
+
+def prune_activity(now=None) -> int:
+    """«رویدادها» older than a year. One year answers «what happened to this book?» and keeps the table small."""
+    from .models import Activity
+
+    now = now or timezone.now()
+    return Activity.objects.filter(at__lt=now - timedelta(days=ACTIVITY_DAYS)).delete()[0]
 
 
 def prune_revisions(now=None) -> int:
@@ -149,7 +158,7 @@ def run_all(run=None) -> dict:
 
     now = timezone.now()
     with transaction.atomic():
-        summary = {**cleanup_temporary(now), "revisions": prune_revisions(now)}
+        summary = {**cleanup_temporary(now), "revisions": prune_revisions(now), "activity": prune_activity(now)}
     images = orphan_images(now)
     summary["images"], summary["image_bytes"] = images["files"], images["bytes"]
     if run is None:

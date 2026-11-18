@@ -14,7 +14,7 @@ from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
 from .filters import BookFilter, BookFKFilter, ChapterFilter, YesNoFilter
 from .panel_display import badges
-from .models import (Banner, Book, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
+from .models import (Activity, Banner, Book, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
                      ShareSettings, Shelf, ShelfBook)
 
 
@@ -163,6 +163,10 @@ class BookAdmin(admin.ModelAdmin):
             obj.save()
         else:
             ContentNode.add_root(instance=obj)
+            from .activity import record
+            from .models import Activity
+
+            record(Activity.Kind.BOOK_CREATE, actor=request.user, book=obj, node=obj, title=obj.title)
 
     def has_delete_permission(self, request, obj=None):
         return False  # Archive instead; learners' purchases and progress point at books.
@@ -235,6 +239,9 @@ class BookAdmin(admin.ModelAdmin):
             # The publish box reads this and not `original.is_published` alone: without the gate it cannot know
             # whether to offer the button or explain why there is none.
             extra["publish"] = access.publish_state(request.user, book)
+            # «درخواست انتشار» must not be sendable twice; the answer either way closes the request.
+            latest = Activity.objects.filter(book=book, kind=Activity.Kind.PUBLISH_REQUEST).order_by("-at").first()
+            extra["requested"] = bool(latest and not panel._request_answered(book, latest))
         return super().change_view(request, object_id, form_url, extra_context=extra)
 
     def get_urls(self):
@@ -247,6 +254,10 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
             path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
                  name="catalog_book_publish"),
+            path("activity/", site(lambda r: panel.activity_page(self.admin_site, r)), name="catalog_activity"),
+            path("<int:book_id>/request-publish/",
+                 site(lambda r, book_id: panel.book_request_publish(self.admin_site, r, book_id)),
+                 name="catalog_book_request_publish"),
             path("inbox/", site(panel.open_inbox), name="catalog_inbox"),
             path("<int:book_id>/gift/", site(bookpanel.book_gift), name="catalog_book_gift"),
             path("<int:book_id>/notify-waitlist/", site(lambda r, book_id: bookpanel.waitlist_notify(self.admin_site, r, book_id)),

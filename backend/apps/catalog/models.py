@@ -2,6 +2,7 @@ import re
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from treebeard.mp_tree import MP_Node
 
 
@@ -297,6 +298,66 @@ class ShelfBook(models.Model):
     def __str__(self):
         return self.book.title
 
+
+
+class Activity(models.Model):
+    """Who did what, when, and to which book — the history the panel shows a professor and the admin.
+
+    Deliberately not every keystroke: `ChapterRevision` already keeps every version of the text, and listing each
+    save here would bury the events that matter. This is the timeline of a book's life — it was started, a chapter
+    appeared, it was offered for review, accepted, refused, archived, restored.
+
+    Kept for one year (`maintenance.prune_activity`): old enough to answer «what happened to this book?», short
+    enough that the table never becomes the biggest thing on the server.
+
+    `book` is nullable because a login happens before any book is in play; `actor` too, for a deleted account.
+    """
+
+    class Kind(models.TextChoices):
+        LOGIN = "login", "ورود به پنل"
+        BOOK_CREATE = "book.create", "ساخت کتاب"
+        BOOK_ARCHIVE = "book.archive", "بایگانی کتاب"
+        BOOK_RESTORE = "book.restore", "بازگرداندن کتاب"
+        CHAPTER_CREATE = "chapter.create", "ساخت فصل"
+        PUBLISH_REQUEST = "publish.request", "درخواست انتشار"
+        PUBLISH_APPROVE = "publish.approve", "تأیید انتشار"
+        PUBLISH_REJECT = "publish.reject", "رد انتشار"
+        PUBLISH_WITHDRAW = "publish.withdraw", "پس گرفتن انتشار"
+        ARCHIVE = "archive", "بایگانی"
+        RESTORE = "restore", "بازگرداندن"
+
+    at = models.DateTimeField("زمان", default=timezone.now, db_index=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="activities", verbose_name="کاربر",
+    )
+    kind = models.CharField("کار", max_length=20, choices=Kind.choices)
+    book = models.ForeignKey(
+        "catalog.ContentNode", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="activities", verbose_name="کتاب",
+    )
+    # The node the event is about (a chapter, a section) when it is not the book itself. SET_NULL so deleting a node
+    # never erases the record that something happened; `title` keeps the name it had at the time.
+    node = models.ForeignKey(
+        "catalog.ContentNode", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="مورد",
+    )
+    title = models.CharField("عنوان در آن زمان", max_length=200, blank=True)
+    note = models.CharField("یادداشت", max_length=300, blank=True)
+
+    class Meta:
+        verbose_name = "رویداد"
+        verbose_name_plural = "رویدادها"
+        ordering = ["-at", "-id"]
+        indexes = [models.Index(fields=["book", "-at"])]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} — {self.title or self.book_id or ''}"
+
+    @property
+    def is_publishing(self) -> bool:
+        """The events a professor is waiting on: everything about a book being accepted or refused."""
+        return self.kind in {self.Kind.PUBLISH_REQUEST, self.Kind.PUBLISH_APPROVE, self.Kind.PUBLISH_REJECT}
 
 
 class CleanupRun(models.Model):

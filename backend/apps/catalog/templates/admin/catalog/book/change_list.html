@@ -3,6 +3,7 @@
 {% block object-tools-items %}
   <li><a href="{% url 'admin:catalog_inbox' %}" title="تست‌های تازه را یکجا اینجا بگذارید و بعد به بخش‌هایشان بفرستید">صندوق تست</a></li>
   <li><a href="{% url 'admin:catalog_import' %}">افزودن فصل از فایل</a></li>
+  <li><a href="{% url 'admin:catalog_activity' %}">رویدادها</a></li>
   {{ block.super }}
 {% endblock %}
 {% block search %}

@@ -26,7 +26,7 @@ from django.views.decorators.http import require_POST
 
 from apps.learning.models import ExamSource, Flashcard, Question, Report
 
-from . import editing
+from . import activity, editing
 from . import access
 from .editing import EditError
 from .exporter import book_bundle, chapter_bundle, export_chapter, flashcard_block, question_block, write_chapter
@@ -34,7 +34,7 @@ from .latex_export import chapter_tex_bundle
 from .importer import outside_flashcards
 from .importer import IMAGE_EXTENSIONS, MAX_IMAGE_BYTES, _SVG_DANGER, apply_chapter, parse_chapter, read_upload, check_against_db
 from .jalali import jalali_datetime
-from .models import ChapterRevision, ContentNode
+from .models import Activity, ChapterRevision, ContentNode
 from .fresh import formula_macros
 from .labels import all_labels
 from .summary import parse_parts
@@ -114,11 +114,76 @@ def book_publish(admin_site, request, book_id):
     value = request.POST.get("value") == "1"
     with transaction.atomic():
         ContentNode.objects.filter(path__startswith=book.path).update(is_published=value)
+    activity.record(
+        Activity.Kind.PUBLISH_APPROVE if value else Activity.Kind.PUBLISH_WITHDRAW,
+        actor=request.user, book=book, node=book,
+    )
     messages.success(
         request,
         f"کتاب «{book.title}» {'منتشر شد و در اپ دیده می‌شود' if value else 'از انتشار خارج شد و در اپ دیده نمی‌شود'}."
     )
     return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
+
+
+def book_request_publish(admin_site, request, book_id):
+    """«درخواست انتشار»: the professor has finished and asks the admin to look.
+
+    Not a new state machine — the request is a row in `Activity`, and whether a book is live is still `is_published`
+    alone. Adding a third flag (`is_pending`) would mean every reader of the catalogue has to learn it, and the two
+    flags can disagree. One book, one truth, and a history that says who asked when.
+    """
+    if request.method != "POST":
+        raise Http404
+    book = _book(book_id)
+    _can_edit(request, book)
+    if access.can_publish_book(request.user, book):
+        # No point asking yourself.
+        messages.error(request, "شما خودتان اجازه‌ی انتشار دارید؛ «انتشار کتاب» را بزنید.")
+        return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
+    already = Activity.objects.filter(book=book, kind=Activity.Kind.PUBLISH_REQUEST).order_by("-at").first()
+    if book.is_published:
+        messages.error(request, "این کتاب از قبل منتشر شده است.")
+    elif already and not _request_answered(book, already):
+        messages.error(request, "درخواست شما در انتظار بررسی است؛ لازم نیست دوباره بفرستید.")
+    else:
+        activity.record(Activity.Kind.PUBLISH_REQUEST, actor=request.user, book=book, node=book,
+                        note=(request.POST.get("note") or "")[:300])
+        messages.success(request, "درخواست انتشار ثبت شد؛ مدیر کل بررسی می‌کند و نتیجه را می‌بینید.")
+    return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
+
+
+def _request_answered(book, request_row) -> bool:
+    """Was this request already dealt with? An approval or refusal newer than the request closes it."""
+    return Activity.objects.filter(
+        book=book, at__gt=request_row.at,
+        kind__in=[Activity.Kind.PUBLISH_APPROVE, Activity.Kind.PUBLISH_REJECT],
+    ).exists()
+
+
+def pending_requests(user=None):
+    """Books waiting for a decision: a request newer than the last approve/refuse. For the panel's badge and list."""
+    from django.db.models import OuterRef, Subquery
+
+    latest_request = Activity.objects.filter(
+        book=OuterRef("book"), kind=Activity.Kind.PUBLISH_REQUEST
+    ).order_by("-at").values("at")[:1]
+    latest_answer = Activity.objects.filter(
+        book=OuterRef("book"), kind__in=[Activity.Kind.PUBLISH_APPROVE, Activity.Kind.PUBLISH_REJECT]
+    ).order_by("-at").values("at")[:1]
+    rows = (Activity.objects.filter(kind=Activity.Kind.PUBLISH_REQUEST)
+            .annotate(asked=Subquery(latest_request), answered=Subquery(latest_answer))
+            .select_related("book", "actor").order_by("-at"))
+    seen, out = set(), []
+    for row in rows:
+        if row.book_id in seen or not row.book:
+            continue
+        seen.add(row.book_id)
+        if row.answered and row.answered >= row.asked:
+            continue
+        if row.book.is_published:
+            continue
+        out.append(row)
+    return out
 
 
 def _book_by_slug(slug):
@@ -332,6 +397,10 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
         _may_publish(user, book)   # publishing only; hiding your own chapter is always allowed
     if op == "chapter.publish":
         drafts = set_chapter_published(chapter, bool(data.get("value")))
+        activity.record(
+            Activity.Kind.PUBLISH_APPROVE if data.get("value") else Activity.Kind.PUBLISH_WITHDRAW,
+            actor=user, book=book, node=chapter,
+        )
         return {"ok": True, "note": f"{drafts} بخش پیش‌نویس هم منتشر شد." if drafts else ""}
     if op == "section.publish":
         n = chapter.get_children().filter(slug=data.get("slug"), kind=ContentNode.Kind.SECTION).update(is_published=bool(data.get("value")))
@@ -865,6 +934,8 @@ def book_chapter_action(request, book_id):
         with transaction.atomic():
             result = apply_chapter(checked)
             editing.record_revision(result.chapter, user=request.user, source=ChapterRevision.Source.PANEL, note="فصل تازه")
+        activity.record(Activity.Kind.CHAPTER_CREATE, actor=request.user, book=book,
+                        node=result.chapter, title=title)
         messages.success(request, f"فصل «{title}» ساخته شد.")
         return redirect(reverse("admin:catalog_chapter_manager", args=[result.chapter.pk]))
 
@@ -891,10 +962,16 @@ def _chapter_action(request, book, chapter, action):
             if value:
                 _may_publish(request.user, book)
             drafts = set_chapter_published(chapter, value)
+            activity.record(
+                Activity.Kind.PUBLISH_APPROVE if value else Activity.Kind.PUBLISH_WITHDRAW,
+                actor=request.user, book=book, node=chapter,
+            )
             done = f"{name} {'منتشر شد' if value else 'از انتشار خارج شد'}"
             messages.success(request, f"{done}؛ {drafts} بخش پیش‌نویس آن هم منتشر شد." if drafts else f"{done}.")
         else:
             ContentNode.objects.filter(pk=chapter.pk).update(**{field: value})
+            activity.record(Activity.Kind.ARCHIVE if value else Activity.Kind.RESTORE,
+                            actor=request.user, book=book, node=chapter)
             messages.success(request, f"{name} {'بایگانی شد' if value else 'از بایگانی بیرون آمد'}.")
     elif action in ("up", "down"):
         chapters = list(book.get_children().filter(kind=ContentNode.Kind.CHAPTER))
@@ -909,3 +986,23 @@ def _chapter_action(request, book, chapter, action):
                         parsed.meta["chapter_number"] = n
                         editing.save(c, parsed, user=request.user, note=f"شماره‌ی فصل {n}")
             messages.success(request, "ترتیب فصل‌ها عوض شد (شماره‌ی فصل‌ها هم به‌روز شد).")
+
+
+def activity_page(admin_site, request):
+    """«رویدادها»: the timeline of a book's life, not every keystroke.
+
+    A professor sees their own books; the admin sees everything and also the books waiting for a decision, because
+    refusing a book is a thing someone has to do. One page for both, so the two never drift apart.
+    """
+    if not (request.user.is_active and request.user.is_staff):
+        raise PermissionDenied
+    from .jalali import jalali_datetime
+
+    rows = list(activity.visible(request.user, limit=300))
+    books = {r.book_id: r.book for r in rows if r.book_id}
+    return TemplateResponse(request, "admin/catalog/activity.html", _context(
+        admin_site, request, "رویدادها",
+        rows=[{"r": r, "when": jalali_datetime(r.at), "book": books.get(r.book_id)} for r in rows],
+        pending=pending_requests(request.user) if request.user.is_superuser else [],
+        can_see_all=request.user.is_superuser,
+    ))
