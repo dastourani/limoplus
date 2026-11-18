@@ -999,10 +999,15 @@ def activity_page(admin_site, request):
     from .jalali import jalali_datetime
 
     rows = list(activity.visible(request.user, limit=300))
-    books = {r.book_id: r.book for r in rows if r.book_id}
+
+    def link(book):
+        # Built here and not with {% url %} in the template: a row with no book (a login) would otherwise reach
+        # reverse() with an empty id and turn the whole page into a 500 — which is exactly what it did.
+        return reverse("admin:catalog_book_change", args=[book.pk]) if book else ""
+
     return TemplateResponse(request, "admin/catalog/activity.html", _context(
         admin_site, request, "رویدادها",
-        rows=[{"r": r, "when": jalali_datetime(r.at), "book": books.get(r.book_id)} for r in rows],
-        pending=pending_requests(request.user) if request.user.is_superuser else [],
+        rows=[{"r": r, "when": jalali_datetime(r.at), "book": r.book, "url": link(r.book)} for r in rows],
+        pending=[{"r": r, "url": link(r.book)} for r in (pending_requests(request.user) if request.user.is_superuser else [])],
         can_see_all=request.user.is_superuser,
     ))

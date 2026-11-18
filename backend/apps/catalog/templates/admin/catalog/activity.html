@@ -13,10 +13,10 @@
           <tbody>
           {% for r in pending %}
             <tr>
-              <td><a href="{% url 'admin:catalog_book_change' r.book_id %}">{{ r.book.title }}</a></td>
+              <td>{% if r.url %}<a href="{{ r.url }}">{{ r.r.book.title }}</a>{% else %}—{% endif %}</td>
               <td>{{ r.actor|default:"—" }}</td>
               <td>{{ r.at|date:"Y-m-d H:i" }}</td>
-              <td><a class="btn small" href="{% url 'admin:catalog_book_change' r.book_id %}#publish">بررسی و تصمیم</a></td>
+              <td>{% if r.url %}<a class="btn small" href="{{ r.url }}#publish">بررسی و تصمیم</a>{% else %}—{% endif %}</td>
             </tr>
           {% endfor %}
           </tbody>
@@ -38,7 +38,7 @@
             <td style="white-space:nowrap">{{ row.when }}</td>
             <td>{{ row.r.actor|default:"—" }}</td>
             <td>{{ row.r.get_kind_display }}</td>
-            <td>{% if row.book %}<a href="{% url 'admin:catalog_book_change' row.book_id %}">{{ row.book.title }}</a>{% else %}—{% endif %}</td>
+            <td>{% if row.url %}<a href="{{ row.url }}">{{ row.book.title }}</a>{% else %}—{% endif %}</td>
             <td class="lp-quiet">{{ row.r.title }}{% if row.r.note %} — {{ row.r.note }}{% endif %}</td>
           </tr>
         {% endfor %}

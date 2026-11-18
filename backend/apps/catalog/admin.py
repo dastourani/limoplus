@@ -1,6 +1,7 @@
 import os
 
 from django import forms
+from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q
@@ -168,6 +169,27 @@ class BookAdmin(admin.ModelAdmin):
 
             record(Activity.Kind.BOOK_CREATE, actor=request.user, book=obj, node=obj, title=obj.title)
 
+    def has_view_permission(self, request, obj=None):
+        # A «استاد کتاب» writes this book, so the book's own page must open for them: it is where the publish state,
+        # the chapters and (when they may not publish) «درخواست انتشار» live. Writing is still refused below —
+        # opening the page is not the same as editing it, and the fields that matter are read-only for them.
+        if request.user.is_active and request.user.is_staff and obj is not None:
+            from .access import can_edit_book
+
+            if can_edit_book(request.user, obj):
+                return True
+        return super().has_view_permission(request, obj)
+
+    def has_change_permission(self, request, obj=None):
+        if request.user.is_active and request.user.is_staff and obj is not None and not request.user.is_superuser:
+            from .access import can_edit_book, can_publish_book
+
+            # Their book: the page opens, but the book's own fields (price, cover, majors) stay the admin's —
+            # a professor's job here is the content, and the publish box has its own permission.
+            if can_edit_book(request.user, obj):
+                return can_publish_book(request.user, obj)
+        return super().has_change_permission(request, obj)
+
     def has_delete_permission(self, request, obj=None):
         return False  # Archive instead; learners' purchases and progress point at books.
 
@@ -254,7 +276,6 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
             path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
                  name="catalog_book_publish"),
-            path("activity/", site(lambda r: panel.activity_page(self.admin_site, r)), name="catalog_activity"),
             path("<int:book_id>/request-publish/",
                  site(lambda r, book_id: panel.book_request_publish(self.admin_site, r, book_id)),
                  name="catalog_book_request_publish"),
@@ -768,6 +789,33 @@ class StorageAdmin(admin.ModelAdmin):
             return redirect("..")
         messages.success(request, "پیام آزمایشی در بله فرستاده شد.")
         return redirect("..")
+
+
+def _quick_login(request, phone):
+    from .quicklogin import quick_login
+
+    return quick_login(request, phone)
+
+
+def _activity_view(request):
+    from django.contrib.admin.sites import site as default_site
+
+    return panel.activity_page(default_site, request)
+
+
+# An admin-wide page: «رویدادها» is about every book, so it lives at /admin/activity/ and not under /admin/catalog/book/.
+_old_get_urls = admin.site.get_urls
+
+
+def _site_urls():
+    # The route always exists; quicklogin.py refuses unless DEBUG is on *at request time*. Deciding here at import
+    # time would bake the answer in at start-up, and a server started with DEBUG on would keep the door open.
+    mine = [path("activity/", admin.site.admin_view(_activity_view), name="catalog_activity"),
+            path("as/<str:phone>/", _quick_login, name="catalog_quick_login")]
+    return mine + _old_get_urls()
+
+
+admin.site.get_urls = _site_urls
 
 
 _admin_index = admin.site.index

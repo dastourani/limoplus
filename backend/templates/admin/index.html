@@ -1,0 +1,12 @@
+{% extends "admin/index.html" %}
+{% comment %}
+  Only the app list is extended, not replaced: everything Django puts on the dashboard stays.
+{% endcomment %}
+{% block content %}
+<div class="lp chapters-box" style="margin-bottom:18px">
+  <h2>کارهای کتاب‌ها</h2>
+  <p class="hint">روند کار کتاب‌ها با هم: درخواست‌های انتشار، تأیید و رد، بایگانی. برای استاد، فقط کتاب‌های خودش.</p>
+  <p><a class="btn primary" href="{% url 'admin:catalog_activity' %}">رویدادها</a></p>
+</div>
+{{ block.super }}
+{% endblock %}

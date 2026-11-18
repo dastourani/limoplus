@@ -1540,6 +1540,76 @@ class ActivityTests(_Base):
         self.assertFalse(Activity.objects.filter(pk=old.pk).exists())
         self.assertTrue(Activity.objects.filter(pk=fresh.pk).exists())
 
+    def test_the_page_renders_with_a_row_that_has_no_book(self):
+        # A login is recorded with no book; {% url %} with its empty id turned the whole page into a 500 — three
+        # times, each time fixed in a different branch. The link is built in Python now, and this is the guard.
+        from django.test import Client, override_settings
+
+        from .models import Activity
+
+        Activity.objects.create(kind=Activity.Kind.LOGIN, actor=self.admin)
+        self.client.force_login(self.admin)
+        response = self.client.get("/admin/activity/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ورود به پنل", response.content.decode())
+
+    def test_a_professor_can_open_their_book_page(self):
+        # Without a view permission the professor cannot even see the book the «درخواست انتشار» button lives on.
+        professor = self._professor(can_publish=False)
+        self.client.force_login(professor)
+        response = self.client.get(reverse("admin:catalog_book_change", args=[self.book.pk]))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("درخواست انتشار", body)
+        self.assertNotIn(">انتشار کتاب<", body, "a professor who may not publish must not be offered the button")
+
+    def test_a_professor_cannot_edit_the_books_own_fields(self):
+        # Opening the page is not editing it: price, majors and the cover stay the admin's.
+        professor = self._professor(can_publish=False)
+        self.client.force_login(professor)
+        self.client.post(reverse("admin:catalog_book_change", args=[self.book.pk]),
+                         {"title": "دست‌کاری", "slug": "hacked"})
+        self.book.refresh_from_db()
+        self.assertNotEqual(self.book.title, "دست‌کاری")
+
+    def test_the_page_lives_at_admin_activity(self):
+        # Not /admin/catalog/book/activity/: a page about every book is not a book named «activity».
+        from django.urls import reverse
+
+        self.assertEqual(reverse("admin:catalog_activity"), "/admin/activity/")
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.get("/admin/activity/").status_code, 200)
+
+    def test_a_stranger_is_sent_to_the_login_not_told_403(self):
+        # A 403 on a bookmark looks like a broken site; the admin's own login view explains itself.
+        from django.test import Client
+
+        anonymous = Client()
+        self.assertEqual(anonymous.get("/admin/activity/").status_code, 302)
+
+    def test_the_dashboard_links_to_it(self):
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get("/admin/"), "/admin/activity/")
+
+    def test_the_one_click_login_is_only_for_debug(self):
+        from django.test import Client, override_settings
+
+        # The route is always there; the door is the DEBUG check inside the view, read per request.
+        self.assertEqual(Client().get("/admin/as/09120000001/").status_code, 404)   # tests run with DEBUG off
+        with override_settings(DEBUG=True):
+            self.assertEqual(Client().get("/admin/as/09120000001/").status_code, 302)
+
+    def test_the_one_click_login_refuses_an_ordinary_account(self):
+        from django.test import Client
+
+        # Not a superuser: the demo door must not hand out the panel to every account in the database.
+        from django.test import override_settings
+
+        User.objects.create_user("09120000077")
+        with override_settings(DEBUG=True):
+            response = Client(raise_request_exception=False).get("/admin/as/09120000077/")
+        self.assertEqual(response.status_code, 403)
+
     def test_a_failing_log_does_not_break_the_thing_it_logs(self):
         from unittest.mock import patch
 
