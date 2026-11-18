@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.catalog.jalali import jalali_date as fa_date
 
-from .models import FaqItem, HelpPage, SiteNavItem, SitePage, SiteSettings
+from .models import FaqItem, HelpPage, SiteNavItem, SitePage, SiteSettings, TeacherApplication
 
 
 @admin.register(SiteSettings)
@@ -121,3 +121,51 @@ class SiteNavItemAdmin(admin.ModelAdmin):
     list_display = ("title", "parent", "url", "order", "is_hidden")
     list_editable = ("parent", "url", "order", "is_hidden")
     fields = ("parent", "title", "url", "order", "is_hidden")
+
+
+@admin.register(TeacherApplication)
+class TeacherApplicationAdmin(admin.ModelAdmin):
+    """A superuser-only review queue; decisions never create staff or grant book access."""
+
+    list_display = ("name", "phone", "book_or_link", "status", "submitted_at", "reviewed_by", "reviewed_at")
+    list_filter = ("status",)
+    search_fields = ("name", "phone", "book_or_link", "explanation", "sample_work")
+    ordering = ("-submitted_at", "-pk")
+    date_hierarchy = "submitted_at"
+    list_per_page = 50
+    actions = None
+    fields = (
+        "name", "phone", "book_or_link", "explanation", "sample_work",
+        "status", "review_note", "submitted_at", "reviewed_by", "reviewed_at",
+    )
+    readonly_fields = ("name", "phone", "book_or_link", "explanation", "sample_work", "submitted_at", "reviewed_by", "reviewed_at")
+
+    @staticmethod
+    def _is_manager(request):
+        user = request.user
+        return user.is_active and user.is_staff and user.is_superuser
+
+    def has_module_permission(self, request):
+        return self._is_manager(request)
+
+    def has_view_permission(self, request, obj=None):
+        return self._is_manager(request)
+
+    def has_add_permission(self, request):
+        # Only the public form creates submissions; keep the queue append-only.
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return self._is_manager(request)
+
+    def has_delete_permission(self, request, obj=None):
+        # Preserve applications and Django's change log for audit.
+        return False
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            previous = TeacherApplication.objects.only("status", "review_note").get(pk=obj.pk)
+            if previous.status != obj.status or previous.review_note != obj.review_note:
+                obj.reviewed_by = request.user
+                obj.reviewed_at = timezone.now()
+        super().save_model(request, obj, form, change)

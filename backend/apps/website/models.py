@@ -1,5 +1,6 @@
 """The public website (limookhan.ir): its editable texts. Pages are drawn by apps/website/views.py from the same
 database as the app, so books, prices and sample tests appear by themselves."""
+from django.conf import settings
 from django.db import models
 
 
@@ -51,6 +52,64 @@ class SiteSettings(models.Model):
     def get(cls) -> "SiteSettings":
         row = cls.objects.order_by("id").first()
         return row or cls.objects.create()
+
+
+class TeacherApplication(models.Model):
+    """A public request for review. Approval records a decision only: it never creates or grants an account or access."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "در انتظار بازبینی"
+        NEEDS_INFO = "needs_info", "نیازمند اطلاعات تکمیلی"
+        APPROVED = "approved", "تأیید درخواست (بدون دسترسی)"
+        REJECTED = "rejected", "ردشده"
+
+    name = models.CharField("نام و نام خانوادگی", max_length=120)
+    phone = models.CharField("شماره‌ی موبایل", max_length=11, db_index=True)
+    book_or_link = models.CharField("کتاب یا لینک مرتبط", max_length=300)
+    explanation = models.TextField("توضیح درخواست", max_length=2000)
+    sample_work = models.TextField("شواهد یا نمونه‌کار", max_length=3000)
+    status = models.CharField(
+        "وضعیت",
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+        help_text="تأیید فقط پذیرش این درخواست است؛ ساخت حساب و هر نوع دسترسی/دعوت باید جداگانه در مرحله‌ی بعد تصویب شود.",
+    )
+    review_note = models.TextField(
+        "یادداشت داخلی بازبینی",
+        max_length=2000,
+        blank=True,
+        help_text="یادداشت داخلی پنل است؛ پیام یا دعوتی برای درخواست‌دهنده ارسال نمی‌شود.",
+    )
+    submitted_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_teacher_applications",
+        verbose_name="آخرین بازبین",
+        editable=False,
+    )
+    reviewed_at = models.DateTimeField("زمان آخرین بازبینی", null=True, blank=True, editable=False)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "درخواست همکاری آموزشی"
+        verbose_name_plural = "درخواست‌های همکاری آموزشی"
+        ordering = ["-submitted_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["phone"],
+                condition=models.Q(status__in=["pending", "needs_info", "approved"]),
+                name="uniq_active_teacher_app_phone",
+            ),
+        ]
+        indexes = [models.Index(fields=["status", "-submitted_at"], name="teacher_app_status_time_idx")]
+
+    def __str__(self):
+        return f"{self.name} · {self.phone}"
 
 
 class SitePage(models.Model):

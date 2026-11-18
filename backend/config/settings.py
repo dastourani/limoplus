@@ -204,6 +204,10 @@ OTP_MAX_WRONG_PER_DAY = 15          # wrong guesses per phone in 24 hours
 OTP_REQUESTS_PER_IP_PER_HOUR = 20
 OTP_WRONG_PER_IP_PER_HOUR = 30
 
+# Public teacher-application form: database-backed hourly submission limits (accounts.ratelimit).
+TEACHER_APPLICATIONS_PER_IP_PER_HOUR = env.int("TEACHER_APPLICATIONS_PER_IP_PER_HOUR", default=5)
+TEACHER_APPLICATIONS_PER_PHONE_PER_HOUR = env.int("TEACHER_APPLICATIONS_PER_PHONE_PER_HOUR", default=1)
+
 # "console" prints the code to the server log (for development);
 # "raygan" sends a real SMS through RayganSMS.
 # «خبر دادن به منتظران» (panel, coming-soon books): off until set to True here; the panel then sends one SMS to each

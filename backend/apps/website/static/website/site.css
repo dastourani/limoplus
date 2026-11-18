@@ -302,3 +302,33 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
   .shelf.grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
   .shelf.grid .cover { width: 100% !important; }
 }
+
+/* Teacher application */
+.teacher-application-form { display: grid; gap: 18px; margin-top: 8px; }
+.teacher-application-field label { display: block; margin-bottom: 6px; font-weight: 900; }
+.teacher-application-field input, .teacher-application-field textarea {
+  display: block; width: 100%; border: 1px solid #CBD5C8; border-radius: 12px; background: #fff; color: var(--ink);
+  padding: 11px 13px; font: inherit; line-height: 1.8; transition: border-color .15s, box-shadow .15s;
+}
+.teacher-application-field input { min-height: 48px; }
+.teacher-application-field input[name="phone"] { text-align: left; }
+.teacher-application-field textarea { min-height: 120px; resize: vertical; }
+.teacher-application-field input:focus, .teacher-application-field textarea:focus {
+  outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(47,125,79,.14);
+}
+.teacher-application-field.has-errors input, .teacher-application-field.has-errors textarea { border-color: #C1443D; }
+.teacher-application-help { display: block; margin-top: 5px; color: var(--muted); font-size: 13px; }
+.teacher-application-errors { list-style: none; margin-top: 5px; color: #A52B25; font-size: 13px; }
+.teacher-application-note { padding: 12px 15px; border-radius: 12px; background: var(--ground); color: var(--muted); font-size: 13px; line-height: 1.9; }
+.teacher-application-alert { margin-bottom: 16px; padding: 12px 15px; border: 1px solid #E8B4AE; border-radius: 12px; background: #FDECEA; color: #8D2822; }
+.teacher-application-result { margin: 8px 0 20px; padding: 18px 20px; border: 1px solid #BFE2CC; border-radius: 16px; background: var(--green-soft); }
+.teacher-application-result h2 { margin-bottom: 8px; font-size: 19px; }
+.teacher-application-result p { margin-top: 8px; line-height: 1.9; }
+.teacher-application-honeypot {
+  position: absolute !important; left: -10000px !important; top: auto !important; width: 1px !important; height: 1px !important;
+  overflow: hidden !important; clip-path: inset(50%) !important; white-space: nowrap !important;
+}
+@media (max-width: 560px) {
+  .teacher-application-page .page-card { padding: 22px 18px; border-radius: 18px; }
+  .teacher-application-page .page-head { align-items: flex-start; }
+}

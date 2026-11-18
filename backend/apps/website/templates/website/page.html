@@ -13,6 +13,7 @@
       {% if s.email %}<p><b>ایمیل پشتیبانی:</b> <a href="mailto:{{ s.email }}" dir="ltr">{{ s.email }}</a></p>{% endif %}
       {% if s.phone %}<p><b>تلفن:</b> <span dir="ltr">{{ s.phone }}</span></p>{% endif %}
       {% if s.address %}<p><b>نشانی:</b> {{ s.address }}</p>{% endif %}
+      <a class="btn lemon small" href="{% url 'website:teacher-application' %}">درخواست همکاری آموزشی</a>
     </div>
     {% endif %}
   </article>
