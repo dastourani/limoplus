@@ -1,0 +1,52 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div id="content-main" class="lp">
+  <p class="hint">آنچه در کتاب‌ها رخ داده: ساخته شدن، درخواست انتشار، تأیید یا رد، بایگانی. متن هر نسخه جای خودش
+    («نسخه‌ها») نگه داشته می‌شود؛ اینجا فقط روند کار است. رویدادهای قدیمی‌تر از یک سال خودکار پاک می‌شوند.</p>
+
+  {% if can_see_all %}
+    <div class="lp chapters-box">
+      <h2>در انتظار بررسی ({{ pending|length }})</h2>
+      {% if pending %}
+        <table class="lp-table">
+          <thead><tr><th>کتاب</th><th>چه کسی</th><th>کِی</th><th></th></tr></thead>
+          <tbody>
+          {% for r in pending %}
+            <tr>
+              <td>{% if r.url %}<a href="{{ r.url }}">{{ r.r.book.title }}</a>{% else %}—{% endif %}</td>
+              <td>{{ r.actor|default:"—" }}</td>
+              <td>{{ r.at|date:"Y-m-d H:i" }}</td>
+              <td>{% if r.url %}<a class="btn small" href="{{ r.url }}#publish">بررسی و تصمیم</a>{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="lp-ok">✓ هیچ کتابی در انتظار انتشار نیست.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="lp chapters-box">
+    <h2>رویدادها</h2>
+    {% if rows %}
+      <table class="lp-table">
+        <thead><tr><th>کِی</th><th>چه کسی</th><th>کار</th><th>کتاب</th><th>یادداشت</th></tr></thead>
+        <tbody>
+        {% for row in rows %}
+          <tr>
+            <td style="white-space:nowrap">{{ row.when }}</td>
+            <td>{{ row.r.actor|default:"—" }}</td>
+            <td>{{ row.r.get_kind_display }}</td>
+            <td>{% if row.url %}<a href="{{ row.url }}">{{ row.book.title }}</a>{% else %}—{% endif %}</td>
+            <td class="lp-quiet">{{ row.r.title }}{% if row.r.note %} — {{ row.r.note }}{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="hint">هنوز رویدادی ثبت نشده. از این پس هر انتشار، بایگانی و درخواستی اینجا می‌آید.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

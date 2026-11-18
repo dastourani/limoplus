@@ -1437,3 +1437,197 @@ class PublishGateTests(_Base):
         before = export_chapter(self.chapter)
         self.client.post(reverse("admin:catalog_book_publish", args=[self.book.pk]), {"value": "0"})
         self.assertEqual(export_chapter(self.chapter), before)
+
+
+class ActivityTests(_Base):
+    """«رویدادها»: the life of a book, and who may read it.
+
+    Not every save — ChapterRevision keeps the text. What is kept is the small set of things a professor waits on
+    and an admin acts on: was it offered, was it accepted or refused, was it archived.
+    """
+
+    def test_publishing_is_recorded_and_says_who(self):
+        from .models import Activity
+
+        self.client.force_login(self.admin)
+        self.client.post(reverse("admin:catalog_book_publish", args=[self.book.pk]), {"value": "0"})
+        row = Activity.objects.filter(book=self.book, kind=Activity.Kind.PUBLISH_WITHDRAW).first()
+        self.assertIsNotNone(row)
+        self.assertEqual(row.actor, self.admin)
+
+    def test_a_professor_can_ask_and_the_admin_is_told_once(self):
+        from .models import Activity
+
+        # setUp imports with publish=True; a book already in the app has nothing to ask for.
+        self.client.force_login(self.admin)
+        self.client.post(reverse("admin:catalog_book_publish", args=[self.book.pk]), {"value": "0"})
+        professor = self._professor(can_publish=False)
+        self.client.force_login(professor)
+        url = reverse("admin:catalog_book_request_publish", args=[self.book.pk])
+        self.client.post(url)
+        self.client.post(url)   # twice in a row must not queue two requests
+        self.assertEqual(Activity.objects.filter(book=self.book, kind=Activity.Kind.PUBLISH_REQUEST).count(), 1)
+
+    def test_a_request_appears_in_the_admins_waiting_list(self):
+        from . import panel
+        from .models import Activity
+
+        professor = self._professor(can_publish=False)
+        # A book that is live has nothing to ask for, so take it down first — as the admin, who may.
+        self.client.force_login(self.admin)
+        self.client.post(reverse("admin:catalog_book_publish", args=[self.book.pk]), {"value": "0"})
+        self.client.force_login(professor)
+        self.client.post(reverse("admin:catalog_book_request_publish", args=[self.book.pk]))
+        self.assertEqual([r.book_id for r in panel.pending_requests()], [self.book.pk])
+        # Once the admin decides, it is no longer waiting.
+        self.client.force_login(self.admin)
+        self.client.post(reverse("admin:catalog_book_publish", args=[self.book.pk]), {"value": "1"})
+        self.assertEqual(panel.pending_requests(), [])
+        self.assertTrue(Activity.objects.filter(book=self.book, kind=Activity.Kind.PUBLISH_APPROVE).exists())
+
+    def test_someone_who_may_publish_is_not_asked_to_request(self):
+        from .models import Activity
+
+        self.client.force_login(self.admin)
+        self.client.post(reverse("admin:catalog_book_publish", args=[self.book.pk]), {"value": "0"})
+        self.client.post(reverse("admin:catalog_book_request_publish", args=[self.book.pk]))
+        self.assertFalse(Activity.objects.filter(book=self.book, kind=Activity.Kind.PUBLISH_REQUEST).exists())
+
+    def test_archiving_a_chapter_is_recorded(self):
+        from .models import Activity
+
+        self.client.force_login(self.admin)
+        self.client.post(reverse("admin:catalog_book_chapter_action", args=[self.book.pk]),
+                         {"chapter": self.chapter.pk, "action": "archive", "value": "1"})
+        self.assertTrue(Activity.objects.filter(node=self.chapter, kind=Activity.Kind.ARCHIVE).exists())
+
+    def test_a_professor_sees_their_own_book_and_not_someone_elses(self):
+        from .activity import visible
+        from .importer import import_file
+        from .models import Activity
+
+        _, other = import_file("o.md", GOOD.replace("کتاب تست", "کتاب دیگر").replace("test-book", "other-book")
+                               .replace("متن دوم", "متن دیگر").encode())
+        mine = self._professor(can_publish=False)
+        Activity.objects.create(kind=Activity.Kind.BOOK_CREATE, book=self.book, title="مال من")
+        Activity.objects.create(kind=Activity.Kind.BOOK_CREATE, book=other.book, title="مال دیگری")
+        titles = list(visible(mine).values_list("title", flat=True))
+        self.assertIn("مال من", titles)
+        self.assertNotIn("مال دیگری", titles)
+
+    def test_a_stranger_sees_nothing(self):
+        from django.test import Client
+
+        from .activity import visible
+        from .models import Activity
+        from apps.accounts.models import User
+
+        Activity.objects.create(kind=Activity.Kind.BOOK_CREATE, book=self.book, title="چیزی")
+        nobody = User.objects.create_user("09120000009")
+        self.assertEqual(list(visible(nobody)), [])
+
+    def test_old_rows_are_pruned_after_a_year(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from .maintenance import prune_activity
+        from .models import Activity
+
+        old = Activity.objects.create(kind=Activity.Kind.LOGIN, at=timezone.now() - timedelta(days=400))
+        fresh = Activity.objects.create(kind=Activity.Kind.LOGIN, at=timezone.now() - timedelta(days=30))
+        prune_activity()
+        self.assertFalse(Activity.objects.filter(pk=old.pk).exists())
+        self.assertTrue(Activity.objects.filter(pk=fresh.pk).exists())
+
+    def test_the_page_renders_with_a_row_that_has_no_book(self):
+        # A login is recorded with no book; {% url %} with its empty id turned the whole page into a 500 — three
+        # times, each time fixed in a different branch. The link is built in Python now, and this is the guard.
+        from django.test import Client, override_settings
+
+        from .models import Activity
+
+        Activity.objects.create(kind=Activity.Kind.LOGIN, actor=self.admin)
+        self.client.force_login(self.admin)
+        response = self.client.get("/admin/activity/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ورود به پنل", response.content.decode())
+
+    def test_a_professor_can_open_their_book_page(self):
+        # Without a view permission the professor cannot even see the book the «درخواست انتشار» button lives on.
+        professor = self._professor(can_publish=False)
+        self.client.force_login(professor)
+        response = self.client.get(reverse("admin:catalog_book_change", args=[self.book.pk]))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("درخواست انتشار", body)
+        self.assertNotIn(">انتشار کتاب<", body, "a professor who may not publish must not be offered the button")
+
+    def test_a_professor_cannot_edit_the_books_own_fields(self):
+        # Opening the page is not editing it: price, majors and the cover stay the admin's.
+        professor = self._professor(can_publish=False)
+        self.client.force_login(professor)
+        self.client.post(reverse("admin:catalog_book_change", args=[self.book.pk]),
+                         {"title": "دست‌کاری", "slug": "hacked"})
+        self.book.refresh_from_db()
+        self.assertNotEqual(self.book.title, "دست‌کاری")
+
+    def test_the_page_lives_at_admin_activity(self):
+        # Not /admin/catalog/book/activity/: a page about every book is not a book named «activity».
+        from django.urls import reverse
+
+        self.assertEqual(reverse("admin:catalog_activity"), "/admin/activity/")
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.get("/admin/activity/").status_code, 200)
+
+    def test_a_stranger_is_sent_to_the_login_not_told_403(self):
+        # A 403 on a bookmark looks like a broken site; the admin's own login view explains itself.
+        from django.test import Client
+
+        anonymous = Client()
+        self.assertEqual(anonymous.get("/admin/activity/").status_code, 302)
+
+    def test_the_dashboard_links_to_it(self):
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get("/admin/"), "/admin/activity/")
+
+    def test_the_one_click_login_is_only_for_debug(self):
+        from django.test import Client, override_settings
+
+        # The route is always there; the door is the DEBUG check inside the view, read per request.
+        self.assertEqual(Client().get("/admin/as/09120000001/").status_code, 404)   # tests run with DEBUG off
+        with override_settings(DEBUG=True):
+            self.assertEqual(Client().get("/admin/as/09120000001/").status_code, 302)
+
+    def test_the_one_click_login_refuses_an_ordinary_account(self):
+        from django.test import Client
+
+        # Not a superuser: the demo door must not hand out the panel to every account in the database.
+        from django.test import override_settings
+
+        User.objects.create_user("09120000077")
+        with override_settings(DEBUG=True):
+            response = Client(raise_request_exception=False).get("/admin/as/09120000077/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_a_failing_log_does_not_break_the_thing_it_logs(self):
+        from unittest.mock import patch
+
+        # The whole point of activity.record being best-effort: a broken history must never lose a save.
+        with patch("apps.catalog.models.Activity.objects.create", side_effect=RuntimeError("boom")):
+            from .activity import record
+            from .models import Activity
+
+            self.assertIsNone(record(Activity.Kind.LOGIN))
+
+    def _professor(self, can_publish=False):
+        from django.contrib.auth.models import Permission
+
+        from .models import BookEditor
+
+        user = User.objects.create_user("09120000004", is_staff=True)
+        user.user_permissions.add(Permission.objects.get(codename="change_contentnode"),
+                                  Permission.objects.get(codename="change_book"))
+        user.refresh_from_db()
+        BookEditor.objects.create(book=self.book, user=user, can_publish=can_publish)
+        return user

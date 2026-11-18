@@ -33,6 +33,16 @@
     {% endif %}
   {% else %}
     <p class="hint">{{ publish.why }}</p>
+    {% if not book.is_published %}
+      {% if requested %}
+        <p class="lp-ok">✓ درخواست انتشار فرستاده شده و در انتظار بررسی است.</p>
+      {% else %}
+        <form method="post" action="{% url 'admin:catalog_book_request_publish' original.pk %}">{% csrf_token %}
+          <button class="btn primary" type="submit">درخواست انتشار</button>
+          <span class="hint">به مدیر کل اطلاع می‌رسد؛ لازم نیست پیام جدا بفرستید.</span>
+        </form>
+      {% endif %}
+    {% endif %}
   {% endif %}
 </div>
 <div class="lp chapters-box" id="check">
