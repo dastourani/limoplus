@@ -88,6 +88,13 @@ def _can_edit(request, book=None):
         raise PermissionDenied
 
 
+def _can_edit_draft(request, chapter):
+    """Only the manager may alter a published or archived chapter; teachers work on drafts for review."""
+    _can_edit(request, chapter.book())
+    if not access.can_edit_chapter(request.user, chapter):
+        raise PermissionDenied("استاد فقط پیش‌نویس آماده می‌کند؛ محتوای منتشرشده را فقط مدیر کل تغییر می‌دهد.")
+
+
 def _require_superuser(request):
     if not request.user.is_superuser:
         raise PermissionDenied("این کار از این صفحه فقط برای مدیر کل است.")
@@ -144,8 +151,9 @@ def _can_edit_destination(node_id, user):
     node = ContentNode.objects.filter(pk=node_id).first()
     if node is None:
         return  # relocate() reports «مقصد پیدا نشد» with a readable message.
-    if not access.can_edit_book(user, access.book_of(node)):
-        raise PermissionDenied("اجازه‌ی نوشتن در کتاب مقصد را ندارید.")
+    target_chapter = node if node.kind == ContentNode.Kind.CHAPTER else node.get_parent()
+    if target_chapter is None or not access.can_edit_chapter(user, target_chapter):
+        raise PermissionDenied("مقصد باید پیش‌نویسی از کتاب‌های مجاز شما باشد.")
 
 
 def _context(admin_site, request, title, **extra):
@@ -227,6 +235,8 @@ def chapter_state(chapter: ContentNode, user=None) -> dict:
     may_publish = access.can_publish_book(user, book)
     return {
         "version": version,
+        "can_edit": access.can_edit_chapter(user, chapter),
+        "can_manage_access": bool(user and user.is_authenticated and user.is_superuser),
         # The panel draws the «منتشر» checkboxes from this. A checkbox that the server will refuse is worse than no
         # checkbox: the professor ticks it, the page reloads, nothing changed, and nobody says why.
         "can_publish": may_publish,
@@ -313,6 +323,8 @@ def set_chapter_published(chapter: ContentNode, value: bool) -> int:
 
 def apply_op(chapter: ContentNode, data: dict, user) -> dict:
     """Run one panel operation. Returns {"ok": True, "note": …, "warnings": […]} or raises EditError."""
+    if not access.can_edit_chapter(user, chapter):
+        raise PermissionDenied("استاد فقط پیش‌نویس آماده می‌کند؛ محتوای منتشرشده را فقط مدیر کل تغییر می‌دهد.")
     op = data.get("op", "")
     book = chapter.book()
     note = ""
@@ -335,8 +347,8 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
     # Visibility lives only in the panel (not in the file). The «صندوق تست» is never published.
     if op in ("chapter.publish", "section.publish") and data.get("value") and chapter.is_inbox:
         raise EditError("صندوق تست منتشر نمی‌شود؛ تست‌ها را به بخش‌هایشان منتقل کنید.")
-    if op in ("chapter.publish", "section.publish") and data.get("value"):
-        _may_publish(user, book)   # publishing only; hiding your own chapter is always allowed
+    if op in ("chapter.publish", "section.publish"):
+        _may_publish(user, book)   # both publishing and withdrawal change what learners can access
     if op == "chapter.publish":
         drafts = set_chapter_published(chapter, bool(data.get("value")))
         return {"ok": True, "note": f"{drafts} بخش پیش‌نویس هم منتشر شد." if drafts else ""}
@@ -347,7 +359,9 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
         return {"ok": True}
 
     if op == "question.sample":
-        # «قابل اشتراک»: set in the panel only (not part of the file).
+        # Sharing a sample with learners is a distribution decision, not part of a teacher's draft access.
+        if not user.is_superuser:
+            raise PermissionDenied("دسترسی دانشجویان و نمونه‌گذاری را فقط مدیر کل انجام می‌دهد.")
         from apps.learning.models import Question
 
         n = Question.objects.filter(node__path__startswith=book.path, slug=data.get("slug"), is_archived=False).update(is_sample=bool(data.get("value")))
@@ -369,8 +383,8 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
     if op == "chapter.update":
         parsed.meta["chapter_title"] = _title(data.get("title"), "عنوان فصل")
         number = str(data.get("number") or "").translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")).strip()
-        parsed.meta["chapter_number"] = int(number) if number.isdigit() else None
-        parsed.meta["chapter_free"] = bool(data.get("is_free"))
+        parsed.meta["chapter_number"] = (int(number) if number.isdigit() else None) if (user.is_superuser or not book.is_published) else chapter.position
+        parsed.meta["chapter_free"] = bool(data.get("is_free")) if user.is_superuser else chapter.is_free
         note = "مشخصات فصل"
     elif op == "section.create":
         slug = (data.get("slug") or "").strip() or editing.suggest_slug(book, parsed, "section")
@@ -419,11 +433,16 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
             editing.require_new_slug(book, parsed, kind, slug)
             target = editing.section(parsed, data.get("section", ""))
             item = (editing.question_from_form if kind == "question" else editing.flashcard_from_form)(data.get("data") or {}, slug)
+            if not user.is_superuser:
+                item.is_free = False
             getattr(target, attr).append(item)
             note = f"{'تست' if kind == 'question' else 'فلش‌کارت'} تازه {slug}"
         else:
             sec, items, i = editing.find_item(parsed, kind, slug)
+            existing_free = items[i].is_free
             item = (editing.question_from_form if kind == "question" else editing.flashcard_from_form)(data.get("data") or {}, slug)
+            if not user.is_superuser:
+                item.is_free = existing_free
             items[i] = item
             note = f"{'تست' if kind == 'question' else 'فلش‌کارت'} {slug}"
         if kind == "question":
@@ -531,13 +550,16 @@ def chapter_api(request, chapter_id):
     _can_edit(request, chapter.book())
     if request.method == "POST":
         if request.content_type.startswith("multipart/"):
+            _can_edit_draft(request, chapter)
             return _upload_image(request, chapter)
         try:
             data = json.loads(request.body or b"{}")
         except ValueError:
             return JsonResponse({"errors": ["درخواست نامعتبر."]}, status=400)
+        if data.get("op") != "file.check":
+            _can_edit_draft(request, chapter)
         if data.get("op") == "file.check":
-            return JsonResponse(_file_check(chapter, data.get("text", ""), data.get("meta")))
+            return JsonResponse(_file_check(chapter, data.get("text", ""), data.get("meta"), request.user))
         if data.get("op") == "file.apply":
             return _file_apply(request, chapter, data)
         if data.get("op") == "file.restore_text":
@@ -573,11 +595,41 @@ def _upload_image(request, chapter):
     return JsonResponse({"ref": f"media:{path}", "url": default_storage.url(path)})
 
 
-def _file_check(chapter, text, meta=None):
+def _lock_teacher_distribution_fields(parsed, book, existing_chapter, user):
+    """A teacher's import may prepare lesson content, never alter price or who can access it."""
+    if not user or user.is_superuser or book is None:
+        return parsed
+    parsed.meta["book_slug"] = book.slug
+    parsed.meta["book_title"] = book.title
+    parsed.meta["majors"] = list(book.majors.values_list("slug", flat=True))
+    parsed.meta.pop("book_price", None)
+    parsed.meta["chapter_free"] = existing_chapter.is_free if existing_chapter else False
+    if existing_chapter:
+        parsed.meta["chapter_number"] = existing_chapter.position
+    elif book.is_published:
+        from django.db.models import Max
+
+        last_number = (ContentNode.objects.filter(path__startswith=book.path, depth=book.depth + 1, kind=ContentNode.Kind.CHAPTER)
+                       .aggregate(last=Max("position"))["last"] or 0)
+        parsed.meta["chapter_number"] = last_number + 1
+
+    question_free = dict(Question.objects.filter(node__path__startswith=book.path).values_list("slug", "is_free"))
+    card_free = dict(Flashcard.objects.filter(node__path__startswith=book.path).values_list("slug", "is_free"))
+    for section in parsed.all_sections():
+        for question in section.questions:
+            question.is_free = question_free.get(question.slug, False)
+        for card in section.flashcards:
+            card.is_free = card_free.get(card.slug, False)
+    return parsed
+
+
+def _file_check(chapter, text, meta=None, user=None):
     meta_error = _meta_error(meta)
     if meta_error:
         return {"errors": [meta_error], "warnings": [], "plan": None, "diff": [], "meta": {"error": True}}
     parsed = editing.check_text(text, chapter.book(), chapter)
+    if not parsed.errors:
+        _lock_teacher_distribution_fields(parsed, chapter.book(), chapter, user)
     current = export_chapter(chapter)
     return {
         "errors": [str(e) for e in parsed.errors],
@@ -610,6 +662,7 @@ def _meta_notes(chapter, parsed, meta=None) -> dict:
 
 
 def _file_apply(request, chapter, data):
+    _can_edit_draft(request, chapter)
     text = data.get("text", "")
     meta_error = _meta_error(data.get("meta"))
     if meta_error:
@@ -617,6 +670,7 @@ def _file_apply(request, chapter, data):
     parsed = editing.check_text(text, chapter.book(), chapter)
     if parsed.errors:
         return JsonResponse({"errors": [str(e) for e in parsed.errors]}, status=400)
+    _lock_teacher_distribution_fields(parsed, chapter.book(), chapter, request.user)
     try:
         with transaction.atomic():
             locked = ContentNode.objects.select_for_update().get(pk=chapter.pk)
@@ -650,6 +704,7 @@ def _meta_error(meta) -> str:
 def _restore_text(request, chapter, data):
     """«فقط متن بخش‌ها را برگردان»: the notes and summaries of an old version go back into the sections that exist now
     (and the intro). Nothing else changes: no section, test or flashcard is archived, moved or edited."""
+    _can_edit_draft(request, chapter)
     old = parse_chapter(data.get("text", ""))
     texts = {s.slug: s for s in old.all_sections()}
     current = editing.load(chapter)
@@ -684,7 +739,7 @@ def open_inbox(request):
 
 def chapter_manager(admin_site, request, chapter_id):
     chapter = _chapter(chapter_id)
-    _can_edit(request, chapter.book())
+    _can_edit_draft(request, chapter)
     book = chapter.book()
     return TemplateResponse(
         request,
@@ -697,7 +752,7 @@ def chapter_manager(admin_site, request, chapter_id):
 def chapter_file(admin_site, request, chapter_id):
     chapter = _chapter(chapter_id)
     book = chapter.book()
-    _can_edit(request, book)
+    _can_edit_draft(request, chapter)
     current_text = export_chapter(chapter)
     text = current_text
     restore = None
@@ -838,9 +893,16 @@ def import_view(admin_site, request, book_id=None):
         publish_now = bool(request.POST.get("publish"))
         if publish_now:
             # The file names its own book, which may not be one the uploader may publish.
-            _may_publish(request.user, book or _book_by_slug(parsed.meta.get("book_slug")))
+            try:
+                _may_publish(request.user, book or _book_by_slug(parsed.meta.get("book_slug")))
+            except EditError as exc:
+                messages.error(request, "؛ ".join(exc.messages))
+                return redirect(request.path)
         with transaction.atomic():
             existing = _existing_chapter(parsed)
+            if existing and not access.can_edit_chapter(request.user, existing):
+                raise PermissionDenied("استاد فقط می‌تواند پیش‌نویس بسازد و تغییر دهد؛ محتوای زنده را مدیر کل بازبینی می‌کند.")
+            _lock_teacher_distribution_fields(parsed, book or (existing.book() if existing else None), existing, request.user)
             if existing:
                 editing.ensure_baseline(existing, request.user)
             result = apply_chapter(parsed, publish=publish_now)
@@ -857,7 +919,10 @@ def import_view(admin_site, request, book_id=None):
             parsed = read_upload(upload.name, data, book)
             check_against_db(parsed)
             existing = _existing_chapter(parsed) if not parsed.errors else None
+            if existing and not access.can_edit_chapter(request.user, existing):
+                parsed.error("استاد فقط می‌تواند پیش‌نویس بسازد و تغییر دهد؛ محتوای زنده را مدیر کل بازبینی می‌کند.")
             if not parsed.errors:
+                _lock_teacher_distribution_fields(parsed, book or (existing.book() if existing else None), existing, request.user)
                 _check_moves(parsed, existing)
             report = {
                 "filename": upload.name,
@@ -928,6 +993,10 @@ def book_chapter_action(request, book_id):
     book = _book(book_id)
     _can_edit(request, book)
     action = request.POST.get("action")
+    if action in ("free", "publish", "archive"):
+        _require_superuser(request)
+    if action in ("up", "down") and book.is_published and not request.user.is_superuser:
+        raise PermissionDenied("ترتیب فصل‌های کتاب منتشرشده را فقط مدیر کل تغییر می‌دهد.")
     back = reverse("admin:catalog_book_change", args=[book.pk]) + "#chapters"
     if action == "new":
         title = " ".join(request.POST.get("title", "").split())
@@ -940,11 +1009,13 @@ def book_chapter_action(request, book_id):
             return redirect(back)
         chapters = list(book.get_children().filter(kind=ContentNode.Kind.CHAPTER))
         number = request.POST.get("number", "").translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")).strip()
+        next_number = max([c.position or 0 for c in chapters], default=0) + 1
+        chapter_number = next_number if (not request.user.is_superuser and book.is_published) else (int(number) if number.isdigit() else next_number)
         parsed = editing.ParsedChapter(meta={
             "book_slug": book.slug, "book_title": book.title,
             "majors": list(book.majors.values_list("slug", flat=True)),
             "chapter_slug": slug, "chapter_title": title,
-            "chapter_number": int(number) if number.isdigit() else (max([c.position or 0 for c in chapters], default=0) + 1),
+            "chapter_number": chapter_number,
             "chapter_free": False,
         })
         parsed.sections = [editing.ParsedSection(slug=f"{slug}-s1", title="بخش ۱", line=0)]

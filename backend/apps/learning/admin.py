@@ -1,14 +1,16 @@
 from django.contrib import admin
-from django.db.models import Count, F, Func, IntegerField, Q
+from django.core.exceptions import PermissionDenied
+from django.db.models import BooleanField, Count, Exists, F, Func, IntegerField, OuterRef, Q, Subquery, Value
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
+from apps.catalog import access
 from apps.catalog.panel_display import badges, tex
 from apps.catalog.filters import NodeBookFilter, NodeChapterFilter, YesNoFilter
 
-from .models import ExamSource, Flashcard, Question, Report
+from .models import ExamSource, Flashcard, Question, QuestionSource, Report
 
 
 def manager_url(node, anchor: str) -> str:
@@ -29,7 +31,7 @@ class SourceNameFilter(admin.SimpleListFilter):
     lp_list = True
 
     def lookups(self, request, model_admin):
-        names = sorted(set(ExamSource.objects.values_list("name", flat=True)))
+        names = sorted(set(model_admin.get_queryset(request).values_list("sources__name", flat=True)) - {None})
         return [("original", "تألیفی")] + [(n, n) for n in names]
 
     def queryset(self, request, queryset):
@@ -48,7 +50,8 @@ class OneSourceFilter(admin.SimpleListFilter):
 
     def lookups(self, request, model_admin):
         value = request.GET.get(self.parameter_name, "")
-        source = ExamSource.objects.filter(pk=value).first() if value.isdigit() else None
+        visible = value.isdigit() and model_admin.get_queryset(request).filter(sources__pk=value).exists()
+        source = ExamSource.objects.filter(pk=value).first() if visible else None
         return [(str(source.pk), str(source))] if source else []
 
     def queryset(self, request, queryset):
@@ -62,9 +65,10 @@ class SourceYearFilter(admin.SimpleListFilter):
     def lookups(self, request, model_admin):
         from apps.catalog.jalali import fa_digits
 
-        years = sorted((y for y in set(ExamSource.objects.values_list("year", flat=True)) if y), reverse=True)
+        questions = model_admin.get_queryset(request)
+        years = sorted((y for y in set(questions.values_list("sources__year", flat=True)) if y), reverse=True)
         out = [(str(y), fa_digits(y)) for y in years]
-        if ExamSource.objects.filter(year=0).exists():
+        if questions.filter(sources__year=0).exists():
             out.append(("0", "بدون سال (کتاب مرجع)"))
         return out
 
@@ -197,6 +201,10 @@ class _ManagedInChapter:
     def has_add_permission(self, request):
         return False
 
+    def has_change_permission(self, request, obj=None):
+        # Direct model editing bypasses the chapter file's validation and review trail.
+        return bool(request.user.is_superuser)
+
     def has_delete_permission(self, request, obj=None):
         return False
 
@@ -241,7 +249,7 @@ class _ManagedInChapter:
         return format_html('<a class="button" href="{}">ویرایش</a>', url)
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
-        obj = self.model.objects.filter(pk=object_id).select_related("node").first()
+        obj = self.get_queryset(request).filter(pk=object_id).select_related("node").first()
         if obj:
             url = manager_url(obj.node, f"#{self.anchor}={obj.slug}")
             if url:
@@ -258,12 +266,12 @@ class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
                    "is_free", "is_archived")
     actions = ("make_sample", "unmake_sample")
 
-    @admin.action(description="قابل اشتراک شود (کاربر می‌تواند تصویرش را بفرستد، بدون جواب)")
+    @admin.action(description="قابل اشتراک شود (کاربر می‌تواند تصویرش را بفرستد، بدون جواب)", permissions=["change"])
     def make_sample(self, request, queryset):
         n = queryset.update(is_sample=True)
         self.message_user(request, f"{n} تست قابل اشتراک شد.")
 
-    @admin.action(description="از نمونه‌های قابل اشتراک برداشته شود")
+    @admin.action(description="از نمونه‌های قابل اشتراک برداشته شود", permissions=["change"])
     def unmake_sample(self, request, queryset):
         n = queryset.update(is_sample=False)
         self.message_user(request, f"{n} تست از نمونه‌ها برداشته شد.")
@@ -271,7 +279,8 @@ class QuestionAdmin(_ManagedInChapter, admin.ModelAdmin):
     list_per_page = 50
 
     def get_queryset(self, request):
-        return self.with_place(super().get_queryset(request)).prefetch_related("sources").annotate(
+        qs = access.scope_to_editor_books(super().get_queryset(request), request.user, "node__path")
+        return self.with_place(qs).prefetch_related("sources").annotate(
             n_reports=Count("reports", filter=Q(reports__status=Report.Status.OPEN), distinct=True)
         ).order_by("node__path", "order", "id")
 
@@ -321,7 +330,8 @@ class FlashcardAdmin(_ManagedInChapter, admin.ModelAdmin):
     list_per_page = 50
 
     def get_queryset(self, request):
-        return self.with_place(super().get_queryset(request)).order_by("node__path", "order", "id")
+        qs = access.scope_to_editor_books(super().get_queryset(request), request.user, "node__path")
+        return self.with_place(qs).order_by("node__path", "order", "id")
 
     @admin.display(description="عنوان (رو) و جای آن", ordering="title")
     def short_title(self, obj):
@@ -342,7 +352,7 @@ class ExamSourceNameFilter(admin.SimpleListFilter):
     parameter_name = "name"
 
     def lookups(self, request, model_admin):
-        return [(n, n) for n in sorted(set(ExamSource.objects.values_list("name", flat=True)))]
+        return [(n, n) for n in sorted(set(model_admin.get_queryset(request).values_list("name", flat=True)))]
 
     def queryset(self, request, queryset):
         return queryset.filter(name=self.value()) if self.value() else queryset
@@ -355,9 +365,10 @@ class ExamYearFilter(admin.SimpleListFilter):
     def lookups(self, request, model_admin):
         from apps.catalog.jalali import fa_digits
 
-        years = sorted((y for y in set(ExamSource.objects.values_list("year", flat=True)) if y), reverse=True)
+        sources = model_admin.get_queryset(request)
+        years = sorted((y for y in set(sources.values_list("year", flat=True)) if y), reverse=True)
         out = [(str(y), fa_digits(y)) for y in years]
-        if ExamSource.objects.filter(year=0).exists():
+        if sources.filter(year=0).exists():
             out.append(("0", "بدون سال (کتاب مرجع)"))
         return out
 
@@ -373,7 +384,30 @@ class ExamSourceAdmin(admin.ModelAdmin):
     ordering = ("-year", "name", "group", "booklet")
 
     def get_queryset(self, request):
-        return super().get_queryset(request).annotate(n=Count("question", filter=Q(question__is_archived=False), distinct=True))
+        from django.db.models.functions import Coalesce, Substr
+
+        from apps.catalog.models import ContentNode
+
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs.annotate(n=Count("question", filter=Q(question__is_archived=False), distinct=True))
+        roots = access.books_for_editor(request.user).values("path")
+        linked_questions = (QuestionSource.objects.filter(source_id=OuterRef("pk"))
+                            .annotate(_lp_root=Substr("question__node__path", 1, ContentNode.steplen))
+                            .filter(_lp_root__in=roots))
+        count = (linked_questions.order_by().values("source_id")
+                 .annotate(n=Count("question_id", filter=Q(question__is_archived=False), distinct=True))
+                 .values("n")[:1])
+        return qs.annotate(_lp_used_by_editor=Exists(linked_questions), n=Coalesce(Subquery(count), 0)).filter(_lp_used_by_editor=True)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
 
     @admin.display(description="سال", ordering="year")
     def shown_year(self, obj):
@@ -407,7 +441,7 @@ class ReportBookFilter(admin.SimpleListFilter):
     def lookups(self, request, model_admin):
         from apps.catalog.filters import _book_choices
 
-        return _book_choices()
+        return _book_choices(user=request.user)
 
     def queryset(self, request, queryset):
         from apps.catalog.models import ContentNode
@@ -461,6 +495,30 @@ class ReportAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         return False
 
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_fields(self, request, obj=None):
+        if request.user.is_superuser:
+            return super().get_fields(request, obj)
+        # Teacher reports are reviewable, but never a route to the reporter's account or editable report metadata.
+        return ("status", "reason", "note", "quote", "question", "flashcard", "node", "mode", "box", "created_at", "resolved_at")
+
+    def get_readonly_fields(self, request, obj=None):
+        return self.get_fields(request, obj) if not request.user.is_superuser else ()
+
+    def get_search_fields(self, request):
+        if request.user.is_superuser:
+            return self.search_fields
+        return ("note", "quote", "question__stem", "flashcard__title", "node__title")
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not request.user.is_superuser:
+            actions.pop("block_reporter", None)
+            actions.pop("unblock_reporter", None)
+        return actions
+
     list_display = ("about", "when", "state", "manage")
     list_filter = ("status", "reason", ReportBookFilter, ReportKindFilter, ReportArchivedFilter)
     search_fields = ("note", "quote", "user__phone", "question__stem", "flashcard__title", "node__title")
@@ -477,7 +535,6 @@ class ReportAdmin(admin.ModelAdmin):
         return super().changelist_view(request, {**(extra_context or {}), "lp_macros": formula_macros()})
 
     def get_queryset(self, request):
-        from django.db.models import OuterRef, Subquery, Value
         from django.db.models.functions import Coalesce, Substr
 
         from apps.catalog.models import ContentNode
@@ -487,8 +544,11 @@ class ReportAdmin(admin.ModelAdmin):
         # Was the reported item's section archived since (its tests and cards go with it)?
         archived = Coalesce("question__node__is_archived", "flashcard__node__is_archived", "node__is_archived", Value(False))
         chapter = ContentNode.objects.filter(path=Substr(OuterRef("item_path"), 1, 2 * ContentNode.steplen), kind=ContentNode.Kind.CHAPTER)
-        return (super().get_queryset(request).select_related("user", "question", "flashcard", "node")
-                .annotate(item_path=item_path, p_archived=archived).annotate(p_chapter_id=Subquery(chapter.values("pk")[:1])))
+        qs = (super().get_queryset(request).select_related("user", "question", "flashcard", "node")
+              .annotate(item_path=item_path, p_archived=archived,
+                        p_reporter_visible=Value(bool(request.user.is_superuser), output_field=BooleanField()))
+              .annotate(p_chapter_id=Subquery(chapter.values("pk")[:1])))
+        return access.scope_to_editor_books(qs, request.user, "item_path")
 
     @admin.display(description="گزارش")
     def about(self, obj):
@@ -511,14 +571,18 @@ class ReportAdmin(admin.ModelAdmin):
         return format_html('<div style="min-width:240px">{} <span class="lp-quiet">{}:</span> {}{}{}</div>',
                            badges((obj.get_reason_display(), "blue"), gone), kind, text, quote, note)
 
-    @admin.display(description="کاربر و زمان", ordering="created_at")
+    @admin.display(description="گزارش‌دهنده و زمان", ordering="created_at")
     def when(self, obj):
         from apps.catalog.jalali import jalali_datetime
 
-        user_url = reverse("admin:accounts_user_change", args=[obj.user_id])
-        tag = badges(("گزارش بسته", "red")) if not getattr(obj.user, "can_report", True) else ""
-        return format_html('<a href="{}">{}</a> {}{}', user_url, obj.user.phone, tag,
-                           format_html('<div class="lp-quiet" style="white-space:nowrap">{}</div>', jalali_datetime(obj.created_at)))
+        if getattr(obj, "p_reporter_visible", True):
+            user_url = reverse("admin:accounts_user_change", args=[obj.user_id])
+            reporter = format_html('<a href="{}">{}</a>', user_url, obj.user.phone)
+            tag = badges(("گزارش بسته", "red")) if not getattr(obj.user, "can_report", True) else ""
+        else:
+            reporter, tag = "دانشجو", ""
+        return format_html('{} {}<div class="lp-quiet" style="white-space:nowrap">{}</div>',
+                           reporter, tag, jalali_datetime(obj.created_at))
 
     @admin.display(description="وضعیت", ordering="status")
     def state(self, obj):
@@ -560,6 +624,8 @@ class ReportAdmin(admin.ModelAdmin):
 
     @admin.action(description="رد گزارش و بستن امکان ارسال گزارش برای این کاربر")
     def block_reporter(self, request, queryset):
+        if not request.user.is_superuser:
+            raise PermissionDenied
         from apps.accounts.models import User
 
         user_ids = set(queryset.values_list("user_id", flat=True))
@@ -569,6 +635,8 @@ class ReportAdmin(admin.ModelAdmin):
 
     @admin.action(description="باز کردن دوباره امکان ارسال گزارش برای این کاربر")
     def unblock_reporter(self, request, queryset):
+        if not request.user.is_superuser:
+            raise PermissionDenied
         from apps.accounts.models import User
 
         user_ids = set(queryset.values_list("user_id", flat=True))
@@ -583,7 +651,9 @@ def _each_context_with_reports(request):
     """Every panel page knows how many error reports are open: the side menu shows it next to «گزارش‌های ایراد»."""
     context = _each_context(request)
     if getattr(request, "user", None) is not None and request.user.is_active and request.user.is_staff:
-        context["lp_open_reports"] = Report.objects.filter(status=Report.Status.OPEN).count()
+        model_admin = admin.site._registry.get(Report)
+        reports = model_admin.get_queryset(request) if model_admin else Report.objects.none()
+        context["lp_open_reports"] = reports.filter(status=Report.Status.OPEN).count()
     return context
 
 

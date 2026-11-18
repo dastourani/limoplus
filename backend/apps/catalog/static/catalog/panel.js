@@ -1030,6 +1030,11 @@
 
   Manager.prototype.call = function (payload) {
     var self = this;
+    if (this.state && !this.state.can_edit && payload.op !== 'file.check' && payload.op !== 'destinations') {
+      var why = 'این فصل منتشر یا بایگانی شده است؛ فقط مدیر کل می‌تواند آن را تغییر دهد.';
+      toast([why], 'warn');
+      return Promise.reject(new Error(why));
+    }
     payload.version = this.state && this.state.version;
     this.root.classList.add('busy');
     var done = function (x) { self.root.classList.remove('busy'); return x; };
@@ -1122,6 +1127,10 @@
     return true;
   };
   Manager.prototype.guard = function () {
+    if (this.state && !this.state.can_edit) {
+      toast(['این فصل منتشر یا بایگانی شده است؛ فقط مدیر کل می‌تواند آن را تغییر دهد.'], 'warn');
+      return false;
+    }
     if (!this.dirty) return true;
     if (confirm('تغییرات «' + this.dirty + '» ذخیره نشده‌اند. بدون ذخیره ادامه می‌دهید؟')) { this.dirty = null; return true; }
     return false;
@@ -1211,7 +1220,7 @@
       h('a', { class: 'btn', href: base + 'export/' }, 'دریافت فایل فصل'),
       h('a', { class: 'btn', href: base + 'history/' }, 'نسخه‌ها (' + fa(st.revisions) + ')'),
       h('a', { class: 'btn', href: '../../' + st.book.id + '/change/#chapters' }, 'کتاب «' + st.book.title + '»'),
-      h('a', { class: 'btn', href: '../../inbox/', title: 'تست‌هایی که هنوز جایشان معلوم نیست' }, '📥 صندوق تست'));
+      this.state.can_manage_access ? h('a', { class: 'btn', href: '../../inbox/', title: 'تست‌هایی که هنوز جایشان معلوم نیست' }, '📥 صندوق تست') : null);
   };
 
   // ----- publishing --------------------------------------------------------------
@@ -1314,7 +1323,8 @@
     if (title == null) return;
     var number = prompt('شماره‌ی فصل (عدد):', c.number == null ? '' : c.number);
     if (number == null) return;
-    var free = confirm('این فصل رایگان باشد؟ (تأیید = رایگان، انصراف = پولی)');
+    var free = c.is_free;
+    if (this.state.can_manage_access) free = confirm('این فصل رایگان باشد؟ (تأیید = رایگان، انصراف = پولی)');
     var ascii = String(number || '').replace(/[۰-۹]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); }).trim();
     var twin = /^\d+$/.test(ascii) && (this.state.sibling_chapters || []).find(function (x) { return Number(x.position) === Number(ascii); });
     if (twin && !confirm('شماره‌ی ' + fa(ascii) + ' پیش‌تر به فصل «' + twin.title + '» داده شده است. ذخیره، ترتیب فصل‌های کتاب را عوض می‌کند. ادامه می‌دهید؟')) return;
@@ -1723,7 +1733,7 @@
         h('button', { class: 'btn small icon', type: 'button', title: 'بالا', onclick: function () { self.reorder(s, kind, i, -1); } }, '▲'),
         h('button', { class: 'btn small icon', type: 'button', title: 'پایین', onclick: function () { self.reorder(s, kind, i, 1); } }, '▼'),
         move,
-        kind === 'question' ? h('button', {
+        kind === 'question' && self.state.can_manage_access ? h('button', {
           class: 'btn small' + (item.is_sample ? ' primary' : ''), type: 'button',
           title: 'کاربر می‌تواند تصویر این تست را (بدون جواب) برای دیگران بفرستد',
           onclick: function () {
@@ -1889,6 +1899,9 @@
         };
         var secs = h('input', { type: 'number', min: 0, value: data.seconds || '', oninput: function () { data.seconds = secs.value; } });
         var free = h('input', { type: 'checkbox', checked: data.is_free, onchange: function () { data.is_free = free.checked; } });
+        var freeField = self.state.can_manage_access
+          ? h('label', { class: 'btn', style: 'margin-top:30px' }, free, ' رایگان در فصل پولی')
+          : h('span', { class: 'hint', style: 'margin-top:30px' }, data.is_free ? 'رایگان (وضعیت فقط با مدیر کل تغییر می‌کند)' : 'رایگان یا پولی بودن را مدیر کل تعیین می‌کند.');
         var fixed = h('input', { type: 'checkbox', checked: data.fixed_order, onchange: function () { data.fixed_order = fixed.checked; } });
         left.appendChild(h('label', { class: 'btn small', style: 'margin:4px 0', title: 'برای گزینه‌هایی مثل «۱ و ۳» یا «همه‌ی موارد» خودکار ثابت می‌ماند' },
           fixed, ' ترتیب گزینه‌ها ثابت بماند (اپ جابه‌جایشان نکند)'));
@@ -1900,7 +1913,7 @@
           h('div', { class: 'grow' }, field('نوع', sel(KINDS, 'kind'))),
           h('div', { class: 'grow' }, field('حوزه', sel(DOMAINS, 'domain'))),
           h('div', { style: 'width:110px' }, field('زمان (ثانیه)', secs)),
-          h('label', { class: 'btn', style: 'margin-top:30px' }, free, ' رایگان در فصل پولی')));
+          freeField));
         // sources
         var src = h('div');
         (function drawSrc() {
@@ -1962,8 +1975,12 @@
         left.appendChild(mdField('نکته (پشت)', 'point', 3));
         var formula = h('input', { type: 'text', value: data.formula, dir: 'ltr', placeholder: 'E = h\\nu  (بدون $)', oninput: function () { data.formula = formula.value; changed(); } });
         left.appendChild(field('فرمول', formula, '(اختیاری؛ LaTeX بدون علامت $)'));
-        var free2 = h('input', { type: 'checkbox', checked: data.is_free, onchange: function () { data.is_free = free2.checked; } });
-        left.appendChild(h('label', { class: 'btn', style: 'margin-top:10px' }, free2, ' رایگان در فصل پولی'));
+        if (self.state.can_manage_access) {
+          var free2 = h('input', { type: 'checkbox', checked: data.is_free, onchange: function () { data.is_free = free2.checked; } });
+          left.appendChild(h('label', { class: 'btn', style: 'margin-top:10px' }, free2, ' رایگان در فصل پولی'));
+        } else {
+          left.appendChild(h('p', { class: 'hint' }, data.is_free ? 'رایگان (وضعیت فقط با مدیر کل تغییر می‌کند)' : 'رایگان یا پولی بودن را مدیر کل تعیین می‌کند.'));
+        }
       }
       preview();
     }

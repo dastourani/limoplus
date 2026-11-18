@@ -115,8 +115,9 @@ def gift_context(book: ContentNode) -> dict:
 
 
 def _can_gift(request):
-    if not (request.user.is_active and request.user.is_staff and request.user.has_perm("commerce.add_entitlement")):
-        raise PermissionDenied
+    # Granting or revoking learner access is reserved to the site manager, regardless of incidental model perms.
+    if not (request.user.is_active and request.user.is_superuser):
+        raise PermissionDenied("دادن یا گرفتن دسترسی دانشجو فقط با مدیر کل است.")
 
 
 @require_POST

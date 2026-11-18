@@ -62,7 +62,11 @@
         {% csrf_token %}
         <input type="hidden" name="token" value="{{ report.token }}">
         <input type="hidden" name="filename" value="{{ report.filename }}">
-        <label class="btn"><input type="checkbox" name="publish"> انتشار فوری (بدون این گزینه، بخش‌های تازه پیش‌نویس می‌مانند)</label>
+        {% if request.user.is_superuser %}
+          <label class="btn"><input type="checkbox" name="publish"> انتشار فوری</label>
+        {% else %}
+          <p class="hint">فصلِ آماده‌شده پیش‌نویس می‌ماند؛ انتشار و بازکردن دسترسی دانشجویان فقط با مدیر کل است.</p>
+        {% endif %}
         <button class="btn primary" type="submit">اعمال تغییرات</button>
         <a class="btn" href="{{ request.path }}">انصراف</a>
       </form>

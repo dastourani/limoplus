@@ -3,7 +3,7 @@
 {% block object-tools-items %}
   {% if original %}
     <li><a href="{% url 'admin:catalog_book_export' original.pk %}">دریافت کل کتاب (ZIP)</a></li>
-    {% if original.waitlist.exists %}<li><a href="{% url 'admin:catalog_book_waitlist_notify' original.pk %}">خبر دادن به منتظران «خبرم کن»</a></li>{% endif %}
+    {% if can_manage_access and original.waitlist.exists %}<li><a href="{% url 'admin:catalog_book_waitlist_notify' original.pk %}">خبر دادن به منتظران «خبرم کن»</a></li>{% endif %}
   {% endif %}
   {{ block.super }}
 {% endblock %}
@@ -42,7 +42,7 @@
     <ul class="lp-health">
     {% for h in health %}
       <li class="{{ h.level }}"><span>{{ h.text }}</span>
-        {% if h.fix %}<form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+        {% if can_manage_access and h.fix %}<form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
           <input type="hidden" name="chapter" value="{{ h.fix.chapter }}"><input type="hidden" name="action" value="publish"><input type="hidden" name="value" value="1">
           <button class="btn small primary" type="submit">درست کن (منتشر شود)</button></form>{% endif %}
       </li>
@@ -62,36 +62,48 @@
     {% for c in chapters %}
       <tr{% if c.node.is_archived %} style="opacity:.5"{% endif %}>
         <td>{{ c.node.position|default:"" }}</td>
-        <td><a href="{% url 'admin:catalog_chapter_manager' c.node.pk %}"><b>{{ c.node.title }}</b></a> <span class="hint">{{ c.node.slug }}</span>
-          {% if c.node.is_archived %}<span class="pill warn">بایگانی</span>{% endif %}</td>
+        <td>
+          {% if can_manage_access or not c.node.is_published and not c.node.is_archived %}<a href="{% url 'admin:catalog_chapter_manager' c.node.pk %}"><b>{{ c.node.title }}</b></a>{% else %}<b>{{ c.node.title }}</b>{% endif %}
+          <span class="hint">{{ c.node.slug }}</span>
+          {% if c.node.is_archived %}<span class="pill warn">بایگانی</span>{% endif %}
+          {% if not can_manage_access and c.node.is_published %}<span class="pill warn">برای تغییر منتشرشده، مدیر کل</span>{% endif %}
+        </td>
         <td>{{ c.sections }}{% if c.drafts and not c.node.is_archived %}<br><span class="pill warn" title="این بخش‌ها در اپ دیده نمی‌شوند">{{ c.drafts }} پیش‌نویس</span>{% endif %}</td><td>{{ c.questions }}</td><td>{{ c.flashcards }}</td>
         <td>
-          <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
-            <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="free">
-            <input type="hidden" name="value" value="{% if c.node.is_free %}0{% else %}1{% endif %}">
-            <button class="btn small" type="submit" title="عوض کردن">{% if c.node.is_free %}✓ رایگان{% else %}پولی{% endif %}</button></form>
+          {% if can_manage_access %}
+            <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+              <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="free">
+              <input type="hidden" name="value" value="{% if c.node.is_free %}0{% else %}1{% endif %}">
+              <button class="btn small" type="submit" title="عوض کردن">{% if c.node.is_free %}✓ رایگان{% else %}پولی{% endif %}</button></form>
+          {% else %}{% if c.node.is_free %}رایگان{% else %}پولی{% endif %}{% endif %}
         </td>
         <td>
-          <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
-            <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="publish">
-            <input type="hidden" name="value" value="{% if c.node.is_published %}0{% else %}1{% endif %}">
-            <button class="btn small" type="submit" title="عوض کردن">{% if c.node.is_published %}✓ منتشر{% else %}پیش‌نویس{% endif %}</button></form>
+          {% if can_manage_access %}
+            <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+              <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="publish">
+              <input type="hidden" name="value" value="{% if c.node.is_published %}0{% else %}1{% endif %}">
+              <button class="btn small" type="submit" title="عوض کردن">{% if c.node.is_published %}✓ منتشر{% else %}پیش‌نویس{% endif %}</button></form>
+          {% else %}{% if c.node.is_published %}منتشر{% else %}پیش‌نویس{% endif %}{% endif %}
         </td>
         <td class="row" style="gap:4px">
-          <a class="btn small primary" href="{% url 'admin:catalog_chapter_manager' c.node.pk %}">مدیریت فصل</a>
-          <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
-            <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="up">
-            <button class="btn small icon" type="submit" title="بالا">▲</button></form>
-          <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
-            <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="down">
-            <button class="btn small icon" type="submit" title="پایین">▼</button></form>
+          {% if can_manage_access or not c.node.is_published and not c.node.is_archived %}<a class="btn small primary" href="{% url 'admin:catalog_chapter_manager' c.node.pk %}">مدیریت فصل</a>{% endif %}
+          {% if can_manage_access %}
+            <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+              <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="up">
+              <button class="btn small icon" type="submit" title="بالا">▲</button></form>
+            <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+              <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="down">
+              <button class="btn small icon" type="submit" title="پایین">▼</button></form>
+          {% endif %}
           <a class="btn small" href="{% url 'admin:catalog_chapter_export' c.node.pk %}">دریافت فایل</a>
           <a class="btn small" href="{% url 'admin:catalog_chapter_tex' c.node.pk %}"
              title="همین فصل برای Overleaf: فایل .tex و تصویرها">📥 .tex</a>
-          <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
-            <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="archive">
-            <input type="hidden" name="value" value="{% if c.node.is_archived %}0{% else %}1{% endif %}">
-            <button class="btn small {% if not c.node.is_archived %}danger{% endif %}" type="submit">{% if c.node.is_archived %}بازگرداندن{% else %}بایگانی{% endif %}</button></form>
+          {% if can_manage_access %}
+            <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+              <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="archive">
+              <input type="hidden" name="value" value="{% if c.node.is_archived %}0{% else %}1{% endif %}">
+              <button class="btn small {% if not c.node.is_archived %}danger{% endif %}" type="submit">{% if c.node.is_archived %}بازگرداندن{% else %}بایگانی{% endif %}</button></form>
+          {% endif %}
         </td>
       </tr>
     {% empty %}
@@ -118,6 +130,7 @@
     </div>
   </div>
 </div>
+{% if can_manage_access %}
 <div class="lp chapters-box" id="gifts">
   <h2>هدیه به کاربر</h2>
   <p class="hint">این کتاب را بدون خرید به یک نفر بدهید (مثلاً جایزه یا همکار). در اپ برچسب «هدیه» می‌بیند و در فروش حساب نمی‌شود.
@@ -147,5 +160,6 @@
   </table>
   {% endif %}
 </div>
+{% endif %}
 {% endif %}
 {% endblock %}

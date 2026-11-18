@@ -122,10 +122,35 @@ class BookAdmin(admin.ModelAdmin):
                     .order_by().values("root").annotate(n=Count("pk")).values("n")[:1])
         waiting = (BookWaitlist.objects.filter(book=OuterRef("pk"), is_active=True).order_by().values("book")
                    .annotate(n=Count("pk")).values("n")[:1])
-        return (super().get_queryset(request).filter(kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False)
-                .prefetch_related("majors")
-                .annotate(n_chapters=Coalesce(Subquery(chapters, output_field=IntegerField()), 0),
-                          n_waiting=Coalesce(Subquery(waiting, output_field=IntegerField()), 0)))
+        qs = (super().get_queryset(request).filter(kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False)
+              .prefetch_related("majors")
+              .annotate(n_chapters=Coalesce(Subquery(chapters, output_field=IntegerField()), 0),
+                        n_waiting=Coalesce(Subquery(waiting, output_field=IntegerField()), 0)))
+        if not request.user.is_superuser:
+            qs = qs.filter(pk__in=access.book_editor_ids(request.user))
+        return qs
+
+    def get_list_display(self, request):
+        if request.user.is_superuser:
+            return self.list_display
+        return ("cover_thumb", "title", "author", "chapter_count", "status")
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        # Teachers prepare chapter drafts in the chapter manager; book metadata and commercial settings are manager-only.
+        return bool(request.user.is_superuser)
+
+    def get_fieldsets(self, request, obj=None):
+        if request.user.is_superuser:
+            return self.fieldsets
+        # The view-only book page is a navigation hub for the assigned chapters, not a way to change title, price,
+        # free access, majors, sale state, or sharing settings.
+        return (
+            (None, {"fields": ("title", "title_en", "slug", "author", "edition", "majors")}),
+            ("جلد و معرفی", {"fields": ("cover_motif", "cover", "about")}),
+        )
 
     def get_readonly_fields(self, request, obj=None):
         return ("slug",) if obj else ()
@@ -197,7 +222,8 @@ class BookAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         extra = extra_context or {}
-        extra["orphans"] = [n for n in panel.orphans() if not n.is_archived]
+        extra["orphans"] = [n for n in panel.orphans() if not n.is_archived] if request.user.is_superuser else []
+        extra["can_manage_access"] = request.user.is_superuser
         return super().changelist_view(request, extra_context=extra)
 
     def _majors_json(self):
@@ -231,9 +257,10 @@ class BookAdmin(admin.ModelAdmin):
             from .bookpanel import book_health, gift_context
 
             extra["health"] = book_health(book)
-            extra.update(gift_context(book))
-            # The publish box reads this and not `original.is_published` alone: without the gate it cannot know
-            # whether to offer the button or explain why there is none.
+            extra["can_manage_access"] = request.user.is_superuser
+            if request.user.is_superuser:
+                extra.update(gift_context(book))
+            # The publish box reads this and not `original.is_published` alone: only the manager gets the control.
             extra["publish"] = access.publish_state(request.user, book)
         return super().change_view(request, object_id, form_url, extra_context=extra)
 
@@ -267,10 +294,11 @@ class GroupFilter(admin.SimpleListFilter):
     parameter_name = "group"
 
     def lookups(self, request, model_admin):
-        qs = ContentNode.objects.filter(kind=ContentNode.Kind.SECTION).exclude(group="")
-        chapter = request.GET.get("chapter")
-        if chapter and (c := ContentNode.objects.filter(pk=chapter).first()):
-            qs = qs.filter(path__startswith=c.path)
+        qs = model_admin.get_queryset(request).exclude(group="")
+        chapter_id = request.GET.get("chapter")
+        chapter = ContentNode.objects.filter(pk=chapter_id, kind=ContentNode.Kind.CHAPTER).first() if chapter_id else None
+        if chapter:
+            qs = qs.filter(path__startswith=chapter.path) if access.can_edit_book(request.user, chapter.book()) else qs.none()
         return [(g, g) for g in qs.order_by("group").values_list("group", flat=True).distinct()]
 
     def queryset(self, request, queryset):
@@ -334,7 +362,7 @@ class SectionAdmin(admin.ModelAdmin):
         step = ContentNode.steplen
         chapter = ContentNode.objects.filter(path=Substr(OuterRef("path"), 1, 2 * step), kind=ContentNode.Kind.CHAPTER)
         book = ContentNode.objects.filter(path=Substr(OuterRef("path"), 1, step), kind=ContentNode.Kind.BOOK)
-        return super().get_queryset(request).filter(kind=ContentNode.Kind.SECTION).annotate(
+        qs = super().get_queryset(request).filter(kind=ContentNode.Kind.SECTION).annotate(
             n_questions=Count("questions", filter=Q(questions__is_archived=False), distinct=True),
             n_flashcards=Count("flashcards", filter=Q(flashcards__is_archived=False), distinct=True),
             p_chapter_id=Subquery(chapter.values("pk")[:1]),
@@ -342,6 +370,7 @@ class SectionAdmin(admin.ModelAdmin):
             p_chapter_title=Subquery(chapter.values("title")[:1]),
             p_book=Subquery(book.values("title")[:1]),
         ).order_by("path")
+        return access.scope_to_editor_books(qs, request.user, "path")
 
     def has_add_permission(self, request):
         return False
@@ -385,7 +414,7 @@ class SectionAdmin(admin.ModelAdmin):
         return format_html('<a class="button" href="{}#s={}">ویرایش</a>', reverse("admin:catalog_chapter_manager", args=[obj.p_chapter_id]), obj.slug)
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
-        node = ContentNode.objects.filter(pk=object_id).first()
+        node = self.get_queryset(request).filter(pk=object_id).first()
         if node and (c := node.get_parent()):
             return redirect(reverse("admin:catalog_chapter_manager", args=[c.pk]) + f"#s={node.slug}")
         return super().change_view(request, object_id, form_url, extra_context)
@@ -393,12 +422,24 @@ class SectionAdmin(admin.ModelAdmin):
 
 @admin.register(BookEditor)
 class BookEditorAdmin(admin.ModelAdmin):
-    """«استادان کتاب»: who may write which book. Without a row here, a staff member can only read it."""
+    """«استادان کتاب»: only the manager assigns a reviewed, approved editor to a book."""
 
     list_display = ("book", "user", "can_publish", "note", "created_at")
     list_filter = ("can_publish", BookFilter)
     search_fields = ("book__title", "user__phone", "user__first_name", "user__last_name", "note")
     list_select_related = ("book", "user")
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
@@ -413,6 +454,9 @@ class ChapterRevisionAdmin(admin.ModelAdmin):
     list_filter = ("source", BookFilter)
     search_fields = ("note", "chapter__title")
     readonly_fields = ("chapter", "source", "note", "user", "created_at", "updated_at", "text")
+
+    def get_queryset(self, request):
+        return access.scope_to_editor_books(super().get_queryset(request), request.user, "chapter__path")
 
     def has_add_permission(self, request):
         return False
@@ -496,7 +540,7 @@ class BannerBookFilter(admin.SimpleListFilter):
     def lookups(self, request, model_admin):
         from .filters import _book_choices
 
-        return [("all", "همه (بدون کتاب)")] + _book_choices()
+        return [("all", "همه (بدون کتاب)")] + _book_choices(user=request.user)
 
     def queryset(self, request, queryset):
         if self.value() == "all":
