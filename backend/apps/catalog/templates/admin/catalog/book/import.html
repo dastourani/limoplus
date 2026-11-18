@@ -37,6 +37,15 @@
     {% if report.warnings %}
       <div class="msg warn"><b>هشدارها ({{ report.warnings|length }})</b><ul>{% for issue in report.warnings %}<li>{{ issue }}</li>{% endfor %}</ul></div>
     {% endif %}
+    {% if report.markdown %}
+    {# The chapter as the reader will get it, drawn by the same renderer the app uses. #}
+    <details class="import-preview" {% if report.existing %}open{% endif %}>
+      <summary>پیش‌نمایش فصل (همان‌طور که دانشجو می‌بیند)</summary>
+      <div class="pv-ctl" id="import-pv-ctl"></div>
+      <div class="import-pv-wrap"><iframe class="import-pv" title="پیش‌نمایش فصل" id="import-pv"></iframe></div>
+    </details>
+    {{ report.markdown|json_script:"import-md" }}
+    {% endif %}
     {% if report.token %}
       {% if report.existing %}
         <div id="plan"></div>

@@ -452,3 +452,61 @@ class MacroArgumentTests(SimpleTestCase):
     def test_an_optional_argument_is_read(self):
         text = Converter(r"\newcommand{\limx}[1][x]{\lim_{#1}} نتیجه \limx").to_markdown()
         self.assertIn("\\lim_{x}", text)
+
+
+class TableFloatPlacementTests(TestCase):
+    """«\\begin{table}[H]»: the placement option is a setting, not the author's words.
+
+    It used to survive as a bare «[H]» line above the table — a professor saw it in the imported chapter and could not
+    tell what it was.
+    """
+
+    def _read(self, source: str):
+        from .latex import Converter
+
+        converter = Converter(source)
+        converter.slug = "t"
+        return converter.to_chapter(), converter.report()
+
+    def test_placement_option_is_not_text(self):
+        markdown, _ = self._read(
+            r"\begin{document}" "\n" r"\begin{table}[H]" "\n" r"\begin{tabular}{ll}" "\n"
+            r"a & b \\" "\n" r"\end{tabular}" "\n" r"\end{table}" "\n" r"\end{document}"
+        )
+        self.assertNotIn("[H]", markdown)
+        self.assertIn("| a | b |", markdown)
+
+    def test_other_placements_too(self):
+        for option in ("[htbp]", "[t]", "[!h]", "[H]"):
+            markdown, _ = self._read(
+                r"\begin{document}" "\n" f"\\begin{{table}}{option}" "\n" r"\begin{tabular}{l}" "\n"
+                r"x \\" "\n" r"\end{tabular}" "\n" r"\end{table}" "\n" r"\end{document}"
+            )
+            self.assertNotIn(option, markdown, option)
+
+
+class UnknownCommandReportTests(TestCase):
+    """The warning about unknown commands is read by a professor, not by a LaTeX user."""
+
+    def _report(self, source: str):
+        from .latex import Converter
+
+        converter = Converter(source)
+        converter.slug = "t"
+        converter.to_chapter()
+        return " ".join(converter.report())
+
+    def test_it_says_what_happened_and_how_many(self):
+        report = self._report(r"\begin{document}" "\n" r"\note{یک نکته}" "\n" r"\end{document}")
+        self.assertIn("۱ دستور", report)
+        self.assertIn("متن داخلشان", report)
+
+    def test_a_known_but_missing_command_gets_a_hint(self):
+        report = self._report(r"\begin{document}" "\n" r"\note{یک نکته}" "\n" r"\end{document}")
+        self.assertIn(":::نکته", report)
+
+    def test_no_html_reaches_the_warning(self):
+        # Warnings are printed as text (createTextNode), so a tag in one shows up literally.
+        report = self._report(r"\begin{document}" "\n" r"\note{x}" "\n" r"\end{document}")
+        self.assertNotIn("<b>", report)
+        self.assertNotIn("<", report)

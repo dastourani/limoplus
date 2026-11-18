@@ -27,6 +27,8 @@ from __future__ import annotations
 import posixpath
 import re
 
+_PERSIAN_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
 # --- What a ZIP may contain ------------------------------------------------------------------------------------
 
 # Made by LaTeX on every run: never part of the book.
@@ -675,6 +677,10 @@ class Converter:
             body = re.sub(r"^\s*\{[^}]*\}\s*", "", body, count=1)
         elif env in FIGURE_ENVIRONMENTS:
             body = re.sub(r"^\s*(\[[^\]]*\]\s*)?(\{[^}]*\}\s*)?", "", body, count=1)
+        elif env in TABLE_FLOAT_ENVIRONMENTS:
+            # «\begin{table}[H]»: the placement option ([H] [htbp] [t]) is a setting, not the author's words — it used
+            # to survive as a bare «[H]» line above the table.
+            body = re.sub(r"^\s*\[[^\]]*\]\s*", "", body, count=1)
         elif env in ("mdframed", "tcolorbox", "mdframed*", "shaded", "framed", "adjustbox", "minipage"):
             # Framing settings, not text: \begin{mdframed}[backgroundcolor=…,linewidth=1pt]
             body = re.sub(r"^\s*(\[[^\]]*\]\s*)?(\{[^}]*\}\s*)?", "", body, count=1)
@@ -1137,9 +1143,31 @@ class Converter:
             self.to_markdown()
         warnings = list(self.warnings)
         if self.unknown:
-            names = "، ".join("\\" + name for name in sorted(self.unknown)[:12])
-            more = "" if len(self.unknown) <= 12 else f" و {len(self.unknown) - 12} دستور دیگر"
-            warnings.append(f"این دستورها در کتاب معنی ندارند و حذف شدند (متن داخلشان نگه داشته شد): {names}{more}.")
+            # A professor does not know \DeclareFloatingEnvironment by name, and reading 23 of them in one line tells
+            # them nothing. The warning says what happened, how many, and names only the few that usually mean the
+            # author expected something else («\note» is often a box in their head, not a command).
+            total = len(self.unknown)
+            known_but_missing = {
+                "note": "«کادر». در لیموخوان کادر با «:::نکته» ساخته می‌شود.",
+                "begin": "محیطی که بسته نشده بود.",
+                "textbf": "در متن درس، پررنگ با **متن** ساخته می‌شود.",
+                "includegraphics": "عکس؛ اگر عکس را در پوشه‌ی images نگذاشته‌اید، همان‌جاست که جا افتاده.",
+                "footnote": "پانویس؛ لیموخوان پانویس ندارد.",
+                "cite": "ارجاع به منبع؛ لیموخوان فهرست منابع ندارد.",
+                "ref": "ارجاع به شماره‌ی شکل/جدول؛ نام‌گذاری «{#نام}» را ببینید.",
+            }
+            hints = [f"\\{n} → {known_but_missing[n]}" for n in sorted(self.unknown) if n in known_but_missing]
+            names = "، ".join("\\" + n for n in sorted(self.unknown)[:5])
+            more = "" if total <= 5 else f" و {str(total - 5).translate(_PERSIAN_DIGITS)} دستور دیگر"
+            message = (
+                f"{str(total).translate(_PERSIAN_DIGITS)} دستور LaTeX در فایل بود که لیموخوان نمی‌شناسد؛ حذف شدند ولی متن داخلشان "
+                f"نگه داشته شد. مهم‌ترین‌ها: {names}{more}."
+            )
+            if hints:
+                message += "  " + " ".join(hints)
+            if total > 5:
+                message += " فهرست کامل در پایین صفحه."
+            warnings.append(message)
         return warnings
 
 

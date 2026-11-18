@@ -820,12 +820,31 @@
   };
   Manager.prototype.load = function () {
     var self = this;
-    fetch(this.api, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
-      self.state = d.state;
-      setCtx(self.state);
-      MEDIA = d.state.media_url;
-      if (!self.fromHash()) { self.sel = d.state.sections.length ? d.state.sections[0].slug : ''; self.render(); }
-    });
+    // A failure here used to be silent: no .catch, so the page sat on «در حال باز کردن فصل…» forever — a blank
+    // screen with no reason in it, and nothing to tell the professor, or us, what went wrong. Say it instead.
+    fetch(this.api, { credentials: 'same-origin' })
+      .then(function (r) {
+        if (r.status === 403) throw new Error('اجازه‌ی نوشتن در این کتاب را ندارید. از مدیر کل بخواهید شما را در «استادان کتاب» اضافه کند.');
+        if (r.status === 404) throw new Error('این فصل پیدا نشد؛ شاید پاک شده باشد.');
+        if (!r.ok) throw new Error('سرور خطا داد (' + r.status + '). کمی بعد دوباره تلاش کنید.');
+        return r.json();
+      })
+      .then(function (d) {
+        if (!d || !d.state) throw new Error('پاسخ سرور خوانده نشد. صفحه را تازه کنید.');
+        self.state = d.state;
+        setCtx(self.state);
+        MEDIA = d.state.media_url;
+        if (!self.fromHash()) { self.sel = d.state.sections.length ? d.state.sections[0].slug : ''; self.render(); }
+      })
+      .catch(function (e) {
+        self.root.classList.remove('busy');
+        self.root.innerHTML = '';
+        var box = h('div', { class: 'msg err', style: 'margin:20px' },
+          h('b', null, 'فصل باز نشد'),
+          h('p', null, (e && e.message) || 'خطای نامشخص.'),
+          h('p', null, h('button', { class: 'btn', type: 'button', onclick: function () { location.reload(); } }, 'تلاش دوباره')));
+        self.root.appendChild(box);
+      });
   };
   Manager.prototype.fromHash = function () {
     var m = location.hash.match(/^#([sqf])=([^&]*)(.*)$/);
@@ -1894,6 +1913,39 @@
       });
     };
   };
+
+  // ---------- The import page's preview ----------
+  // «فصل از فایل» used to ask a professor to upload, read a list of changes, and press «اعمال تغییرات» — the only way
+  // to see what the chapter would look like was to save it first, and by then a mis-read \note or a lost table was
+  // already in the database. This draws the result before anything is saved, with the same renderer as the app.
+  function drawImportPreview() {
+    var el = document.getElementById('import-md'), out = document.getElementById('import-pv');
+    if (!el || !out) return;
+    var markdown;
+    try { markdown = JSON.parse(el.textContent); } catch (e) { return; }
+    // The chapter's own header (شناسه-کتاب، فصل …) is the panel's business, not the reader's — same rule as the
+    // whole-file editor.
+    function draw() {
+      var html;
+      try { html = render(stripHeadingIds(stripFrontMatter(markdown)), 'notes'); }
+      catch (e) { html = '<p style="color:#ba2121">خطا در نمایش: ' + e.message + '</p>'; }
+      out.srcdoc = previewDoc(html, 'body{padding:0}.lesson{padding:14px 18px 24px}');
+    }
+    var ctl = document.getElementById('import-pv-ctl');
+    function applyWidth() {
+      var px = widthPx(previewWidth());
+      out.style.width = px ? px + 'px' : '100%';
+      out.style.maxWidth = 'none';
+    }
+    if (ctl) ctl.appendChild(previewControls(function () { applyWidth(); draw(); }).el);
+    applyWidth();
+    draw();
+  }
+  // The chapter's text arrives in a <script id="import-md"> that the template writes BELOW the frame, so the file
+  // is not in the DOM yet when this code runs. Waiting for DOMContentLoaded is what makes it findable — without it
+  // the preview stayed an empty grey box (found by running the real page, not by reading the code).
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', drawImportPreview);
+  else drawImportPreview();
 
   // Shared rendering of a check result: errors, warnings, what will change, and the line diff.
   window.LimoReport = function (d) {
