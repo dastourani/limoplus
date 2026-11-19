@@ -16,44 +16,70 @@ export function shortToman(price: number): string {
   return `${toPersianDigits(price.toLocaleString('en-US').replace(/,/g, '٬'))} تومان`;
 }
 
-type Look = { icon: IconName; text: string; bg: string; fg: string; border: string; discountPercent?: number };
+type Look = {
+  icon: IconName;
+  text: string;
+  bg: string;
+  fg: string;
+  border: string;
+  discountPercent?: number;
+  sampleText?: string;
+};
+
+function sampleLabel(book: BookListItem): string | undefined {
+  if (book.product_status.preview !== 'sample') return undefined;
+  const count = book.free_chapters ?? (book.free_chapter ? 1 : 0);
+  if (count === 1 && book.free_chapter) return `فصل ${toPersianDigits(book.free_chapter)} رایگان`;
+  if (count > 1) return `${toPersianDigits(count)} فصل رایگان`;
+  return 'نمونه رایگان';
+}
 
 /** Option «ب»: the old wide button for every state; free and owned green, the price soft lemon, «خبرم کن» white,
- * «خبرت می‌کنیم» lemon with a ringing bell. */
+ * «خبرت می‌کنیم» lemon with a ringing bell. Product categories come only from the API's product_status. */
 export function bookPillLook(book: BookListItem, notify: { on: boolean; canCancel: boolean }): Look {
   const price = currentPrice(book);
+  const state = book.product_status.state;
+  const discounted = book.product_status.promotion === 'discount' && price.discount !== null;
   const green = { bg: colors.greenSoft, fg: colors.greenDark, border: '#BFE2CC' };
-  if (book.is_coming_soon)
+  const neutral = { bg: colors.surface, fg: colors.muted, border: colors.line };
+  if (state === 'coming_soon')
     return notify.on
       ? { icon: 'bell-ring', text: 'خبرت می‌کنیم', bg: colors.lemonSoft, fg: colors.ink, border: colors.lemon }
       : { icon: 'bell', text: 'خبرم کن', bg: colors.surface, fg: colors.ink, border: colors.line };
-  if (book.progress != null && book.progress > 0 && (book.owned || book.all_free || !price.price))
+  if (book.progress != null && book.progress > 0 && (book.owned || state === 'free'))
     return { icon: 'book-open', text: `${toPersianDigits(Math.round(book.progress * 100))}٪ خوانده‌شده`, ...green };
   if (book.owned) return { icon: 'circle-check', text: 'مال توست', ...green };
-  if (book.all_free || !price.price) return { icon: 'gift', text: 'رایگان', ...green };
-  return {
-    icon: 'tag',
-    text: shortToman(price.price),
-    discountPercent: price.discount?.percent,
-    bg: price.discount ? colors.redSoft : '#FDF4D3',
-    fg: price.discount ? colors.redDark : '#7A5B00',
-    border: price.discount ? '#EBC0BE' : '#F1DE94',
-  };
+  if (state === 'free') return { icon: 'gift', text: 'رایگان', ...green };
+  if (state === 'paid') {
+    return {
+      icon: 'tag',
+      text: price.price == null ? 'قیمت در دسترس نیست' : shortToman(price.price),
+      discountPercent: discounted ? price.discount?.percent : undefined,
+      sampleText: sampleLabel(book),
+      bg: discounted ? colors.redSoft : '#FDF4D3',
+      fg: discounted ? colors.redDark : '#7A5B00',
+      border: discounted ? '#EBC0BE' : '#F1DE94',
+    };
+  }
+  if (state === 'preparing') return { icon: 'book-open', text: 'در حال آماده‌سازی', ...neutral };
+  if (state === 'unpriced') return { icon: 'tag', text: 'قیمت تعیین نشده', sampleText: sampleLabel(book), ...neutral };
+  return { icon: 'lock', text: 'در دسترس نیست', ...neutral };
 }
 
 export function BookPill({ book, notify, onNotify }: { book: BookListItem; notify: { on: boolean; canCancel: boolean }; onNotify: () => void }) {
   const look = bookPillLook(book, notify);
   const body = (
     <>
-      <Icon name={look.icon} size={15} color={look.fg} />
-      <View style={styles.labelLine}>
+      <View style={look.sampleText ? styles.primaryWithSample : styles.labelLine}>
+        <Icon name={look.icon} size={15} color={look.fg} />
         <Text style={[styles.text, { color: look.fg }]} numberOfLines={1}>{look.text}</Text>
         {look.discountPercent != null && <Text style={styles.percent}>{percentLabel(look.discountPercent)}٪</Text>}
       </View>
+      {look.sampleText && <Text style={styles.sampleText} numberOfLines={1}>{look.sampleText}</Text>}
     </>
   );
-  const style = [styles.pill, { backgroundColor: look.bg, borderColor: look.border }];
-  if (book.is_coming_soon)
+  const style = [styles.pill, { backgroundColor: look.bg, borderColor: look.border }, look.sampleText && styles.pillWithSample];
+  if (book.product_status.state === 'coming_soon')
     return (
       <Pressable
         onPress={onNotify}
@@ -71,7 +97,10 @@ export function BookPill({ book, notify, onNotify }: { book: BookListItem; notif
 
 const styles = StyleSheet.create({
   pill: { alignSelf: 'stretch', minHeight: 38, borderRadius: 12, borderWidth: 1, paddingHorizontal: 8, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  pillWithSample: { minHeight: 48, paddingVertical: 4, flexDirection: 'column', gap: 1 },
   labelLine: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0 },
+  primaryWithSample: { alignSelf: 'stretch', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0 },
   text: { flexShrink: 1, fontSize: 12, fontWeight: '700' },
-  percent: { overflow: 'hidden', borderRadius: 6, paddingHorizontal: 4, paddingVertical: 1, backgroundColor: colors.redDark, color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
+  percent: { flexShrink: 0, overflow: 'hidden', borderRadius: 6, paddingHorizontal: 4, paddingVertical: 1, backgroundColor: colors.redDark, color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
+  sampleText: { alignSelf: 'stretch', textAlign: 'center', color: colors.greenDark, fontSize: 10, fontWeight: '800', lineHeight: 14 },
 });

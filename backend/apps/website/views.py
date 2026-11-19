@@ -79,22 +79,41 @@ def _cover(request, book) -> str:
 
 
 def _card(request, book, price_quote=None) -> dict:
-    """A book on a shelf of the site: its current price and a compact discount marker."""
-    from apps.commerce.pricing import book_price_quote
+    """A book on a shelf of the site: one server-owned status, its current price and free-preview details."""
+    from apps.commerce.pricing import ProductStatus, book_price_quote
 
     price_quote = price_quote or book_price_quote(book)
     access = AccessMap(request.user, book)
     chapters = access.children(book)
-    free = sum(1 for c in chapters if c.is_free)
-    if book.is_coming_soon or not chapters:
+    free_chapters = [chapter for chapter in chapters if chapter.is_free]
+    product_status = price_quote.product_status_payload
+    state = product_status["state"]
+
+    if state == ProductStatus.COMING_SOON:
         text = f"به‌زودی ({book.release_estimate})" if book.release_estimate else "به‌زودی"
         label = {"kind": "soon", "icon": "bell", "text": text}
-    elif not price_quote.price or (chapters and free == len(chapters)) or book.is_free:
+    elif state == ProductStatus.PREPARING:
+        label = {"kind": "preparing", "icon": "book-open", "text": "در حال آماده‌سازی"}
+    elif state == ProductStatus.FREE:
         label = {"kind": "free", "icon": "gift", "text": "رایگان"}
-    else:
+    elif state == ProductStatus.PAID:
         label = {"kind": "paid", "icon": "tag", "text": toman(price_quote.price)}
+    elif state == ProductStatus.UNPRICED:
+        label = {"kind": "unpriced", "icon": "tag", "text": "قیمت تعیین نشده"}
+    else:
+        label = {"kind": "unpriced", "icon": "lock", "text": "در دسترس نیست"}
+
+    sample_label = None
+    if product_status["preview"] == "sample":
+        if len(free_chapters) == 1:
+            sample_label = f"فصل {fa(chapters.index(free_chapters[0]) + 1)} رایگان"
+        elif len(free_chapters) > 1:
+            sample_label = f"{fa(len(free_chapters))} فصل رایگان"
+        else:
+            sample_label = "نمونه رایگان"
+
     discount = None
-    if price_quote.is_discounted:
+    if product_status["promotion"] == "discount":
         discount = {
             "percent": fa_percent(price_quote.discount_percent),
             "saving": toman(price_quote.discount_amount),
@@ -102,7 +121,9 @@ def _card(request, book, price_quote=None) -> dict:
         }
     return {
         "book": book, "cover": _cover(request, book), "label": label,
-        "regular_price": toman(price_quote.regular_price) if price_quote.regular_price is not None else None,
+        "product_status": product_status,
+        "sample_label": sample_label,
+        "regular_price": toman(price_quote.regular_price) if state == ProductStatus.PAID else None,
         "discount": discount,
         "chapters": fa(len(chapters)) if chapters else "",
         "release_estimate": book.release_estimate,
@@ -252,16 +273,23 @@ def home(request):
     from apps.catalog.models import Banner, BookChange
     from apps.learning.models import Flashcard, Question
 
-    from apps.commerce.pricing import book_price_quotes, campaign_banner_links, campaign_banner_payloads
+    from apps.commerce.pricing import ProductStatus, book_price_quotes, campaign_banner_links, campaign_banner_payloads
 
     pub_books = list(_published())
     price_quotes = book_price_quotes(pub_books)
     books = [_card(request, b, price_quotes[b.pk]) for b in pub_books]
     majors = Major.objects.filter(books__in=pub_books).distinct().order_by("order", "name")
-    paid = [price_quotes[b.pk].price for b in pub_books if price_quotes[b.pk].price and not b.is_coming_soon]
+    paid = [
+        price_quotes[b.pk].price
+        for b in pub_books
+        if price_quotes[b.pk].product_status == ProductStatus.PAID
+    ]
 
     # Live content statistics and a randomized pool of interactive sample questions across all published books.
-    active_books = [b for b in pub_books if not b.is_coming_soon]
+    active_books = [
+        b for b in pub_books
+        if price_quotes[b.pk].product_status not in (ProductStatus.COMING_SOON, ProductStatus.PREPARING)
+    ]
     total_sections = 0
     visible_ids: list[int] = []
     pool_samples: list[dict] = []
@@ -425,11 +453,14 @@ def book(request, slug):
         chapters.append({
             "id": c.id, "title": c.title, "number": fa(c.position or len(chapters) + 1),
             "sections": fa(len(sections)), "tests": fa(ch_tests) if ch_tests else "", "cards": fa(ch_cards) if ch_cards else "",
-            "free": access.readable(c.id), "has_overview": bool(c.full_body.strip()),
+            "free": access.readable(c.id),
+            "chapter_free": bool(b.is_free or c.is_free),
+            "sample_free": bool(b.is_free or c.is_free or any(section.is_free for section in sections)),
+            "has_overview": bool(c.full_body.strip()),
             "overview_url": app_url(f"section/{c.id}") if access.readable(c.id) else app_url(f"buy/{b.slug}"),
             "section_list": sec_items,
         })
-    first_free = next((ch for ch in chapters if ch["free"]), None)
+    first_free = next((ch for ch in chapters if ch["sample_free"]), None)
     sample_list = _book_samples(questions, access, limit=3)
     sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
     q_total = questions.count()
@@ -446,19 +477,28 @@ def book(request, slug):
         if f_total:
             parts.append(f"و **{fa(f_total)} فلش‌کارت مرور هوشمند**")
         about_text = "، ".join(parts) + " است.\n\n" + "\n".join(f"- فصل {ch['number']}: {ch['title']}" for ch in chapters[:8])
-    is_preparing = bool(b.is_coming_soon or not chapters)
+    from apps.commerce.pricing import ProductStatus, book_price_quote, book_price_quotes
+
+    price_quote = book_price_quote(b)
+    product_status = price_quote.product_status_payload
+    state = product_status["state"]
+    is_preparing = state in (ProductStatus.COMING_SOON, ProductStatus.PREPARING)
+    sample_label = None
+    if product_status["preview"] == "sample":
+        free_chapters = [chapter for chapter in chapters if chapter["chapter_free"]]
+        if len(free_chapters) == 1:
+            sample_label = f"فصل {free_chapters[0]['number']} رایگان"
+        elif len(free_chapters) > 1:
+            sample_label = f"{fa(len(free_chapters))} فصل رایگان"
+        else:
+            sample_label = "نمونه رایگان"
     related_books = []
     if is_preparing:
-        from apps.commerce.pricing import book_price_quotes
-
         other = [x for x in _published() if x.id != b.id and not x.is_coming_soon][:6]
         other_quotes = book_price_quotes(other)
         related_books = [_card(request, item, other_quotes[item.pk]) for item in other]
-    from apps.commerce.pricing import book_price_quote
-
-    price_quote = book_price_quote(b)
     book_discount = None
-    if price_quote.is_discounted:
+    if product_status["promotion"] == "discount":
         book_discount = {
             "percent": fa_percent(price_quote.discount_percent),
             "saving": toman(price_quote.discount_amount),
@@ -468,8 +508,10 @@ def book(request, slug):
     return render(request, "website/book.html", _base(
         request, b=b, cover=_cover(request, b), majors=list(b.majors.all()), chapters=chapters, stats=[s for s in stats if s[0] != "۰"],
         samples=sample_list, samples_json=json.dumps(sample_list, ensure_ascii=False), first_free=first_free,
-        price=toman(price_quote.price) if price_quote.price else None,
-        regular_price=toman(price_quote.regular_price) if price_quote.regular_price else None,
+        product_status=product_status,
+        sample_label=sample_label,
+        price=toman(price_quote.price) if state == ProductStatus.PAID else None,
+        regular_price=toman(price_quote.regular_price) if state == ProductStatus.PAID else None,
         discount=book_discount,
         open_url=app_url(f"book/{b.slug}"), buy_url=app_url(f"buy/{b.slug}"),
         about=about_text, updated_on=fa_date(upd) if upd else "",
@@ -482,11 +524,11 @@ def download(request):
 
 
 def pricing(request):
-    from apps.commerce.pricing import book_price_quotes
+    from apps.commerce.pricing import ProductStatus, book_price_quotes
 
     books = list(_published())
     quotes = book_price_quotes(books)
-    paid = [quotes[b.pk].price for b in books if quotes[b.pk].price and not b.is_coming_soon]
+    paid = [quotes[b.pk].price for b in books if quotes[b.pk].product_status == ProductStatus.PAID]
     return render(request, "website/pricing.html", _base(
         request, plans=_plans(), min_price=toman(min(paid)) if paid else None, faq=FaqItem.objects.filter(is_hidden=False)[:6],
     ))

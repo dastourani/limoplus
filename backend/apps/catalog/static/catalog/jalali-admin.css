@@ -22,7 +22,6 @@
   direction: rtl;
   vertical-align: middle;
 }
-.lp-jalali-wrap:focus-within { z-index: 20; }
 .lp-jalali-wrap > input.lp-jalali-date {
   box-sizing: border-box;
   width: 150px;
@@ -58,11 +57,14 @@
 }
 .lp-jalali-panel[hidden] { display: none !important; }
 .lp-jalali-panel {
-  position: absolute;
+  position: fixed;
   z-index: 10000;
-  top: calc(100% + 6px);
-  right: 0;
+  top: 0;
+  left: 0;
   width: min(288px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  box-sizing: border-box;
   padding: 8px;
   border: 1px solid var(--hairline-color);
   border-radius: 10px;
@@ -124,8 +126,9 @@
 }
 .lp-jalali-day:hover,
 .lp-jalali-day:focus-visible { border-color: var(--link-fg); background: var(--darkened-bg); }
-.lp-jalali-day.is-today { border-color: var(--link-fg); font-weight: 800; }
+.lp-jalali-day.is-today { border-color: #2F7D4F; background: #E3F3E9; color: #1F5E3A; font-weight: 900; }
 .lp-jalali-day.is-selected { background: #f5c518; color: #17201a; font-weight: 900; }
+.lp-jalali-day.is-selected.is-today { border-color: #17201A; background: #f5c518; color: #17201a; }
 .lp-jalali-day.is-friday { color: #c2413b; }
 .lp-jalali-day.is-selected.is-friday { color: #17201a; }
 .lp-jalali-footer {
@@ -151,6 +154,3 @@
 .lp-jalali-footer button:hover,
 .lp-jalali-footer button:focus-visible { background: var(--darkened-bg); }
 .lp-jalali-footer .lp-jalali-cancel { color: var(--body-quiet-color); }
-@media (max-width: 520px) {
-  .lp-jalali-panel { right: auto; left: 0; }
-}

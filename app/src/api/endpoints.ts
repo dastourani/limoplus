@@ -6,6 +6,14 @@ import type { ChapterEnd, ChapterIntro, SectionStatus } from '../lib/renderMarkd
 
 export type Major = { slug: string; name: string; color: string; is_coming_soon: boolean };
 export type PriceDiscount = { amount: number; percent: number; starts_at: string; ends_at: string; campaign_title: string };
+export type ProductStatus = {
+  /** Server-owned product state; never derive it from a null price, `all_free`, or a chapter flag. */
+  state: 'unavailable' | 'coming_soon' | 'free' | 'preparing' | 'unpriced' | 'paid';
+  /** A free chapter/section is a preview, not a free whole book. */
+  preview: 'none' | 'sample';
+  /** Whether the current server quote is under an active discount campaign. */
+  promotion: 'none' | 'discount';
+};
 export type BookListItem = {
   slug: string;
   title: string;
@@ -17,6 +25,7 @@ export type BookListItem = {
   cover: string | null;
   is_coming_soon: boolean;
   release_estimate?: string;
+  product_status: ProductStatus;
   /** Effective price at the time the API response was generated. */
   price: number | null;
   /** Regular list price, kept separately so a client can stop showing a stale campaign after it expires. */
@@ -24,14 +33,12 @@ export type BookListItem = {
   discount: PriceDiscount | null;
   chapter_count: number;
   section_count: number;
-  has_free_part: boolean;
-  /** Number of the first free chapter, if a whole chapter is free. */
+  /** Number of the first free chapter, if a whole chapter is free; product_status.preview decides whether to show it. */
   free_chapter: number | null;
   owned: boolean;
   /** Why the whole book is open: bought, by subscription, or as a staff member. */
   access?: 'purchase' | 'gift' | 'subscription' | 'staff' | null;
   free_chapters?: number;
-  all_free?: boolean;
   /** Only in the all-books list: the book's first major, for its cover. */
   major?: { slug: string; name: string; color: string } | null;
   /** Share of sections read (0–1), once the learner has started. */
@@ -474,9 +481,17 @@ export type Plan = {
   price: number;
   regular_price: number;
   discount: PriceDiscount | null;
+  product_status: ProductStatus;
 };
 export type Offers = {
-  book: { slug: string; title: string; price: number | null; regular_price: number | null; discount: PriceDiscount | null };
+  book: {
+    slug: string;
+    title: string;
+    price: number | null;
+    regular_price: number | null;
+    discount: PriceDiscount | null;
+    product_status: ProductStatus;
+  };
   majors: { slug: string; name: string }[];
   plans: Plan[];
   payments_enabled: boolean;

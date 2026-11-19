@@ -107,13 +107,37 @@ export default function Home() {
       }
     }, [user]),
   );
-  // Back from a book or a payment: progress and ownership may have changed.
-  const [focused, setFocused] = useState(0);
-  useFocusEffect(useCallback(() => setFocused((n) => n + 1), []));
+  const lastHomeRefresh = useRef(0);
+  const retryBooks = books.retry;
+  const retryBanners = banners.retry;
+  const refreshHomeData = useCallback(() => {
+    const now = Date.now();
+    if (lastHomeRefresh.current && now - lastHomeRefresh.current < 800) return;
+    lastHomeRefresh.current = now;
+    retryBooks();
+    retryBanners();
+  }, [retryBooks, retryBanners]);
+  // Back from a book or payment: fetch the bookshelf and publication state immediately on every return to Home.
+  const hasFocusedHome = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (hasFocusedHome.current) refreshHomeData();
+      hasFocusedHome.current = true;
+    }, [refreshHomeData]),
+  );
+  // A browser tab can regain focus without changing the router screen (the PWA case).
   useEffect(() => {
-    if (focused > 1) books.retry();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focused]);
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') refreshHomeData();
+    };
+    window.addEventListener('focus', refreshIfVisible);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => {
+      window.removeEventListener('focus', refreshIfVisible);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, [refreshHomeData]);
 
 
   const [notify, setNotify] = useState<Record<string, { on: boolean; canCancel: boolean }>>({});
@@ -177,8 +201,8 @@ export default function Home() {
         <Pressable
           onPress={() => router.push({ pathname: '/book/[slug]', params: { slug: book.slug } })}
           accessibilityRole="button"
-          accessibilityLabel={`${book.title}${book.is_coming_soon ? '، به‌زودی' : ''}`}
-          style={({ pressed }) => [{ opacity: book.is_coming_soon ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
+          accessibilityLabel={`${book.title}${book.product_status.state === 'coming_soon' ? '، به‌زودی' : ''}`}
+          style={({ pressed }) => [{ opacity: book.product_status.state === 'coming_soon' ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
         >
           <BookCover book={book} major={book.major ?? null} width={tileWidth} />
           <View style={[styles.ribbon, RIBBON[label.kind].box]}>

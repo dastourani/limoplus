@@ -183,6 +183,21 @@ class SaleCampaignAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("book", "plan")
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        field = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == "book" and field is not None:
+            from .pricing import campaign_book_queryset
+
+            eligible = campaign_book_queryset(field.queryset)
+            # Keep a legacy/current choice editable so a manager can turn its campaign off; it is never offered
+            # when creating a campaign, and model validation prevents an ineligible campaign remaining active.
+            object_id = getattr(getattr(request, "resolver_match", None), "kwargs", {}).get("object_id")
+            current = self.get_queryset(request).filter(pk=object_id).values_list("book_id", flat=True).first() if object_id else None
+            if current:
+                eligible = eligible | field.queryset.filter(pk=current)
+            field.queryset = eligible
+        return field
+
     @admin.display(description="محصول")
     def product(self, obj):
         return obj.book.title if obj.book_id else (obj.plan.title if obj.plan_id else "—")

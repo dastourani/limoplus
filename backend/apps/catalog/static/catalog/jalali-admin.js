@@ -132,10 +132,16 @@
   }
 
   function close(wrapper) {
-    var panel = wrapper.querySelector('.lp-jalali-panel');
-    if (panel) panel.hidden = true;
-    var trigger = wrapper.querySelector('.lp-jalali-trigger');
-    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    var picker = wrapper._lpJalaliPicker;
+    if (!picker) return;
+    picker.panel.hidden = true;
+    picker.trigger.setAttribute('aria-expanded', 'false');
+    window.removeEventListener('scroll', picker.position, true);
+    window.removeEventListener('resize', picker.position);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('scroll', picker.position);
+      window.visualViewport.removeEventListener('resize', picker.position);
+    }
   }
 
   function closeOthers(except) {
@@ -149,6 +155,8 @@
     panel.hidden = true;
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-label', 'انتخاب تاریخ شمسی');
+    var picker = { panel: panel, trigger: trigger, position: null };
+    wrapper._lpJalaliPicker = picker;
 
     var header = element('div', 'lp-jalali-header');
     var previous = element('button', 'lp-jalali-nav', '‹');
@@ -171,7 +179,8 @@
     cancel.type = 'button'; cancel.dataset.lpAction = 'close';
     footer.append(today, tomorrow, cancel);
     panel.append(header, weekdays, days, footer);
-    wrapper.appendChild(panel);
+    // A body-level fixed panel escapes overflow:hidden/auto ancestors in Django's stacked and tabular admin layouts.
+    document.body.appendChild(panel);
 
     var current = todayJalali();
 
@@ -194,6 +203,26 @@
       }
     }
 
+    function positionPanel() {
+      if (panel.hidden) return;
+      var anchor = trigger.getBoundingClientRect();
+      var viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+      var viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      var margin = 12;
+      panel.style.width = Math.max(120, Math.min(288, viewportWidth - margin * 2)) + 'px';
+      panel.style.maxHeight = Math.max(120, viewportHeight - margin * 2) + 'px';
+      var size = panel.getBoundingClientRect();
+      var left = Math.max(margin, Math.min(anchor.right - size.width, viewportWidth - size.width - margin));
+      var below = viewportHeight - anchor.bottom - margin - 6;
+      var above = anchor.top - margin - 6;
+      var top = anchor.bottom + 6;
+      if (below < size.height && above > below) top = anchor.top - size.height - 6;
+      top = Math.max(margin, Math.min(top, viewportHeight - size.height - margin));
+      panel.style.left = Math.round(left) + 'px';
+      panel.style.top = Math.round(top) + 'px';
+    }
+    picker.position = positionPanel;
+
     trigger.addEventListener('click', function () {
       if (!panel.hidden) { close(wrapper); return; }
       closeOthers(wrapper);
@@ -201,6 +230,13 @@
       render();
       panel.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
+      positionPanel();
+      window.addEventListener('scroll', positionPanel, true);
+      window.addEventListener('resize', positionPanel);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('scroll', positionPanel);
+        window.visualViewport.addEventListener('resize', positionPanel);
+      }
     });
     input.addEventListener('click', function () {
       if (panel.hidden) trigger.click();
@@ -239,7 +275,7 @@
     });
 
     document.addEventListener('pointerdown', function (event) {
-      if (!wrapper.contains(event.target)) close(wrapper);
+      if (!wrapper.contains(event.target) && !panel.contains(event.target)) close(wrapper);
     });
     document.addEventListener('keydown', function (event) {
       if (event.key === 'Escape') close(wrapper);

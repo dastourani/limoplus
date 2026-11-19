@@ -6,6 +6,7 @@ from django.db import transaction
 from django.db.models import Max, Q
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -16,7 +17,7 @@ from apps.catalog.models import ContentNode, Major
 
 from . import zibal
 from .models import Entitlement, Order, Plan
-from .pricing import book_price_quote, plan_price_quotes, plan_price_quote
+from .pricing import ProductStatus, book_price_quote, plan_price_quotes, plan_price_quote
 
 log = logging.getLogger(__name__)
 DAYS_PER_MONTH = 30
@@ -54,6 +55,7 @@ def _entitlement_payload(e):
     }
 
 
+@never_cache
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def offers(request):
@@ -78,6 +80,7 @@ def _plans_on_sale():
     return Plan.objects.filter(is_active=True, scope=Plan.Scope.ALL)
 
 
+@never_cache
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def plans(request):
@@ -95,13 +98,15 @@ def create_order(request):
     book_slug, plan_id = request.data.get("book"), request.data.get("plan")
     if book_slug and not plan_id:
         book = _book(book_slug)
-        if book is None or not book.price or book.is_free or book.is_coming_soon:
-            return _err("این کتاب رایگان است یا هنوز برای فروش آماده نیست.", "not_for_sale")
+        if book is None:
+            return _err("این کتاب برای خرید پیدا نشد.", "not_for_sale")
         # A timed gift doesn't stop buying the book for good. The live campaign, if any, is re-read here;
         # a client-sent amount is never accepted and the quote is frozen into the order.
         if Entitlement.active_for(user).filter(book=book, ends_at__isnull=True).exists():
             return _err("این کتاب را قبلاً خریده‌اید.", "already_owned")
         quote = book_price_quote(book)
+        if quote.product_status != ProductStatus.PAID or quote.price is None:
+            return _err("این کتاب برای فروش آماده نیست یا قیمت مشخصی ندارد.", "not_for_sale")
         order = Order.objects.create(
             user=user,
             book=book,

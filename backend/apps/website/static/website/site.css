@@ -119,12 +119,14 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .bk .tagbtn { margin: 0; width: 100%; display: flex; padding: 0 8px; }
 .tagbtn.paid { background: #FDF4D3; color: #7A5B00; border-color: #F1DE94; }
 .tagbtn.free { background: var(--green-soft); color: var(--green-dark); border-color: #BFE2CC; }
-.tagbtn.soon { background: #fff; color: var(--ink); border-color: var(--line); }
+.tagbtn.soon, .tagbtn.preparing, .tagbtn.unpriced { background: #fff; color: var(--ink); border-color: var(--line); }
 .bk-action { display: grid; grid-template-rows: minmax(38px, auto) minmax(16px, auto); align-content: start; gap: 2px; margin-top: auto; min-width: 0; }
 .bk-action .tip-wrap { width: 100%; min-width: 0; }
-.bk-action .tagbtn { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bk-sale { display: block; min-width: 0; text-align: center; color: #A8332E; font-size: 11px; font-weight: 900; line-height: 1.4; }
-.bk-sale-empty { visibility: hidden; }
+.bk-action .tagbtn { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; }
+.bk-price { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bk-discount-chip { flex: none; border-radius: 6px; padding: 0 5px; background: #A8332E; color: #fff; font-size: 10px; font-weight: 900; line-height: 1.7; }
+.bk-sample { display: block; min-width: 0; text-align: center; color: var(--green-dark); font-size: 11px; font-weight: 700; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-sample-empty { visibility: hidden; }
 .bk.hide { display: none; }
 
 /* The catalogue is a local horizontal scroller; book cards keep their fixed cover width without widening the page. */
@@ -248,11 +250,13 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 
 /* Book page */
 .book-deal { width: 100%; display: grid; gap: 6px; padding: 12px 14px; background: #fff; border: 1px solid #F1DE94; border-radius: 15px; color: var(--ink); }
-.book-deal > b { color: #A8332E; font-size: 13px; }
 .book-deal > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
 .book-deal s { color: var(--muted); }
 .book-deal .deal-final strong { color: #A8332E; font-size: 17px; }
+.deal-final-value { display: inline-flex; align-items: center; gap: 6px; }
+.deal-chip { border-radius: 6px; padding: 1px 6px; background: #A8332E; color: #fff; font-size: 10px; font-weight: 900; line-height: 1.5; }
 .book-deal small { color: var(--muted); font-size: 11px; }
+.book-sample-note { color: var(--green-dark); font-size: 12px; font-weight: 800; text-align: center; }
 .twocol { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: start; }
 .about-card { background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 24px 26px; margin-bottom: 32px; position: relative; }
 .card-head { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
