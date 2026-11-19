@@ -12,7 +12,7 @@ import { requireLogin, useAuth } from '../../lib/auth';
 import { coverByline } from '../../lib/cover';
 import { currentPrice, percentLabel } from '../../lib/pricing';
 import { useApi } from '../../lib/useApi';
-import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
+import { colors, formatToman, radius, rtl, toPersianDigits, toPersianOrdinal } from '../../theme';
 
 type Choice = { kind: 'book' } | { kind: 'plan'; plan: Plan };
 
@@ -112,10 +112,10 @@ export default function Buy() {
   const status = data.book.product_status;
   const bookSample = status.preview === 'sample' && !book.data?.owned
     ? book.data?.free_chapters === 1 && book.data.free_chapter
-      ? `فصل ${toPersianDigits(book.data.free_chapter)} رایگان`
+      ? `فصل ${toPersianOrdinal(book.data.free_chapter)} رایگان`
       : book.data && (book.data.free_chapters ?? 0) > 1
         ? `${toPersianDigits(book.data.free_chapters!)} فصل رایگان`
-        : 'نمونه رایگان'
+        : 'بخشی رایگان'
     : null;
   const sampleChapter = book.data?.chapters.find(
     (chapter) => !chapter.is_locked || chapter.sections.some((section) => !section.is_locked),
@@ -157,7 +157,7 @@ export default function Buy() {
         {!!statusNote && <Text style={[styles.statusNote, rtl]}>{statusNote}</Text>}
         {sampleTarget != null && (
           <Button
-            label={bookSample === 'نمونه رایگان' ? 'شروع نمونه رایگان' : `شروع ${bookSample}`}
+            label={bookSample === 'بخشی رایگان' ? 'شروع بخش رایگان' : `شروع ${bookSample}`}
             variant="outline"
             onPress={() => router.push(`/section/${sampleTarget}`)}
           />

@@ -31,7 +31,8 @@ function sampleLabel(book: BookListItem): string | undefined {
   const count = book.free_chapters ?? (book.free_chapter ? 1 : 0);
   if (count === 1 && book.free_chapter) return `فصل ${toPersianOrdinal(book.free_chapter)} رایگان`;
   if (count > 1) return `${toPersianDigits(count)} فصل رایگان`;
-  return 'نمونه رایگان';
+  // Only a part of a chapter is free: there is no chapter to name.
+  return 'بخشی رایگان';
 }
 
 /** Option «ب»: the old wide button for every state; free and owned green, the price soft lemon, «خبرم کن» white,

@@ -57,16 +57,16 @@ def fa_ordinal(number: int) -> str:
     return ORDINALS.get(int(number), fa(number))
 
 
-def free_preview_label(free_chapters: list[int]) -> str | None:
+def free_preview_label(free_chapters: list[int]) -> str:
     """The book's free-preview label: one free chapter («فصل اول رایگان») or several («۲ فصل رایگان»).
 
-    A book whose free part is only a section inside a chapter has no chapter to name, so it gets no label.
+    A book whose free part is only a section inside a chapter has no chapter to name: «بخشی رایگان».
     """
     if len(free_chapters) == 1:
         return f"فصل {fa_ordinal(free_chapters[0])} رایگان"
     if len(free_chapters) > 1:
         return f"{fa(len(free_chapters))} فصل رایگان"
-    return None
+    return "بخشی رایگان"
 
 
 def toman(price: int | None) -> str:

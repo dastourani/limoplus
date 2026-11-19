@@ -312,6 +312,24 @@ class WebsiteTests(TestCase):
         self.assertContains(c.get("/site/sitemap.xml"), "/site/books/math-1/")
         self.assertContains(c.get("/site/robots.txt"), "Sitemap:")
 
+    def test_a_book_with_only_a_free_section_is_labelled_bakshi_rayegan(self):
+        """وقتی فقط یک بخش از یک فصل رایگان است، نه فصل رایگان است و نه چند فصل: «بخشی رایگان»."""
+        from apps.catalog.models import Major
+
+        major = Major.objects.create(slug="free-part-major", name="رشته‌ی نمونه")
+        book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب با بخش رایگان", slug="free-part-book",
+                                    is_published=True, price=120_000)
+        book.majors.add(major)
+        chapter = book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل اول", slug="ch1", is_published=True)
+        chapter.add_child(kind=ContentNode.Kind.SECTION, title="بخش اول", slug="s1", is_published=True, is_free=True)
+
+        card = next(c for c in Client().get("/site/books/").context["books"] if c["book"].slug == book.slug)
+        self.assertEqual(card["product_status"], {"state": "paid", "preview": "sample", "promotion": "none"})
+        self.assertEqual(card["sample_label"], "بخشی رایگان")
+        html = Client().get("/site/books/").content.decode()
+        self.assertIn('<span class="bk-ribbon">', html)
+        self.assertIn("بخشی رایگان", html)
+
     @override_settings(WEBSITE_HOSTS=["limookhan.ir"], ALLOWED_HOSTS=["limookhan.ir", "testserver"], APP_URL="https://app.example")
     def test_own_host_serves_site_at_root(self):
         c = Client(HTTP_HOST="limookhan.ir")
