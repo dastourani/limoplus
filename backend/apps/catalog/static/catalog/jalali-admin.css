@@ -1,0 +1,132 @@
+/* Jalali date entry: keep Django's admin layout, but replace its Gregorian calendar with a compact Persian one. */
+.lp-jalali-wrap {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  gap: 5px;
+  direction: rtl;
+  vertical-align: middle;
+}
+.lp-jalali-wrap > input.lp-jalali-date {
+  box-sizing: border-box;
+  width: 150px;
+  max-width: min(150px, calc(100vw - 64px));
+  direction: ltr;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.lp-jalali-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--hairline-color);
+  border-radius: 7px;
+  background: var(--darkened-bg);
+  color: var(--body-fg);
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+}
+.lp-jalali-trigger:hover,
+.lp-jalali-trigger:focus-visible { border-color: var(--link-fg); color: var(--link-fg); }
+.lp-jalali-panel[hidden] { display: none !important; }
+.lp-jalali-panel {
+  position: absolute;
+  z-index: 10000;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(288px, calc(100vw - 24px));
+  padding: 8px;
+  border: 1px solid var(--hairline-color);
+  border-radius: 10px;
+  background: var(--body-bg);
+  color: var(--body-fg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
+  direction: rtl;
+  font-family: inherit;
+}
+.lp-jalali-header {
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
+  align-items: center;
+  gap: 5px;
+  margin: -1px -1px 8px;
+  padding: 5px 7px;
+  border-radius: 7px;
+  background: #f5c518;
+  color: #17201a;
+  text-align: center;
+}
+.lp-jalali-header strong { font-size: 13px; font-weight: 800; }
+.lp-jalali-nav {
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 25px;
+  font-weight: 800;
+  line-height: 1;
+}
+.lp-jalali-nav:hover,
+.lp-jalali-nav:focus-visible { background: rgba(23, 32, 26, .12); }
+.lp-jalali-weekdays,
+.lp-jalali-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  direction: rtl;
+  text-align: center;
+}
+.lp-jalali-weekdays { margin-bottom: 4px; color: var(--body-quiet-color); font-size: 11px; font-weight: 700; }
+.lp-jalali-weekdays > span { padding: 4px 0; }
+.lp-jalali-days { gap: 2px; }
+.lp-jalali-empty,
+.lp-jalali-day { min-height: 32px; }
+.lp-jalali-day {
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--body-fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.lp-jalali-day:hover,
+.lp-jalali-day:focus-visible { border-color: var(--link-fg); background: var(--darkened-bg); }
+.lp-jalali-day.is-today { border-color: var(--link-fg); font-weight: 800; }
+.lp-jalali-day.is-selected { background: #f5c518; color: #17201a; font-weight: 900; }
+.lp-jalali-day.is-friday { color: #c2413b; }
+.lp-jalali-day.is-selected.is-friday { color: #17201a; }
+.lp-jalali-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  margin: 7px -8px -8px;
+  padding: 7px 8px;
+  border-top: 1px solid var(--hairline-color);
+}
+.lp-jalali-footer button {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--link-fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+.lp-jalali-footer button:hover,
+.lp-jalali-footer button:focus-visible { background: var(--darkened-bg); }
+.lp-jalali-footer .lp-jalali-cancel { color: var(--body-quiet-color); }
+@media (max-width: 520px) {
+  .lp-jalali-panel { right: auto; left: 0; }
+}

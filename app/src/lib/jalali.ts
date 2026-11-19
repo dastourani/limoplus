@@ -23,7 +23,11 @@ export function toJalali(gy: number, gm: number, gd: number): [number, number, n
 }
 
 function parse(value: string | Date): Date {
-  return value instanceof Date ? value : new Date(value);
+  if (value instanceof Date) return value;
+  // ISO date-only API values are calendar days, not instants. Parse them locally so users west of UTC do not see
+  // the previous day (datetime strings still retain their normal time-zone conversion).
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(value);
 }
 
 /** «۸ آبان ۱۴۰۵» */

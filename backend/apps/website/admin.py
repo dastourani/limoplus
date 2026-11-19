@@ -130,10 +130,10 @@ class TeacherApplicationAdmin(admin.ModelAdmin):
     """A superuser-only review queue; decisions never create staff or grant book access."""
 
     list_display = ("name", "phone", "book_or_link", "status", "submitted_at", "reviewed_by", "reviewed_at", "invite_action")
-    list_filter = ("status",)
+    # The normal date_hierarchy is Gregorian; the relative date filter keeps the panel fully Persian-calendar-facing.
+    list_filter = ("status", "submitted_at")
     search_fields = ("name", "phone", "book_or_link", "explanation", "sample_work")
     ordering = ("-submitted_at", "-pk")
-    date_hierarchy = "submitted_at"
     list_per_page = 50
     actions = None
     fields = (

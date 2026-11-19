@@ -398,7 +398,17 @@ export type ExamPage = {
 /** An exam's results for one chapter («کارنامه به تفکیک فصل»). */
 export type ChapterResult = { chapter_id: number; title: string; total: number; right: number; wrong: number; blank: number; percent: number; weakest: boolean };
 export type ExamDetail = ExamSummary & { questions: ExamQuestion[]; review?: ExamReview[]; by_chapter?: ChapterResult[] };
+export type LibraryShelfStatus = 'reading' | 'later' | 'finished';
+export type LibraryBook = {
+  book_id: number;
+  status: LibraryShelfStatus;
+  hidden: boolean;
+  position: number;
+  book: BookListItem;
+};
 export type Library = {
+  /** Every currently accessible full book: free, bought, subscribed, or privately granted. */
+  books?: LibraryBook[];
   reading: {
     book_slug: string;
     book_title: string;
@@ -601,6 +611,10 @@ export const endpoints = {
   myExams: () => api<ExamSummary[]>('me/exams/'),
   examPage: (page: number, book = '') => api<ExamPage>(`me/exams/?page=${page}${book ? `&book=${encodeURIComponent(book)}` : ''}`),
   library: () => api<Library>('me/library/'),
+  updateLibraryBook: (bookId: number, body: { status?: LibraryShelfStatus; hidden?: boolean }) =>
+    api<{ book_id: number; status: LibraryShelfStatus; hidden: boolean; position: number }>(`me/library/books/${bookId}/`, { method: 'PATCH', body }),
+  reorderLibrary: (status: LibraryShelfStatus, book_ids: number[]) =>
+    api<{ status: LibraryShelfStatus; book_ids: number[] }>('me/library/reorder/', { method: 'PATCH', body: { status, book_ids } }),
   appPages: () => api<AppPages>('app/pages/'),
   sitePage: (slug: string) => api<SitePageDetail>(`app/pages/${slug}/`),
   helpPage: (id: number) => api<{ id: number; title: string; body: string; updated_at: string }>(`app/help/${id}/`),

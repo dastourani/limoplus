@@ -353,3 +353,26 @@ class WordKnown(models.Model):
         verbose_name = "واژه‌ی بلد"
         verbose_name_plural = "واژه‌های بلد"
         unique_together = [("user", "book", "term")]
+
+
+class LibraryBook(models.Model):
+    """A learner's shelf preferences; hiding a book never changes or deletes its entitlement."""
+
+    class Status(models.TextChoices):
+        READING = "reading", "در حال مطالعه"
+        LATER = "later", "بعداً"
+        FINISHED = "finished", "تمام‌شده"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="library_books", verbose_name="کاربر")
+    book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+", verbose_name="کتاب")
+    status = models.CharField("قفسه", max_length=10, choices=Status.choices, default=Status.LATER)
+    is_hidden = models.BooleanField("پنهان از قفسه‌ی فعال", default=False)
+    position = models.PositiveIntegerField("ترتیب شخصی", default=0)
+    created_at = models.DateTimeField("افزوده شد", auto_now_add=True)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "تنظیم قفسه‌ی شخصی"
+        verbose_name_plural = "تنظیم‌های قفسه‌ی شخصی"
+        unique_together = [("user", "book")]
+        indexes = [models.Index(fields=["user", "is_hidden", "status", "position"])]

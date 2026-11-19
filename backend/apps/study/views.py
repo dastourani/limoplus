@@ -12,12 +12,12 @@ from rest_framework.response import Response
 
 from apps.catalog.numbering import resolve as resolve_refs
 from apps.catalog.places import chapter_number
-from apps.catalog.access import AccessMap, access_until, book_of
+from apps.catalog.access import AccessMap, access_kind_from, access_until, active_rows, book_of
 from apps.catalog.models import ContentNode
 from apps.catalog.views import NOT_FOUND, media_urls
 from apps.learning.models import Flashcard, Question, QuestionSource, QuizAnswer, Report
 
-from .models import Bookmark, ExamAnswer, ExamAttempt, FlashcardReview, Note, SectionProgress, StudyDay
+from .models import Bookmark, ExamAnswer, ExamAttempt, FlashcardReview, LibraryBook, Note, SectionProgress, StudyDay
 
 LOCKED = {"code": "locked", "message": "این مورد در نسخه‌ی کامل کتاب است."}
 EXAM_MAX_QUESTIONS = 100
@@ -812,21 +812,124 @@ def _next_section(access, node):
     }
 
 
+def _available_library_books(user):
+    """The whole books a learner can currently keep on their own shelf, with the same access rules as reading.
+
+    A sample chapter of a paid book is not a personal copy: books enter this shelf when the whole book is free or an
+    active purchase, subscription, staff/editor role, or manager-granted access covers it. An unpublished book is
+    considered only for a currently active private grant.
+    """
+    if not user.is_authenticated:
+        return []
+
+    from django.db.models import Q
+
+    from apps.commerce.models import Entitlement
+
+    private_unpublished_ids = Entitlement.active_for(user).filter(
+        book__kind=ContentNode.Kind.BOOK,
+        book__depth=1,
+        book__is_published=False,
+        book__is_archived=False,
+        book__is_inbox=False,
+        order__isnull=True,
+        granted_by__isnull=False,
+    ).values("book_id")
+    candidates = (
+        ContentNode.objects.filter(
+            kind=ContentNode.Kind.BOOK,
+            depth=1,
+            is_archived=False,
+            is_inbox=False,
+        )
+        .filter(Q(is_published=True) | Q(pk__in=private_unpublished_ids))
+        .prefetch_related("majors")
+        .order_by("position", "title", "pk")
+    )
+    entitlements = active_rows(user)
+    available = []
+    for book in candidates:
+        major_ids = {major.pk for major in book.majors.all()}
+        access_kind = access_kind_from(entitlements, user, book.pk, major_ids)
+        if not (book.is_free or access_kind):
+            continue
+        access = AccessMap(user, book, light=True, kind=access_kind)
+        if access.visible(book.pk) and access.readable(book.pk):
+            available.append((book, access))
+    return available
+
+
+def _library_payload(request):
+    """Every currently accessible whole book, with its saved shelf state (or a useful inferred first state)."""
+    available = _available_library_books(request.user)
+    if not available:
+        return []
+
+    book_ids = [book.pk for book, _ in available]
+    states = {
+        row.book_id: row
+        for row in LibraryBook.objects.filter(user=request.user, book_id__in=book_ids)
+    }
+    progress_rows = SectionProgress.objects.filter(user=request.user, book_id__in=book_ids).values("book_id").annotate(
+        latest=Max("updated_at")
+    )
+    progress_latest = {row["book_id"]: row["latest"] for row in progress_rows}
+    from apps.catalog.views import _prefetch_user_rows, book_card
+
+    _prefetch_user_rows(request)
+    items = []
+    for book, access in available:
+        state = states.get(book.pk)
+        default_status = LibraryBook.Status.READING if book.pk in progress_latest else LibraryBook.Status.LATER
+        items.append(
+            {
+                "book_id": book.pk,
+                "status": state.status if state else default_status,
+                "hidden": state.is_hidden if state else False,
+                "position": state.position if state else 0,
+                "book": book_card(request, book, access),
+                "_book_position": book.position if book.position is not None else 2**31,
+                "_latest_progress": progress_latest.get(book.pk),
+            }
+        )
+    status_order = {
+        LibraryBook.Status.READING: 0,
+        LibraryBook.Status.LATER: 1,
+        LibraryBook.Status.FINISHED: 2,
+    }
+    items.sort(
+        key=lambda item: (
+            item["hidden"],
+            status_order.get(item["status"], 9),
+            item["position"],
+            item["_book_position"],
+            item["book"]["title"].casefold(),
+            item["book_id"],
+        )
+    )
+    for item in items:
+        item.pop("_book_position", None)
+        item.pop("_latest_progress", None)
+    return items
+
+
 @api_view(["GET"])
 def library(request):
     user = request.user
+    hidden_book_ids = set(LibraryBook.objects.filter(user=user, is_hidden=True).values_list("book_id", flat=True))
     recent = SectionProgress.objects.filter(user=user).select_related("node", "book").order_by("-updated_at")
     reading, seen_books, maps = [], set(), {}
     for p in recent[:200]:
-        if p.book_id in seen_books or p.book.is_archived or not p.book.is_published:
+        if p.book_id in hidden_book_ids or p.book_id in seen_books or p.book.is_archived or not p.book.is_published:
             continue
         from apps.catalog.views import book_card
 
         if p.book_id not in maps:
             maps[p.book_id] = AccessMap(user, p.book)
         access = maps[p.book_id]
-        # A section hidden since: fall back to the next most recent one of the same book.
-        if not access.visible(p.node_id):
+        # A section hidden or no longer readable: fall back to the next accessible section of that book.
+        # In particular, an expired group entitlement must not leave an old paid section looking like active reading.
+        if not access.visible(p.node_id) or not access.readable(p.node_id):
             continue
         seen_books.add(p.book_id)
         reading.append(
@@ -850,11 +953,154 @@ def library(request):
     return Response(
         {
             "reading": reading,
+            "books": _library_payload(request),
             "bookmarks": [{**_section_ref(b.node), "created_at": b.created_at} for b in bookmarks if not b.node.is_archived],
             "notes": [{**_note_payload(n), "node_title": n.node.title} for n in notes],
             "mistakes": _notebook_counts(request),
         }
     )
+
+
+def _library_book_for_user(user, book_id):
+    book = ContentNode.objects.filter(
+        pk=book_id,
+        kind=ContentNode.Kind.BOOK,
+        depth=1,
+        is_archived=False,
+        is_inbox=False,
+    ).first()
+    if not book:
+        return None
+    access = AccessMap(user, book, light=True)
+    return book if access.visible(book.pk) and access.readable(book.pk) else None
+
+
+def _next_library_position(user, shelf_status):
+    """Append after both explicitly ordered and as-yet-unsaved books already in this accessible shelf."""
+    available = _available_library_books(user)
+    book_ids = [book.pk for book, _ in available]
+    if not book_ids:
+        return 0
+    states = {
+        state.book_id: state
+        for state in LibraryBook.objects.filter(user=user, book_id__in=book_ids)
+    }
+    reading_ids = set(
+        SectionProgress.objects.filter(user=user, book_id__in=book_ids).values_list("book_id", flat=True).distinct()
+    )
+    current = []
+    for book, _ in available:
+        state = states.get(book.pk)
+        if state and state.is_hidden:
+            continue
+        item_status = state.status if state else (
+            LibraryBook.Status.READING if book.pk in reading_ids else LibraryBook.Status.LATER
+        )
+        if item_status == shelf_status:
+            current.append(state.position if state else 0)
+    return max(len(current), max(current, default=-1) + 1)
+
+
+@api_view(["PATCH"])
+def library_book(request, book_id):
+    """Update only this learner's shelf status/visibility. Entitlements and all reading data are never touched."""
+    if not isinstance(request.data, dict):
+        return _err("درخواست معتبر نیست.", "invalid_library_update")
+    unknown = set(request.data) - {"status", "hidden"}
+    if unknown or not request.data or not (set(request.data) & {"status", "hidden"}):
+        return _err("تنظیم قفسه معتبر نیست.", "invalid_library_update")
+    shelf_status = request.data.get("status")
+    if "status" in request.data and shelf_status not in LibraryBook.Status.values:
+        return _err("یکی از قفسه‌های معتبر را انتخاب کنید.", "invalid_library_status")
+    if "hidden" in request.data and type(request.data["hidden"]) is not bool:
+        return _err("وضعیت پنهان‌بودن معتبر نیست.", "invalid_library_visibility")
+
+    book = _library_book_for_user(request.user, book_id)
+    if not book:
+        return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    defaults_status = shelf_status or (
+        LibraryBook.Status.READING
+        if SectionProgress.objects.filter(user=request.user, book=book).exists()
+        else LibraryBook.Status.LATER
+    )
+    with transaction.atomic():
+        # Serialize creation and updates for this learner, including the case where no shelf row exists yet.
+        type(request.user).objects.select_for_update().only("pk").get(pk=request.user.pk)
+        state, _ = LibraryBook.objects.select_for_update().get_or_create(
+            user=request.user,
+            book=book,
+            defaults={"status": defaults_status, "position": _next_library_position(request.user, defaults_status)},
+        )
+        if shelf_status and state.status != shelf_status:
+            state.status = shelf_status
+            state.position = _next_library_position(request.user, shelf_status)
+        if "hidden" in request.data:
+            state.is_hidden = request.data["hidden"]
+        state.save()
+    return Response({"book_id": state.book_id, "status": state.status, "hidden": state.is_hidden, "position": state.position})
+
+
+@api_view(["PATCH"])
+def reorder_library(request):
+    """Persist a complete order for one active shelf; stale or foreign book ids are rejected without partial changes."""
+    if not isinstance(request.data, dict) or set(request.data) != {"status", "book_ids"}:
+        return _err("ترتیب قفسه معتبر نیست.", "invalid_library_order")
+    shelf_status = request.data.get("status")
+    book_ids = request.data.get("book_ids")
+    if shelf_status not in LibraryBook.Status.values:
+        return _err("یکی از قفسه‌های معتبر را انتخاب کنید.", "invalid_library_status")
+    if (
+        not isinstance(book_ids, list)
+        or len(book_ids) > 1000
+        or any(type(book_id) is not int or book_id < 1 for book_id in book_ids)
+        or len(set(book_ids)) != len(book_ids)
+    ):
+        return _err("فهرست کتاب‌ها معتبر نیست.", "invalid_library_order")
+
+    with transaction.atomic():
+        # Pair with the update endpoint's user-row lock so concurrent status changes cannot partially apply a reorder.
+        type(request.user).objects.select_for_update().only("pk").get(pk=request.user.pk)
+        available = _available_library_books(request.user)
+        available_ids = [book.pk for book, _ in available]
+        states = {
+            state.book_id: state
+            for state in LibraryBook.objects.select_for_update().filter(user=request.user, book_id__in=available_ids)
+        }
+        reading_ids = set(
+            SectionProgress.objects.filter(user=request.user, book_id__in=available_ids)
+            .values_list("book_id", flat=True)
+            .distinct()
+        )
+        expected = set()
+        for book_id in available_ids:
+            state = states.get(book_id)
+            if state and state.is_hidden:
+                continue
+            item_status = state.status if state else (
+                LibraryBook.Status.READING if book_id in reading_ids else LibraryBook.Status.LATER
+            )
+            if item_status == shelf_status:
+                expected.add(book_id)
+        if set(book_ids) != expected or len(book_ids) != len(expected):
+            return _err("فهرست قفسه تغییر کرده است؛ صفحه را تازه کنید.", "stale_library_order", status.HTTP_409_CONFLICT)
+
+        now = timezone.now()
+        to_update, to_create = [], []
+        for position, book_id in enumerate(book_ids):
+            state = states.get(book_id)
+            if state:
+                state.position = position
+                state.updated_at = now
+                to_update.append(state)
+            else:
+                to_create.append(
+                    LibraryBook(user=request.user, book_id=book_id, status=shelf_status, position=position)
+                )
+        if to_update:
+            LibraryBook.objects.bulk_update(to_update, ["position", "updated_at"])
+        if to_create:
+            LibraryBook.objects.bulk_create(to_create)
+    return Response({"status": shelf_status, "book_ids": book_ids})
 
 
 def _notebook_counts(request, book_slug=""):

@@ -633,6 +633,11 @@ class BookAccessActionAdminMixin:
             "opts": self.model._meta,
             "title": title,
             "original": member,
+            "current_end_fa": (
+                jalali_datetime(member.entitlement.ends_at)
+                if member.entitlement_id and member.entitlement.ends_at
+                else ""
+            ),
             "form": form,
             "action_name": action,
             "change_url": reverse("admin:website_bookaccessmember_change", args=[member.pk]),
