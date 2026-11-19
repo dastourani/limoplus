@@ -73,6 +73,44 @@
     });
   }
 
+  function bookShelves() {
+    document.querySelectorAll('[data-book-index]').forEach(function (index) {
+      var shelf = index.querySelector('.book-index-track');
+      var button = index.querySelector('[data-shelf-scroll]');
+      if (!shelf || !button) return;
+      index.classList.add('is-enhanced');
+
+      function syncArrow() {
+        var cards = Array.prototype.filter.call(shelf.querySelectorAll('.bk'), function (card) {
+          return !card.hidden && !card.classList.contains('hide');
+        });
+        var leftmost = cards[cards.length - 1];
+        button.hidden = !leftmost || leftmost.getBoundingClientRect().left >= shelf.getBoundingClientRect().left - 1;
+      }
+
+      var updateQueued = false;
+      function queueUpdate() {
+        if (updateQueued) return;
+        updateQueued = true;
+        var schedule = window.requestAnimationFrame || function (callback) { window.setTimeout(callback, 16); };
+        schedule(function () { updateQueued = false; syncArrow(); });
+      }
+
+      button.addEventListener('click', function () {
+        var distance = Math.max(170, Math.floor(shelf.clientWidth * 0.75));
+        if (typeof shelf.scrollBy === 'function') shelf.scrollBy({ left: -distance, behavior: 'smooth' });
+        else shelf.scrollLeft -= distance;
+      });
+      shelf.addEventListener('scroll', queueUpdate, { passive: true });
+      window.addEventListener('resize', queueUpdate);
+      if (window.ResizeObserver) {
+        shelf.__bookIndexObserver = new window.ResizeObserver(queueUpdate);
+        shelf.__bookIndexObserver.observe(shelf);
+      }
+      syncArrow();
+    });
+  }
+
   function samples() {
     document.querySelectorAll('.sample').forEach(function (box) {
       if (box.__bound) return;
@@ -192,6 +230,7 @@
     covers();
     formulas();
     filters();
+    bookShelves();
     samples();
     homeRandomSample();
     device();
