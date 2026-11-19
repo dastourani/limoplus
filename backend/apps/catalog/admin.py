@@ -567,19 +567,46 @@ class BannerBookFilter(admin.SimpleListFilter):
 
 @admin.register(Banner)
 class BannerAdmin(admin.ModelAdmin):
-    list_display = ("title", "campaign", "target", "is_active", "priority", "period", "shown", "ctr")
+    list_display = ("title", "campaign", "destination", "is_active", "priority", "period", "shown", "ctr")
     fields = ("template", "title", "subtitle", "button", "motif", "image", "target", "target_value", "link", "audience_book", "starts_at", "ends_at",
               "countdown", "priority", "is_active")
     change_form_template = "admin/catalog/banner/change_form.html"
 
+    def get_fields(self, request, obj=None):
+        fields = list(super().get_fields(request, obj))
+        if obj and obj.sale_campaign_id:
+            position = fields.index("target")
+            fields = [name for name in fields if name not in {"target", "target_value", "link"}]
+            fields.insert(position, "effective_destination")
+        return fields
+
     def get_queryset(self, request):
-        qs = super().get_queryset(request).select_related("sale_campaign")
+        qs = super().get_queryset(request).select_related("sale_campaign", "sale_campaign__book", "sale_campaign__plan")
         # Campaign banners are part of a superuser-only sale setup; other staff cannot activate, deactivate, or retarget them.
         return qs if request.user.is_superuser else qs.filter(sale_campaign__isnull=True)
 
     @admin.display(description="کمپین")
     def campaign(self, obj):
         return obj.sale_campaign.title if obj.sale_campaign_id else "—"
+
+    @admin.display(description="مقصد نهایی")
+    def effective_destination(self, obj):
+        from apps.commerce.pricing import campaign_banner_link
+
+        target = campaign_banner_link(obj.sale_campaign) if obj.sale_campaign_id else obj.resolved_link()
+        if not target:
+            return "هنوز مسیر خرید فعالی برای این کمپین در دسترس نیست."
+        label = "خرید از کمپین" if obj.sale_campaign_id else "مقصد بنر"
+        return format_html('<span><b>{}</b><br><code dir="ltr">{}</code></span>', label, target)
+
+    @admin.display(description="مقصد")
+    def destination(self, obj):
+        if obj.sale_campaign_id:
+            return self.effective_destination(obj)
+        target = obj.resolved_link()
+        if not target:
+            return "بدون لینک"
+        return format_html('<code dir="ltr">{}</code>', target)
 
     @admin.display(description="بازه")
     def period(self, obj):
@@ -595,7 +622,7 @@ class BannerAdmin(admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.sale_campaign_id:
             # The linked campaign is the single source for its template, destination and timer.
-            return ("template", "target", "target_value", "link", "starts_at", "ends_at", "countdown")
+            return ("template", "effective_destination", "starts_at", "ends_at", "countdown")
         return ()
 
     @admin.display(description="نمایش / کلیک", ordering="impressions")
@@ -974,6 +1001,8 @@ def _assets_version() -> str:
 
     newest = 0.0
     for name in (
+        "catalog/jalali-admin.css",
+        "catalog/jalali-admin.js",
         "catalog/panel.css",
         "catalog/panel.js",
         "catalog/preview-pane.js",

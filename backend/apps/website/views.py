@@ -250,7 +250,7 @@ def home(request):
     from apps.catalog.models import Banner, BookChange
     from apps.learning.models import Flashcard, Question
 
-    from apps.commerce.pricing import book_price_quotes, campaign_banner_link, campaign_banner_payload
+    from apps.commerce.pricing import book_price_quotes, campaign_banner_links, campaign_banner_payloads
 
     pub_books = list(_published())
     price_quotes = book_price_quotes(pub_books)
@@ -284,51 +284,76 @@ def home(request):
         (fa(total_cards), "فلش‌کارت مرور هوشمند"),
     ] if active_books else []
 
-    # Active notices follow the website toggle, but an explicitly active discount campaign keeps its matching banner.
+    # Keep editorial news and purchase campaigns in separate sections. Campaign quotes are batched so removing the
+    # old four-banner display cap does not turn the home page into one price query per offer.
     now = timezone.now()
     site_settings = SiteSettings.get()
-    banner_rows = Banner.visible_at(now)
+    banner_query = Banner.visible_at(now)
     if not site_settings.show_updates:
-        banner_rows = banner_rows.filter(sale_campaign__isnull=False)
-    banners = []
-    for bn in banner_rows[:4]:
-        sale = campaign_banner_payload(bn.sale_campaign, now) if bn.sale_campaign_id else None
-        if bn.sale_campaign_id and not sale:
-            continue
-        raw_link = campaign_banner_link(bn.sale_campaign) if bn.sale_campaign_id else bn.resolved_link()
-        href = raw_link if raw_link.startswith(("http://", "https://")) else (app_url(raw_link) if raw_link else app_url())
-        discount = None
-        if sale:
-            discount = {
-                "product_title": sale["product_title"],
-                "price": toman(sale["price"]),
-                "regular_price": toman(sale["regular_price"]),
-                "saving": toman(sale["amount"]),
-                "percent": fa_percent(sale["percent"]),
-                "end_date": fa_date(sale["ends_at"]),
-            }
-        banners.append({"title": bn.title, "subtitle": bn.subtitle, "button": bn.button or "مشاهده", "url": href, "discount": discount})
+        banner_query = banner_query.filter(sale_campaign__isnull=False)
+    banner_rows = list(banner_query)
+    sale_campaigns = [bn.sale_campaign for bn in banner_rows if bn.sale_campaign_id]
+    sale_payloads = campaign_banner_payloads(sale_campaigns, now)
+    sale_links = campaign_banner_links(sale_campaigns)
+    editorial_banners = []
+    offers = []
+    for bn in banner_rows:
+        if bn.sale_campaign_id:
+            sale = sale_payloads.get(bn.sale_campaign_id)
+            if not sale:
+                continue
+            raw_link = sale_links.get(bn.sale_campaign_id, "")
+            # A deal with no checkout destination is not actionable, so don't advertise it as a buyable offer.
+            if not raw_link:
+                continue
+            href = raw_link if raw_link.startswith(("http://", "https://")) else (app_url(raw_link) if raw_link else app_url())
+            offers.append({
+                "title": bn.title,
+                "subtitle": bn.subtitle,
+                "button": bn.button or "خرید با تخفیف",
+                "url": href,
+                "image": request.build_absolute_uri(bn.image.url) if bn.image else "",
+                "discount": {
+                    "product_title": sale["product_title"],
+                    "price": toman(sale["price"]),
+                    "regular_price": toman(sale["regular_price"]),
+                    "saving": toman(sale["amount"]),
+                    "percent": fa_percent(sale["percent"]),
+                    "end_date": fa_date(sale["ends_at"]),
+                },
+            })
+        elif site_settings.show_updates:
+            raw_link = bn.resolved_link()
+            href = raw_link if raw_link.startswith(("http://", "https://")) else (app_url(raw_link) if raw_link else app_url())
+            editorial_banners.append({
+                "title": bn.title,
+                "subtitle": bn.subtitle,
+                "button": bn.button or "مشاهده",
+                "url": href,
+            })
 
-    raw_changes = (
-        BookChange.objects.filter(is_hidden=False, book__in=pub_books)
-        .select_related("book", "node")
-        .order_by("-created_at")[:4]
-    )
-    updates = [
-        {
-            "book_title": ch.book.title,
-            "book_url": reverse("website:book", args=[ch.book.slug]),
-            "place": ch.node.title if ch.node and ch.node_id != ch.book_id else "",
-            "text": ch.text,
-            "date": fa_date(ch.created_at),
-        }
-        for ch in raw_changes
-    ]
+    updates = []
+    if site_settings.show_updates:
+        raw_changes = (
+            BookChange.objects.filter(is_hidden=False, book__in=pub_books)
+            .select_related("book", "node")
+            .order_by("-created_at")[:4]
+        )
+        updates = [
+            {
+                "book_title": ch.book.title,
+                "book_url": reverse("website:book", args=[ch.book.slug]),
+                "place": ch.node.title if ch.node and ch.node_id != ch.book_id else "",
+                "text": ch.text,
+                "date": fa_date(ch.created_at),
+            }
+            for ch in raw_changes
+        ]
 
     return render(request, "website/home.html", _base(
         request, books=books[:12], more=len(books) > 12, majors=majors, plans=_plans(),
         min_price=toman(min(paid)) if paid else None,
-        site_stats=site_stats, banners=banners, updates=updates,
+        site_stats=site_stats, editorial_banners=editorial_banners, offers=offers, updates=updates,
         home_sample=home_sample, home_samples=pool_samples,
         faq=FaqItem.objects.filter(is_hidden=False)[:4],
     ))

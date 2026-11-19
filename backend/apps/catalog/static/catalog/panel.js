@@ -2426,10 +2426,10 @@
     var books = {};
     try { books = JSON.parse(document.getElementById('lp-banner-books').textContent) || {}; } catch (e) { books = {}; }
     var box = document.createElement('div');
-    box.style.cssText = 'margin:12px 0;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start';
+    box.style.cssText = 'margin:12px 0;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;max-width:100%;overflow-x:auto';
     var help = document.createElement('p');
     help.className = 'help';
-    help.textContent = 'پیش‌نمایش بنر در اپ (پهن و گوشی). اگر «تصویر» بگذارید، عکس جای قالب را می‌گیرد.';
+    help.textContent = 'پیش‌نمایش اپ: اندازهٔ پهن ۴۲۰×۲۱۰ و اندازهٔ گوشی ۳۰۰×۱۵۰ پیکسل؛ نسبت هر دو ۲ به ۱ است. اگر «تصویر» بگذارید، عکس جای قالب را می‌گیرد.';
     var row = tpl.closest('.form-row') || tpl.parentNode;
     row.appendChild(box);
     row.appendChild(help);
@@ -2443,7 +2443,22 @@
     function draw() {
       var b = { template: tpl.value, title: val('id_title'), subtitle: val('id_subtitle'), button: val('id_button'), motif: val('id_motif'),
         left: left(), book: books[(val('id_target_value') || '').trim()] || null };
-      box.innerHTML = P.bannerHtml(b, 420) + P.bannerHtml(b, 300);
+      while (box.firstChild) box.removeChild(box.firstChild);
+      [
+        { width: 420, label: 'پهن · ۴۲۰ × ۲۱۰ پیکسل' },
+        { width: 300, label: 'گوشی · ۳۰۰ × ۱۵۰ پیکسل' },
+      ].forEach(function (size) {
+        var preview = document.createElement('div');
+        preview.style.cssText = 'display:flex;flex-direction:column;gap:5px;flex:none';
+        var label = document.createElement('b');
+        label.textContent = size.label;
+        label.style.cssText = 'font-size:12px;color:#56655B';
+        var frame = document.createElement('div');
+        frame.innerHTML = P.bannerHtml(b, size.width);
+        preview.appendChild(label);
+        preview.appendChild(frame);
+        box.appendChild(preview);
+      });
     }
     document.querySelectorAll('input, select, textarea').forEach(function (el) { el.addEventListener('input', draw); el.addEventListener('change', draw); });
     draw();

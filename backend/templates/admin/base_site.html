@@ -3,8 +3,8 @@
 {% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
 
 {% block extrahead %}{{ block.super }}{% load static %}
-<link rel="stylesheet" href="{% static 'catalog/jalali-admin.css' %}">
-<script src="{% static 'catalog/jalali-admin.js' %}" defer></script>
+<link rel="stylesheet" href="{% static 'catalog/jalali-admin.css' %}?v={{ assets_v }}">
+<script src="{% static 'catalog/jalali-admin.js' %}?v={{ assets_v }}" defer></script>
 <style>
   /* Vazirmatn (with the clearer hollow zero) everywhere in the panel, and one size scale for Persian. */
   @font-face { font-family: Vazirmatn; font-weight: 400; font-display: swap; src: url("{% static 'catalog/fonts/Vazirmatn_400Regular.ttf' %}") format("truetype"); }

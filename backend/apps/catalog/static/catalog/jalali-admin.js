@@ -12,6 +12,10 @@
     return String(value).replace(/[۰-۹٠-٩]/g, function (digit) { return DIGIT_MAP[digit] || digit; });
   }
 
+  function latinNumber(value) {
+    return latinDigits(value).replace(/\u066B/g, '.').replace(/\u066C/g, '');
+  }
+
   function faDigits(value) {
     return String(value).replace(/\d/g, function (digit) { return FA_DIGITS[Number(digit)]; });
   }
@@ -256,22 +260,46 @@
     buildPicker(wrapper, input, trigger);
   }
 
+  function attachNumber(input) {
+    if (input.dataset.lpNumberReady === '1' || input.disabled || input.type === 'hidden') return;
+    var kind = input.getAttribute('data-lp-number') || (input.step && input.step !== '1' ? 'decimal' : 'integer');
+    if (input.type === 'number') input.type = 'text';
+    input.setAttribute('data-lp-number-ready', '1');
+    input.setAttribute('inputmode', kind === 'integer' ? 'numeric' : 'decimal');
+    input.setAttribute('dir', 'ltr');
+
+    input.addEventListener('input', function () {
+      var value = input.value;
+      var normalized = latinNumber(value);
+      if (normalized === value) return;
+      var start = input.selectionStart;
+      var end = input.selectionEnd;
+      input.value = normalized;
+      if (start !== null && end !== null) input.setSelectionRange(start, end);
+    }, true);
+
+    var initial = latinNumber(input.value);
+    if (initial !== input.value) input.value = initial;
+  }
+
   function boot(root) {
-    (root || document).querySelectorAll('input.lp-jalali-date').forEach(attach);
+    root = root || document;
+    if (root.matches && root.matches('input.lp-jalali-date')) attach(root);
+    if (root.matches && root.matches('input[data-lp-number], input[type="number"]')) attachNumber(root);
+    root.querySelectorAll('input.lp-jalali-date').forEach(attach);
+    root.querySelectorAll('input[data-lp-number], input[type="number"]').forEach(attachNumber);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { boot(); });
   else boot();
 
-  // Django's inlines can add rows after initial load; new date inputs get the same picker.
+  // Django inlines and the chapter editor create controls after initial load; date and number inputs get the same
+  // calendar/numeral handling before a user can interact with them.
   if (window.MutationObserver) {
     new MutationObserver(function (records) {
       records.forEach(function (record) {
         record.addedNodes.forEach(function (node) {
-          if (node.nodeType === 1) {
-            if (node.matches && node.matches('input.lp-jalali-date')) attach(node);
-            boot(node);
-          }
+          if (node.nodeType === 1) boot(node);
         });
       });
     }).observe(document.documentElement, { childList: true, subtree: true });

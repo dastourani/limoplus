@@ -18,6 +18,7 @@ export function BannerCarousel({
   gutter = 20,
   paused,
   frameWidth,
+  dotLabel = 'بنر',
 }: {
   banners: Banner[];
   onOpen: (b: Banner) => void;
@@ -26,6 +27,8 @@ export function BannerCarousel({
   paused?: { current: boolean };
   /** A fixed frame width (the side column on a computer) instead of the screen's. */
   frameWidth?: number;
+  /** What each carousel dot announces to a screen reader (e.g. «خبر» or «پیشنهاد»). */
+  dotLabel?: string;
 }) {
   const { width } = useWindowDimensions();
   // Countdowns run on the server's clock (the phone's may be wrong) and tick once a second.
@@ -109,7 +112,7 @@ export function BannerCarousel({
               }}
               hitSlop={6}
               accessibilityRole="button"
-              accessibilityLabel={`تازه‌ی ${i + 1}`}
+              accessibilityLabel={`${dotLabel} ${i + 1}`}
             >
               <View style={[styles.dot, i === page && styles.dotOn]} />
             </Pressable>

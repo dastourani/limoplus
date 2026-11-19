@@ -110,6 +110,83 @@ class WebsiteTests(TestCase):
         self.assertContains(custom_r, "راهنمای کنکور ۱۴۰۵")
         self.assertContains(custom_r, "لینک سفارشی منو")
 
+    def test_home_separates_updates_from_vertical_offers_and_does_not_drop_valid_banners_after_four(self):
+        from apps.catalog.models import Banner, BookChange
+        from apps.commerce.models import SaleCampaign
+        from .models import SiteSettings
+
+        now = timezone.now()
+        book = ContentNode.objects.get(slug="math-1")
+        long_title = "پیشنهاد ویژه‌ی کتاب ریاضی برای مطالعه‌ی دقیق‌تر و کامل‌تر " * 2
+        long_subtitle = "این توضیح بلند باید بدون بریده‌شدن در کارت پیشنهاد دیده شود؛ " * 2
+
+        # These overlapping legacy rows are intentionally invalid as banner payloads; the newest campaign is the
+        # checkout winner and appears after them in display priority. Filtering happens before any presentation cap.
+        for i in range(5):
+            campaign = SaleCampaign.objects.create(
+                title=f"کمپین قدیمی {i}", book=book, discounted_price=210_000 + i * 1_000,
+                starts_at=now - timedelta(hours=10 - i), ends_at=now + timedelta(hours=2),
+            )
+            Banner.objects.create(
+                title=f"بنر کمپین قدیمی {i}", template="sale", sale_campaign=campaign, priority=100 - i,
+            )
+        winner = SaleCampaign.objects.create(
+            title="کمپین برنده", book=book, discounted_price=199_000,
+            starts_at=now - timedelta(minutes=1), ends_at=now + timedelta(hours=3),
+        )
+        Banner.objects.create(
+            title=long_title, subtitle=long_subtitle, template="sale", sale_campaign=winner, priority=0,
+            button="همین حالا بخوان",
+        )
+        for i in range(6):
+            Banner.objects.create(
+                title="خبر کوتاه" if i == 0 else f"خبر شماره‌ی {i} از تازه‌های بلند لیموخوان",
+                subtitle="اطلاعیه‌ی تازه" if i == 0 else "جزئیات کامل اطلاعیه؛ این متن در بخش تازه‌ها نمایش داده می‌شود.",
+                is_active=True, priority=50 - i,
+            )
+        BookChange.objects.create(book=book, text="به‌روزرسانی مهم فصل اول")
+
+        home = Client().get("/site/")
+        self.assertEqual(home.status_code, 200)
+        html = home.content.decode()
+        for i in range(6):
+            self.assertIn("خبر کوتاه" if i == 0 else f"خبر شماره‌ی {i} از تازه‌های بلند لیموخوان", html)
+        self.assertIn("به‌روزرسانی مهم فصل اول", html)
+        self.assertIn(long_title, html)
+        self.assertIn(long_subtitle, html)
+        self.assertIn("۱۹۹ هزار تومان", html)
+        self.assertIn("id=\"latest-updates\"", html)
+        self.assertIn("id=\"special-offers\"", html)
+        self.assertIn("offer-card", html)
+        self.assertNotIn("بنر کمپین قدیمی", html)
+
+        features = html.index('class="grid4"')
+        offers = html.index('id="special-offers"')
+        books = html.index('class="shelf"')
+        feature_band = html.index('class="band"')
+        sample = html.index("یک تست واقعی را همین الان امتحان کن")
+        latest = html.index('id="latest-updates"')
+        prices = html.index('class="prices"')
+        self.assertLess(features, offers)
+        self.assertLess(offers, books)
+        self.assertLess(books, feature_band)
+        self.assertLess(feature_band, sample)
+        self.assertLess(sample, latest)
+        self.assertLess(latest, prices)
+        self.assertNotIn("پیشنهادهای ویژه", html[latest:prices])
+
+        settings = SiteSettings.get()
+        settings.show_updates = False
+        settings.show_sample_test = False
+        settings.save(update_fields=["show_updates", "show_sample_test"])
+        quiet_home = Client().get("/site/")
+        self.assertNotContains(quiet_home, "خبر کوتاه")
+        self.assertNotContains(quiet_home, "به‌روزرسانی مهم فصل اول")
+        self.assertNotContains(quiet_home, "یک تست واقعی را همین الان امتحان کن")
+        self.assertContains(quiet_home, long_title)
+        quiet_html = quiet_home.content.decode()
+        self.assertLess(quiet_html.index('id="special-offers"'), quiet_html.index('class="prices"'))
+
     def test_discount_prices_and_the_same_campaign_banner_render_on_the_website(self):
         from apps.catalog.models import Banner
         from apps.commerce.models import Plan, SaleCampaign

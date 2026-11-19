@@ -275,6 +275,35 @@ class PaymentTests(TestCase):
         self.assertEqual(order.discount_amount, plan.price - 499_000)
         self.assertEqual(gateway.call_args.kwargs["amount_rial"], 4_990_000)
 
+    def test_batch_campaign_links_resolves_shared_plan_destination_once(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from .pricing import campaign_banner_links
+
+        now = timezone.now()
+        plans = [
+            Plan.objects.get(scope=Plan.Scope.ALL, months=3),
+            Plan.objects.create(title="اشتراک شش‌ماهه", scope=Plan.Scope.ALL, months=6, price=900_000),
+        ]
+        campaigns = [
+            SaleCampaign.objects.create(
+                title=f"کمپین اشتراک {plan.months}ماهه",
+                plan=plan,
+                discounted_price=plan.price - 100_000,
+                starts_at=now - timedelta(minutes=1),
+                ends_at=now + timedelta(hours=1),
+            )
+            for plan in plans
+        ]
+
+        with CaptureQueriesContext(connection) as queries:
+            links = campaign_banner_links(campaigns)
+
+        self.assertEqual(len(queries), 1)
+        self.assertEqual(links[campaigns[0].pk], links[campaigns[1].pk])
+        self.assertTrue(links[campaigns[0].pk].startswith("buy/"))
+
     def test_campaign_banner_uses_the_same_schedule_and_price_as_checkout(self):
         now = timezone.now()
         campaign = SaleCampaign.objects.create(

@@ -1,7 +1,10 @@
 import datetime
+from decimal import Decimal
 
+from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
+from django.db import models
 from django.test import RequestFactory, SimpleTestCase
 from django.utils import timezone
 
@@ -10,6 +13,7 @@ from apps.catalog.jalali_admin import (
     JalaliAdminDateInput,
     JalaliDateField,
     JalaliSplitDateTimeField,
+    _jalali_formfield,
 )
 from apps.commerce.models import SaleCampaign
 from apps.website.models import BookAccessRequest
@@ -52,3 +56,22 @@ class JalaliAdminDateTests(SimpleTestCase):
         rendered = datetime_field.widget.render("starts_at", datetime.datetime(2026, 11, 19, 17, 4))
         self.assertIn("۱۴۰۵/۸/۲۸", rendered)
         self.assertIn('class="lp-jalali-date"', rendered)
+
+    def test_numeric_admin_fields_accept_persian_and_arabic_digits(self):
+        request = RequestFactory().get("/admin/")
+        request.user = None
+        campaign_admin = admin.site._registry[SaleCampaign]
+        price_field = campaign_admin.formfield_for_dbfield(SaleCampaign._meta.get_field("discounted_price"), request)
+        self.assertEqual(price_field.clean("۲۳۹٬۰۰۰"), 239000)
+        self.assertEqual(price_field.clean("٢٣٩٬٠٠٠"), 239000)
+        rendered = price_field.widget.render("discounted_price", None)
+        self.assertIn('type="text"', rendered)
+        self.assertIn('inputmode="numeric"', rendered)
+        self.assertIn('data-lp-number="integer"', rendered)
+
+        decimal_field = _jalali_formfield(
+            forms.DecimalField(max_digits=6, decimal_places=2),
+            models.DecimalField(max_digits=6, decimal_places=2),
+        )
+        self.assertEqual(decimal_field.clean("۱۲۳٫۴۵"), Decimal("123.45"))
+        self.assertEqual(decimal_field.clean("١٢٣٫٤٥"), Decimal("123.45"))
