@@ -486,6 +486,36 @@ class BookEditor(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="edited_books", verbose_name="کاربر"
     )
+    can_edit_content = models.BooleanField(
+        "ویرایش پیش‌نویس",
+        default=True,
+        help_text="فقط محتوای پیش‌نویس همین کتاب؛ انتشار نهایی همچنان با مدیر کل است.",
+    )
+    can_request_publication = models.BooleanField(
+        "درخواست بازبینی انتشار عمومی",
+        default=False,
+        help_text="فقط ارسال نسخه برای بررسی؛ این مجوز انتشار یا فروش عمومی نمی‌دهد.",
+    )
+    can_request_group_access = models.BooleanField(
+        "درخواست دسترسی گروهی",
+        default=False,
+        help_text="فقط پیشنهاد شماره‌ها برای بررسی مدیر؛ ساخت حساب یا اعطای دسترسی با این مجوز انجام نمی‌شود.",
+    )
+    can_view_reports = models.BooleanField(
+        "دیدن گزارش ایرادهای همین کتاب",
+        default=True,
+        help_text="فقط گزارش محتوای این کتاب؛ شماره و حساب گزارش‌دهنده برای استاد پنهان می‌ماند.",
+    )
+    can_view_aggregate_study = models.BooleanField(
+        "دیدن آمار تجمیعی مطالعه",
+        default=False,
+        help_text="آمار تجمیعی و بدون شناسه‌ی دانشجو؛ هرگز داده‌ی فردی را نمایش نمی‌دهد.",
+    )
+    can_view_aggregate_sales = models.BooleanField(
+        "دیدن آمار تجمیعی فروش",
+        default=False,
+        help_text="فقط آمار تجمیعی همین کتاب؛ بدون نام، شماره یا سابقه‌ی خرید فردی.",
+    )
     can_publish = models.BooleanField(
         "تصمیم انتشار مدیر", default=False,
         help_text="تصمیم دستی و جداگانه‌ی مدیر برای بازبینی؛ این فیلد به استاد اختیار انتشار نمی‌دهد. Publish نهایی فقط دست مدیر کل است.",

@@ -127,7 +127,7 @@ class BookAdmin(admin.ModelAdmin):
               .annotate(n_chapters=Coalesce(Subquery(chapters, output_field=IntegerField()), 0),
                         n_waiting=Coalesce(Subquery(waiting, output_field=IntegerField()), 0)))
         if not request.user.is_superuser:
-            qs = qs.filter(pk__in=access.book_editor_ids(request.user))
+            qs = qs.filter(pk__in=access.book_editor_ids(request.user, capability=None))
         return qs
 
     def get_list_display(self, request):
@@ -258,6 +258,15 @@ class BookAdmin(admin.ModelAdmin):
 
             extra["health"] = book_health(book)
             extra["can_manage_access"] = request.user.is_superuser
+            if not request.user.is_superuser and access.is_book_teacher(request.user):
+                from .models import BookEditor
+
+                editor = BookEditor.objects.filter(book=book, user=request.user).first()
+                extra["can_request_publication"] = bool(editor and editor.can_request_publication)
+                extra["can_request_group_access"] = bool(editor and editor.can_request_group_access)
+            else:
+                extra["can_request_publication"] = False
+                extra["can_request_group_access"] = False
             if request.user.is_superuser:
                 extra.update(gift_context(book))
             # The publish box reads this and not `original.is_published` alone: only the manager gets the control.
@@ -424,8 +433,14 @@ class SectionAdmin(admin.ModelAdmin):
 class BookEditorAdmin(admin.ModelAdmin):
     """«استادان کتاب»: only the manager assigns a reviewed, approved editor to a book."""
 
-    list_display = ("book", "user", "can_publish", "note", "created_at")
-    list_filter = ("can_publish", BookFilter)
+    list_display = (
+        "book", "user", "can_edit_content", "can_request_publication", "can_request_group_access",
+        "can_view_reports", "can_view_aggregate_study", "can_view_aggregate_sales", "can_publish", "note", "created_at",
+    )
+    list_filter = (
+        "can_edit_content", "can_request_publication", "can_request_group_access", "can_view_reports",
+        "can_view_aggregate_study", "can_view_aggregate_sales", BookFilter,
+    )
     search_fields = ("book__title", "user__phone", "user__first_name", "user__last_name", "note")
     list_select_related = ("book", "user")
 
@@ -809,7 +824,7 @@ _admin_index = admin.site.index
 def _index_with_daily_cleanup(request, extra_context=None):
     from .maintenance import run_if_due
 
-    if request.user.is_active and request.user.is_staff:
+    if request.user.is_active and request.user.is_superuser:
         run_if_due()
     return _admin_index(request, extra_context)
 

@@ -14,6 +14,12 @@ except NotRegistered:
 
 @admin.register(Group)
 class ManagerOnlyGroupAdmin(BaseGroupAdmin):
+    """Groups are manager-only; the reserved teacher role is also immutable and least-privilege."""
+
+    @staticmethod
+    def _reserved_teacher_group(obj):
+        return bool(obj and obj.name == "استاد کتاب")
+
     def has_view_permission(self, request, obj=None):
         return bool(request.user.is_superuser)
 
@@ -21,7 +27,7 @@ class ManagerOnlyGroupAdmin(BaseGroupAdmin):
         return bool(request.user.is_superuser)
 
     def has_change_permission(self, request, obj=None):
-        return bool(request.user.is_superuser)
+        return bool(request.user.is_superuser and not self._reserved_teacher_group(obj))
 
     def has_delete_permission(self, request, obj=None):
-        return bool(request.user.is_superuser)
+        return bool(request.user.is_superuser and not self._reserved_teacher_group(obj))

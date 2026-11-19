@@ -441,7 +441,7 @@ class ReportBookFilter(admin.SimpleListFilter):
     def lookups(self, request, model_admin):
         from apps.catalog.filters import _book_choices
 
-        return _book_choices(user=request.user)
+        return _book_choices(user=request.user, capability="can_view_reports")
 
     def queryset(self, request, queryset):
         from apps.catalog.models import ContentNode
@@ -548,7 +548,7 @@ class ReportAdmin(admin.ModelAdmin):
               .annotate(item_path=item_path, p_archived=archived,
                         p_reporter_visible=Value(bool(request.user.is_superuser), output_field=BooleanField()))
               .annotate(p_chapter_id=Subquery(chapter.values("pk")[:1])))
-        return access.scope_to_editor_books(qs, request.user, "item_path")
+        return access.scope_to_editor_books(qs, request.user, "item_path", capability="can_view_reports")
 
     @admin.display(description="گزارش")
     def about(self, obj):

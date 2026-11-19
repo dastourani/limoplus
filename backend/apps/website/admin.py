@@ -1,11 +1,13 @@
 from django.contrib import admin
 
 from django import forms
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import format_html
 
 from apps.catalog.jalali import jalali_date as fa_date
 
-from .models import FaqItem, HelpPage, SiteNavItem, SitePage, SiteSettings, TeacherApplication
+from .models import FaqItem, HelpPage, SiteNavItem, SitePage, SiteSettings, TeacherApplication, TeacherInvitation
 
 
 @admin.register(SiteSettings)
@@ -127,7 +129,7 @@ class SiteNavItemAdmin(admin.ModelAdmin):
 class TeacherApplicationAdmin(admin.ModelAdmin):
     """A superuser-only review queue; decisions never create staff or grant book access."""
 
-    list_display = ("name", "phone", "book_or_link", "status", "submitted_at", "reviewed_by", "reviewed_at")
+    list_display = ("name", "phone", "book_or_link", "status", "submitted_at", "reviewed_by", "reviewed_at", "invite_action")
     list_filter = ("status",)
     search_fields = ("name", "phone", "book_or_link", "explanation", "sample_work")
     ordering = ("-submitted_at", "-pk")
@@ -139,6 +141,13 @@ class TeacherApplicationAdmin(admin.ModelAdmin):
         "status", "review_note", "submitted_at", "reviewed_by", "reviewed_at",
     )
     readonly_fields = ("name", "phone", "book_or_link", "explanation", "sample_work", "submitted_at", "reviewed_by", "reviewed_at")
+
+    @admin.display(description="دعوت استاد")
+    def invite_action(self, obj):
+        if obj.status != TeacherApplication.Status.APPROVED:
+            return "—"
+        url = reverse("admin:website_teacherinvitation_add") + f"?application={obj.pk}"
+        return format_html('<a class="button" href="{}">دعوت با قابلیت محدود</a>', url)
 
     @staticmethod
     def _is_manager(request):
@@ -165,7 +174,21 @@ class TeacherApplicationAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         if change:
             previous = TeacherApplication.objects.only("status", "review_note").get(pk=obj.pk)
+            now = timezone.now()
             if previous.status != obj.status or previous.review_note != obj.review_note:
                 obj.reviewed_by = request.user
-                obj.reviewed_at = timezone.now()
+                obj.reviewed_at = now
+            if previous.status == TeacherApplication.Status.APPROVED and obj.status != TeacherApplication.Status.APPROVED:
+                TeacherInvitation.objects.filter(
+                    application=obj, status=TeacherInvitation.Status.ISSUED
+                ).update(
+                    status=TeacherInvitation.Status.REVOKED,
+                    revoked_by=request.user,
+                    revoked_at=now,
+                    revocation_reason="درخواست استاد از وضعیت تأیید خارج شد.",
+                )
         super().save_model(request, obj, form, change)
+
+
+# The separate workflow admins are imported after the existing site settings and application queue are registered.
+from . import workflow_admin  # noqa: F401,E402
