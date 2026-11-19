@@ -21,7 +21,7 @@
         <b>{{ c.discount.percent }}٪ تخفیف زمان‌دار</b>
         {% if c.regular_price %}<span>قیمت عادی: <s>{{ c.regular_price }}</s></span>{% endif %}
         <span>قیمت ویژه: {{ c.label.text }}</span>
-        <span>صرفه‌جویی {{ c.discount.saving }}{% if c.discount.end_date %} · تا {{ c.discount.end_date }}{% endif %}</span>
+        {% if c.discount.end_date %}<span>مهلت: تا {{ c.discount.end_date }}</span>{% endif %}
       </span>
     </span>
     {% else %}

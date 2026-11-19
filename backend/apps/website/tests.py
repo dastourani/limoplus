@@ -80,6 +80,7 @@ class WebsiteTests(TestCase):
         self.assertContains(index, "۱۹۹ هزار تومان")
         self.assertContains(index, 'class="tip-bubble"')
         self.assertContains(index, "٪ تخفیف زمان‌دار")
+        self.assertNotContains(index, "صرفه‌جویی")
 
     def test_home_lists_published_books_only(self):
         book = ContentNode.objects.get(slug="math-1")
