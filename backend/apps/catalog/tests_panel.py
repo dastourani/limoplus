@@ -809,7 +809,7 @@ class MaintenanceTests(_Base):
         # Versions: many old ones in the same week, one recent.
         for i in range(4):
             r = ChapterRevision.objects.create(chapter=self.chapter, text=f"v{i}", source="panel")
-            ChapterRevision.objects.filter(pk=r.pk).update(updated_at=now - timedelta(days=60, hours=i))
+            ChapterRevision.objects.filter(pk=r.pk).update(updated_at=now - timedelta(days=60, minutes=i * 10))
         ChapterRevision.objects.create(chapter=self.chapter, text="now", source="panel")
         # Pictures: one used, one unused and old, one unused but new.
         folder = os.path.join(settings.MEDIA_ROOT, "content", "test-book", "ch1")

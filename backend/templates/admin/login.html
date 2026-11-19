@@ -37,7 +37,7 @@
   {% if error %}<div class="lp-login-error" role="alert">{{ error }}</div>{% endif %}
 
   <section class="lp-login-card" aria-labelledby="otp-login-heading">
-    <h2 id="otp-login-heading">ورود با شماره موبایل</h2>
+    <h2 id="otp-login-heading">ورود با پیامک</h2>
     <form method="post" action="{{ login_url }}">
       {% csrf_token %}
       <input type="hidden" name="action" value="send_otp">
