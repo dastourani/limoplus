@@ -10,6 +10,7 @@ import json
 import random
 
 from django.conf import settings
+from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
@@ -27,6 +28,7 @@ from apps.catalog.models import ContentNode, Major
 from .models import FaqItem, SiteNavItem, SitePage, SiteSettings
 
 FA = "۰۱۲۳۴۵۶۷۸۹"
+BOOKS_PER_PAGE = 12
 PAGE_ORDER = {"terms": 0, "privacy": 1, "protection": 2, "about": 3, "contact": 4}
 NAMED_URLS = {"home": "website:home", "books": "website:books", "pricing": "website:pricing", "download": "website:download", "faq": "website:faq"}
 
@@ -362,11 +364,30 @@ def home(request):
 def books(request):
     from apps.commerce.pricing import book_price_quotes
 
-    books = list(_published())
-    quotes = book_price_quotes(books)
-    cards = [_card(request, book, quotes[book.pk]) for book in books]
-    majors = Major.objects.filter(books__in=[c["book"] for c in cards]).distinct().order_by("order", "name")
-    return render(request, "website/books.html", _base(request, books=cards, majors=majors))
+    published = _published()
+    majors = Major.objects.filter(books__in=published).distinct().order_by("order", "name")
+    selected_major = request.GET.get("major", "")
+    if selected_major not in set(majors.values_list("slug", flat=True)):
+        selected_major = ""
+
+    book_list = published
+    if selected_major:
+        book_list = book_list.filter(majors__slug=selected_major).distinct()
+    paginator = Paginator(book_list, BOOKS_PER_PAGE)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    books_on_page = list(page_obj.object_list)
+    quotes = book_price_quotes(books_on_page)
+    cards = [_card(request, book, quotes[book.pk]) for book in books_on_page]
+    page_summary = ""
+    if page_obj.paginator.count:
+        page_summary = (
+            f"نمایش {fa(page_obj.start_index())} تا {fa(page_obj.end_index())} "
+            f"از {fa(page_obj.paginator.count)} کتاب"
+        )
+    return render(request, "website/books.html", _base(
+        request, books=cards, majors=majors, page_obj=page_obj, selected_major=selected_major,
+        page_summary=page_summary,
+    ))
 
 
 def book(request, slug):

@@ -3,13 +3,13 @@
   display: grid;
   grid-template-columns: max-content max-content;
   align-items: center;
-  gap: 6px 9px;
+  gap: 3px 5px;
   width: max-content;
   max-width: 100%;
   direction: rtl;
 }
 .lp-split-label { color: var(--body-quiet-color); font-size: 11px; font-weight: 700; white-space: nowrap; }
-.lp-split-control { display: flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
+.lp-split-control { display: flex; align-items: center; gap: 3px; min-width: 0; white-space: nowrap; }
 .lp-split-control > input { margin: 0 !important; }
 .lp-split-control .datetimeshortcuts { font-size: 11px; font-weight: 400; white-space: nowrap; }
 
@@ -18,7 +18,7 @@
   display: inline-flex;
   position: relative;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
   direction: rtl;
   vertical-align: middle;
 }
@@ -38,16 +38,24 @@
   width: 32px;
   height: 32px;
   padding: 0;
-  border: 1px solid var(--hairline-color);
+  border: 1px solid #9AA4AF;
   border-radius: 7px;
-  background: var(--darkened-bg);
-  color: var(--body-fg);
+  background: #fff;
+  color: #17201A;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .14);
   cursor: pointer;
   font-size: 17px;
   line-height: 1;
 }
-.lp-jalali-trigger:hover,
-.lp-jalali-trigger:focus-visible { border-color: var(--link-fg); color: var(--link-fg); }
+.lp-jalali-trigger:hover {
+  border-color: #1D4ED8;
+  background: #EAF2FF;
+  color: #1D4ED8;
+}
+.lp-jalali-trigger:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, .32);
+  outline-offset: 1px;
+}
 .lp-jalali-panel[hidden] { display: none !important; }
 .lp-jalali-panel {
   position: absolute;

@@ -42,6 +42,36 @@ class WebsiteTests(TestCase):
         self.assertNotContains(Client().get("/site/books/"), f'href="/site/books/{book.slug}/"')
         self.assertEqual(Client().get(f"/site/books/{book.slug}/").status_code, 404)
 
+    def test_books_index_paginates_filtered_books_and_keeps_actions_in_a_shared_row(self):
+        from apps.catalog.models import Major
+
+        major = Major.objects.create(slug="batch-major", name="رشته‌ی آزمایشی")
+        for i in range(13):
+            book = ContentNode.add_root(
+                kind=ContentNode.Kind.BOOK,
+                title=f"کتاب آزمایشی {i:02d}",
+                slug=f"batch-book-{i:02d}",
+                is_published=True,
+            )
+            book.majors.add(major)
+
+        client = Client()
+        first = client.get("/site/books/", {"major": major.slug})
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.context["page_obj"].paginator.count, 13)
+        self.assertEqual(len(first.context["books"]), 12)
+        self.assertEqual(first.context["selected_major"], major.slug)
+        self.assertContains(first, 'class="shelf book-index-track"')
+        self.assertContains(first, 'data-shelf-scroll')
+        self.assertContains(first, 'class="bk-action"')
+        self.assertContains(first, 'href="?major=batch-major&amp;page=2"')
+        self.assertContains(first, "نمایش کتاب‌های بیشتر")
+
+        second = client.get("/site/books/", {"major": major.slug, "page": 2})
+        self.assertEqual(second.context["page_obj"].number, 2)
+        self.assertEqual(len(second.context["books"]), 1)
+        self.assertEqual(second.context["books"][0]["book"].slug, "batch-book-12")
+
     def test_book_page_samples_never_show_answers(self):
         q = Question.objects.filter(node__path__startswith=ContentNode.objects.get(slug="math-1").path, is_archived=False).first()
         q.is_sample = True
@@ -235,6 +265,13 @@ class WebsiteTests(TestCase):
         self.assertContains(book_page, "قیمت عادی")
         self.assertContains(book_page, "قیمت ویژه")
         self.assertContains(book_page, "صرفه‌جویی ۵۰ هزار تومان")
+
+        books_page = Client().get("/site/books/")
+        self.assertRegex(
+            books_page.content.decode(),
+            r'(?s)<a class="bk" href="/site/books/math-1/"[^>]*>.*?<div class="bk-action">\s*'
+            r'<span class="tagbtn paid".*?<span class="bk-sale">.*?٪ تخفیف زمان‌دار</span>\s*</div>',
+        )
 
         pricing = Client().get("/site/pricing/")
         self.assertContains(pricing, "۶۶۹ هزار تومان")
