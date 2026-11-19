@@ -149,15 +149,21 @@ export default function Book() {
   const tests = book.chapters.reduce((n, c) => n + (c.question_count ?? 0), 0);
   const cards = book.chapters.reduce((n, c) => n + (c.flashcard_count ?? 0), 0);
   const readCount = sections.filter((x) => done.has(x.id)).length;
-  const firstOpen = book.chapters.find((c) => !c.is_locked);
+  const firstOpen = book.chapters.find((chapter) => !chapter.is_locked || chapter.sections.some((section) => !section.is_locked));
   const firstOpenIndex = firstOpen ? book.chapters.indexOf(firstOpen) + 1 : 0;
+  const firstPreview = book.product_status.preview === 'sample' ? firstOpen : undefined;
+  const previewLabel = firstPreview
+    ? !firstPreview.is_locked && firstPreview.sections.every((section) => !section.is_locked)
+      ? `فصل ${toPersianDigits(firstOpenIndex)} رایگان`
+      : 'نمونه رایگان'
+    : null;
   const startFree = () => {
-    if (!firstOpen) return;
-    const target = firstOpen.has_overview ? firstOpen.id : firstOpen.sections.find((x) => !x.is_locked)?.id;
+    if (!firstPreview) return;
+    const target = firstPreview.has_overview ? firstPreview.id : firstPreview.sections.find((section) => !section.is_locked)?.id;
     if (target) router.push(`/section/${target}`);
   };
-  // A book that is free from start to end has nothing to buy: it reads like an owned one (no price, no «باز کردن»).
-  const fullAccess = book.owned || !bookPrice.price || !!book.all_free;
+  // Only the book-level is_free flag (reported as state=free) grants the whole book; a free chapter is a preview.
+  const fullAccess = book.owned || book.product_status.state === 'free';
   const now = notify ?? { on: book.notify, canCancel: !!book.notify_can_cancel };
   const waiting = now.on;
   const toggleNotify = async () => {
@@ -178,7 +184,7 @@ export default function Book() {
   // The cover fades back a little as the page comes over it (it doesn't move).
   const heroFade = scrollY.interpolate({ inputRange: [0, heroHeight], outputRange: [1, 0.35], extrapolate: 'clamp' });
 
-  const isPreparing = book.is_coming_soon || book.chapters.length === 0;
+  const isPreparing = book.product_status.state === 'coming_soon' || book.product_status.state === 'preparing';
 
   return (
     <Screen background={colors.ground} wide={wide}>
@@ -303,11 +309,13 @@ export default function Book() {
             </View>
           ) : (
             <View style={styles.cta}>
-              {!!firstOpen && (
+              {!!firstPreview && (
                 <View style={styles.ctaHead}>
                   <IconBadge name="gift" size={30} />
                   <Text style={[styles.ctaTitle, rtl, { flex: 1 }]}>
-                    {firstOpen.sections.every((x) => !x.is_locked) ? `فصل ${toPersianDigits(firstOpenIndex)} رایگان است؛ بدون خرید شروع کن` : 'بخشی از کتاب رایگان است؛ بدون خرید شروع کن'}
+                    {previewLabel === 'نمونه رایگان'
+                      ? 'نمونه‌ای از کتاب رایگان است؛ بدون خرید شروع کن'
+                      : `${previewLabel} است؛ بدون خرید شروع کن`}
                   </Text>
                 </View>
               )}
@@ -317,30 +325,45 @@ export default function Book() {
                   <Text style={[styles.resumeLineText, rtl]} numberOfLines={1}>ادامه از «{last.title}»</Text>
                 </Pressable>
               )}
-              {!!firstOpen && !last && <Button label={`شروع رایگان از فصل ${toPersianDigits(firstOpenIndex)}`} onPress={startFree} />}
-              <Pressable onPress={() => router.push(`/buy/${book.slug}`)} style={[styles.unlock, !(firstOpen && !last) && styles.unlockMain]} accessibilityRole="button">
-                <Icon name="lock-open" size={18} color={colors.ink} />
-                <Text style={styles.unlockText}>باز کردن همه‌ی کتاب</Text>
-              </Pressable>
-              {!!bookPrice.price && (bookPrice.discount ? (
-                <View style={styles.priceDetails}>
-                  <View style={styles.priceLine}>
-                    <Text style={[styles.ctaSmall, rtl]}>قیمت عادی</Text>
-                    <Text style={styles.oldPrice}>{formatToman(bookPrice.regularPrice ?? bookPrice.price)}</Text>
-                  </View>
-                  <View style={styles.priceLine}>
-                    <Text style={[styles.ctaSmall, rtl]}>قیمت ویژه</Text>
-                    <Text style={styles.salePrice}>{formatToman(bookPrice.price)}</Text>
-                  </View>
-                  <Text style={[styles.saving, rtl]}>
-                    {percentLabel(bookPrice.discount.percent)}٪ تخفیف · صرفه‌جویی {formatToman(bookPrice.discount.amount)} · یا با اشتراک لیمو
-                  </Text>
-                </View>
-              ) : <Text style={[styles.ctaSmall, { textAlign: 'center' }]}>{formatToman(bookPrice.price)}، یا با اشتراک ماهانه‌ی لیمو</Text>)}
+              {!!firstPreview && !last && <Button label={`شروع رایگان از فصل ${toPersianDigits(firstOpenIndex)}`} onPress={startFree} />}
+              {book.product_status.state === 'paid' && (
+                <>
+                  <Pressable onPress={() => router.push(`/buy/${book.slug}`)} style={[styles.unlock, !(firstPreview && !last) && styles.unlockMain]} accessibilityRole="button">
+                    <Icon name="lock-open" size={18} color={colors.ink} />
+                    <Text style={styles.unlockText}>باز کردن همه‌ی کتاب</Text>
+                  </Pressable>
+                  {bookPrice.price != null && (bookPrice.discount ? (
+                    <View style={styles.priceDetails}>
+                      <View style={styles.priceLine}>
+                        <Text style={[styles.ctaSmall, rtl]}>قیمت عادی</Text>
+                        <Text style={styles.oldPrice}>{formatToman(bookPrice.regularPrice ?? bookPrice.price)}</Text>
+                      </View>
+                      <View style={styles.priceLine}>
+                        <Text style={[styles.ctaSmall, rtl]}>قیمت ویژه</Text>
+                        <View style={styles.saleAmountLine}>
+                          <Text style={styles.salePrice}>{formatToman(bookPrice.price)}</Text>
+                          <Text style={styles.discountChip}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
+                        </View>
+                      </View>
+                      {!!previewLabel && <Text style={[styles.samplePriceText, rtl]}>{previewLabel}</Text>}
+                      <Text style={[styles.saving, rtl]}>
+                        صرفه‌جویی {formatToman(bookPrice.discount.amount)} · یا با اشتراک لیمو
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={[styles.ctaSmall, { textAlign: 'center' }]}>
+                      {formatToman(bookPrice.price)}، یا با اشتراک ماهانه‌ی لیمو
+                      {!!previewLabel && <Text style={styles.samplePriceText}> · {previewLabel}</Text>}
+                    </Text>
+                  ))}
+                </>
+              )}
+              {book.product_status.state === 'unpriced' && <Text style={[styles.ctaSmall, rtl]}>قیمت نسخه‌ی کامل هنوز تعیین نشده است.</Text>}
+              {book.product_status.state === 'unavailable' && <Text style={[styles.ctaSmall, rtl]}>این کتاب فعلاً برای خرید در دسترس نیست.</Text>}
             </View>
           )}
 
-          {!book.is_coming_soon && (
+          {!isPreparing && (
             <View style={styles.shortcuts}>
               {/* The book's flashcards, only from finished (green) sections: what was learned gets reviewed. */}
               {!!user && book.chapters.some((c) => c.flashcard_count || c.sections.some((s) => s.flashcard_count)) && (
@@ -397,7 +420,7 @@ export default function Book() {
             </View>
           )}
           {/* Information, not a button: last, the full width (long times such as «۱۲ ساعت» never wrap), quiet. */}
-          {!book.is_coming_soon && !!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
+          {!isPreparing && !!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
             <View style={styles.timeRow} accessible accessibilityLabel={`تا الان ${studyDuration(book.mine.time_seconds)} روی این کتاب وقت گذاشتی`}>
               <Icon name="time-spent" size={16} color={colors.muted} />
               <Text style={styles.timeText}>تا الان {studyDuration(book.mine.time_seconds)} وقت گذاشتی</Text>
@@ -457,7 +480,7 @@ export default function Book() {
             </View>
           )}
 
-          {!book.is_coming_soon && !!past?.exams.length && (
+          {!isPreparing && !!past?.exams.length && (
             <View style={styles.about}>
               <Pressable onPress={() => setPastOpen((v) => !v)} style={styles.aboutHead} accessibilityRole="button" accessibilityState={{ expanded: pastOpen }}>
                 <Text style={[styles.aboutTitle, rtl, { flex: 1 }]}>
@@ -548,7 +571,7 @@ export default function Book() {
             </View>
           )}
 
-          {!book.is_coming_soon && <Text style={[styles.chaptersTitle, rtl]}>فصل‌ها</Text>}
+          {!isPreparing && <Text style={[styles.chaptersTitle, rtl]}>فصل‌ها</Text>}
           {book.chapters.map((chapter, index) => (
             <ChapterCard
               key={chapter.id}
@@ -845,6 +868,9 @@ const styles = StyleSheet.create({
   priceLine: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   oldPrice: { color: colors.muted, textDecorationLine: 'line-through', fontSize: 12 },
   salePrice: { color: colors.redDark, fontSize: 14, fontWeight: '900' },
+  saleAmountLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  discountChip: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: colors.redDark, color: '#FFFFFF', fontSize: 10, fontWeight: '900', overflow: 'hidden' },
+  samplePriceText: { color: colors.greenDark, fontWeight: '800' },
   saving: { textAlign: 'center', fontSize: 11, fontWeight: '800', color: colors.redDark },
   ctaButton: { backgroundColor: colors.lemon, borderRadius: 12, paddingHorizontal: 18, minHeight: 46, justifyContent: 'center' },
   ctaButtonText: { color: colors.ink, fontWeight: '900', fontSize: 15 },

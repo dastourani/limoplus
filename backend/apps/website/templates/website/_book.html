@@ -12,8 +12,11 @@
       </span>
     </span>
     {% else %}
-    <span class="tagbtn {{ c.label.kind }}" title="{{ c.label.text }}">{% icon c.label.icon 15 %}{{ c.label.text }}</span>
+    <span class="tagbtn {{ c.label.kind }}" title="{{ c.label.text }}">
+      {% icon c.label.icon 15 %}<span class="bk-price">{{ c.label.text }}</span>
+      {% if c.discount %}<span class="bk-discount-chip">{{ c.discount.percent }}٪</span>{% endif %}
+    </span>
     {% endif %}
-    {% if c.discount %}<span class="bk-sale">{{ c.discount.percent }}٪ تخفیف زمان‌دار</span>{% else %}<span class="bk-sale bk-sale-empty" aria-hidden="true">&nbsp;</span>{% endif %}
+    {% if c.sample_label %}<span class="bk-sample">{{ c.sample_label }}</span>{% else %}<span class="bk-sample bk-sample-empty" aria-hidden="true">&nbsp;</span>{% endif %}
   </div>
 </a>

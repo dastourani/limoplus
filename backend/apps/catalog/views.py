@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db.models import Count, F, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -39,6 +40,7 @@ def locked_response(book):
     )
 
 
+@never_cache
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def majors(request):
@@ -47,6 +49,7 @@ def majors(request):
     )
 
 
+@never_cache
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def major_books(request, slug):
@@ -63,6 +66,7 @@ def major_books(request, slug):
     return Response(payload)
 
 
+@never_cache
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def all_books(request):
@@ -81,6 +85,7 @@ def all_books(request):
     return Response(payload)
 
 
+@never_cache
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def shelves(request):
@@ -171,9 +176,10 @@ def book_card(request, book, access, price_quote=None) -> dict:
         "section_count": len(sections),
         "has_free_part": any(n.is_free for n in access.nodes.values() if access.visible(n.id)),
         "free_chapter": free_chapter,
-        # For the one label on the shelf: the whole book, n chapters, or only some sections are free.
+        # On a paid product these describe free previews only; only the book-level flag means the whole book is free.
         "free_chapters": free_chapters,
-        "all_free": bool(chapters) and free_chapters == len(chapters),
+        # Kept for older app builds; it now means exactly the explicit whole-book flag, never inferred from chapters.
+        "all_free": book.is_free,
         "owned": access.owned,
         "access": access.access,
         "progress": round(len(done) / len(sections), 3) if done and sections else None,
@@ -207,6 +213,7 @@ def _notify(user, book, request=None) -> dict:
     return {"notify": bool(wait and wait.is_active), "notify_can_cancel": bool(wait and wait.can_cancel)}
 
 
+@never_cache
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def book_detail(request, slug):
@@ -530,6 +537,7 @@ def _section_status(user, access, node):
     }
 
 
+@never_cache
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def banners(request):

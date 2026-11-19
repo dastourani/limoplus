@@ -1,3 +1,4 @@
+import type { ProductStatus } from '../api/endpoints';
 import { toPersianDigits } from '../theme';
 
 type AccessKind = 'purchase' | 'gift' | 'subscription' | 'staff' | null;
@@ -14,25 +15,28 @@ export function accessLabel(book: { owned: boolean; access?: AccessKind }): stri
 export type ShelfLabel = { text: string; kind: 'soon' | 'access' | 'free' | 'locked' };
 
 /**
- * Exactly one label per book on the shelf, from the book's real state. The first that applies wins:
- * coming soon, the reader's own access, the whole book free, n free chapters, some free sections, or a lock.
+ * Exactly one cover label from the API's explicit product state. A free preview never changes the whole-book state.
  */
 export function shelfLabel(book: {
   owned: boolean;
   access?: AccessKind;
-  is_coming_soon: boolean;
+  product_status: ProductStatus;
   free_chapter: number | null;
   free_chapters?: number;
-  all_free?: boolean;
-  has_free_part: boolean;
 }): ShelfLabel {
-  if (book.is_coming_soon) return { text: 'به‌زودی', kind: 'soon' };
+  const status = book.product_status;
+  if (status.state === 'coming_soon') return { text: 'به‌زودی', kind: 'soon' };
   const access = accessLabel(book);
   if (access) return { text: access, kind: 'access' };
-  if (book.all_free) return { text: 'کل کتاب رایگان', kind: 'free' };
-  const n = book.free_chapters ?? (book.free_chapter ? 1 : 0);
-  if (n === 1 && book.free_chapter) return { text: `فصل ${toPersianDigits(book.free_chapter)} رایگان`, kind: 'free' };
-  if (n > 1) return { text: `${toPersianDigits(n)} فصل رایگان`, kind: 'free' };
-  if (book.has_free_part) return { text: 'بخشی رایگان', kind: 'free' };
+  if (status.state === 'free') return { text: 'کل کتاب رایگان', kind: 'free' };
+  if (status.preview === 'sample') {
+    const n = book.free_chapters ?? (book.free_chapter ? 1 : 0);
+    if (n === 1 && book.free_chapter) return { text: `فصل ${toPersianDigits(book.free_chapter)} رایگان`, kind: 'free' };
+    if (n > 1) return { text: `${toPersianDigits(n)} فصل رایگان`, kind: 'free' };
+    return { text: 'نمونه رایگان', kind: 'free' };
+  }
+  if (status.state === 'preparing') return { text: 'در حال آماده‌سازی', kind: 'locked' };
+  if (status.state === 'unpriced') return { text: 'قیمت تعیین نشده', kind: 'locked' };
+  if (status.state === 'unavailable') return { text: 'در دسترس نیست', kind: 'locked' };
   return { text: 'نسخه‌ی کامل', kind: 'locked' };
 }

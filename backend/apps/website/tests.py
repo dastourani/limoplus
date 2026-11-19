@@ -33,6 +33,33 @@ class WebsiteTests(TestCase):
         self.assertEqual(c.get("/site/books/nope/").status_code, 404)
         self.assertEqual(c.get("/site/p/nope/").status_code, 404)
 
+    def test_paid_book_with_free_chapter_shows_price_and_sample_state_with_small_sale_chip(self):
+        from apps.commerce.models import SaleCampaign
+
+        book = ContentNode.objects.get(slug="math-1")
+        detail = Client().get(f"/site/books/{book.slug}/")
+        self.assertEqual(detail.context["product_status"], {"state": "paid", "preview": "sample", "promotion": "none"})
+        self.assertEqual(detail.context["sample_label"], "فصل ۱ رایگان")
+        self.assertContains(detail, "۲۴۹ هزار تومان")
+        self.assertContains(detail, "شروع رایگان از فصل")
+
+        now = timezone.now()
+        SaleCampaign.objects.create(
+            title="تخفیف کوچک کنار قیمت",
+            book=book,
+            discounted_price=199_000,
+            starts_at=now - timedelta(minutes=1),
+            ends_at=now + timedelta(hours=1),
+        )
+        index = Client().get("/site/books/")
+        card = next(item for item in index.context["books"] if item["book"].slug == book.slug)
+        self.assertEqual(card["product_status"], {"state": "paid", "preview": "sample", "promotion": "discount"})
+        self.assertEqual(card["label"]["text"], "۱۹۹ هزار تومان")
+        self.assertEqual(card["sample_label"], "فصل ۱ رایگان")
+        self.assertContains(index, 'class="bk-discount-chip"')
+        self.assertContains(index, "۱۹۹ هزار تومان")
+        self.assertContains(index, "فصل ۱ رایگان")
+
     def test_home_lists_published_books_only(self):
         book = ContentNode.objects.get(slug="math-1")
         r = Client().get("/site/")
@@ -269,8 +296,9 @@ class WebsiteTests(TestCase):
         books_page = Client().get("/site/books/")
         self.assertRegex(
             books_page.content.decode(),
-            r'(?s)<a class="bk" href="/site/books/math-1/"[^>]*>.*?<div class="bk-action">\s*'
-            r'<span class="tagbtn paid".*?<span class="bk-sale">.*?٪ تخفیف زمان‌دار</span>\s*</div>',
+            r'(?s)<a class="bk" href="/site/books/math-1/"[^>]*>.*?<div class="cover".*?'
+            r'<div class="bk-action">.*?<span class="bk-price">۱۹۹ هزار تومان</span>\s*'
+            r'<span class="bk-discount-chip">۲۰٫۱٪</span>.*?<span class="bk-sample">فصل ۱ رایگان</span>',
         )
 
         pricing = Client().get("/site/pricing/")

@@ -1,5 +1,6 @@
 import datetime
 from decimal import Decimal
+from pathlib import Path
 
 from django import forms
 from django.contrib import admin
@@ -84,3 +85,13 @@ class JalaliAdminDateTests(SimpleTestCase):
         )
         self.assertEqual(decimal_field.clean("۱۲۳٫۴۵"), Decimal("123.45"))
         self.assertEqual(decimal_field.clean("١٢٣٫٤٥"), Decimal("123.45"))
+
+    def test_date_picker_escapes_overflow_ancestors_and_highlights_today(self):
+        static = Path(__file__).resolve().parent / "static" / "catalog"
+        css = (static / "jalali-admin.css").read_text()
+        javascript = (static / "jalali-admin.js").read_text()
+        self.assertRegex(css, r"\.lp-jalali-panel\s*\{[^}]*position:\s*fixed")
+        self.assertRegex(css, r"\.lp-jalali-day\.is-today\s*\{[^}]*background:")
+        self.assertIn("document.body.appendChild(panel)", javascript)
+        self.assertIn("!panel.contains(event.target)", javascript)
+        self.assertIn("window.addEventListener('scroll', positionPanel, true)", javascript)

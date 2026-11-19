@@ -569,7 +569,11 @@ class GiftAndCheckTests(_Base):
         api.credentials(HTTP_AUTHORIZATION=f"Bearer {token}", HTTP_X_VIEW_AS="learner")
         card = api.get("/api/v1/books/test-book/").json()
         self.assertEqual((card["owned"], card["access"]), (False, None))
-        self.assertEqual((card["free_chapters"], card["all_free"]), (1, True))
+        self.assertEqual((card["free_chapters"], card["all_free"]), (1, False))
+        self.assertEqual(
+            card["product_status"],
+            {"state": "unpriced", "preview": "sample", "promotion": "none"},
+        )
 
 
 class SearchTests(_Base):

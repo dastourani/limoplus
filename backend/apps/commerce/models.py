@@ -107,15 +107,20 @@ class SaleCampaign(models.Model):
         if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
             errors["ends_at"] = "زمان پایان باید بعد از زمان شروع باشد."
 
-        if self.book_id:
-            if self.book.kind != ContentNode.Kind.BOOK or self.book.depth != 1 or self.book.is_inbox:
-                errors["book"] = "تخفیف فقط برای یک کتاب واقعی (نه فصل یا صندوق تست) ساخته می‌شود."
-            if self.book.is_archived or self.book.is_inbox:
-                errors["book"] = "برای کتاب بایگانی‌شده یا صندوق تست کمپین تخفیف نسازید."
-            if self.book.is_free:
-                errors["book"] = "رایگان‌بودن تصمیم مستقلی است؛ برای کتابی که مدیر رایگان کرده کمپین فروش نسازید."
-            if self.book.is_coming_soon:
-                errors["book"] = "کتاب «به‌زودی» هنوز قابل فروش نیست؛ پس از آماده‌شدن کمپین بسازید."
+        if self.book_id and self.is_active:
+            from .pricing import ProductStatus, book_product_status
+
+            product_status = book_product_status(self.book)
+            if product_status == ProductStatus.UNAVAILABLE:
+                errors["book"] = "فقط کتاب منتشرشده و بایگانی‌نشده را می‌توان در کمپین گذاشت."
+            elif product_status == ProductStatus.COMING_SOON:
+                errors["book"] = "کتاب «به‌زودی» هنوز قابل فروش نیست؛ پس از انتشار کمپین بسازید."
+            elif product_status == ProductStatus.FREE:
+                errors["book"] = "فقط وقتی پرچم «رایگان» خود کتاب روشن است، کتاب رایگان است؛ برای آن کمپین فروش نسازید."
+            elif product_status == ProductStatus.PREPARING:
+                errors["book"] = "کتاب هنوز فصل منتشرشده‌ای ندارد؛ پس از انتشار فصل کمپین بسازید."
+            elif product_status == ProductStatus.UNPRICED:
+                errors["book"] = "کتاب قیمت مثبت و مشخصی ندارد؛ پیش از ساخت کمپین قیمت آن را تعیین کنید."
         if self.plan_id and self.plan.scope != Plan.Scope.ALL:
             errors["plan"] = "تخفیف فقط برای طرح اشتراک همه‌ی کتاب‌ها مجاز است."
 

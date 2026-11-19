@@ -191,6 +191,15 @@ class PaymentTests(TestCase):
         self.assertEqual(offer["price"], 199_000)
         self.assertEqual(offer["discount"]["amount"], 50_000)
         self.assertEqual(offer["discount"]["percent"], 20.1)
+        self.assertEqual(
+            offer["product_status"],
+            {"state": "paid", "preview": "sample", "promotion": "discount"},
+        )
+        shelves = self.client.get("/api/v1/shelves/").data
+        card = next(book for shelf in shelves for book in shelf["books"] if book["slug"] == self.book.slug)
+        self.assertEqual(card["product_status"], offer["product_status"])
+        self.assertFalse(card["all_free"], "a free chapter must not set the whole-book free flag")
+        self.assertEqual(card["price"], 199_000)
 
         with mock.patch("apps.commerce.zibal.request_payment", return_value="DISC-BOOK") as gateway:
             response = self.client.post("/api/v1/orders/", {"book": "math-1", "amount": 1}, format="json")
@@ -222,6 +231,16 @@ class PaymentTests(TestCase):
         regular_order = Order.objects.get(pk=regular.data["order_id"])
         self.assertEqual((regular_order.regular_amount, regular_order.discount_amount), (249_000, 0))
 
+    def test_even_all_free_chapters_do_not_make_a_paid_book_free(self):
+        self.book.get_children().update(is_free=True)
+        shelves = self.client.get("/api/v1/shelves/").data
+        card = next(book for shelf in shelves for book in shelf["books"] if book["slug"] == self.book.slug)
+        self.assertFalse(card["all_free"])
+        self.assertEqual(card["product_status"]["state"], "paid")
+        self.assertEqual(card["product_status"]["preview"], "sample")
+        self.assertEqual(card["price"], 249_000)
+        self.assertEqual(card["free_chapters"], card["chapter_count"])
+
     def test_manager_making_a_book_free_stops_campaign_and_blocks_direct_checkout(self):
         now = timezone.now()
         campaign = SaleCampaign.objects.create(
@@ -242,6 +261,14 @@ class PaymentTests(TestCase):
         offers = self.client.get("/api/v1/offers/?book=math-1").data
         self.assertIsNone(offers["book"]["price"])
         self.assertIsNone(offers["book"]["discount"])
+        self.assertEqual(
+            offers["book"]["product_status"],
+            {"state": "free", "preview": "none", "promotion": "none"},
+        )
+        shelves = self.client.get("/api/v1/shelves/").data
+        card = next(book for shelf in shelves for book in shelf["books"] if book["slug"] == self.book.slug)
+        self.assertTrue(card["all_free"])
+        self.assertEqual(card["product_status"]["state"], "free")
         with self.assertRaises(ValidationError):
             campaign.full_clean()
         self.assertFalse(any(item["id"] == banner.pk for item in self.client.get("/api/v1/banners/").data))
@@ -389,6 +416,64 @@ class PaymentTests(TestCase):
         )
         with self.assertRaises(ValidationError):
             free.full_clean()
+
+    def test_campaign_picker_and_model_validation_exclude_ineligible_books(self):
+        def book(slug, **flags):
+            with_chapter = flags.pop("with_chapter", True)
+            defaults = {
+                "kind": ContentNode.Kind.BOOK,
+                "title": slug,
+                "slug": slug,
+                "price": 100_000,
+                "is_published": True,
+                "is_archived": False,
+                "is_free": False,
+                "is_coming_soon": False,
+            }
+            defaults.update(flags)
+            item = ContentNode.add_root(**defaults)
+            if with_chapter:
+                item.add_child(
+                    kind=ContentNode.Kind.CHAPTER,
+                    title=f"فصل {slug}",
+                    slug=f"{slug}-chapter",
+                    is_published=True,
+                    is_archived=False,
+                    is_inbox=False,
+                )
+            return item
+
+        eligible = book("campaign-picker-eligible")
+        free = book("campaign-picker-free", is_free=True)
+        soon = book("campaign-picker-soon", is_coming_soon=True)
+        draft = book("campaign-picker-draft", is_published=False)
+        archived = book("campaign-picker-archived", is_archived=True)
+        preparing = book("campaign-picker-preparing", with_chapter=False)
+        invalid_books = [free, soon, draft, archived, preparing]
+
+        manager = User.objects.create_superuser("09120000006", password="Pass-12345")
+        client = Client()
+        client.force_login(manager)
+        response = client.get(reverse("admin:commerce_salecampaign_add"))
+        self.assertEqual(response.status_code, 200)
+        choices = set(response.context["adminform"].form.fields["book"].queryset.values_list("pk", flat=True))
+        self.assertIn(self.book.pk, choices)
+        self.assertIn(eligible.pk, choices)
+        for item in invalid_books:
+            self.assertNotIn(item.pk, choices, item.slug)
+
+        now = timezone.now()
+        for item in invalid_books:
+            with self.subTest(book=item.slug):
+                campaign = SaleCampaign(
+                    title=f"کمپین نامعتبر {item.slug}",
+                    book=item,
+                    discounted_price=1,
+                    starts_at=now,
+                    ends_at=now + timedelta(hours=1),
+                )
+                with self.assertRaises(ValidationError):
+                    campaign.full_clean()
 
     def test_superuser_can_create_campaign_with_its_linked_banner_in_admin(self):
         admin = User.objects.create_superuser("09120000005", password="Pass-12345")

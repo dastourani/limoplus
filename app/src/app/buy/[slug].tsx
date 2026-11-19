@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ApiError } from '../../api/client';
-import { endpoints, type Plan, type PriceDiscount } from '../../api/endpoints';
+import { endpoints, type Plan, type PriceDiscount, type ProductStatus } from '../../api/endpoints';
 import { BookCover } from '../../components/BookCover';
 import { Text } from '../../components/Text';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
@@ -68,18 +68,19 @@ export default function Buy() {
     }
   };
 
-  const Option = ({ on, title, price, regularPrice, discount, unit, sub, badge, onPress }: {
+  const Option = ({ on, title, price, regularPrice, discount, productStatus, unit, sub, badge, onPress }: {
     on: boolean;
     title: string;
     price: number | null;
     regularPrice: number | null;
     discount: PriceDiscount | null;
+    productStatus: ProductStatus;
     unit?: string;
     sub: string;
     badge?: string;
     onPress: () => void;
   }) => {
-    const shown = currentPrice({ price, regular_price: regularPrice, discount });
+    const shown = currentPrice({ price, regular_price: regularPrice, discount, product_status: productStatus });
     return (
       <Pressable onPress={onPress} style={[styles.option, on && styles.optionOn]} accessibilityRole="radio" accessibilityState={{ checked: on }}>
         <View style={[styles.radio, on && styles.radioOn]}>{on && <View style={styles.radioDot} />}</View>
@@ -88,7 +89,7 @@ export default function Buy() {
             <Text style={[styles.optionTitle, rtl, { flex: 1 }]}>{title}</Text>
             <View style={styles.priceColumn}>
               <Text style={styles.price}>
-                {formatToman(shown.price ?? 0).replace(' تومان', '')} <Text style={styles.unit}>{unit ?? 'تومان'}</Text>
+                {shown.price == null ? 'قیمت به‌روزرسانی نشده' : <>{formatToman(shown.price).replace(' تومان', '')} <Text style={styles.unit}>{unit ?? 'تومان'}</Text></>}
               </Text>
               {shown.discount && (
                 <View style={styles.priceDeal}>
@@ -108,6 +109,33 @@ export default function Buy() {
   const bookPrice = currentPrice(data.book);
   const selectedPrice = choice?.kind === 'book' ? bookPrice : choice?.kind === 'plan' ? currentPrice(choice.plan) : null;
   const amount = selectedPrice?.price ?? 0;
+  const status = data.book.product_status;
+  const bookSample = status.preview === 'sample' && !book.data?.owned
+    ? book.data?.free_chapters === 1 && book.data.free_chapter
+      ? `فصل ${toPersianDigits(book.data.free_chapter)} رایگان`
+      : book.data && (book.data.free_chapters ?? 0) > 1
+        ? `${toPersianDigits(book.data.free_chapters!)} فصل رایگان`
+        : 'نمونه رایگان'
+    : null;
+  const sampleChapter = book.data?.chapters.find(
+    (chapter) => !chapter.is_locked || chapter.sections.some((section) => !section.is_locked),
+  );
+  const sampleTarget = status.preview === 'sample' && !book.data?.owned && sampleChapter
+    ? !sampleChapter.is_locked
+      ? sampleChapter.id
+      : sampleChapter.sections.find((section) => !section.is_locked)?.id ?? null
+    : null;
+  const statusNote = status.state === 'free'
+    ? 'این کتاب رایگان است و برای خواندن کامل نیازی به خرید ندارد.'
+    : status.state === 'coming_soon'
+      ? 'این کتاب به‌زودی منتشر می‌شود؛ خرید مستقیم پس از انتشار در دسترس خواهد بود.'
+      : status.state === 'preparing'
+        ? 'این کتاب هنوز فصل منتشرشده‌ای ندارد؛ خرید مستقیم آن فعلاً در دسترس نیست.'
+        : status.state === 'unpriced'
+          ? 'قیمت نسخه‌ی کامل هنوز تعیین نشده؛ خرید مستقیم این کتاب فعلاً در دسترس نیست.'
+          : status.state === 'unavailable'
+            ? 'این کتاب فعلاً برای خرید یا مطالعه در دسترس نیست.'
+            : null;
 
   return (
     <Screen>
@@ -123,11 +151,20 @@ export default function Buy() {
                 {toPersianDigits(book.data.chapter_count)} فصل، {toPersianDigits(book.data.section_count)} بخش
               </Text>
             )}
+            {!!bookSample && <Text style={[styles.sampleNote, rtl]}>{bookSample}</Text>}
           </View>
         </View>
+        {!!statusNote && <Text style={[styles.statusNote, rtl]}>{statusNote}</Text>}
+        {sampleTarget != null && (
+          <Button
+            label={bookSample === 'نمونه رایگان' ? 'شروع نمونه رایگان' : `شروع ${bookSample}`}
+            variant="outline"
+            onPress={() => router.push(`/section/${sampleTarget}`)}
+          />
+        )}
 
         <Text style={[styles.group, rtl]}>یکی را انتخاب کن</Text>
-        {!!bookPrice.price && (
+        {data.book.product_status.state === 'paid' && (
           <Option
             on={choice?.kind === 'book'}
             title="فقط همین کتاب"
@@ -135,6 +172,7 @@ export default function Buy() {
             price={data.book.price}
             regularPrice={data.book.regular_price}
             discount={data.book.discount}
+            productStatus={data.book.product_status}
             onPress={() => setChoice({ kind: 'book' })}
           />
         )}
@@ -147,6 +185,7 @@ export default function Buy() {
             price={plan.price}
             regularPrice={plan.regular_price}
             discount={plan.discount}
+            productStatus={plan.product_status}
             unit={plan.months === 1 ? 'تومان برای یک ماه' : `تومان برای ${toPersianDigits(plan.months)} ماه`}
             badge={i === 0 ? 'برای چند کتاب به‌صرفه‌تر' : undefined}
             onPress={() => setChoice({ kind: 'plan', plan })}
@@ -192,6 +231,8 @@ const styles = StyleSheet.create({
   bookCard: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 12 },
   coverSpace: { width: 64, height: 96, borderRadius: 8, backgroundColor: colors.ink },
   bookTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  sampleNote: { color: colors.greenDark, fontSize: 11, fontWeight: '800' },
+  statusNote: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.line, padding: 12, color: colors.muted, fontSize: 12, lineHeight: 22 },
   option: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
   optionOn: { borderWidth: 2, borderColor: colors.ink, shadowColor: '#17201A', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
   optionTop: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8 },
