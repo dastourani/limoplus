@@ -288,7 +288,8 @@
     var wrapper = element('span', 'lp-jalali-wrap');
     input.parentNode.insertBefore(wrapper, input);
     wrapper.appendChild(input);
-    var trigger = element('button', 'lp-jalali-trigger', '▦');
+    var trigger = element('button', 'lp-jalali-trigger');
+    trigger.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>';
     trigger.type = 'button';
     trigger.setAttribute('aria-label', 'باز کردن تقویم شمسی');
     trigger.setAttribute('aria-expanded', 'false');

@@ -39,7 +39,7 @@ class WebsiteTests(TestCase):
         book = ContentNode.objects.get(slug="math-1")
         detail = Client().get(f"/site/books/{book.slug}/")
         self.assertEqual(detail.context["product_status"], {"state": "paid", "preview": "sample", "promotion": "none"})
-        self.assertEqual(detail.context["sample_label"], "فصل ۱ رایگان")
+        self.assertEqual(detail.context["sample_label"], "فصل اول رایگان")
         self.assertContains(detail, "۲۴۹ هزار تومان")
         self.assertContains(detail, "شروع رایگان از فصل")
 
@@ -55,10 +55,10 @@ class WebsiteTests(TestCase):
         card = next(item for item in index.context["books"] if item["book"].slug == book.slug)
         self.assertEqual(card["product_status"], {"state": "paid", "preview": "sample", "promotion": "discount"})
         self.assertEqual(card["label"]["text"], "۱۹۹ هزار تومان")
-        self.assertEqual(card["sample_label"], "فصل ۱ رایگان")
+        self.assertEqual(card["sample_label"], "فصل اول رایگان")
         self.assertContains(index, 'class="bk-discount-chip"')
         self.assertContains(index, "۱۹۹ هزار تومان")
-        self.assertContains(index, "فصل ۱ رایگان")
+        self.assertContains(index, "فصل اول رایگان")
 
     def test_home_lists_published_books_only(self):
         book = ContentNode.objects.get(slug="math-1")
@@ -297,8 +297,9 @@ class WebsiteTests(TestCase):
         self.assertRegex(
             books_page.content.decode(),
             r'(?s)<a class="bk" href="/site/books/math-1/"[^>]*>.*?<div class="cover".*?'
+            r'<span class="bk-ribbon">.*?فصل اول رایگان</span>.*?'
             r'<div class="bk-action">.*?<span class="bk-price">۱۹۹ هزار تومان</span>\s*'
-            r'<span class="bk-discount-chip">۲۰٫۱٪</span>.*?<span class="bk-sample">فصل ۱ رایگان</span>',
+            r'<span class="bk-discount-chip">۲۰٫۱٪</span>',
         )
 
         pricing = Client().get("/site/pricing/")
@@ -330,6 +331,15 @@ class WebsiteTests(TestCase):
         self.assertIn("<h2>سر</h2>", html)
         self.assertIn("&lt;script&gt;", html)
         self.assertIn("<ul><li>یک</li><li>دو</li></ul>", html)
+
+    def test_the_app_links_leave_the_site_host_for_the_web_app(self):
+        """The website's own host serves no web app, so «ورود» must point at the host that does."""
+        with override_settings(WEBSITE_HOSTS=["limookhan.ir"], ALLOWED_HOSTS=["limookhan.ir", "testserver"],
+                               APP_URL="/", SITE_URL="https://api.example.ir"):
+            home = Client(HTTP_HOST="limookhan.ir").get("/")
+            self.assertEqual(home.status_code, 200)
+            self.assertEqual(home.context["app_url"], "https://api.example.ir")
+            self.assertContains(home, "https://api.example.ir")
 
 
 class AppPagesTests(TestCase):

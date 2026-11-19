@@ -17,6 +17,7 @@ from . import ratelimit
 from .models import DeviceSession, OTPCode, PanelLoginCode, User
 from .phone import InvalidPhone, normalize_phone
 from .sms import SMSError, send_login_code
+from config.links import app_base_url
 
 log = logging.getLogger(__name__)
 
@@ -372,7 +373,7 @@ def open_app(request):
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
         code = PanelLoginCode.issue(request.user)
-        base = settings.APP_URL.rstrip("/")
+        base = app_base_url()
         response = HttpResponseRedirect(f"{base}/panel-login#{code}")
         response["Cache-Control"] = "no-store"
         response["Referrer-Policy"] = "no-referrer"

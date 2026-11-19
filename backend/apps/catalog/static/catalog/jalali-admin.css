@@ -9,6 +9,8 @@
   direction: rtl;
 }
 .lp-split-label { color: var(--body-quiet-color); font-size: 11px; font-weight: 700; white-space: nowrap; }
+/* Django's `.aligned label` forces every label to 160px wide, which pushed the date/time boxes far from their labels. */
+.lp-split-datetime .lp-split-label { display: inline-block; width: auto; min-width: 0; padding: 4px 0 0 0; }
 .lp-split-control { display: flex; align-items: center; gap: 3px; min-width: 0; white-space: nowrap; }
 .lp-split-control > input { margin: 0 !important; }
 .lp-split-control .datetimeshortcuts { font-size: 11px; font-weight: 400; white-space: nowrap; }
@@ -46,6 +48,7 @@
   font-size: 17px;
   line-height: 1;
 }
+.lp-jalali-trigger svg { display: block; }
 .lp-jalali-trigger:hover {
   border-color: #1D4ED8;
   background: #EAF2FF;

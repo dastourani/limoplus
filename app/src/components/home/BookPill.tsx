@@ -5,7 +5,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { BookListItem } from '../../api/endpoints';
-import { colors, toPersianDigits } from '../../theme';
+import { colors, toPersianDigits, toPersianOrdinal } from '../../theme';
 import { currentPrice, percentLabel } from '../../lib/pricing';
 import { Icon, type IconName } from '../Icon';
 import { Text } from '../Text';
@@ -29,7 +29,7 @@ type Look = {
 function sampleLabel(book: BookListItem): string | undefined {
   if (book.product_status.preview !== 'sample') return undefined;
   const count = book.free_chapters ?? (book.free_chapter ? 1 : 0);
-  if (count === 1 && book.free_chapter) return `فصل ${toPersianDigits(book.free_chapter)} رایگان`;
+  if (count === 1 && book.free_chapter) return `فصل ${toPersianOrdinal(book.free_chapter)} رایگان`;
   if (count > 1) return `${toPersianDigits(count)} فصل رایگان`;
   return 'نمونه رایگان';
 }
