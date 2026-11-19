@@ -40,7 +40,7 @@ def activate_approved_members(user, *, now=None) -> int:
 
     with transaction.atomic():
         members = list(
-            BookAccessMember.objects.select_for_update()
+            BookAccessMember.objects.select_for_update(of=("self", "request"))
             .filter(
                 phone=user.phone,
                 status=BookAccessMember.Status.WAITING_OTP,

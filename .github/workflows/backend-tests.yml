@@ -42,26 +42,4 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: python manage.py makemigrations --check --dry-run
-      - name: Run backend tests
-        run: |
-          set +e
-          python manage.py test apps > /tmp/backend-tests.log 2>&1
-          test_status=$?
-          cat /tmp/backend-tests.log
-          if [ "$test_status" -ne 0 ]; then
-            {
-              echo '### Backend test failure details (last 120 lines)'
-              echo '```text'
-              tail -n 120 /tmp/backend-tests.log
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            python - <<'PY'
-          from pathlib import Path
-
-          lines = Path("/tmp/backend-tests.log").read_text(errors="replace").splitlines()[-50:]
-          message = "\n".join(lines)
-          message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-          print(f"::error file=.github/workflows/backend-tests.yml,line=1,title=Backend test failure details::{message}")
-          PY
-          fi
-          exit "$test_status"
+      - run: python manage.py test apps
