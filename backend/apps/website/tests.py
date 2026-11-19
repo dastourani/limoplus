@@ -60,6 +60,27 @@ class WebsiteTests(TestCase):
         self.assertContains(index, "۱۹۹ هزار تومان")
         self.assertContains(index, "فصل اول رایگان")
 
+    def test_book_buttons_have_no_native_tooltip_title(self):
+        """The browser's own tooltip repeated the button's text in a dark box on hover: only the site's own bubble."""
+        from apps.commerce.models import SaleCampaign
+
+        book = ContentNode.objects.get(slug="math-1")
+        now = timezone.now()
+        SaleCampaign.objects.create(
+            title="تخفیف برای تست تولتیپ",
+            book=book,
+            discounted_price=199_000,
+            starts_at=now - timedelta(minutes=1),
+            ends_at=now + timedelta(hours=1),
+        )
+        index = Client().get("/site/books/")
+        self.assertContains(index, 'class="bk-action"')
+        self.assertNotContains(index, 'title="')
+        # The price itself is still there, and the site's own bubble still carries the details.
+        self.assertContains(index, "۱۹۹ هزار تومان")
+        self.assertContains(index, 'class="tip-bubble"')
+        self.assertContains(index, "٪ تخفیف زمان‌دار")
+
     def test_home_lists_published_books_only(self):
         book = ContentNode.objects.get(slug="math-1")
         r = Client().get("/site/")
