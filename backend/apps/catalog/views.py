@@ -533,25 +533,28 @@ def _section_status(user, access, node):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def banners(request):
-    from apps.commerce.pricing import campaign_banner_link, campaign_banner_payload
+    from apps.commerce.pricing import campaign_banner_links, campaign_banner_payloads
 
     now = timezone.now()
-    candidates = Banner.visible_at(now)
+    candidates = list(Banner.visible_at(now))
     # A banner for the readers of one book is shown only to them; the rest go to everyone.
     reading = set()
     if request.user.is_authenticated:
         from apps.study.models import SectionProgress
 
         reading = set(SectionProgress.objects.filter(user=request.user).values_list("book_id", flat=True))
-    items, sale_payloads = [], {}
-    for banner in candidates:
-        if banner.audience_book_id is not None and banner.audience_book_id not in reading:
-            continue
+    eligible = [
+        banner for banner in candidates
+        if banner.audience_book_id is None or banner.audience_book_id in reading
+    ]
+    sale_campaigns = [banner.sale_campaign for banner in eligible if banner.sale_campaign_id]
+    sale_payloads = campaign_banner_payloads(sale_campaigns, now)
+    sale_links = campaign_banner_links(sale_campaigns)
+    items = []
+    for banner in eligible:
         if banner.sale_campaign_id:
-            sale = campaign_banner_payload(banner.sale_campaign, now)
-            if not sale:
+            if not sale_payloads.get(banner.sale_campaign_id) or not sale_links.get(banner.sale_campaign_id):
                 continue
-            sale_payloads[banner.pk] = sale
         items.append(banner)
         if len(items) == 10:
             break
@@ -563,14 +566,14 @@ def banners(request):
                 "title": b.title,
                 "subtitle": b.subtitle,
                 "image": request.build_absolute_uri(b.image.url) if b.image else None,
-                "link": campaign_banner_link(b.sale_campaign) if b.sale_campaign_id else b.resolved_link(),
+                "link": sale_links[b.sale_campaign_id] if b.sale_campaign_id else b.resolved_link(),
                 "template": Banner.Template.SALE if b.sale_campaign_id else b.template,
                 "button": b.button,
                 "motif": b.motif,
                 # A linked campaign owns its period; generic banners keep their own optional countdown.
                 "ends_at": b.sale_campaign.ends_at if b.sale_campaign_id else (b.ends_at if b.countdown else None),
                 "server_now": now,
-                "discount": sale_payloads.get(b.pk),
+                "discount": sale_payloads.get(b.sale_campaign_id) if b.sale_campaign_id else None,
                 "book": _banner_book(request, b),
             }
             for b in items

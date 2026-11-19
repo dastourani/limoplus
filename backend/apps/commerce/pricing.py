@@ -163,27 +163,40 @@ def campaign_banner_link(campaign: SaleCampaign) -> str:
     return ""
 
 
-def campaign_banner_payload(campaign: SaleCampaign, now=None) -> dict | None:
-    """Compact product and price details for a banner attached to the same sale campaign."""
-    now = now or timezone.now()
-    if not campaign.is_active or campaign.starts_at > now or campaign.ends_at <= now:
+def campaign_banner_links(campaigns) -> dict[int, str]:
+    """Resolve links for a banner batch, querying the shared plan destination only once."""
+    campaigns = list(campaigns)
+    plan_campaign = next((campaign for campaign in campaigns if campaign.plan_id), None)
+    shared_plan_link = campaign_banner_link(plan_campaign) if plan_campaign else ""
+    links = {}
+    for campaign in campaigns:
+        if campaign.book_id:
+            links[campaign.pk] = campaign_banner_link(campaign)
+        elif campaign.plan_id:
+            links[campaign.pk] = shared_plan_link
+        else:
+            links[campaign.pk] = ""
+    return links
+
+
+def _campaign_banner_payload(campaign: SaleCampaign, quote: PriceQuote | None, now) -> dict | None:
+    """Build a sale-banner payload only from the quote the checkout currently selects."""
+    if not campaign.is_active or campaign.starts_at > now or campaign.ends_at <= now or quote is None:
         return None
     if campaign.book_id:
-        book = campaign.book
-        if not _book_can_be_sold(book):
+        product = campaign.book
+        if not _book_can_be_sold(product):
             return None
-        quote = book_price_quote(book, now=now)
         kind = "book"
-        title = book.title
+        title = product.title
         months = None
     elif campaign.plan_id:
-        plan = campaign.plan
-        if not _plan_can_be_sold(plan):
+        product = campaign.plan
+        if not _plan_can_be_sold(product):
             return None
-        quote = plan_price_quote(plan, now=now)
         kind = "plan"
-        title = plan.title
-        months = plan.months
+        title = product.title
+        months = product.months
     else:
         return None
     if not quote.is_discounted or quote.campaign.pk != campaign.pk:
@@ -202,3 +215,42 @@ def campaign_banner_payload(campaign: SaleCampaign, now=None) -> dict | None:
         "starts_at": campaign.starts_at,
         "ends_at": campaign.ends_at,
     }
+
+
+def campaign_banner_payload(campaign: SaleCampaign, now=None) -> dict | None:
+    """Compact product and price details for a banner attached to the same sale campaign."""
+    now = now or timezone.now()
+    if not campaign.is_active or campaign.starts_at > now or campaign.ends_at <= now:
+        return None
+    if campaign.book_id:
+        if not _book_can_be_sold(campaign.book):
+            return None
+        quote = book_price_quote(campaign.book, now=now)
+    elif campaign.plan_id:
+        if not _plan_can_be_sold(campaign.plan):
+            return None
+        quote = plan_price_quote(campaign.plan, now=now)
+    else:
+        return None
+    return _campaign_banner_payload(campaign, quote, now)
+
+
+def campaign_banner_payloads(campaigns, now=None) -> dict[int, dict]:
+    """Resolve many sale banners in two quote queries instead of one checkout-price query per banner."""
+    now = now or timezone.now()
+    campaigns = list(campaigns)
+    if not campaigns:
+        return {}
+
+    books = {campaign.book_id: campaign.book for campaign in campaigns if campaign.book_id}
+    plans = {campaign.plan_id: campaign.plan for campaign in campaigns if campaign.plan_id}
+    book_quotes = book_price_quotes(books.values(), now=now)
+    plan_quotes = plan_price_quotes(plans.values(), now=now)
+
+    payloads = {}
+    for campaign in campaigns:
+        quote = book_quotes.get(campaign.book_id) if campaign.book_id else plan_quotes.get(campaign.plan_id)
+        payload = _campaign_banner_payload(campaign, quote, now)
+        if payload:
+            payloads[campaign.pk] = payload
+    return payloads

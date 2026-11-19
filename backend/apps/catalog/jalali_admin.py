@@ -23,6 +23,13 @@ def _normal_digits(value):
     return value.translate(_DIGITS) if isinstance(value, str) else value
 
 
+def _normal_number(value):
+    """Normalize Persian/Arabic numerals and their decimal/group separators at the form boundary."""
+    if not isinstance(value, str):
+        return value
+    return _normal_digits(value).replace("٫", ".").replace("٬", "")
+
+
 def _parse_admin_date(value):
     """Parse a Jalali ``year/month/day`` value, with ISO/Gregorian input kept as a compatibility fallback."""
     if isinstance(value, datetime.datetime):
@@ -180,6 +187,26 @@ def _jalali_formfield(formfield, db_field):
         return JalaliDateField(
             **_copy_formfield(formfield, widget=widget, input_formats=formfield.input_formats)
         )
+
+    if isinstance(db_field, models.IntegerField | models.FloatField | models.DecimalField) and isinstance(
+        formfield, forms.IntegerField | forms.FloatField | forms.DecimalField
+    ):
+        kind = "integer" if isinstance(db_field, models.IntegerField) else "decimal"
+        attrs = dict(formfield.widget.attrs)
+        attrs["data-lp-number"] = kind
+        attrs.setdefault("inputmode", "numeric" if kind == "integer" else "decimal")
+        attrs.setdefault("dir", "ltr")
+        formfield.widget.attrs = attrs
+        # Native number inputs reject Persian/Arabic digits before Django ever receives them. A text input with a
+        # numeric mobile keyboard accepts those scripts; JavaScript normalizes them as typed, and this server-side
+        # boundary also handles direct POSTs and browsers with scripts disabled.
+        formfield.widget.input_type = "text"
+        original_to_python = formfield.to_python
+
+        def to_python(value):
+            return original_to_python(_normal_number(value))
+
+        formfield.to_python = to_python
     return formfield
 
 

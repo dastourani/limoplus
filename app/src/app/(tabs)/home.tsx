@@ -66,6 +66,8 @@ export default function Home() {
   // «قفسه‌ها»: one row per subject, set in the panel; books on no shelf come last.
   const books = useApi(() => endpoints.shelves(), [user?.id, asLearner]);
   const banners = useApi(() => endpoints.banners(), [user?.id]);
+  const editorialBanners = useMemo(() => (banners.data ?? []).filter((banner) => !banner.discount), [banners.data]);
+  const dealBanners = useMemo(() => (banners.data ?? []).filter((banner) => !!banner.discount), [banners.data]);
   // «اصلاح شد، ممنون»: the learner's reports fixed in the panel since last time (each said once).
   useFocusEffect(
     useCallback(() => {
@@ -332,14 +334,36 @@ export default function Home() {
         </View>
       ),
     });
-  if (banners.data?.length)
+  if (editorialBanners.length)
     blocks.push({
       key: 'banners',
       el: (
         <View style={styles.section}>
-            <SectionHeader icon="sparkles" title="تازه‌های لیمو" />
-            <BannerCarousel banners={banners.data!} onOpen={(b) => openLink(b.link, b.id)} paused={pageScrolling} frameWidth={wide ? SIDE_INNER : undefined} />
-          </View>
+          <SectionHeader icon="sparkles" title="تازه‌های لیمو" sub="خبرها و یادآوری‌ها" />
+          <BannerCarousel
+            banners={editorialBanners}
+            onOpen={(b) => openLink(b.link, b.id)}
+            paused={pageScrolling}
+            frameWidth={wide ? SIDE_INNER : undefined}
+            dotLabel="خبر"
+          />
+        </View>
+      ),
+    });
+  if (dealBanners.length)
+    blocks.push({
+      key: 'deals',
+      el: (
+        <View style={styles.section}>
+          <SectionHeader icon="tag" title="پیشنهادهای ویژه" sub="تخفیف‌های فعال و مهلت هر کمپین" />
+          <BannerCarousel
+            banners={dealBanners}
+            onOpen={(b) => openLink(b.link, b.id)}
+            paused={pageScrolling}
+            frameWidth={wide ? SIDE_INNER : undefined}
+            dotLabel="پیشنهاد"
+          />
+        </View>
       ),
     });
   if (books.loading && !list.length) blocks.push({ key: 'loading', el: <Loading /> });
@@ -395,10 +419,10 @@ export default function Home() {
     ),
   });
 
-  // A computer: today's jobs and «نیاز به مرور» in a column beside the books.
+  // A computer: today's jobs, notices and sale offers in a column beside the books.
   if (wide) {
-    // «تازه‌های لیمو» under today's jobs: one frame that turns by itself.
-    const side = new Set(['today', 'welcome', 'banners']);
+    // The two banner types have independent headings and carousels in the side column.
+    const side = new Set(['today', 'welcome', 'banners', 'deals']);
     return (
       <Screen tab wide wideMax={homeMax}>
         {/* The books scroll; the side column stays in place and scrolls on its own when it is taller than the window. */}

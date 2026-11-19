@@ -642,6 +642,34 @@ class SampleAndBannerTests(_Base):
         self.assertIsNone(next(b for b in data if b["title"] == "پیش‌نویس")["book"])
         self.assertEqual(self.client.get(reverse("admin:catalog_banner_add")).status_code, 200)
 
+    def test_campaign_banner_admin_shows_its_effective_checkout_destination(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        from apps.commerce.models import SaleCampaign
+        from .models import Banner
+
+        now = timezone.now()
+        campaign = SaleCampaign.objects.create(
+            title="کمپین کتاب آزمایشی", book=self.book, discounted_price=1,
+            starts_at=now - timedelta(minutes=1), ends_at=now + timedelta(hours=1),
+        )
+        banner = Banner.objects.create(title="بنر کمپین", template="sale", sale_campaign=campaign)
+        change = self.client.get(reverse("admin:catalog_banner_change", args=[banner.pk]))
+        self.assertContains(change, "مقصد نهایی")
+        self.assertContains(change, "خرید از کمپین")
+        self.assertContains(change, "buy/test-book")
+        self.assertNotContains(change, 'name="target"')
+
+        listing = self.client.get(reverse("admin:catalog_banner_changelist"))
+        self.assertContains(listing, "buy/test-book")
+
+    def test_banner_preview_labels_both_intentional_aspect_ratio_sizes(self):
+        script = (settings.BASE_DIR / "apps/catalog/static/catalog/panel.js").read_text(encoding="utf-8")
+        self.assertIn("پهن · ۴۲۰ × ۲۱۰ پیکسل", script)
+        self.assertIn("گوشی · ۳۰۰ × ۱۵۰ پیکسل", script)
+        self.assertIn("نسبت هر دو ۲ به ۱", script)
+
 
 class ChoiceOrderAndCorrectionTests(_Base):
     """«ترتیب گزینه‌ها: ثابت», choices that point at other choices, «گزینه‌ی ۲» in explanations, and «اصلاح‌شده»."""
