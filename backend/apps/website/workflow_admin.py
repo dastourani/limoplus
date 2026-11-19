@@ -881,6 +881,16 @@ class ClassroomAdmin(admin.ModelAdmin):
                 super().__init__(*args, **form_kwargs)
         return UserForm
 
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser or access.is_book_teacher(request.user))
+
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if not access.is_book_teacher(request.user):
+            return False
+        return bool(obj is None or obj.teacher_id == request.user.pk)
+
     def has_add_permission(self, request):
         if request.user.is_superuser:
             return True
@@ -889,7 +899,9 @@ class ClassroomAdmin(admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         if request.user.is_superuser:
             return True
-        return bool(obj and obj.teacher_id == request.user.pk)
+        if not access.is_book_teacher(request.user):
+            return False
+        return bool(obj is None or obj.teacher_id == request.user.pk)
 
     def has_delete_permission(self, request, obj=None):
         return request.user.is_superuser
@@ -1008,12 +1020,24 @@ class ClassroomMemberAdmin(admin.ModelAdmin):
             return qs
         return qs.filter(classroom__teacher=request.user)
 
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser or access.is_book_teacher(request.user))
+
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if not access.is_book_teacher(request.user):
+            return False
+        return bool(obj is None or obj.classroom.teacher_id == request.user.pk)
+
     def has_add_permission(self, request):
         return False
 
     def has_change_permission(self, request, obj=None):
         if request.user.is_superuser:
             return True
+        if not access.is_book_teacher(request.user):
+            return False
         return bool(obj and obj.classroom.teacher_id == request.user.pk)
 
     def has_delete_permission(self, request, obj=None):

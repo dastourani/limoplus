@@ -133,3 +133,15 @@ class TeacherPanelClassroomTests(TestCase):
         self.assertEqual(res.status_code, 302)
         member.refresh_from_db()
         self.assertEqual(member.status, ClassroomMember.Status.REVOKED)
+
+    def test_teacher_can_view_admin_classroom_and_books(self):
+        res_index = self.client.get("/admin/")
+        self.assertEqual(res_index.status_code, 200)
+        self.assertContains(res_index, "کلاس")
+
+        res_books = self.client.get("/admin/catalog/book/")
+        self.assertEqual(res_books.status_code, 200)
+        self.assertContains(res_books, "ایجاد کتاب پیش‌نویس")
+
+        res_classrooms = self.client.get("/admin/website/classroom/")
+        self.assertEqual(res_classrooms.status_code, 200)
