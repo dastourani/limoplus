@@ -30,14 +30,14 @@
 
 {% block content %}
 <div id="content-main" class="lp-login" dir="rtl">
-  <h1>ورود به پنل مدیریت</h1>
-  <p class="lp-login-help">ورود عادی با کد پیامکی است. کد فقط برای شماره‌های ثبت‌شده‌ی کارکنان ارسال می‌شود.</p>
+  <h1>ورود به پنل اساتید و مدیریت</h1>
+  <p class="lp-login-help">ورود اساتید و همکاران با کد تأیید پیامکی انجام می‌شود.</p>
 
   {% if notice %}<div class="lp-login-notice" role="status">{{ notice }}</div>{% endif %}
   {% if error %}<div class="lp-login-error" role="alert">{{ error }}</div>{% endif %}
 
   <section class="lp-login-card" aria-labelledby="otp-login-heading">
-    <h2 id="otp-login-heading">ورود با پیامک</h2>
+    <h2 id="otp-login-heading">ورود با شماره موبایل</h2>
     <form method="post" action="{{ login_url }}">
       {% csrf_token %}
       <input type="hidden" name="action" value="send_otp">
