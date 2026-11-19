@@ -34,6 +34,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     phone = models.CharField("شماره موبایل", max_length=11, unique=True)
     email = models.EmailField("ایمیل", blank=True)
+    email_verified_at = models.DateTimeField("زمان تأیید ایمیل", null=True, blank=True)
+    email_verification_token = models.CharField("توکن تأیید ایمیل", max_length=64, blank=True, db_index=True)
     first_name = models.CharField("نام", max_length=60, blank=True)
     last_name = models.CharField("نام خانوادگی", max_length=60, blank=True)
     is_active = models.BooleanField("فعال", default=True)
@@ -62,6 +64,22 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.phone
+
+    @property
+    def is_email_verified(self) -> bool:
+        return bool(self.email and self.email_verified_at)
+
+    def generate_email_verification_token(self) -> str:
+        import secrets
+        token = secrets.token_urlsafe(32)
+        self.email_verification_token = token
+        self.save(update_fields=["email_verification_token"])
+        return token
+
+    def verify_email(self):
+        self.email_verified_at = timezone.now()
+        self.email_verification_token = ""
+        self.save(update_fields=["email_verified_at", "email_verification_token"])
 
     @property
     def full_name(self):

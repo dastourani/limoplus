@@ -1,0 +1,26 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div class="card" style="max-width: 520px; margin: 30px auto; padding: 28px; background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.1);">
+  <h2 style="margin-top:0; color:#111827;">{{ title }}</h2>
+  <p style="color: #4b5563; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
+    ثبت و تأیید ایمیل کاری به شما امکان می‌دهد خروجی‌های TeX و آرشیو کامل کتاب را با یک کلیک مستقیماً روی ایمیل خود دریافت کنید.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <div style="margin-bottom: 18px;">
+      <label for="id_email" style="display:block; font-weight:bold; margin-bottom:6px;">آدرس ایمیل شما:</label>
+      <input type="email" name="email" id="id_email" dir="ltr" required value="{{ user_email }}" placeholder="profs@university.ac.ir" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:15px;">
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-top: 24px;">
+      <button type="submit" class="button" style="background: #2563eb; color: white; padding: 10px 22px; border-radius: 6px; border: none; font-size:14px; font-weight: bold; cursor: pointer;">
+        ذخیره و ارسال لینک تأیید
+      </button>
+      <a href="{% url 'admin:index' %}" class="button" style="background: #f3f4f6; color: #374151; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-size:14px;">
+        انصراف
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}
