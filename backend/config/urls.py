@@ -99,8 +99,12 @@ api = [
     path("payments/zibal/callback/", commerce.zibal_callback),
 ]
 
+from apps.website.classroom_views import classroom_join, verify_teacher_email
+
 # The same on every host (config/website_urls.py uses them too).
 shared = [
+    path("join/<str:code>/", classroom_join, name="root-classroom-join"),
+    path("verify-email/<str:token>/", verify_teacher_email, name="root-verify-teacher-email"),
     path(f"{settings.ADMIN_URL}open-app/", accounts_views.open_app, name="panel-open-app"),
     # Shadow Django's password form with the OTP-first panel login; the break-glass password is superuser-only.
     path(f"{settings.ADMIN_URL}login/", admin_login, name="admin-login"),
@@ -124,5 +128,5 @@ from apps.catalog.webapp import webapp  # noqa: E402
 
 
 # Not for the API, the panel, static files or media (so «/admin» still gets its slash added, and so on).
-_reserved = "|".join(re.escape(x.strip("/")) for x in ("api", "static", "media", "site", settings.ADMIN_URL) if x.strip("/"))
+_reserved = "|".join(re.escape(x.strip("/")) for x in ("api", "static", "media", "site", "join", "verify-email", settings.ADMIN_URL) if x.strip("/"))
 urlpatterns += [re_path(rf"^(?!(?:{_reserved})(?:/|$))(?P<path>.*)$", webapp)]

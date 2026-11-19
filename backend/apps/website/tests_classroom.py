@@ -145,3 +145,47 @@ class TeacherPanelClassroomTests(TestCase):
 
         res_classrooms = self.client.get("/admin/website/classroom/")
         self.assertEqual(res_classrooms.status_code, 200)
+
+class ClassroomJoinLandingTests(TestCase):
+    def setUp(self):
+        self.teacher = User.objects.create(phone="09121119999", is_staff=True)
+        self.book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title="کتاب آزمایشی فرود",
+            slug="landing-test-book",
+            is_published=False,
+        )
+        self.classroom = Classroom.objects.create(
+            teacher=self.teacher,
+            book=self.book,
+            title="کلاس آزمایشی لندینگ",
+            capacity=40,
+            expiry_policy=Classroom.ExpiryPolicy.FROM_JOIN,
+            duration_days=60,
+        )
+
+    def test_anonymous_join_landing_renders(self):
+        res = self.client.get(f"/join/{self.classroom.code}/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, self.classroom.title)
+        self.assertContains(res, self.book.title)
+        self.assertContains(res, "شماره موبایل دانشجو")
+
+    def test_authenticated_student_can_join_and_gain_entitlement(self):
+        student = User.objects.create(phone="09123334444")
+        self.client.force_login(student)
+        res = self.client.post(f"/join/{self.classroom.code}/")
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.url, f"/book/{self.book.slug}")
+
+        member = ClassroomMember.objects.get(classroom=self.classroom, phone=student.phone)
+        self.assertEqual(member.status, ClassroomMember.Status.ACTIVE)
+        self.assertIsNotNone(member.entitlement)
+        self.assertEqual(member.entitlement.book, self.book)
+
+    def test_inactive_classroom_shows_error_state(self):
+        self.classroom.is_active = False
+        self.classroom.save()
+        res = self.client.get(f"/join/{self.classroom.code}/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "غیرفعال شده است")

@@ -227,6 +227,10 @@ OTP_SMS_APP_HASH = env.bool("OTP_SMS_APP_HASH", default=True)
 if not DEBUG and not TESTING and SMS_BACKEND == "console":
     raise ImproperlyConfigured("SMS_BACKEND=console is for development only. Set SMS_BACKEND=raygan on the server.")
 
+# --- Email ------------------------------------------------------------------
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend" if (DEBUG or TESTING) else "django.core.mail.backends.smtp.EmailBackend")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="لیموخوان <noreply@limokhan.ir>")
+
 # --- Payment (Zibal) --------------------------------------------------------
 # Leave empty until the merchant code arrives; "zibal" is Zibal's test merchant.
 

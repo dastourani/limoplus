@@ -125,6 +125,18 @@
 
 {% block userlinks %}
 {% if user.is_active and user.is_staff %}
+  <span style="display:inline-flex; align-items:center; gap:6px; margin-inline-end:10px; font-size:12px;">
+    {% if user.email %}
+      {% if user.is_email_verified %}
+        <span class="lp-badge lp-b-green" title="ایمیل تأییدشده: {{ user.email }}">✓ {{ user.email }}</span>
+      {% else %}
+        <span class="lp-badge lp-b-yellow" title="ایمیل تأییدنشده: {{ user.email }}">⚠️ ایمیل در انتظار تأیید: {{ user.email }}</span>
+        <a href="{% url 'admin:accounts_user_send_verification' %}" style="font-size:11px; text-decoration:underline;">ارسال مجدد لینک</a>
+      {% endif %}
+    {% else %}
+      <a href="{% url 'admin:accounts_user_change_email' %}" class="lp-badge lp-b-blue" title="ثبت ایمیل برای دریافت خروجی‌های کتاب">+ ثبت ایمیل کاری</a>
+    {% endif %}
+  </span>
   <form class="lp-open-app" method="post" action="{% url 'panel-open-app' %}" target="_blank" rel="noopener">{% csrf_token %}
     <button type="submit" title="وب اپ در زبانه‌ی تازه، با همین حساب و بدون پیامک باز می‌شود">باز کردن وب اپ با حساب من</button>
   </form> /

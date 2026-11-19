@@ -282,6 +282,7 @@ class BookAdmin(admin.ModelAdmin):
             path("import/", site(lambda r: panel.import_view(self.admin_site, r)), name="catalog_import"),
             path("<int:book_id>/import/", site(lambda r, book_id: panel.import_view(self.admin_site, r, book_id)), name="catalog_book_import"),
             path("<int:book_id>/export/", site(panel.book_export), name="catalog_book_export"),
+            path("<int:book_id>/email-export/", site(panel.book_email_export), name="catalog_book_email_export"),
             path("orphan/<int:node_id>/archive/", site(panel.archive_orphan), name="catalog_archive_orphan"),
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
             path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
@@ -295,6 +296,7 @@ class BookAdmin(admin.ModelAdmin):
             path("chapter/<int:chapter_id>/file/", site(lambda r, chapter_id: panel.chapter_file(self.admin_site, r, chapter_id)), name="catalog_chapter_file"),
             path("chapter/<int:chapter_id>/export/", site(panel.chapter_export), name="catalog_chapter_export"),
             path("chapter/<int:chapter_id>/export/tex/", site(panel.chapter_tex), name="catalog_chapter_tex"),
+            path("chapter/<int:chapter_id>/email-tex/", site(panel.chapter_email_tex), name="catalog_chapter_email_tex"),
             path("chapter/<int:chapter_id>/history/", site(lambda r, chapter_id: panel.chapter_history(self.admin_site, r, chapter_id)), name="catalog_chapter_history"),
             path("chapter/<int:chapter_id>/history/<int:revision_id>/", site(panel.revision_text), name="catalog_revision_text"),
         ]

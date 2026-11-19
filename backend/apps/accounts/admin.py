@@ -283,6 +283,82 @@ class UserAdmin(BaseUserAdmin):
         )
         return "" if shown == "—" else shown
 
+    def get_urls(self):
+        urls = super().get_urls()
+        from django.urls import path
+        custom_urls = [
+            path("change-email/", self.admin_site.admin_view(self.change_email_view), name="accounts_user_change_email"),
+            path("send-verification/", self.admin_site.admin_view(self.send_verification_view), name="accounts_user_send_verification"),
+        ]
+        return custom_urls + urls
+
+    def change_email_view(self, request):
+        from django.contrib import messages
+        from django.core.mail import send_mail
+        from django.shortcuts import redirect, render
+
+        user = request.user
+        if request.method == "POST":
+            new_email = request.POST.get("email", "").strip().lower()
+            if not new_email or "@" not in new_email:
+                messages.error(request, "ایمیل واردشده معتبر نیست.")
+            else:
+                user.email = new_email
+                user.email_verified_at = None
+                token = user.generate_email_verification_token()
+                user.save(update_fields=["email"])
+
+                verify_url = request.build_absolute_uri(f"/verify-email/{token}/")
+                subject = "تأیید ایمیل در پنل لیموخوان"
+                body = (
+                    f"استاد گرامی سلام،\n\n"
+                    f"برای تأیید ایمیل خود و فعال‌سازی امکان دریافت خروجی‌های کتاب (TeX و ZIP)، لطفاً روی پیوند زیر کلیک کنید:\n"
+                    f"{verify_url}\n\n"
+                    f"با احترام،\nتیم لیموخوان"
+                )
+                try:
+                    send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [new_email], fail_silently=False)
+                    messages.success(request, f"ایمیل شما ثبت شد و پیوند تأیید به {new_email} ارسال گردید. لطفاً ایمیل خود را بررسی کنید.")
+                except Exception as exc:
+                    messages.warning(request, f"ایمیل ثبت شد اما ارسال پیوند با خطا مواجه شد: {exc}")
+
+                return redirect(f"/{settings.ADMIN_URL}")
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "ثبت یا ویرایش ایمیل کاری",
+            "user_email": user.email,
+            "is_verified": user.is_email_verified,
+        }
+        return render(request, "admin/accounts/change_email.html", context)
+
+    def send_verification_view(self, request):
+        from django.contrib import messages
+        from django.core.mail import send_mail
+        from django.shortcuts import redirect
+
+        user = request.user
+        if not user.email:
+            messages.error(request, "ابتدا ایمیل خود را ثبت کنید.")
+            return redirect(f"/{settings.ADMIN_URL}")
+
+        token = user.generate_email_verification_token()
+        verify_url = request.build_absolute_uri(f"/verify-email/{token}/")
+        subject = "تأیید ایمیل در پنل لیموخوان"
+        body = (
+            f"استاد گرامی سلام،\n\n"
+            f"برای تأیید ایمیل خود و فعال‌سازی امکان دریافت خروجی‌های کتاب (TeX و ZIP)، لطفاً روی پیوند زیر کلیک کنید:\n"
+            f"{verify_url}\n\n"
+            f"با احترام،\nتیم لیموخوان"
+        )
+        try:
+            send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False)
+            messages.success(request, f"پیوند تأیید مجدداً به {user.email} ارسال شد.")
+        except Exception as exc:
+            messages.error(request, f"خطا در ارسال ایمیل: {exc}")
+
+        return redirect(f"/{settings.ADMIN_URL}")
+
     @admin.display(description="")
     def overview(self, obj):
         from .overview import user_overview

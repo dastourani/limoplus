@@ -840,12 +840,87 @@ def chapter_tex(request, chapter_id):
     return response
 
 
+def chapter_email_tex(request, chapter_id):
+    """Email the chapter's TeX/LaTeX project bundle directly to the verified teacher."""
+    from django.contrib import messages
+    from django.core.mail import EmailMessage
+    from django.shortcuts import redirect
+
+    chapter = _chapter(chapter_id)
+    _can_edit(request, chapter.book())
+    user = request.user
+
+    if not user.email:
+        messages.error(request, "ابتدا ایمیل خود را در پنل ثبت کنید.")
+        return redirect(reverse("admin:catalog_book_change", args=[chapter.book().pk]))
+    if not user.is_email_verified:
+        messages.warning(request, f"ایمیل شما ({user.email}) هنوز تأیید نشده است. لطفاً ابتدا روی لینک تأیید ارسال‌شده کلیک کنید.")
+        return redirect(reverse("admin:catalog_book_change", args=[chapter.book().pk]))
+
+    name, data, content_type = chapter_tex_bundle(chapter)
+    msg = EmailMessage(
+        subject=f"فایل خروجی LaTeX فصل {chapter.title} - لیموخوان",
+        body=(
+            f"استاد گرامی سلام،\n\n"
+            f"فایل سورس LaTeX فصل «{chapter.title}» از کتاب «{chapter.book().title}» پیوست شد.\n\n"
+            f"با احترام،\nتیم پشتیبانی لیموخوان"
+        ),
+        to=[user.email],
+    )
+    msg.attach(name, data, content_type)
+    try:
+        msg.send(fail_silently=False)
+        messages.success(request, f"فایل LaTeX فصل با موفقیت به ایمیل {user.email} ارسال شد.")
+    except Exception as exc:
+        messages.error(request, f"خطا در ارسال ایمیل: {exc}")
+
+    return redirect(reverse("admin:catalog_book_change", args=[chapter.book().pk]))
+
+
 def book_export(request, book_id):
     book = _book(book_id)
     _can_edit(request, book)
     response = HttpResponse(book_bundle(book), content_type="application/zip")
     response["Content-Disposition"] = f'attachment; filename="{book.slug}.zip"'
     return response
+
+
+def book_email_export(request, book_id):
+    """Email the complete book ZIP archive directly to the verified teacher."""
+    from django.contrib import messages
+    from django.core.mail import EmailMessage
+    from django.shortcuts import redirect
+
+    book = _book(book_id)
+    _can_edit(request, book)
+    user = request.user
+
+    if not user.email:
+        messages.error(request, "ابتدا ایمیل خود را در پنل ثبت کنید.")
+        return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
+    if not user.is_email_verified:
+        messages.warning(request, f"ایمیل شما ({user.email}) هنوز تأیید نشده است. لطفاً ابتدا روی لینک تأیید ارسال‌شده کلیک کنید.")
+        return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
+
+    data = book_bundle(book)
+    name = f"{book.slug}.zip"
+    msg = EmailMessage(
+        subject=f"فایل آرشیو کامل کتاب {book.title} - لیموخوان",
+        body=(
+            f"استاد گرامی سلام،\n\n"
+            f"آرشیو کامل زیپ کتاب «{book.title}» پیوست شد.\n\n"
+            f"با احترام،\nتیم پشتیبانی لیموخوان"
+        ),
+        to=[user.email],
+    )
+    msg.attach(name, data, "application/zip")
+    try:
+        msg.send(fail_silently=False)
+        messages.success(request, f"آرشیو کامل کتاب با موفقیت به ایمیل {user.email} ارسال شد.")
+    except Exception as exc:
+        messages.error(request, f"خطا در ارسال ایمیل: {exc}")
+
+    return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
 
 
 def chapter_history(admin_site, request, chapter_id):

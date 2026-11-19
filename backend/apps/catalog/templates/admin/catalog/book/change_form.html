@@ -3,6 +3,9 @@
 {% block object-tools-items %}
   {% if original %}
     <li><a href="{% url 'admin:catalog_book_export' original.pk %}">دریافت کل کتاب (ZIP)</a></li>
+    {% if request.user.email and request.user.is_email_verified %}
+      <li><a href="{% url 'admin:catalog_book_email_export' original.pk %}" title="ارسال فایل زیپ کامل کتاب به ایمیل شما">📧 ارسال کل کتاب به ایمیل</a></li>
+    {% endif %}
     {% if can_request_publication %}<li><a href="{% url 'admin:website_publicationrequest_add' %}?book={{ original.pk }}">درخواست بازبینی انتشار عمومی</a></li>{% endif %}
     {% if can_request_group_access %}<li><a href="{% url 'admin:website_bookaccessrequest_add' %}?book={{ original.pk }}">پیشنهاد دسترسی گروهی</a></li>{% endif %}
     {% if can_manage_access and original.waitlist.exists %}<li><a href="{% url 'admin:catalog_book_waitlist_notify' original.pk %}">خبر دادن به منتظران «خبرم کن»</a></li>{% endif %}
@@ -100,6 +103,10 @@
           <a class="btn small" href="{% url 'admin:catalog_chapter_export' c.node.pk %}">دریافت فایل</a>
           <a class="btn small" href="{% url 'admin:catalog_chapter_tex' c.node.pk %}"
              title="همین فصل برای Overleaf: فایل .tex و تصویرها">📥 .tex</a>
+          {% if request.user.email and request.user.is_email_verified %}
+            <a class="btn small" href="{% url 'admin:catalog_chapter_email_tex' c.node.pk %}"
+               title="ارسال فایل .tex این فصل به ایمیل شما">📧 ایمیل TeX</a>
+          {% endif %}
           {% if can_manage_access %}
             <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
               <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="archive">
