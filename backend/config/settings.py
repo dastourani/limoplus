@@ -60,7 +60,7 @@ CSRF_TRUSTED_ORIGINS = env_hosts("CSRF_TRUSTED_ORIGINS", default=[SITE_URL])
 CORS_ALLOWED_ORIGINS = env_hosts("CORS_ALLOWED_ORIGINS")
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    "config.admin.LimoAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
