@@ -189,8 +189,12 @@ def _verify_otp(request, next_url):
                         ratelimit.hit(ip_key)
                         error = "کد اشتباه است."
                     else:
-                        otp.consumed_at = timezone.now()
+                        now = timezone.now()
+                        otp.consumed_at = now
                         otp.save(update_fields=["consumed_at"])
+                        from apps.website.group_access import activate_approved_members
+
+                        activate_approved_members(user, now=now)
 
     if error:
         return _render_login(request, error=error, next_url=next_url)

@@ -5,11 +5,11 @@ from django.contrib import admin
 from .models import ContentNode
 
 
-def _book_choices(with_inbox=False, user=None):
-    """Books by title; a teacher sees only the books assigned to their approved panel account."""
+def _book_choices(with_inbox=False, user=None, capability="can_edit_content"):
+    """Books by title; a teacher sees only books with the capability required by this list."""
     from . import access
 
-    books = access.books_for_editor(user) if user is not None else ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1)
+    books = access.books_for_editor(user, capability=capability) if user is not None else ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1)
     if not with_inbox:
         books = books.filter(is_inbox=False)
     return [(str(b.pk), b.title) for b in books.order_by("title")]

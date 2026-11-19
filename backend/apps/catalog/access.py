@@ -17,33 +17,41 @@ BOOK_EDITOR_GROUP = "استاد کتاب"
 def is_book_teacher(user) -> bool:
     """A manager-approved, invited panel user; a staff flag or an editor row alone is never an approval."""
     return bool(
-        user and user.is_authenticated and user.is_active and user.is_staff
+        user and user.is_authenticated and user.is_active and user.is_staff and not user.is_superuser
         and user.groups.filter(name=BOOK_EDITOR_GROUP).exists()
     )
 
 
-def book_editor_ids(user):
-    """Book IDs this approved editor may see; superusers see all books."""
+def book_editor_ids(user, capability="can_edit_content"):
+    """Book IDs assigned to this editor; by default, only books they may edit."""
+    if capability and capability not in {
+        "can_edit_content", "can_request_publication", "can_request_group_access",
+        "can_view_reports", "can_view_aggregate_study", "can_view_aggregate_sales",
+    }:
+        return ContentNode.objects.none().values("pk")
     if user and user.is_authenticated and user.is_active and user.is_superuser:
         return ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1).values("pk")
     if not is_book_teacher(user) or not user.has_perm("catalog.change_contentnode"):
         return ContentNode.objects.none().values("pk")
     from .models import BookEditor
 
-    return BookEditor.objects.filter(
+    rows = BookEditor.objects.filter(
         user_id=user.pk,
         book__kind=ContentNode.Kind.BOOK,
         book__depth=1,
         book__is_inbox=False,
-    ).values("book_id")
+    )
+    if capability:
+        rows = rows.filter(**{capability: True})
+    return rows.values("book_id")
 
 
-def books_for_editor(user):
+def books_for_editor(user, capability="can_edit_content"):
     """The books visible to a panel user, as a queryset (so filters never need every title in Python)."""
-    return ContentNode.objects.filter(pk__in=book_editor_ids(user), kind=ContentNode.Kind.BOOK, depth=1)
+    return ContentNode.objects.filter(pk__in=book_editor_ids(user, capability=capability), kind=ContentNode.Kind.BOOK, depth=1)
 
 
-def scope_to_editor_books(queryset, user, path_field="path"):
+def scope_to_editor_books(queryset, user, path_field="path", capability="can_edit_content"):
     """Restrict a related-object queryset to rows beneath this editor's assigned book roots.
 
     `path_field` can be `path`, `node__path`, `chapter__path`, or a previously annotated `item_path`.
@@ -60,14 +68,17 @@ def scope_to_editor_books(queryset, user, path_field="path"):
         path=Substr(OuterRef(path_field), 1, ContentNode.steplen),
         kind=ContentNode.Kind.BOOK,
         depth=1,
-        pk__in=book_editor_ids(user),
+        pk__in=book_editor_ids(user, capability=capability),
     ).order_by()
     return queryset.annotate(_lp_editor_book_id=Subquery(roots.values("pk")[:1])).filter(_lp_editor_book_id__isnull=False)
 
 
 def acts_as_staff(user) -> bool:
-    """Staff, unless they asked to see the app as a learner does."""
-    return bool(user and user.is_authenticated and user.is_staff and not getattr(user, "view_as_learner", False))
+    """Global staff access, except the deliberately book-scoped teacher role and learner-view sessions."""
+    return bool(
+        user and user.is_authenticated and user.is_active and user.is_staff
+        and not is_book_teacher(user) and not getattr(user, "view_as_learner", False)
+    )
 
 
 def owns_book(user, book: ContentNode) -> bool:
@@ -94,12 +105,23 @@ def active_rows(user) -> list[tuple]:
     ]
 
 
+def _teacher_can_read_book(user, book_id) -> bool:
+    """A book-teacher role is never global staff access; only an explicitly editable book is readable in the app."""
+    if not is_book_teacher(user) or getattr(user, "view_as_learner", False):
+        return False
+    from .models import BookEditor
+
+    return BookEditor.objects.filter(user_id=user.pk, book_id=book_id, can_edit_content=True).exists()
+
+
 def access_kind_from(rows, user, book_id, major_ids) -> str | None:
     """access_kind from rows already read (see active_rows)."""
     if not (user and user.is_authenticated):
         return None
     if acts_as_staff(user):
         return "staff"
+    if _teacher_can_read_book(user, book_id):
+        return "editor"
     own = [r for r in rows if r[0] == book_id]
     if any(r[3] for r in own):
         return "purchase"
@@ -111,7 +133,7 @@ def access_kind_from(rows, user, book_id, major_ids) -> str | None:
 
 
 def access_kind(user, book: ContentNode) -> str | None:
-    """Why the user can read the whole book: "staff", "purchase", "gift", "subscription", or None."""
+    """Why the user can read the whole book: staff, an assigned editor, purchase, gift, subscription, or None."""
     if not (user and user.is_authenticated):
         return None
     if acts_as_staff(user):
@@ -160,7 +182,7 @@ def can_edit_book(user, book: ContentNode) -> bool:
     from .models import BookEditor
 
     return BookEditor.objects.filter(
-        book=book, user=user, book__kind=ContentNode.Kind.BOOK, book__depth=1
+        book=book, user=user, can_edit_content=True, book__kind=ContentNode.Kind.BOOK, book__depth=1
     ).exists()
 
 
@@ -209,9 +231,24 @@ class AccessMap:
         if light:
             nodes = nodes.defer("full_body", "summary_body", "about", "cover_drawing")
         self.nodes = {n.id: n for n in nodes}
-        hidden = [n.path for n in self.nodes.values() if not n.is_published or n.is_archived or n.is_inbox]
-        free = [n.path for n in self.nodes.values() if n.is_free]
         self.access = access_kind(user, self.book) if kind is _UNSET else kind
+        # A manager-granted book entitlement is private, person-specific access, not a public release. If the
+        # book itself is still unpublished, let only this entitled reader see its tree; archived/inbox nodes
+        # remain hidden, and an unpublished chapter in an already-published book is still withheld.
+        private_unpublished_book = self.access == "gift" and not self.book.is_published
+        if self.access is not None and not self.book.is_published and not private_unpublished_book and user.is_authenticated:
+            from apps.commerce.models import Entitlement
+
+            # Purchase access outranks a simultaneous gift in the card label; the private-grant check is still
+            # independent so a group member with both entitlement kinds can open an unpublished group book.
+            private_unpublished_book = Entitlement.active_for(user).filter(
+                book=self.book, order__isnull=True, granted_by__isnull=False
+            ).exists()
+        hidden = [
+            n.path for n in self.nodes.values()
+            if (not n.is_published and not private_unpublished_book) or n.is_archived or n.is_inbox
+        ]
+        free = [n.path for n in self.nodes.values() if n.is_free]
         self.owned = self.access is not None
         self._visible, self._readable = {}, {}
         for n in self.nodes.values():

@@ -25,6 +25,12 @@ def _row(event: CopyEvent) -> dict:
 class TrackerAdmin(admin.ModelAdmin):
     """«ردیاب متن»: who copied a pasted text, the Bale alerts switch, and the riskiest accounts."""
 
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
     def has_add_permission(self, request):
         return False
 
@@ -32,9 +38,13 @@ class TrackerAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
-        return request.user.is_staff
+        return bool(request.user.is_active and request.user.is_superuser)
 
     def changelist_view(self, request, extra_context=None):
+        if not self.has_view_or_change_permission(request):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied
         row = GuardSettings.get()
         found = None
         pasted = ""
@@ -83,8 +93,17 @@ class CopyEventAdmin(admin.ModelAdmin):
     def text(self, obj):
         return core.text_of(obj)
 
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
     def has_add_permission(self, request):
         return False
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
 
     def has_delete_permission(self, request, obj=None):
         return False

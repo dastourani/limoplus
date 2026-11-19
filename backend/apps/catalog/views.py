@@ -85,6 +85,23 @@ def shelves(request):
     }
     # Read once for all the books: the learner's entitlements, finished sections and «خبرم کن» rows.
     entitlements = active_rows(request.user)
+    private_books = []
+    if request.user.is_authenticated:
+        from apps.commerce.models import Entitlement
+
+        private_ids = Entitlement.active_for(request.user).filter(
+            group_access_member__status="active",
+            book__kind=ContentNode.Kind.BOOK,
+            book__depth=1,
+            book__is_published=False,
+            book__is_archived=False,
+            book__is_inbox=False,
+        ).values("book_id")
+        private_books = list(
+            ContentNode.objects.filter(pk__in=private_ids)
+            .prefetch_related("majors")
+            .order_by("title", "pk")
+        )
     _prefetch_user_rows(request)
     cards: dict[int, dict] = {}
 
@@ -103,6 +120,8 @@ def shelves(request):
     rest = sorted((b for i, b in published.items() if i not in placed), key=lambda b: (b.is_coming_soon, b.position or 9999, b.title))
     if rest:
         rows.append({"id": None, "title": "کتاب‌های دیگر" if rows else "همه‌ی کتاب‌ها", "books": [card(b) for b in rest]})
+    if private_books:
+        rows.append({"id": -1, "title": "کتاب‌های دسترسی گروهی", "books": [card(b) for b in private_books]})
     return Response(rows)
 
 

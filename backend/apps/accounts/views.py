@@ -3,6 +3,8 @@ import re
 from datetime import timedelta
 
 from django.conf import settings
+from django.contrib.auth import login as django_login
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -160,6 +162,7 @@ def _make_room(user, replace_id):
 class VerifySerializer(serializers.Serializer):
     phone = serializers.CharField()
     code = serializers.CharField(max_length=10)
+    teacher_invitation = serializers.CharField(required=False, allow_blank=True, max_length=100)
     device_name = serializers.CharField(required=False, allow_blank=True, default="")
     platform = serializers.CharField(required=False, allow_blank=True, default="")
     replace_session_id = serializers.IntegerField(required=False)
@@ -169,6 +172,9 @@ class VerifySerializer(serializers.Serializer):
 @authentication_classes([])
 @permission_classes([AllowAny])
 def verify_otp(request):
+    # DRF passes its own Request wrapper, so Django's sensitive_post_parameters decorator raises TypeError here.
+    # Mark the underlying HttpRequest directly to keep credentials out of Django error reports.
+    request._request.sensitive_post_parameters = ("phone", "code", "teacher_invitation")
     data = VerifySerializer(data=request.data)
     if not data.is_valid():
         return _error("اطلاعات ارسالی کامل نیست.", "invalid_request", errors=data.errors)
@@ -177,6 +183,42 @@ def verify_otp(request):
     except InvalidPhone as exc:
         return _error(str(exc), "invalid_phone")
     code = data.validated_data["code"].strip().translate(_PERSIAN_DIGITS)
+
+    invitation_token = data.validated_data.get("teacher_invitation", "").strip()
+    invitation = None
+    if invitation_token:
+        from apps.website.models import TeacherApplication, TeacherInvitation
+
+        invitation = (
+            TeacherInvitation.objects.select_for_update()
+            .select_related("application", "book")
+            .filter(token_hash=TeacherInvitation.digest_token(invitation_token))
+            .first()
+        )
+        now = timezone.now()
+        if invitation is None or invitation.status != TeacherInvitation.Status.ISSUED:
+            return _error("این دعوت دیگر قابل استفاده نیست.", "invitation_unavailable")
+        if invitation.expires_at <= now:
+            invitation.status = TeacherInvitation.Status.EXPIRED
+            invitation.save(update_fields=["status"])
+            return _error("مهلت این دعوت به پایان رسیده است.", "invitation_unavailable")
+        if invitation.application.status != TeacherApplication.Status.APPROVED:
+            invitation.status = TeacherInvitation.Status.REVOKED
+            invitation.revoked_at = now
+            invitation.revocation_reason = "درخواست استاد از وضعیت تأیید خارج شد."
+            invitation.save(update_fields=["status", "revoked_at", "revocation_reason"])
+            return _error("این دعوت دیگر قابل استفاده نیست.", "invitation_unavailable")
+        if (
+            invitation.book.kind != "book" or invitation.book.depth != 1
+            or invitation.book.is_archived or invitation.book.is_inbox
+        ):
+            invitation.status = TeacherInvitation.Status.REVOKED
+            invitation.revoked_at = now
+            invitation.revocation_reason = "کتاب دعوت دیگر فعال نیست."
+            invitation.save(update_fields=["status", "revoked_at", "revocation_reason"])
+            return _error("این دعوت دیگر قابل استفاده نیست.", "invitation_unavailable")
+        if invitation.application.phone != phone:
+            return _error("شماره با دعوت‌نامه مطابقت ندارد.", "invitation_phone_mismatch")
 
     ip_wrong_key = f"otp-wrong-ip:{_client_ip(request)}"
     if ratelimit.count(ip_wrong_key) >= settings.OTP_WRONG_PER_IP_PER_HOUR:
@@ -198,6 +240,28 @@ def verify_otp(request):
         left = max(0, settings.OTP_MAX_ATTEMPTS - otp.attempts)
         return _error("کد اشتباه است.", "otp_wrong", attempts_left=left)
 
+    if invitation is not None:
+        try:
+            with transaction.atomic():
+                user, _ = User.objects.get_or_create(phone=phone)
+                if not user.is_active:
+                    return _error("این حساب غیرفعال شده است.", "user_inactive", status.HTTP_403_FORBIDDEN)
+                from apps.website.group_access import activate_approved_members
+                from apps.website.invitations import accept_teacher_invitation
+
+                accept_teacher_invitation(invitation, user)
+                now = timezone.now()
+                otp.consumed_at = now
+                otp.save(update_fields=["consumed_at"])
+                activate_approved_members(user, now=now)
+                # This special OTP flow creates the staff account and a Django admin session only after the invited
+                # phone has been verified. It does not consume an app-device slot or grant a DeviceSession token.
+                django_login(request._request, user, backend="django.contrib.auth.backends.ModelBackend")
+        except ValidationError as exc:
+            message = " ".join(exc.messages)
+            return _error(message, "invitation_unavailable")
+        return Response({"accepted": True, "user": _user_payload(user)})
+
     try:
         with transaction.atomic():
             user, _ = User.objects.get_or_create(phone=phone)
@@ -210,8 +274,12 @@ def verify_otp(request):
     if refused is not None:
         return refused
 
-    otp.consumed_at = timezone.now()
+    now = timezone.now()
+    otp.consumed_at = now
     otp.save(update_fields=["consumed_at"])
+    from apps.website.group_access import activate_approved_members
+
+    activate_approved_members(user, now=now)
     session, token = DeviceSession.start(user, data.validated_data["device_name"], data.validated_data["platform"])
     return Response({"token": token, "session_id": session.id, "user": _user_payload(user)})
 
