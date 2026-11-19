@@ -2051,3 +2051,64 @@ class ChapterCardTests(_Base):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["errors"], [])
         self.assertEqual(r.json()["meta"], {})
+
+    def test_teacher_can_create_draft_book_chapter_section_and_edit_lesson(self):
+        """Teacher independently creates draft book, adds chapter, adds section and edits text with formulas."""
+        from django.contrib.auth.models import Group
+        teacher = User.objects.create(phone="09129990011", is_staff=True)
+        from .access import BOOK_EDITOR_GROUP
+        teacher.groups.add(Group.objects.get(name=BOOK_EDITOR_GROUP))
+        self.client.force_login(teacher)
+
+        # 1. Create draft book
+        res_book = self.client.post("/admin/catalog/book/new-draft/", {
+            "title": "جبر خطی کاربردی",
+            "title_en": "Applied Linear Algebra",
+            "author": "دکتر تست",
+        })
+        self.assertEqual(res_book.status_code, 302)
+        book = ContentNode.objects.get(title="جبر خطی کاربردی")
+
+        # 2. Add chapter
+        res_ch = self.client.post(f"/admin/catalog/book/{book.pk}/chapters/", {
+            "action": "new",
+            "title": "فصل ۱: فضاهای برداری",
+            "number": "1",
+            "slug": "ch1-vector-spaces",
+        })
+        self.assertEqual(res_ch.status_code, 302)
+        chapter = ContentNode.objects.get(title="فصل ۱: فضاهای برداری")
+
+        # 3. Open chapter manager
+        res_cm = self.client.get(f"/admin/catalog/book/chapter/{chapter.pk}/")
+        self.assertEqual(res_cm.status_code, 200)
+
+        # 4. Create section & write lesson content with formulas
+        import json
+        res_sec = self.client.post(
+            f"/admin/catalog/book/chapter/{chapter.pk}/api/",
+            data=json.dumps({
+                "op": "section.create",
+                "title": "استقلال خطی",
+                "slug": "s1-independence",
+            }),
+            content_type="application/json"
+        )
+        self.assertEqual(res_sec.status_code, 200)
+
+        lesson_text = ":::تعریف\nبردارها مستقل خطی هستند.\n:::\n$$Ax = \\lambda x$$"
+        res_save = self.client.post(
+            f"/admin/catalog/book/chapter/{chapter.pk}/api/",
+            data=json.dumps({
+                "op": "section.update",
+                "slug": "s1-independence",
+                "full_body": lesson_text,
+            }),
+            content_type="application/json"
+        )
+        self.assertEqual(res_save.status_code, 200)
+
+        from . import editing
+        exported = editing.export_chapter(chapter)
+        self.assertIn("Ax = \\lambda x", exported)
+        self.assertIn(":::تعریف", exported)
