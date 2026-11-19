@@ -53,9 +53,18 @@ class JalaliAdminDateTests(SimpleTestCase):
         campaign_admin = admin.site._registry[SaleCampaign]
         datetime_field = campaign_admin.formfield_for_dbfield(SaleCampaign._meta.get_field("starts_at"), request)
         self.assertIsInstance(datetime_field, JalaliSplitDateTimeField)
-        rendered = datetime_field.widget.render("starts_at", datetime.datetime(2026, 11, 19, 17, 4))
+        rendered = datetime_field.widget.render(
+            "starts_at", datetime.datetime(2026, 11, 19, 17, 4), attrs={"id": "id_starts_at"},
+        )
         self.assertIn("۱۴۰۵/۸/۲۸", rendered)
+        self.assertIn('class="lp-split-datetime"', rendered)
         self.assertIn('class="lp-jalali-date"', rendered)
+        self.assertIn('for="id_starts_at_0"', rendered)
+        self.assertIn('for="id_starts_at_1"', rendered)
+        self.assertNotIn(
+            '<p class="time">', rendered,
+            "the split time widget must not nest a paragraph inside the datetime paragraph",
+        )
 
     def test_numeric_admin_fields_accept_persian_and_arabic_digits(self):
         request = RequestFactory().get("/admin/")

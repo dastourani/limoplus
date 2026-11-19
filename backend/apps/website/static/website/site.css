@@ -159,12 +159,13 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .offer-section .sechead { margin-bottom: 20px; }
 .offer-kicker { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 11px; margin-bottom: 5px;
   background: var(--lemon-soft); color: var(--green-dark); font-size: 12px; font-weight: 900; }
-.offers-grid { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); grid-auto-rows: 1fr; gap: 18px; align-items: stretch; }
-.offer-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 22px;
+.offers-grid { max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; gap: 16px; }
+.offer-card { display: flex; flex: 1 1 300px; flex-direction: column; width: 100%; max-width: 360px; min-width: 0; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 18px;
   background: #fff; color: var(--ink); text-decoration: none; box-shadow: 0 8px 24px rgba(23,32,26,.045); transition: border-color .18s, transform .18s, box-shadow .18s; }
 .offer-card:hover { border-color: #E6C536; transform: translateY(-2px); box-shadow: 0 14px 30px rgba(23,32,26,.1); }
 .offer-card:focus-visible { outline: 3px solid rgba(47,125,79,.45); outline-offset: 3px; }
-.offer-media { position: relative; width: 100%; aspect-ratio: 2 / 1; overflow: hidden; background: var(--hero); }
+.offer-media { position: relative; width: 100%; aspect-ratio: 2.4 / 1; overflow: hidden; background: var(--hero); }
 .offer-media > img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .offer-art { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; width: 100%; height: 100%;
   color: var(--lemon); background: radial-gradient(circle at 18% 20%, rgba(245,197,24,.2), transparent 40%), linear-gradient(135deg, #17201A, #2F4939); }
@@ -173,14 +174,17 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .offer-art span { position: relative; z-index: 1; color: #E6ECE7; font-size: 12px; font-weight: 800; }
 .offer-badge { position: absolute; top: 12px; right: 12px; z-index: 1; border-radius: 999px; padding: 3px 11px;
   background: var(--lemon); color: var(--ink); font-size: 12px; font-weight: 900; box-shadow: 0 3px 12px rgba(0,0,0,.14); }
-.offer-body { display: flex; flex: 1; flex-direction: column; gap: 14px; padding: 20px; }
-.offer-copy { display: grid; gap: 4px; }
-.offer-title { font-size: 18px; font-weight: 900; line-height: 1.65; overflow-wrap: anywhere; }
-.offer-summary { color: var(--muted); font-size: 13px; line-height: 1.9; text-align: right; overflow-wrap: anywhere; }
-.offer-deal { display: grid; gap: 8px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 15px; background: #FAFBF7; }
-.offer-product { color: var(--ink); font-size: 13px; font-weight: 800; line-height: 1.8; overflow-wrap: anywhere; }
+.offer-body { display: flex; flex: 1; flex-direction: column; gap: 10px; padding: 16px; }
+.offer-copy { display: grid; gap: 3px; }
+.offer-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  font-size: 16px; font-weight: 900; line-height: 1.55; overflow-wrap: anywhere; }
+.offer-summary { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  color: var(--muted); font-size: 12px; line-height: 1.75; text-align: right; overflow-wrap: anywhere; }
+.offer-deal { display: grid; gap: 7px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 14px; background: #FAFBF7; }
+.offer-product { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  color: var(--ink); font-size: 13px; font-weight: 800; line-height: 1.7; overflow-wrap: anywhere; }
 .offer-price-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; }
-.offer-price-row strong { color: var(--green-dark); font-size: 21px; font-weight: 900; }
+.offer-price-row strong { color: var(--green-dark); font-size: 19px; font-weight: 900; }
 .offer-regular-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .offer-regular-row del { color: var(--muted); font-variant-numeric: tabular-nums; }
 .offer-saving-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
@@ -349,8 +353,8 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
   .phone { width: 220px; height: 450px; }
   .shelf.grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
   .shelf.grid .cover { width: 100% !important; }
-  .offers-grid { grid-template-columns: 1fr; max-width: 420px; }
-  .offer-body { padding: 18px; }
+  .offers-grid { max-width: 420px; }
+  .offer-body { padding: 15px; }
 }
 
 /* Teacher application */

@@ -40,9 +40,22 @@ class LibraryBookAdmin(ReadOnlyAdmin):
 
 @admin.register(SectionProgress)
 class SectionProgressAdmin(ReadOnlyAdmin):
-    list_display = ("user", "node", "book", "percent", "is_done", "updated_at")
+    list_display = ("user", "section_title", "book_title", "percent", "is_done", "updated_at")
     list_filter = ("is_done", BookFKFilter)
+    list_select_related = ("user", "node", "book")
     search_fields = ("user__phone",)
+
+    @staticmethod
+    def _title_cell(value):
+        return format_html('<span class="lp-progress-title" title="{}">{}</span>', value, value)
+
+    @admin.display(description="بخش", ordering="node__title")
+    def section_title(self, obj):
+        return self._title_cell(obj.node.title)
+
+    @admin.display(description="کتاب", ordering="book__title")
+    def book_title(self, obj):
+        return self._title_cell(obj.book.title)
 
 
 @admin.register(ExamAttempt)
