@@ -14,6 +14,7 @@ import { useFeedback } from '../../components/Feedback';
 import { copyLater } from '../../lib/clipboard';
 import { MAX_COPY_CHARS } from '../../lib/renderMarkdown';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { currentPrice, percentLabel } from '../../lib/pricing';
 import { useGuestNudge } from '../../lib/guestNudge';
 import { useStudyTimer } from '../../lib/studyTime';
 import { sendOrQueue } from '../../lib/network';
@@ -51,7 +52,7 @@ const NOTE_COLORS: [string, string][] = [
   ['pink', '#FFD0DF'],
 ];
 
-type Locked = { title?: string; price?: number | null; slug?: string };
+type Locked = { title?: string; price: number | null; regular_price?: number | null; discount?: import('../../api/endpoints').PriceDiscount | null; slug?: string };
 
 export default function Section() {
   const { id, from, title: titleParam, resume, find, mode: modeParam } = useLocalSearchParams<{
@@ -555,7 +556,17 @@ export default function Section() {
         <View style={styles.locked}>
           <IconBadge name="lock" size={72} />
           <Text style={styles.lockTitle}>این بخش در نسخه‌ی کامل کتاب است</Text>
-          {locked.price ? <Text style={styles.lockPrice}>{formatToman(locked.price)}</Text> : null}
+          {(() => {
+            const price = currentPrice(locked);
+            if (!price.price) return null;
+            return (
+              <View style={styles.lockPriceBox}>
+                {price.discount && <Text style={styles.lockOldPrice}>{formatToman(price.regularPrice ?? price.price)}</Text>}
+                <Text style={styles.lockPrice}>{formatToman(price.price)}</Text>
+                {price.discount && <Text style={styles.lockSaving}>{percentLabel(price.discount.percent)}٪ تخفیف · صرفه‌جویی {formatToman(price.discount.amount)}</Text>}
+              </View>
+            );
+          })()}
           {locked.slug && <Button label="خرید یا اشتراک" onPress={() => router.push(`/buy/${locked.slug}`)} style={{ alignSelf: 'stretch' }} />}
           <Button label="بازگشت" variant="outline" onPress={() => router.back()} style={{ alignSelf: 'stretch' }} />
         </View>
@@ -903,7 +914,10 @@ const styles = StyleSheet.create({
   locked: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
   lockIcon: { fontSize: 44 },
   lockTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, textAlign: 'center', writingDirection: 'rtl' },
-  lockPrice: { fontSize: 15, color: colors.muted, marginBottom: 8 },
+  lockPriceBox: { alignItems: 'center', gap: 2, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.redSoft, borderRadius: 12 },
+  lockPrice: { fontSize: 16, fontWeight: '900', color: colors.redDark },
+  lockOldPrice: { fontSize: 12, color: colors.muted, textDecorationLine: 'line-through' },
+  lockSaving: { fontSize: 11, fontWeight: '800', color: colors.redDark },
   selBar: { position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row-reverse', alignItems: 'center', gap: 10, backgroundColor: colors.ink, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10, elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10 },
   swatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: '#fff' },
   colorRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },

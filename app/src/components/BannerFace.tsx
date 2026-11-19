@@ -11,7 +11,8 @@ import { SvgXml } from 'react-native-svg';
 import type { Banner } from '../api/endpoints';
 import { coverMotifSvg } from '../lib/cover';
 import { useCountdown } from '../lib/countdown';
-import { colors, rtl } from '../theme';
+import { colors, formatToman, rtl, toPersianDigits } from '../theme';
+import { percentLabel } from '../lib/pricing';
 import { BookCover } from './BookCover';
 import { Icon } from './Icon';
 import { LemonSlice } from './LemonSlice';
@@ -22,14 +23,43 @@ export const BannerFace = memo(function BannerFace({ banner: b, w, h, offset = 0
   const left = useCountdown(b.ends_at, offset);
   const k = h / 180;
   const motif = useMemo(() => (b.template === 'exam' ? coverMotifSvg(b.motif || 'book', 'dark') : ''), [b.template, b.motif]);
-  if (b.image) return <Image source={{ uri: b.image }} style={[styles.image, { width: w, height: h }]} contentFit="cover" cachePolicy="memory-disk" transition={120} />;
+  if (b.image) return (
+    <View style={[styles.imageWrap, { width: w, height: h }]}>
+      <Image source={{ uri: b.image }} style={[styles.image, { width: w, height: h }]} contentFit="cover" cachePolicy="memory-disk" transition={120} />
+      {b.discount && (
+        <View pointerEvents="none" style={styles.imageDeal}>
+          <Text style={styles.imageProduct} numberOfLines={1}>
+            {b.discount.product_title}{b.discount.kind === 'plan' ? ` · ${toPersianDigits(b.discount.months ?? 1)} ماه` : ''}
+          </Text>
+          <View style={styles.saleRow}>
+            <Text style={styles.salePrice}>{formatToman(b.discount.price)}</Text>
+            <Text style={styles.saleOld}>{formatToman(b.discount.regular_price)}</Text>
+            <Text style={styles.saleBadge}>{percentLabel(b.discount.percent)}٪</Text>
+          </View>
+          {!!left && <Text style={styles.imageCountdown}>تا پایان {left}</Text>}
+        </View>
+      )}
+    </View>
+  );
 
   const text = (dark: boolean) => (
     <View style={{ gap: 6 * k, maxWidth: w * 0.62 }}>
       {!!b.subtitle && <Text style={[styles.small, rtl, { fontSize: 12 * k, color: dark ? colors.lemon : colors.greenDark }]}>{b.subtitle}</Text>}
-      <Text style={[styles.title, rtl, { fontSize: 22 * k, lineHeight: 31 * k, color: dark ? '#FFFFFF' : colors.ink }]} numberOfLines={3}>
+      <Text style={[styles.title, rtl, { fontSize: 22 * k, lineHeight: 31 * k, color: dark ? '#FFFFFF' : colors.ink }]} numberOfLines={b.discount ? 2 : 3}>
         {b.title}
       </Text>
+      {b.discount && (
+        <View style={styles.saleSummary}>
+          <Text style={[styles.saleProduct, rtl]} numberOfLines={1}>
+            {b.discount.product_title}{b.discount.kind === 'plan' ? ` · ${toPersianDigits(b.discount.months ?? 1)} ماه` : ''}
+          </Text>
+          <View style={styles.saleRow}>
+            <Text style={styles.salePrice}>{formatToman(b.discount.price)}</Text>
+            <Text style={styles.saleOld}>{formatToman(b.discount.regular_price)}</Text>
+            <Text style={styles.saleBadge}>{percentLabel(b.discount.percent)}٪</Text>
+          </View>
+        </View>
+      )}
       <View style={styles.row}>
         {!!b.button && (
           <View style={[styles.button, { paddingHorizontal: 14 * k, paddingVertical: 6 * k, backgroundColor: dark ? colors.lemon : colors.ink }]}>
@@ -88,7 +118,17 @@ export const BannerFace = memo(function BannerFace({ banner: b, w, h, offset = 0
 });
 
 const styles = StyleSheet.create({
+  imageWrap: { position: 'relative', overflow: 'hidden', borderRadius: 22, backgroundColor: colors.line },
   image: { borderRadius: 22, backgroundColor: colors.line },
+  imageDeal: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: 'rgba(23,32,26,0.9)', gap: 2 },
+  imageProduct: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', textAlign: 'right', writingDirection: 'rtl' },
+  imageCountdown: { color: '#FFFFFF', fontSize: 10, textAlign: 'right', writingDirection: 'rtl' },
+  saleSummary: { gap: 2 },
+  saleProduct: { color: '#E6ECE7', fontSize: 11, fontWeight: '700' },
+  saleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 7, flexWrap: 'wrap' },
+  salePrice: { color: colors.lemon, fontSize: 14, fontWeight: '900' },
+  saleOld: { color: '#C9D3CC', fontSize: 10, textDecorationLine: 'line-through' },
+  saleBadge: { color: colors.ink, backgroundColor: colors.lemon, fontSize: 10, fontWeight: '900', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1, overflow: 'hidden' },
   card: { flex: 1, borderRadius: 22, backgroundColor: colors.ink, justifyContent: 'center', alignItems: 'flex-end', overflow: 'hidden' },
   lemon: { position: 'absolute', opacity: 0.95 },
   motif: { position: 'absolute', top: '10%', opacity: 0.9 },

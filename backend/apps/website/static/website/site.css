@@ -120,6 +120,7 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .tagbtn.paid { background: #FDF4D3; color: #7A5B00; border-color: #F1DE94; }
 .tagbtn.free { background: var(--green-soft); color: var(--green-dark); border-color: #BFE2CC; }
 .tagbtn.soon { background: #fff; color: var(--ink); border-color: var(--line); }
+.bk-sale { display: block; text-align: center; color: #A8332E; font-size: 11px; font-weight: 900; line-height: 1.4; }
 .bk.hide { display: none; }
 
 /* Band */
@@ -150,6 +151,14 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .banner-card:hover, .update-card:hover { border-color: var(--lemon); transform: translateY(-1px); }
 .banner-card { background: var(--hero); color: #fff; border-color: var(--hero); }
 .banner-card p { color: #C9D3CC; margin-top: 2px; }
+.banner-card .grow { flex: 1; min-width: 0; }
+.bn-deal { display: grid; gap: 3px; margin-top: 8px; color: #fff; }
+.bn-product { color: #E5ECE6; font-size: 12px; font-weight: 700; }
+.bn-values { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.bn-values del { color: #C9D3CC; font-size: 12px; }
+.bn-values strong { color: var(--lemon); font-size: 16px; }
+.bn-values em { background: var(--lemon); color: var(--ink); border-radius: 999px; padding: 1px 8px; font-size: 11px; font-style: normal; font-weight: 900; }
+.bn-deal small { color: #D4DDD5; font-size: 11px; }
 .update-card p { margin-top: 2px; }
 
 /* Prices: all cards in one horizontal row on desktop (4 when two subscription plans exist, 3 otherwise). */
@@ -159,6 +168,10 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .badge { position: absolute; top: -14px; left: 20px; background: var(--lemon); border-radius: 999px; padding: 2px 14px; font-size: 13px; font-weight: 900; }
 .price-tag { align-self: flex-start; font-size: 12px; font-weight: 800; color: var(--green-dark); background: var(--green-soft); border-radius: 999px; padding: 2px 10px; margin-bottom: 8px; }
 .price { font-size: 28px; font-weight: 900; margin: 4px 0 8px; color: var(--ink); }
+.price-old { display: inline-block; margin-left: 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.price-promo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: -2px 0 8px; }
+.price-promo span { color: #A8332E; background: #FBE7E6; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 900; }
+.price-promo small { color: var(--muted); font-size: 11px; }
 .price-desc { font-size: 13px; color: var(--muted); margin-bottom: 12px; min-height: 44px; }
 .price-card .checks { flex: 1; margin-bottom: 8px; }
 .price-guarantee { max-width: 1060px; margin: 22px auto 0; background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 14px 20px; display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--ink); }
@@ -175,6 +188,12 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .tip-wrap.tip-up .tip-bubble::before { top: auto; bottom: -7px; border-bottom: 0; border-top: 7px solid var(--ink); }
 
 /* Book page */
+.book-deal { width: 100%; display: grid; gap: 6px; padding: 12px 14px; background: #fff; border: 1px solid #F1DE94; border-radius: 15px; color: var(--ink); }
+.book-deal > b { color: #A8332E; font-size: 13px; }
+.book-deal > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.book-deal s { color: var(--muted); }
+.book-deal .deal-final strong { color: #A8332E; font-size: 17px; }
+.book-deal small { color: var(--muted); font-size: 11px; }
 .twocol { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: start; }
 .about-card { background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 24px 26px; margin-bottom: 32px; position: relative; }
 .card-head { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }

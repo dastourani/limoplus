@@ -1,14 +1,16 @@
 from datetime import timedelta
 
+from django import forms
 from django.contrib import admin
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
 from apps.catalog.jalali import jalali_date, jalali_datetime
+from apps.catalog.models import Banner, ContentNode
 from apps.catalog.panel_display import badges, fa_number
 
-from .models import Entitlement, Order, Plan
+from .models import Entitlement, Order, Plan, SaleCampaign
 
 
 def user_cell(user):
@@ -93,6 +95,23 @@ class OrderPlanFilter(admin.SimpleListFilter):
 class PlanAdmin(admin.ModelAdmin):
     list_display = ("title", "scope", "months", "price", "is_active", "order")
     list_editable = ("price", "is_active", "order")
+    search_fields = ("title",)
+
+    # Subscription prices are financial settings, not teacher/editor controls.
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     def get_readonly_fields(self, request, obj=None):
         # New plans cover all books; an old one-major plan keeps its value (shown, not editable) and is no longer sold.
@@ -100,6 +119,98 @@ class PlanAdmin(admin.ModelAdmin):
 
     def get_exclude(self, request, obj=None):
         return ("scope",) if obj is None else ()
+
+
+class CampaignBannerForm(forms.ModelForm):
+    """A sale campaign always has one sale-style banner; its destination and timer are derived, not hand-copied."""
+
+    class Meta:
+        model = Banner
+        fields = ("template", "title", "subtitle", "button", "image", "audience_book", "priority", "is_active")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.initial["template"] = Banner.Template.SALE
+        self.fields["template"].widget = forms.HiddenInput()
+        self.fields["priority"].initial = 100
+        self.fields["title"].help_text = "این بنر خودکار قیمت و مهلت همین کمپین را می‌گیرد؛ لازم نیست قیمت را دستی در متن بنویسید."
+
+    def clean_template(self):
+        return Banner.Template.SALE
+
+
+class CampaignBannerInline(admin.StackedInline):
+    model = Banner
+    form = CampaignBannerForm
+    fk_name = "sale_campaign"
+    extra = 1
+    min_num = 1
+    max_num = 1
+    validate_min = True
+    can_delete = False
+    verbose_name = "بنر همین کمپین (اپ و وب‌سایت)"
+    verbose_name_plural = "بنر همین کمپین (اپ و وب‌سایت)"
+
+
+@admin.register(SaleCampaign)
+class SaleCampaignAdmin(admin.ModelAdmin):
+    """A timed price and its matching app/site banner are one superuser-managed campaign."""
+
+    list_display = ("title", "product", "regular_price", "discounted_price_display", "discount", "state", "is_active")
+    list_filter = ("is_active", "starts_at", "ends_at")
+    search_fields = ("title", "book__title", "plan__title")
+    autocomplete_fields = ()
+    readonly_fields = ("created_at", "updated_at")
+    fields = ("title", "book", "plan", "discounted_price", "starts_at", "ends_at", "is_active", "created_at", "updated_at")
+    inlines = (CampaignBannerInline,)
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        # Campaigns are historical financial configuration; turn them off instead of deleting.
+        return False
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("book", "plan")
+
+    @admin.display(description="محصول")
+    def product(self, obj):
+        return obj.book.title if obj.book_id else (obj.plan.title if obj.plan_id else "—")
+
+    @admin.display(description="قیمت عادی")
+    def regular_price(self, obj):
+        return toman(obj.regular_price)
+
+    @admin.display(description="قیمت ویژه", ordering="discounted_price")
+    def discounted_price_display(self, obj):
+        return toman(obj.discounted_price)
+
+    @admin.display(description="میزان تخفیف")
+    def discount(self, obj):
+        if not obj.regular_price or not obj.discounted_price or obj.discounted_price >= obj.regular_price:
+            return badges(("قیمت پایه تغییر کرده", "red"))
+        return toman(obj.regular_price - obj.discounted_price)
+
+    @admin.display(description="وضعیت")
+    def state(self, obj):
+        now = timezone.now()
+        if not obj.is_active:
+            return badges(("غیرفعال", "grey"))
+        if obj.starts_at > now:
+            return badges((f"شروع {jalali_date(obj.starts_at)}", "blue"))
+        if obj.ends_at <= now:
+            return badges(("تمام‌شده", "red"))
+        return badges((f"تا {jalali_date(obj.ends_at)}", "green"))
 
 
 @admin.register(Order)

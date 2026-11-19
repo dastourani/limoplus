@@ -5,6 +5,7 @@ import type { ReadingNext } from '../components/home/ReadingCards';
 import type { ChapterEnd, ChapterIntro, SectionStatus } from '../lib/renderMarkdown';
 
 export type Major = { slug: string; name: string; color: string; is_coming_soon: boolean };
+export type PriceDiscount = { amount: number; percent: number; starts_at: string; ends_at: string; campaign_title: string };
 export type BookListItem = {
   slug: string;
   title: string;
@@ -16,7 +17,11 @@ export type BookListItem = {
   cover: string | null;
   is_coming_soon: boolean;
   release_estimate?: string;
+  /** Effective price at the time the API response was generated. */
   price: number | null;
+  /** Regular list price, kept separately so a client can stop showing a stale campaign after it expires. */
+  regular_price: number | null;
+  discount: PriceDiscount | null;
   chapter_count: number;
   section_count: number;
   has_free_part: boolean;
@@ -308,9 +313,22 @@ export type Banner = {
   template?: 'lemon' | 'sale' | 'book' | 'exam';
   button?: string;
   motif?: string;
-  /** Set when the banner counts down to its end. */
+  /** Set for a generic banner countdown or the linked campaign's end time. */
   ends_at?: string | null;
   server_now?: string;
+  /** Prices and product come from the linked campaign, never from copy typed into the banner. */
+  discount?: {
+    kind: 'book' | 'plan';
+    product_title: string;
+    months: number | null;
+    regular_price: number;
+    price: number;
+    amount: number;
+    percent: number;
+    campaign_title: string;
+    starts_at: string;
+    ends_at: string;
+  } | null;
   book?: (import('../components/BookCover').CoverBook & { major: { name: string; color: string } | null }) | null;
 };
 
@@ -437,12 +455,36 @@ export type StudyTimeTotals = {
   by_kind: Partial<Record<StudyKindName, number>>;
   last_14_days: { date: string; seconds: number }[];
 };
-export type Plan = { id: number; title: string; scope: 'major' | 'all'; months: number; price: number };
-export type Offers = { book: { slug: string; title: string; price: number | null }; majors: { slug: string; name: string }[]; plans: Plan[] };
-export type OrderStatus = { id: number; title: string; amount: number; status: 'pending' | 'paid' | 'failed'; ref_number: string; book_slug: string | null };
+export type Plan = {
+  id: number;
+  title: string;
+  scope: 'major' | 'all';
+  months: number;
+  /** Total payable for the whole term, after any active campaign. */
+  price: number;
+  regular_price: number;
+  discount: PriceDiscount | null;
+};
+export type Offers = {
+  book: { slug: string; title: string; price: number | null; regular_price: number | null; discount: PriceDiscount | null };
+  majors: { slug: string; name: string }[];
+  plans: Plan[];
+  payments_enabled: boolean;
+};
+export type OrderStatus = {
+  id: number;
+  title: string;
+  amount: number;
+  regular_amount: number;
+  discount_amount: number;
+  campaign_title: string;
+  status: 'pending' | 'paid' | 'failed';
+  ref_number: string;
+  book_slug: string | null;
+};
 export type Purchases = {
   active: { id: number; kind: 'book' | 'subscription'; title: string; book_slug: string | null; major_slug: string | null; starts_at: string; ends_at: string | null }[];
-  orders: { id: number; title: string; amount: number; paid_at: string; ref_number: string }[];
+  orders: { id: number; title: string; amount: number; regular_amount: number; discount_amount: number; campaign_title: string; paid_at: string; ref_number: string }[];
 };
 export type OfflineBundle = {
   book: { slug: string; title: string };

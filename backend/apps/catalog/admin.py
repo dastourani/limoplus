@@ -567,19 +567,36 @@ class BannerBookFilter(admin.SimpleListFilter):
 
 @admin.register(Banner)
 class BannerAdmin(admin.ModelAdmin):
-    list_display = ("title", "target", "is_active", "priority", "period", "shown", "ctr")
+    list_display = ("title", "campaign", "target", "is_active", "priority", "period", "shown", "ctr")
     fields = ("template", "title", "subtitle", "button", "motif", "image", "target", "target_value", "link", "audience_book", "starts_at", "ends_at",
               "countdown", "priority", "is_active")
     change_form_template = "admin/catalog/banner/change_form.html"
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("sale_campaign")
+        # Campaign banners are part of a superuser-only sale setup; other staff cannot activate, deactivate, or retarget them.
+        return qs if request.user.is_superuser else qs.filter(sale_campaign__isnull=True)
+
+    @admin.display(description="کمپین")
+    def campaign(self, obj):
+        return obj.sale_campaign.title if obj.sale_campaign_id else "—"
 
     @admin.display(description="بازه")
     def period(self, obj):
         from .jalali import jalali_date
 
-        if not obj.starts_at and not obj.ends_at:
+        start = obj.sale_campaign.starts_at if obj.sale_campaign_id else obj.starts_at
+        end = obj.sale_campaign.ends_at if obj.sale_campaign_id else obj.ends_at
+        if not start and not end:
             return "همیشه"
-        return format_html('<span style="white-space:nowrap">{} تا {}</span>', jalali_date(obj.starts_at) if obj.starts_at else "…",
-                           jalali_date(obj.ends_at) if obj.ends_at else "…")
+        return format_html('<span style="white-space:nowrap">{} تا {}</span>', jalali_date(start) if start else "…",
+                           jalali_date(end) if end else "…")
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.sale_campaign_id:
+            # The linked campaign is the single source for its template, destination and timer.
+            return ("template", "target", "target_value", "link", "starts_at", "ends_at", "countdown")
+        return ()
 
     @admin.display(description="نمایش / کلیک", ordering="impressions")
     def shown(self, obj):

@@ -27,11 +27,13 @@ def media_urls(request, text: str) -> str:
 
 
 def locked_response(book):
+    from apps.commerce.pricing import book_price_quote
+
     return Response(
         {
             "code": "locked",
             "message": "این بخش در نسخه‌ی کامل کتاب است.",
-            "book": {"slug": book.slug, "title": book.title, "price": book.price},
+            "book": {"slug": book.slug, "title": book.title, **book_price_quote(book).payload()},
         },
         status=status.HTTP_403_FORBIDDEN,
     )
@@ -49,11 +51,15 @@ def majors(request):
 @permission_classes([AllowAny])
 def major_books(request, slug):
     major = get_object_or_404(Major, slug=slug)
-    books = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, majors=major, is_published=True, is_archived=False)
+    books = list(ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, majors=major, is_published=True, is_archived=False)
+                 .order_by("is_coming_soon", F("position").asc(nulls_last=True), "title"))
+    from apps.commerce.pricing import book_price_quotes
+
+    prices = book_price_quotes(books)
     payload = []
-    for book in books.order_by("is_coming_soon", F("position").asc(nulls_last=True), "title"):
+    for book in books:
         access = AccessMap(request.user, book)
-        payload.append(book_card(request, book, access))
+        payload.append(book_card(request, book, access, prices[book.pk]))
     return Response(payload)
 
 
@@ -61,11 +67,15 @@ def major_books(request, slug):
 @permission_classes([AllowAny])
 def all_books(request):
     """Every book, for a learner who hasn't picked a major yet. Each carries its first major (for the cover)."""
-    books = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_published=True, is_archived=False, majors__isnull=False).distinct()
+    books = list(ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_published=True, is_archived=False, majors__isnull=False)
+                 .distinct().order_by("is_coming_soon", F("position").asc(nulls_last=True), "title"))
+    from apps.commerce.pricing import book_price_quotes
+
+    prices = book_price_quotes(books)
     payload = []
-    for book in books.order_by("is_coming_soon", F("position").asc(nulls_last=True), "title"):
+    for book in books:
         major = book.majors.order_by("order", "name").first()
-        card = book_card(request, book, AccessMap(request.user, book))
+        card = book_card(request, book, AccessMap(request.user, book), prices[book.pk])
         card["major"] = {"slug": major.slug, "name": major.name, "color": major.color} if major else None
         payload.append(card)
     return Response(payload)
@@ -102,13 +112,16 @@ def shelves(request):
             .prefetch_related("majors")
             .order_by("title", "pk")
         )
+    from apps.commerce.pricing import book_price_quotes
+
+    prices = book_price_quotes([*published.values(), *private_books])
     _prefetch_user_rows(request)
     cards: dict[int, dict] = {}
 
     def card(book):
         if book.id not in cards:
             kind = access_kind_from(entitlements, request.user, book.id, {m.id for m in book.majors.all()})
-            cards[book.id] = book_card(request, book, AccessMap(request.user, book, light=True, kind=kind))
+            cards[book.id] = book_card(request, book, AccessMap(request.user, book, light=True, kind=kind), prices[book.pk])
         return cards[book.id]
 
     rows, placed = [], set()
@@ -125,8 +138,12 @@ def shelves(request):
     return Response(rows)
 
 
-def book_card(request, book, access) -> dict:
-    """What a shelf needs to draw a book: its cover, its free part, the reader's progress and «خبرم کن»."""
+def book_card(request, book, access, price_quote=None) -> dict:
+    """What a shelf needs to draw a book: its cover, current campaign price and the reader's progress."""
+    if price_quote is None:
+        from apps.commerce.pricing import book_price_quote
+
+        price_quote = book_price_quote(book)
     chapters = access.children(book)
     sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
     # «تمام شد» sections (read, and enough of their questions answered) make the progress.
@@ -149,7 +166,7 @@ def book_card(request, book, access) -> dict:
         "cover": request.build_absolute_uri(book.cover.url) if book.cover else None,
         "is_coming_soon": book.is_coming_soon,
         "release_estimate": book.release_estimate,
-        "price": book.price,
+        **price_quote.payload(),
         "chapter_count": len(chapters),
         "section_count": len(sections),
         "has_free_part": any(n.is_free for n in access.nodes.values() if access.visible(n.id)),
@@ -516,17 +533,28 @@ def _section_status(user, access, node):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def banners(request):
+    from apps.commerce.pricing import campaign_banner_link, campaign_banner_payload
+
     now = timezone.now()
-    items = Banner.objects.filter(is_active=True).filter(Q(starts_at__isnull=True) | Q(starts_at__lte=now)).filter(
-        Q(ends_at__isnull=True) | Q(ends_at__gte=now)
-    )
+    candidates = Banner.visible_at(now)
     # A banner for the readers of one book is shown only to them; the rest go to everyone.
     reading = set()
     if request.user.is_authenticated:
         from apps.study.models import SectionProgress
 
         reading = set(SectionProgress.objects.filter(user=request.user).values_list("book_id", flat=True))
-    items = [b for b in items if b.audience_book_id is None or b.audience_book_id in reading][:10]
+    items, sale_payloads = [], {}
+    for banner in candidates:
+        if banner.audience_book_id is not None and banner.audience_book_id not in reading:
+            continue
+        if banner.sale_campaign_id:
+            sale = campaign_banner_payload(banner.sale_campaign, now)
+            if not sale:
+                continue
+            sale_payloads[banner.pk] = sale
+        items.append(banner)
+        if len(items) == 10:
+            break
     Banner.objects.filter(pk__in=[b.pk for b in items]).update(impressions=F("impressions") + 1)
     return Response(
         [
@@ -535,13 +563,14 @@ def banners(request):
                 "title": b.title,
                 "subtitle": b.subtitle,
                 "image": request.build_absolute_uri(b.image.url) if b.image else None,
-                "link": b.resolved_link(),
-                "template": b.template,
+                "link": campaign_banner_link(b.sale_campaign) if b.sale_campaign_id else b.resolved_link(),
+                "template": Banner.Template.SALE if b.sale_campaign_id else b.template,
                 "button": b.button,
                 "motif": b.motif,
-                # The countdown runs on the server's clock, so a phone with the wrong time still counts right.
-                "ends_at": b.ends_at if b.countdown else None,
+                # A linked campaign owns its period; generic banners keep their own optional countdown.
+                "ends_at": b.sale_campaign.ends_at if b.sale_campaign_id else (b.ends_at if b.countdown else None),
                 "server_now": now,
+                "discount": sale_payloads.get(b.pk),
                 "book": _banner_book(request, b),
             }
             for b in items

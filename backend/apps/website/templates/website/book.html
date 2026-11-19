@@ -27,7 +27,17 @@
           </div>
         {% else %}
           {% if first_free %}<a class="btn lemon" href="{{ open_url }}">شروع رایگان از فصل {{ first_free.number }}</a>{% endif %}
-          {% if price %}<a class="btn ghost" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب، {{ price }}</a>{% elif not first_free %}<a class="btn lemon" href="{{ open_url }}">شروع</a>{% endif %}
+          {% if price %}
+            {% if discount %}
+            <div class="book-deal">
+              <b>تخفیف زمان‌دار · {{ discount.percent }}٪</b>
+              <div><span>قیمت عادی</span><s>{{ regular_price }}</s></div>
+              <div class="deal-final"><span>قیمت ویژه</span><strong>{{ price }}</strong></div>
+              <small>صرفه‌جویی {{ discount.saving }}{% if discount.end_date %} · تا {{ discount.end_date }}{% endif %}</small>
+            </div>
+            <a class="btn lemon" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب با قیمت ویژه</a>
+            {% else %}<a class="btn ghost" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب، {{ price }}</a>{% endif %}
+          {% elif not first_free %}<a class="btn lemon" href="{{ open_url }}">شروع</a>{% endif %}
         {% endif %}
       </div>
     </div>

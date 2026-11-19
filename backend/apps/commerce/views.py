@@ -16,6 +16,7 @@ from apps.catalog.models import ContentNode, Major
 
 from . import zibal
 from .models import Entitlement, Order, Plan
+from .pricing import book_price_quote, plan_price_quotes, plan_price_quote
 
 log = logging.getLogger(__name__)
 DAYS_PER_MONTH = 30
@@ -26,11 +27,19 @@ def _err(message, code, http=status.HTTP_400_BAD_REQUEST):
 
 
 def _book(slug):
-    return ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, slug=slug, is_published=True, is_archived=False).first()
+    return ContentNode.objects.filter(
+        kind=ContentNode.Kind.BOOK,
+        depth=1,
+        slug=slug,
+        is_published=True,
+        is_archived=False,
+        is_inbox=False,
+    ).first()
 
 
-def _plan_payload(plan):
-    return {"id": plan.id, "title": plan.title, "scope": plan.scope, "months": plan.months, "price": plan.price}
+def _plan_payload(plan, quote=None):
+    quote = quote or plan_price_quote(plan)
+    return {"id": plan.id, "title": plan.title, "scope": plan.scope, "months": plan.months, **quote.payload()}
 
 
 def _entitlement_payload(e):
@@ -52,11 +61,13 @@ def offers(request):
     book = _book(request.query_params.get("book", ""))
     if book is None:
         return _err("کتاب پیدا نشد.", "not_found", status.HTTP_404_NOT_FOUND)
+    sale_plans = list(_plans_on_sale())
+    prices = plan_price_quotes(sale_plans)
     return Response(
         {
-            "book": {"slug": book.slug, "title": book.title, "price": book.price},
+            "book": {"slug": book.slug, "title": book.title, **book_price_quote(book).payload()},
             "majors": [],
-            "plans": [_plan_payload(p) for p in _plans_on_sale()],
+            "plans": [_plan_payload(plan, prices[plan.pk]) for plan in sale_plans],
             "payments_enabled": settings.PAYMENTS_ENABLED,
         }
     )
@@ -70,7 +81,9 @@ def _plans_on_sale():
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def plans(request):
-    return Response([_plan_payload(p) for p in _plans_on_sale()])
+    sale_plans = list(_plans_on_sale())
+    prices = plan_price_quotes(sale_plans)
+    return Response([_plan_payload(plan, prices[plan.pk]) for plan in sale_plans])
 
 
 @api_view(["POST"])
@@ -82,12 +95,23 @@ def create_order(request):
     book_slug, plan_id = request.data.get("book"), request.data.get("plan")
     if book_slug and not plan_id:
         book = _book(book_slug)
-        if book is None or not book.price:
-            return _err("این کتاب برای فروش نیست.", "not_for_sale")
-        # A timed gift doesn't stop buying the book for good.
+        if book is None or not book.price or book.is_free or book.is_coming_soon:
+            return _err("این کتاب رایگان است یا هنوز برای فروش آماده نیست.", "not_for_sale")
+        # A timed gift doesn't stop buying the book for good. The live campaign, if any, is re-read here;
+        # a client-sent amount is never accepted and the quote is frozen into the order.
         if Entitlement.active_for(user).filter(book=book, ends_at__isnull=True).exists():
             return _err("این کتاب را قبلاً خریده‌اید.", "already_owned")
-        order = Order.objects.create(user=user, book=book, title=f"خرید کتاب {book.title}", amount=book.price)
+        quote = book_price_quote(book)
+        order = Order.objects.create(
+            user=user,
+            book=book,
+            title=f"خرید کتاب {book.title}",
+            amount=quote.price,
+            regular_amount=quote.regular_price,
+            discount_amount=quote.discount_amount,
+            campaign_title_snapshot=quote.campaign.title if quote.campaign else "",
+            campaign_id_snapshot=quote.campaign.pk if quote.campaign else None,
+        )
     elif plan_id and not book_slug:
         try:
             plan = _plans_on_sale().filter(pk=int(plan_id)).first()
@@ -97,8 +121,19 @@ def create_order(request):
             return _err("این طرح فعال نیست.", "invalid_plan")
         major = None
         title = plan.title
+        quote = plan_price_quote(plan)
         order = Order.objects.create(
-            user=user, plan=plan, major=major, title=title, amount=plan.price, plan_months=plan.months, plan_scope=plan.scope
+            user=user,
+            plan=plan,
+            major=major,
+            title=title,
+            amount=quote.price,
+            regular_amount=quote.regular_price,
+            discount_amount=quote.discount_amount,
+            campaign_title_snapshot=quote.campaign.title if quote.campaign else "",
+            campaign_id_snapshot=quote.campaign.pk if quote.campaign else None,
+            plan_months=plan.months,
+            plan_scope=plan.scope,
         )
     else:
         return _err("کتاب یا طرح اشتراک را انتخاب کنید.", "invalid_request")
@@ -210,6 +245,9 @@ def order_status(request, order_id):
             "id": order.id,
             "title": order.title,
             "amount": order.amount,
+            "regular_amount": order.regular_amount if order.regular_amount is not None else order.amount,
+            "discount_amount": order.discount_amount,
+            "campaign_title": order.campaign_title_snapshot,
             "status": order.status,
             "ref_number": order.ref_number,
             "book_slug": order.book.slug if order.book_id else None,
@@ -224,6 +262,18 @@ def my_purchases(request):
     return Response(
         {
             "active": [_entitlement_payload(e) for e in entitlements],
-            "orders": [{"id": o.id, "title": o.title, "amount": o.amount, "paid_at": o.paid_at, "ref_number": o.ref_number} for o in orders],
+            "orders": [
+                {
+                    "id": o.id,
+                    "title": o.title,
+                    "amount": o.amount,
+                    "regular_amount": o.regular_amount if o.regular_amount is not None else o.amount,
+                    "discount_amount": o.discount_amount,
+                    "campaign_title": o.campaign_title_snapshot,
+                    "paid_at": o.paid_at,
+                    "ref_number": o.ref_number,
+                }
+                for o in orders
+            ],
         }
     )

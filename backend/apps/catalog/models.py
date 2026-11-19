@@ -1,7 +1,9 @@
 import re
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 from treebeard.mp_tree import MP_Node
 
 
@@ -240,10 +242,28 @@ class Banner(models.Model):
     )
     starts_at = models.DateTimeField("شروع", null=True, blank=True)
     ends_at = models.DateTimeField("پایان", null=True, blank=True)
+    sale_campaign = models.OneToOneField(
+        "commerce.SaleCampaign",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="banner",
+        verbose_name="کمپین تخفیف زمان‌دار",
+        help_text="برای بنر تخفیف، از کمپین‌های زمان‌دار استفاده کنید؛ بازه و قیمت از همان کمپین خوانده می‌شود.",
+    )
     priority = models.PositiveSmallIntegerField("اولویت", default=0)
     is_active = models.BooleanField("فعال", default=True)
     impressions = models.PositiveIntegerField("نمایش", default=0, editable=False)
     clicks = models.PositiveIntegerField("کلیک", default=0, editable=False)
+
+    def clean(self):
+        super().clean()
+        linked = bool(self.sale_campaign_id or self._state.fields_cache.get("sale_campaign"))
+        is_sale_template = self.template == self.Template.SALE
+        if linked != is_sale_template:
+            raise ValidationError({
+                "template": "بنر تخفیف فقط باید از کمپین متصل استفاده کند؛ قالب تخفیفِ مستقل یا بنر کمپین با قالب دیگر مجاز نیست."
+            })
 
     def resolved_link(self) -> str:
         """The address the app opens: book/<slug>, buy/<slug>, review, exam/<id> or an https URL."""
@@ -256,10 +276,55 @@ class Banner(models.Model):
             return "review"
         return self.link
 
+    @classmethod
+    def visible_at(cls, now=None):
+        """Active editorial banners use their own window; a discount banner always follows its campaign's window."""
+        now = now or timezone.now()
+        regular_window = (
+            models.Q(sale_campaign__isnull=True)
+            & (models.Q(starts_at__isnull=True) | models.Q(starts_at__lte=now))
+            & (models.Q(ends_at__isnull=True) | models.Q(ends_at__gte=now))
+        )
+        campaign_window = models.Q(
+            sale_campaign__is_active=True,
+            sale_campaign__starts_at__lte=now,
+            sale_campaign__ends_at__gt=now,
+        ) & (
+            models.Q(
+                sale_campaign__book__kind=ContentNode.Kind.BOOK,
+                sale_campaign__book__depth=1,
+                sale_campaign__book__is_published=True,
+                sale_campaign__book__is_archived=False,
+                sale_campaign__book__is_free=False,
+                sale_campaign__book__is_inbox=False,
+                sale_campaign__book__is_coming_soon=False,
+                sale_campaign__book__price__gt=models.F("sale_campaign__discounted_price"),
+            )
+            | models.Q(
+                sale_campaign__plan__scope="all",
+                sale_campaign__plan__is_active=True,
+                sale_campaign__plan__price__gt=models.F("sale_campaign__discounted_price"),
+            )
+        )
+        return (
+            cls.objects.filter(is_active=True)
+            .filter(regular_window | campaign_window)
+            .select_related("sale_campaign", "sale_campaign__book", "sale_campaign__plan")
+        )
+
     class Meta:
         verbose_name = "بنر"
         verbose_name_plural = "بنرها"
         ordering = ["-priority", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(template="sale", sale_campaign__isnull=False)
+                    | (~models.Q(template="sale") & models.Q(sale_campaign__isnull=True))
+                ),
+                name="sale_banner_campaign_consistent",
+            )
+        ]
 
     def __str__(self):
         return self.title
