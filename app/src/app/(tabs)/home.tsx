@@ -2,7 +2,7 @@ import { shelfLabel } from '../../lib/access';
 import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { router, useFocusEffect } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
-import { FlatList, Linking, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { FlatList, Linking, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useHomeMax, useWide } from '../../lib/layout';
 
 import { endpoints, type Library, type Today, type BookListItem, type Shelf, type SitePageItem, type TodayTask } from '../../api/endpoints';
@@ -192,14 +192,20 @@ export default function Home() {
   const [readingOpen, setReadingOpen] = useState(false);
   const [shelfFilter, setShelfFilter] = useState<string | undefined>(undefined);
   const coverWidth = Math.max(120, Math.min(170, Math.floor((pageWidth - 32) / 2.4)));
+  // A guest's reading place lives only on this device. On the web the note sits on the line between «ادامه‌ی خواندن»
+  // and «کتاب‌ها» like a label on a divider; in the app it stays the quiet line under the section. The line between the
+  // sections only exists when there are books to list, so with an empty catalogue the quiet line stays as well.
+  const guestHint = !user && reading.length > 0;
+  const webBanner = Platform.OS === 'web' && list.length > 0;
 
   const bookTile = (book: BookListItem, tileWidth: number = coverWidth) => {
     const label = shelfLabel(book);
     const { on: waiting, canCancel } = notifyState(book);
+    const openBook = () => router.push({ pathname: '/book/[slug]', params: { slug: book.slug } });
     return (
       <View style={{ width: tileWidth, gap: 8 }}>
         <Pressable
-          onPress={() => router.push({ pathname: '/book/[slug]', params: { slug: book.slug } })}
+          onPress={openBook}
           accessibilityRole="button"
           accessibilityLabel={`${book.title}${book.product_status.state === 'coming_soon' ? '، به‌زودی' : ''}`}
           style={({ pressed }) => [{ opacity: book.product_status.state === 'coming_soon' ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
@@ -210,7 +216,7 @@ export default function Home() {
             <Text style={[styles.ribbonText, { color: RIBBON[label.kind].color }]}>{label.text}</Text>
           </View>
         </Pressable>
-        <BookPill book={book} notify={{ on: waiting, canCancel }} onNotify={() => toggleNotify(book)} />
+        <BookPill book={book} notify={{ on: waiting, canCancel }} onNotify={() => toggleNotify(book)} onPress={openBook} />
       </View>
     );
   };
@@ -270,7 +276,7 @@ export default function Home() {
                 <Text style={styles.moreText}>{readingOpen ? 'بستن ▴' : `همه‌ی کتاب‌هایی که می‌خوانی (${toPersianDigits(reading.length)}) ▾`}</Text>
               </Pressable>
             )}
-            {!user && (
+            {guestHint && !webBanner && (
               // A guest's place lives only on this device: a separate, quiet link to keep it everywhere.
               <Pressable onPress={() => router.push('/login')} style={styles.guestLink} accessibilityRole="link">
                 <Text style={[styles.guestLinkText, rtl]}>جای خواندنت فقط روی همین دستگاه است؛ برای نگه داشتنش در همه‌جا وارد شو ←</Text>
@@ -399,28 +405,47 @@ export default function Home() {
       key: 'books-head',
       el: (
         <View style={styles.booksHead}>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', gap: 8 }}>
-            <Text style={[styles.booksTitle, rtl]}>کتاب‌ها</Text>
-            <Text style={styles.muted}>{toPersianDigits(list.length)} کتاب</Text>
-          </View>
-          {shelves.length > 1 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-              {[{ key: '', title: 'همه' }, ...shelves.map((x) => ({ key: shelfKey(x), title: x.title }))].map((c) => {
-                const on = (shelfFilter ?? '') === c.key;
-                return (
-                  <Pressable
-                    key={c.key || 'all'}
-                    onPress={() => setShelfFilter(c.key || undefined)}
-                    style={[styles.chip, on && styles.chipOn]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: on }}
-                  >
-                    <Text style={[styles.chipText, on && { color: colors.ink }]}>{c.title}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+          {guestHint && webBanner ? (
+            // The line between the two sections, with the guest's note on it like a label: the line comes out of both
+            // sides of the card.
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Pressable onPress={() => router.push('/login')} style={styles.guestBanner} accessibilityRole="link">
+                <Icon name="monitor-smartphone" size={15} color={colors.greenDark} />
+                <Text style={[styles.guestBannerText, rtl]}>پیشرفت شما فقط روی این دستگاه ذخیره شده است. برای دسترسی در همه دستگاه‌ها وارد شوید</Text>
+                <Icon name="chevron-left" size={14} color={colors.greenDark} />
+              </Pressable>
+              <View style={styles.dividerLine} />
+            </View>
+          ) : (
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+            </View>
           )}
+          <View style={styles.booksHeadBody}>
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', gap: 8 }}>
+              <Text style={[styles.booksTitle, rtl]}>کتاب‌ها</Text>
+              <Text style={styles.muted}>{toPersianDigits(list.length)} کتاب</Text>
+            </View>
+            {shelves.length > 1 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                {[{ key: '', title: 'همه' }, ...shelves.map((x) => ({ key: shelfKey(x), title: x.title }))].map((c) => {
+                  const on = (shelfFilter ?? '') === c.key;
+                  return (
+                    <Pressable
+                      key={c.key || 'all'}
+                      onPress={() => setShelfFilter(c.key || undefined)}
+                      style={[styles.chip, on && styles.chipOn]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Text style={[styles.chipText, on && { color: colors.ink }]}>{c.title}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
         </View>
       ),
     });
@@ -506,7 +531,13 @@ const styles = StyleSheet.create({
   guestLink: { paddingHorizontal: 16, paddingTop: 2, alignSelf: 'stretch' },
   changed: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.lemonSoft, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10 },
   changedText: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.ink },
-  booksHead: { gap: 10, marginTop: 14, paddingTop: 18, borderTopWidth: 1, borderTopColor: colors.line },
+  booksHead: { marginTop: 14 },
+  booksHeadBody: { gap: 10, paddingTop: 18 },
+  // The line between the sections; on the web the guest's note sits on it, like a label.
+  dividerRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  dividerLine: { flex: 1, height: 1, minWidth: 16, backgroundColor: colors.line },
+  guestBanner: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, flexShrink: 1, maxWidth: 560, backgroundColor: colors.greenSoft, borderWidth: 1, borderColor: '#CFE7D9', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 9 },
+  guestBannerText: { fontSize: 12, color: colors.greenDark, fontWeight: '700', flexShrink: 1 },
   booksTitle: { fontSize: 22, fontWeight: '900', color: colors.ink },
   chips: { flexDirection: 'row-reverse', gap: 8 },
   chip: { borderWidth: 1, borderColor: colors.line, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: colors.surface },

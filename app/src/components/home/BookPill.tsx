@@ -59,7 +59,7 @@ export function bookPillLook(book: BookListItem, notify: { on: boolean; canCance
   return { icon: 'lock', text: 'در دسترس نیست', ...neutral };
 }
 
-export function BookPill({ book, notify, onNotify }: { book: BookListItem; notify: { on: boolean; canCancel: boolean }; onNotify: () => void }) {
+export function BookPill({ book, notify, onNotify, onPress }: { book: BookListItem; notify: { on: boolean; canCancel: boolean }; onNotify: () => void; onPress?: () => void }) {
   const look = bookPillLook(book, notify);
   const body = (
     <View style={styles.labelLine}>
@@ -79,6 +79,13 @@ export function BookPill({ book, notify, onNotify }: { book: BookListItem; notif
         accessibilityState={{ selected: notify.on }}
         accessibilityLabel={notify.on ? (notify.canCancel ? 'خبرت می‌کنیم؛ برای لغو بزنید' : 'خبرت می‌کنیم') : 'خبرم کن'}
       >
+        {body}
+      </Pressable>
+    );
+  // The cover is the link to the book; the button under it opens the same book («خبرم کن» stays the only real button).
+  if (onPress)
+    return (
+      <Pressable onPress={onPress} style={({ pressed }) => [...style, pressed && { opacity: 0.75 }]} accessibilityRole="link">
         {body}
       </Pressable>
     );
