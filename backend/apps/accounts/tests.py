@@ -400,6 +400,14 @@ class PanelLoginTests(TestCase):
         self.assertEqual(me.data["phone"], "09120000501")
         self.assertEqual(self._login(code).data["code"], "panel_code_invalid")  # used
 
+    def test_a_relative_app_url_goes_to_the_host_that_serves_the_web_app(self):
+        """The panel is often opened on the website's own host, where no web app is served: the code must
+        still reach the web app (the main host), not a 404 there."""
+        with override_settings(APP_URL="/", SITE_URL="https://api.example.ir"):
+            r = self.web.post("/admin/open-app/")
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r["Location"].startswith("https://api.example.ir/panel-login#"), r["Location"])
+
     def test_only_post_and_only_staff(self):
         self.assertEqual(self.web.get("/admin/open-app/").status_code, 405)
         anon = Client().post("/admin/open-app/")

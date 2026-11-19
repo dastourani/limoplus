@@ -20,6 +20,8 @@ from django.conf import settings
 from django.db import close_old_connections
 from django.utils import timezone
 
+from config.links import app_base_url
+
 log = logging.getLogger(__name__)
 
 PAUSE_SECONDS = 1.0
@@ -34,8 +36,7 @@ def waiting(book):
 
 
 def book_link(book) -> str:
-    base = settings.APP_URL if str(settings.APP_URL).startswith("http") else settings.SITE_URL
-    link = f"{base.rstrip('/')}/book/{book.slug}"
+    link = f"{app_base_url()}/book/{book.slug}"
     return link.removeprefix("https://").removeprefix("http://")
 
 

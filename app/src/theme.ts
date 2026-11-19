@@ -43,6 +43,16 @@ export function toPersianDigits(value: string | number): string {
   return String(value).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
 }
 
+const ORDINAL_WORDS = [
+  '', 'اول', 'دوم', 'سوم', 'چهارم', 'پنجم', 'ششم', 'هفتم', 'هشتم', 'نهم', 'دهم',
+  'یازدهم', 'دوازدهم', 'سیزدهم', 'چهاردهم', 'پانزدهم', 'شانزدهم', 'هفدهم', 'هجدهم', 'نوزدهم', 'بیستم',
+];
+
+/** The chapter's number as a word: «فصل اول رایگان», not «فصل ۱ رایگان». */
+export function toPersianOrdinal(value: number): string {
+  return ORDINAL_WORDS[value] ?? toPersianDigits(value);
+}
+
 export function formatToman(value: number): string {
   return `${toPersianDigits(value.toLocaleString('en-US').replace(/,/g, '٬'))} تومان`;
 }

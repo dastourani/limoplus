@@ -1,5 +1,5 @@
 import type { ProductStatus } from '../api/endpoints';
-import { toPersianDigits } from '../theme';
+import { toPersianDigits, toPersianOrdinal } from '../theme';
 
 type AccessKind = 'purchase' | 'gift' | 'subscription' | 'staff' | null;
 
@@ -31,9 +31,9 @@ export function shelfLabel(book: {
   if (status.state === 'free') return { text: 'کل کتاب رایگان', kind: 'free' };
   if (status.preview === 'sample') {
     const n = book.free_chapters ?? (book.free_chapter ? 1 : 0);
-    if (n === 1 && book.free_chapter) return { text: `فصل ${toPersianDigits(book.free_chapter)} رایگان`, kind: 'free' };
+    if (n === 1 && book.free_chapter) return { text: `فصل ${toPersianOrdinal(book.free_chapter)} رایگان`, kind: 'free' };
     if (n > 1) return { text: `${toPersianDigits(n)} فصل رایگان`, kind: 'free' };
-    return { text: 'نمونه رایگان', kind: 'free' };
+    return { text: 'بخشی رایگان', kind: 'free' };
   }
   if (status.state === 'preparing') return { text: 'در حال آماده‌سازی', kind: 'locked' };
   if (status.state === 'unpriced') return { text: 'قیمت تعیین نشده', kind: 'locked' };

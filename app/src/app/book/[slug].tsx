@@ -29,7 +29,7 @@ import { studyDuration } from '../../lib/duration';
 import { currentPrice, percentLabel } from '../../lib/pricing';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
-import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
+import { colors, formatToman, radius, rtl, toPersianDigits, toPersianOrdinal } from '../../theme';
 import { BookSide } from '../../components/ChapterSide';
 import { HelpTip } from '../../components/HelpTip';
 import { useWide } from '../../lib/layout';
@@ -154,8 +154,8 @@ export default function Book() {
   const firstPreview = book.product_status.preview === 'sample' ? firstOpen : undefined;
   const previewLabel = firstPreview
     ? !firstPreview.is_locked && firstPreview.sections.every((section) => !section.is_locked)
-      ? `فصل ${toPersianDigits(firstOpenIndex)} رایگان`
-      : 'نمونه رایگان'
+      ? `فصل ${toPersianOrdinal(firstOpenIndex)} رایگان`
+      : 'بخشی رایگان'
     : null;
   const startFree = () => {
     if (!firstPreview) return;
@@ -313,8 +313,8 @@ export default function Book() {
                 <View style={styles.ctaHead}>
                   <IconBadge name="gift" size={30} />
                   <Text style={[styles.ctaTitle, rtl, { flex: 1 }]}>
-                    {previewLabel === 'نمونه رایگان'
-                      ? 'نمونه‌ای از کتاب رایگان است؛ بدون خرید شروع کن'
+                    {previewLabel === 'بخشی رایگان'
+                      ? 'بخشی از کتاب رایگان است؛ بدون خرید شروع کن'
                       : `${previewLabel} است؛ بدون خرید شروع کن`}
                   </Text>
                 </View>

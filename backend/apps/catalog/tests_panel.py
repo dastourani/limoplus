@@ -209,6 +209,44 @@ class ChapterOpsTests(_Base):
         self.op(op="section.create", title="تازه", slug="fresh")
         self.assertTrue(ContentNode.objects.get(slug="fresh").is_published)
 
+    def test_a_section_can_be_made_free(self):
+        """«رایگان» برای یک بخش: همان کاری که برای تست و فلش‌کارت هست، ولی برای خودِ بخش."""
+        state = self.state()
+        self.assertFalse([s for s in state["sections"] if s["slug"] == "one"][0]["is_free"])
+        r = self.op(op="section.free", slug="one", value=True)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(ContentNode.objects.get(slug="one").is_free)
+        self.assertTrue([s for s in self.state()["sections"] if s["slug"] == "one"][0]["is_free"])
+        self.op(op="section.free", slug="one", value=False)
+        self.assertFalse(ContentNode.objects.get(slug="one").is_free)
+
+    def test_a_free_section_stays_free_when_the_file_is_read_again(self):
+        """این پرچم در پنل است، نه در فایل: خواندن دوباره‌ی فایل نباید آن را پاک کند."""
+        self.op(op="section.free", slug="one", value=True)
+        editing.save(self.chapter, editing.load(self.chapter), user=self.admin, note="بدون تغییر")
+        self.assertTrue(ContentNode.objects.get(slug="one").is_free)
+
+    def test_a_teacher_may_set_it_only_in_a_draft(self):
+        """استاد محتوای منتشرشده را تغییر نمی‌دهد؛ در پیش‌نویس، خودش تصمیم می‌گیرد."""
+        from django.contrib.auth.models import Group
+
+        from . import access
+        from .models import BookEditor
+
+        teacher = User.objects.create_user("09120000003", is_staff=True)
+        teacher.groups.add(Group.objects.get(name=access.BOOK_EDITOR_GROUP))
+        BookEditor.objects.create(book=self.book, user=teacher)
+        self.client.force_login(teacher)
+        # The chapter is published (the sample file was imported with publish=True): refused.
+        r = self.op(op="section.free", slug="one", value=True)
+        self.assertEqual(r.status_code, 403)
+        self.assertFalse(ContentNode.objects.get(slug="one").is_free)
+        # As a draft, the teacher may decide.
+        ContentNode.objects.filter(pk=self.chapter.pk).update(is_published=False)
+        r = self.op(op="section.free", slug="one", value=True)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(ContentNode.objects.get(slug="one").is_free)
+
     def test_question_order_is_used_by_the_app(self):
         data = {"stem": "دوم؟", "choices": [{"text": "a", "correct": True}, {"text": "b"}], "explanation": "e", "difficulty": "easy"}
         self.op(op="question.save", new=True, section="one", slug="q2", data=data)

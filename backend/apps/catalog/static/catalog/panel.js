@@ -1239,6 +1239,20 @@
     return { el: label, why: allowed ? null : h('span', { class: 'hint' }, this.state.publish_why || '') };
   };
 
+  // «رایگان» برای یک بخش: این بخش از کتاب پولی برای همه باز می‌شود (نمونه‌ی رایگان). مدیر کل همیشه می‌تواند عوضش کند؛
+  // استاد هم در فصل پیش‌نویسی که خودش آماده می‌کند (فصل منتشرشده فقط مال مدیر کل است). فصل رایگان، بخشش را هم رایگان
+  // می‌کند، پس آن‌جا چک‌باکس خاموش می‌ماند.
+  Manager.prototype.freeBox = function (isFree, onChange) {
+    var chapterFree = !!(this.state.chapter && this.state.chapter.is_free);
+    var allowed = !chapterFree && (this.state.can_manage_access || this.state.can_edit);
+    var why = chapterFree ? 'این فصل رایگان است؛ این بخش هم برای همه باز است.'
+      : 'باز کردن دسترسی دانشجویان به این بخش فقط با مدیر کل است.';
+    var box = h('input', { type: 'checkbox', checked: isFree, disabled: !allowed, onchange: onChange });
+    var label = h('label', { class: 'btn small', title: allowed ? 'این بخش از کتاب پولی برای همه باز می‌شود' : why }, box, ' رایگان');
+    if (!allowed) label.style.opacity = '.55';
+    return label;
+  };
+
   // ----- moving tests anywhere (any section of any book, and the «صندوق تست») -----
   Manager.prototype.destSelect = function (current, onPick, placeholder) {
     var self = this;
@@ -1421,6 +1435,12 @@
           });
           p.el.className = 'btn small';
           return p.el;
+        })(),
+        (function () {
+          return self.freeBox(s.is_free, function (e) {
+            self.call({ op: 'section.free', slug: s.slug, value: e.target.checked }).then(function () { self.load(); })
+              .catch(function (err) { e.target.checked = !e.target.checked; alert((err && err.message) || 'عوض نشد.'); });
+          });
         })(),
         h('span', { class: 'grow' }),
         this.chapterSelect(function (to, label) { self.moveSectionTo(s, to, label); }),

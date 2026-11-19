@@ -224,6 +224,8 @@ def chapter_state(chapter: ContentNode, user=None) -> dict:
             "summary_body": s.summary_body,
             "is_review_card": bool(s.summary_body) and bool(parse_parts(s.summary_body)),
             "is_published": node.is_published if node else chapter.is_published,
+            # The section's own «رایگان» flag: a free section of a paid book is open to every reader.
+            "is_free": node.is_free if node else chapter.is_free,
             "missing_phrases": editing_missing(s),
             "questions": [_question_json(q, questions.get(q.slug), reports) for q in s.questions],
             "flashcards": [_flashcard_json(f, flashcards.get(f.slug)) for f in s.flashcards],
@@ -357,6 +359,18 @@ def apply_op(chapter: ContentNode, data: dict, user) -> dict:
         if not n:
             raise EditError("بخش پیدا نشد.")
         return {"ok": True}
+    if op == "section.free":
+        # A free section opens that part of a paid book to every reader. The manager decides; a teacher may set it
+        # in a chapter draft they are preparing (a published chapter stays the manager's alone — `can_edit_chapter`
+        # above already refuses a teacher there). The flag lives in the panel, not in the file: the chapter file has
+        # no marker for it, and re-reading the file never clears it.
+        node = ContentNode.objects.get_children(chapter).filter(slug=data.get("slug") or "", kind=ContentNode.Kind.SECTION).first()
+        if node is None:
+            raise EditError("بخش پیدا نشد.")
+        value = bool(data.get("value"))
+        node.is_free = value
+        node.save(update_fields=["is_free"])
+        return {"ok": True, "note": f"بخش «{node.title}» {'رایگان' if value else 'پولی'} شد."}
 
     if op == "question.sample":
         # Sharing a sample with learners is a distribution decision, not part of a teacher's draft access.

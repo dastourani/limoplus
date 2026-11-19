@@ -24,6 +24,7 @@ from apps.catalog.fresh import book_updated_on, formula_macros
 from apps.catalog.jalali import jalali_date as fa_date
 from apps.catalog.labels import all_labels
 from apps.catalog.models import ContentNode, Major
+from config.links import app_base_url
 
 from .models import FaqItem, SiteNavItem, SitePage, SiteSettings
 
@@ -44,6 +45,30 @@ def fa_percent(value: int | float) -> str:
     return fa(text.replace(".", "٫"))
 
 
+ORDINALS = {
+    1: "اول", 2: "دوم", 3: "سوم", 4: "چهارم", 5: "پنجم", 6: "ششم", 7: "هفتم", 8: "هشتم", 9: "نهم", 10: "دهم",
+    11: "یازدهم", 12: "دوازدهم", 13: "سیزدهم", 14: "چهاردهم", 15: "پانزدهم", 16: "شانزدهم", 17: "هفدهم",
+    18: "هجدهم", 19: "نوزدهم", 20: "بیستم",
+}
+
+
+def fa_ordinal(number: int) -> str:
+    """«فصل اول رایگان»: the chapter's number as a word, like the app's shelf label."""
+    return ORDINALS.get(int(number), fa(number))
+
+
+def free_preview_label(free_chapters: list[int]) -> str:
+    """The book's free-preview label: one free chapter («فصل اول رایگان») or several («۲ فصل رایگان»).
+
+    A book whose free part is only a section inside a chapter has no chapter to name: «بخشی رایگان».
+    """
+    if len(free_chapters) == 1:
+        return f"فصل {fa_ordinal(free_chapters[0])} رایگان"
+    if len(free_chapters) > 1:
+        return f"{fa(len(free_chapters))} فصل رایگان"
+    return "بخشی رایگان"
+
+
 def toman(price: int | None) -> str:
     """«۲۴۹ هزار تومان»."""
     if not price:
@@ -54,7 +79,7 @@ def toman(price: int | None) -> str:
 
 
 def app_url(path: str = "") -> str:
-    base = getattr(settings, "APP_URL", "/").rstrip("/")
+    base = app_base_url()
     return f"{base}/{path.lstrip('/')}" if path else (base or "/")
 
 
@@ -105,12 +130,8 @@ def _card(request, book, price_quote=None) -> dict:
 
     sample_label = None
     if product_status["preview"] == "sample":
-        if len(free_chapters) == 1:
-            sample_label = f"فصل {fa(chapters.index(free_chapters[0]) + 1)} رایگان"
-        elif len(free_chapters) > 1:
-            sample_label = f"{fa(len(free_chapters))} فصل رایگان"
-        else:
-            sample_label = "نمونه رایگان"
+        free_numbers = [chapters.index(chapter) + 1 for chapter in free_chapters]
+        sample_label = free_preview_label(free_numbers)
 
     discount = None
     if product_status["promotion"] == "discount":
@@ -452,6 +473,7 @@ def book(request, slug):
             })
         chapters.append({
             "id": c.id, "title": c.title, "number": fa(c.position or len(chapters) + 1),
+            "order": c.position or len(chapters) + 1,
             "sections": fa(len(sections)), "tests": fa(ch_tests) if ch_tests else "", "cards": fa(ch_cards) if ch_cards else "",
             "free": access.readable(c.id),
             "chapter_free": bool(b.is_free or c.is_free),
@@ -486,12 +508,7 @@ def book(request, slug):
     sample_label = None
     if product_status["preview"] == "sample":
         free_chapters = [chapter for chapter in chapters if chapter["chapter_free"]]
-        if len(free_chapters) == 1:
-            sample_label = f"فصل {free_chapters[0]['number']} رایگان"
-        elif len(free_chapters) > 1:
-            sample_label = f"{fa(len(free_chapters))} فصل رایگان"
-        else:
-            sample_label = "نمونه رایگان"
+        sample_label = free_preview_label([chapter["order"] for chapter in free_chapters])
     related_books = []
     if is_preparing:
         other = [x for x in _published() if x.id != b.id and not x.is_coming_soon][:6]
