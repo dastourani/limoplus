@@ -1,9 +1,11 @@
 import io
 import shutil
 import tempfile
+from datetime import timedelta
 
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
 from apps.catalog.models import ContentNode
 from apps.learning.models import Question
@@ -107,6 +109,52 @@ class WebsiteTests(TestCase):
         self.assertEqual(custom_r.status_code, 200)
         self.assertContains(custom_r, "راهنمای کنکور ۱۴۰۵")
         self.assertContains(custom_r, "لینک سفارشی منو")
+
+    def test_discount_prices_and_the_same_campaign_banner_render_on_the_website(self):
+        from apps.catalog.models import Banner
+        from apps.commerce.models import Plan, SaleCampaign
+        from .models import SiteSettings
+
+        now = timezone.now()
+        book = ContentNode.objects.get(slug="math-1")
+        book_campaign = SaleCampaign.objects.create(
+            title="کمپین کتاب ریاضی",
+            book=book,
+            discounted_price=199_000,
+            starts_at=now - timedelta(minutes=5),
+            ends_at=now + timedelta(hours=4),
+        )
+        plan = Plan.objects.get(title="اشتراک سه‌ماهه")
+        plan_campaign = SaleCampaign.objects.create(
+            title="کمپین اشتراک سه‌ماهه",
+            plan=plan,
+            discounted_price=499_000,
+            starts_at=now - timedelta(minutes=5),
+            ends_at=now + timedelta(hours=4),
+        )
+        Banner.objects.create(title="بنر تخفیف کتاب", subtitle="قیمت ویژه تا پایان کمپین", template="sale", sale_campaign=book_campaign, priority=100)
+        Banner.objects.create(title="بنر تخفیف اشتراک", subtitle="همه‌ی کتاب‌ها", template="sale", sale_campaign=plan_campaign, priority=99)
+        settings = SiteSettings.get()
+        settings.show_updates = False
+        settings.save(update_fields=["show_updates"])
+
+        home = Client().get("/site/")
+        self.assertContains(home, "بنر تخفیف کتاب")
+        self.assertContains(home, "بنر تخفیف اشتراک")
+        self.assertContains(home, "۱۹۹ هزار تومان")
+        self.assertContains(home, "۲۰٫۱٪ تخفیف")
+        self.assertContains(home, "اشتراک سه‌ماهه")
+        self.assertContains(home, "قیمت ویژه")
+
+        book_page = Client().get("/site/books/math-1/")
+        self.assertContains(book_page, "قیمت عادی")
+        self.assertContains(book_page, "قیمت ویژه")
+        self.assertContains(book_page, "صرفه‌جویی ۵۰ هزار تومان")
+
+        pricing = Client().get("/site/pricing/")
+        self.assertContains(pricing, "۶۶۹ هزار تومان")
+        self.assertContains(pricing, "۴۹۹ هزار تومان")
+        self.assertContains(pricing, "هزینه‌ی کلِ ۳ ماه اشتراک")
 
     def test_sitemap_and_robots(self):
         c = Client()

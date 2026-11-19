@@ -26,6 +26,7 @@ import { useApi } from '../../lib/useApi';
 import { useAppearance } from '../../lib/coverTheme';
 import { celebrateProgress } from '../../lib/milestones';
 import { studyDuration } from '../../lib/duration';
+import { currentPrice, percentLabel } from '../../lib/pricing';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
 import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
@@ -133,6 +134,7 @@ export default function Book() {
   if (error || !data) return <Screen><Header subtitle="کتاب" /><ErrorState message={error?.message ?? ''} onRetry={retry} /></Screen>;
 
   const book = data;
+  const bookPrice = currentPrice(book);
   // The cover is the width of the page (less its margins) divided by the golden ratio, in its 2:3 book shape: about a
   // fifth larger than before on a phone, and still leaving the counts under it in view on a small screen.
   const coverW = Math.round(Math.min((Math.min(width, 760) - 32) / 1.618, 240));
@@ -155,7 +157,7 @@ export default function Book() {
     if (target) router.push(`/section/${target}`);
   };
   // A book that is free from start to end has nothing to buy: it reads like an owned one (no price, no «باز کردن»).
-  const fullAccess = book.owned || !book.price || !!book.all_free;
+  const fullAccess = book.owned || !bookPrice.price || !!book.all_free;
   const now = notify ?? { on: book.notify, canCancel: !!book.notify_can_cancel };
   const waiting = now.on;
   const toggleNotify = async () => {
@@ -320,7 +322,21 @@ export default function Book() {
                 <Icon name="lock-open" size={18} color={colors.ink} />
                 <Text style={styles.unlockText}>باز کردن همه‌ی کتاب</Text>
               </Pressable>
-              {!!book.price && <Text style={[styles.ctaSmall, { textAlign: 'center' }]}>{formatToman(book.price)}، یا با اشتراک ماهانه‌ی لیمو</Text>}
+              {!!bookPrice.price && (bookPrice.discount ? (
+                <View style={styles.priceDetails}>
+                  <View style={styles.priceLine}>
+                    <Text style={[styles.ctaSmall, rtl]}>قیمت عادی</Text>
+                    <Text style={styles.oldPrice}>{formatToman(bookPrice.regularPrice ?? bookPrice.price)}</Text>
+                  </View>
+                  <View style={styles.priceLine}>
+                    <Text style={[styles.ctaSmall, rtl]}>قیمت ویژه</Text>
+                    <Text style={styles.salePrice}>{formatToman(bookPrice.price)}</Text>
+                  </View>
+                  <Text style={[styles.saving, rtl]}>
+                    {percentLabel(bookPrice.discount.percent)}٪ تخفیف · صرفه‌جویی {formatToman(bookPrice.discount.amount)} · یا با اشتراک لیمو
+                  </Text>
+                </View>
+              ) : <Text style={[styles.ctaSmall, { textAlign: 'center' }]}>{formatToman(bookPrice.price)}، یا با اشتراک ماهانه‌ی لیمو</Text>)}
             </View>
           )}
 
@@ -825,6 +841,11 @@ const styles = StyleSheet.create({
   ctaHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   ctaTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   ctaSmall: { fontSize: 12, color: colors.muted },
+  priceDetails: { gap: 4, padding: 10, backgroundColor: colors.redSoft, borderRadius: 12 },
+  priceLine: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  oldPrice: { color: colors.muted, textDecorationLine: 'line-through', fontSize: 12 },
+  salePrice: { color: colors.redDark, fontSize: 14, fontWeight: '900' },
+  saving: { textAlign: 'center', fontSize: 11, fontWeight: '800', color: colors.redDark },
   ctaButton: { backgroundColor: colors.lemon, borderRadius: 12, paddingHorizontal: 18, minHeight: 46, justifyContent: 'center' },
   ctaButtonText: { color: colors.ink, fontWeight: '900', fontSize: 15 },
   unlock: { minHeight: 52, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },

@@ -624,14 +624,19 @@ class SampleAndBannerTests(_Base):
 
         from .models import Banner
 
-        Banner.objects.create(title="۳۰٪ تخفیف", template="sale", button="بخر", countdown=True, ends_at=timezone.now() + timedelta(hours=5))
+        Banner.objects.create(title="بنر رویداد", template="lemon", button="مشاهده", countdown=True, ends_at=timezone.now() + timedelta(hours=5))
+        from django.core.exceptions import ValidationError
+
+        with self.assertRaises(ValidationError):
+            Banner(title="۳۰٪ تخفیف مستقل", template=Banner.Template.SALE).full_clean()
         Banner.objects.create(title="کتاب تازه", template="book", target="book", target_value="test-book")
         Banner.objects.create(title="پیش‌نویس", template="book", target="book", target_value="draft-book")
         ContentNode.add_root(kind="book", title="کتاب پنهان", slug="draft-book", is_published=False)
         data = APIClient().get("/api/v1/banners/").json()
-        sale = next(b for b in data if b["template"] == "sale")
-        self.assertIsNotNone(sale["ends_at"])
-        self.assertEqual(sale["button"], "بخر")
+        event = next(b for b in data if b["title"] == "بنر رویداد")
+        self.assertEqual(event["template"], "lemon")
+        self.assertIsNotNone(event["ends_at"])
+        self.assertEqual(event["button"], "مشاهده")
         book = next(b for b in data if b["title"] == "کتاب تازه")
         self.assertEqual(book["book"]["title"], "کتاب آزمایشی")
         self.assertIsNone(next(b for b in data if b["title"] == "پیش‌نویس")["book"])

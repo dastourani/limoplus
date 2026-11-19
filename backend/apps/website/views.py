@@ -35,6 +35,13 @@ def fa(n) -> str:
     return "".join(FA[int(c)] if c.isdigit() else c for c in str(n))
 
 
+def fa_percent(value: int | float) -> str:
+    text = str(value)
+    if text.endswith(".0"):
+        text = text[:-2]
+    return fa(text.replace(".", "٫"))
+
+
 def toman(price: int | None) -> str:
     """«۲۴۹ هزار تومان»."""
     if not price:
@@ -69,20 +76,32 @@ def _cover(request, book) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
-def _card(request, book) -> dict:
-    """A book on a shelf of the site: cover, link, and the one label under it (option «ب» of the app)."""
+def _card(request, book, price_quote=None) -> dict:
+    """A book on a shelf of the site: its current price and a compact discount marker."""
+    from apps.commerce.pricing import book_price_quote
+
+    price_quote = price_quote or book_price_quote(book)
     access = AccessMap(request.user, book)
     chapters = access.children(book)
     free = sum(1 for c in chapters if c.is_free)
     if book.is_coming_soon or not chapters:
         text = f"به‌زودی ({book.release_estimate})" if book.release_estimate else "به‌زودی"
         label = {"kind": "soon", "icon": "bell", "text": text}
-    elif not book.price or (chapters and free == len(chapters)) or book.is_free:
+    elif not price_quote.price or (chapters and free == len(chapters)) or book.is_free:
         label = {"kind": "free", "icon": "gift", "text": "رایگان"}
     else:
-        label = {"kind": "paid", "icon": "tag", "text": toman(book.price)}
+        label = {"kind": "paid", "icon": "tag", "text": toman(price_quote.price)}
+    discount = None
+    if price_quote.is_discounted:
+        discount = {
+            "percent": fa_percent(price_quote.discount_percent),
+            "saving": toman(price_quote.discount_amount),
+            "end_date": fa_date(price_quote.campaign.ends_at),
+        }
     return {
         "book": book, "cover": _cover(request, book), "label": label,
+        "regular_price": toman(price_quote.regular_price) if price_quote.regular_price is not None else None,
+        "discount": discount,
         "chapters": fa(len(chapters)) if chapters else "",
         "release_estimate": book.release_estimate,
         "url": reverse("website:book", args=[book.slug]), "majors": [m.slug for m in book.majors.all()],
@@ -165,9 +184,29 @@ def _apk(s: SiteSettings) -> dict | None:
 
 
 def _plans():
+    from apps.commerce.pricing import plan_price_quotes
     from apps.commerce.views import _plans_on_sale
 
-    return [{"title": p.title, "price": toman(p.price), "months": fa(p.months)} for p in _plans_on_sale().order_by("order", "price")]
+    plans = list(_plans_on_sale().order_by("order", "price"))
+    quotes = plan_price_quotes(plans)
+    result = []
+    for plan in plans:
+        quote = quotes[plan.pk]
+        discount = None
+        if quote.is_discounted:
+            discount = {
+                "percent": fa_percent(quote.discount_percent),
+                "saving": toman(quote.discount_amount),
+                "end_date": fa_date(quote.campaign.ends_at),
+            }
+        result.append({
+            "title": plan.title,
+            "price": toman(quote.price),
+            "regular_price": toman(quote.regular_price),
+            "discount": discount,
+            "months": fa(plan.months),
+        })
+    return result
 
 
 def _format_sample(q, idx: int, book_node=None, majors=None) -> dict:
@@ -211,10 +250,13 @@ def home(request):
     from apps.catalog.models import Banner, BookChange
     from apps.learning.models import Flashcard, Question
 
+    from apps.commerce.pricing import book_price_quotes, campaign_banner_link, campaign_banner_payload
+
     pub_books = list(_published())
-    books = [_card(request, b) for b in pub_books]
+    price_quotes = book_price_quotes(pub_books)
+    books = [_card(request, b, price_quotes[b.pk]) for b in pub_books]
     majors = Major.objects.filter(books__in=pub_books).distinct().order_by("order", "name")
-    paid = [b.price for b in pub_books if b.price and not b.is_coming_soon]
+    paid = [price_quotes[b.pk].price for b in pub_books if price_quotes[b.pk].price and not b.is_coming_soon]
 
     # Live content statistics and a randomized pool of interactive sample questions across all published books.
     active_books = [b for b in pub_books if not b.is_coming_soon]
@@ -242,17 +284,30 @@ def home(request):
         (fa(total_cards), "فلش‌کارت مرور هوشمند"),
     ] if active_books else []
 
-    # Active banners and recent book updates from the panel.
+    # Active notices follow the website toggle, but an explicitly active discount campaign keeps its matching banner.
     now = timezone.now()
-    raw_banners = Banner.objects.filter(is_active=True).filter(
-        Q(starts_at__isnull=True) | Q(starts_at__lte=now),
-        Q(ends_at__isnull=True) | Q(ends_at__gte=now),
-    )[:4]
+    site_settings = SiteSettings.get()
+    banner_rows = Banner.visible_at(now)
+    if not site_settings.show_updates:
+        banner_rows = banner_rows.filter(sale_campaign__isnull=False)
     banners = []
-    for bn in raw_banners:
-        raw_link = bn.resolved_link()
+    for bn in banner_rows[:4]:
+        sale = campaign_banner_payload(bn.sale_campaign, now) if bn.sale_campaign_id else None
+        if bn.sale_campaign_id and not sale:
+            continue
+        raw_link = campaign_banner_link(bn.sale_campaign) if bn.sale_campaign_id else bn.resolved_link()
         href = raw_link if raw_link.startswith(("http://", "https://")) else (app_url(raw_link) if raw_link else app_url())
-        banners.append({"title": bn.title, "subtitle": bn.subtitle, "button": bn.button or "مشاهده", "url": href})
+        discount = None
+        if sale:
+            discount = {
+                "product_title": sale["product_title"],
+                "price": toman(sale["price"]),
+                "regular_price": toman(sale["regular_price"]),
+                "saving": toman(sale["amount"]),
+                "percent": fa_percent(sale["percent"]),
+                "end_date": fa_date(sale["ends_at"]),
+            }
+        banners.append({"title": bn.title, "subtitle": bn.subtitle, "button": bn.button or "مشاهده", "url": href, "discount": discount})
 
     raw_changes = (
         BookChange.objects.filter(is_hidden=False, book__in=pub_books)
@@ -280,7 +335,11 @@ def home(request):
 
 
 def books(request):
-    cards = [_card(request, b) for b in _published()]
+    from apps.commerce.pricing import book_price_quotes
+
+    books = list(_published())
+    quotes = book_price_quotes(books)
+    cards = [_card(request, book, quotes[book.pk]) for book in books]
     majors = Major.objects.filter(books__in=[c["book"] for c in cards]).distinct().order_by("order", "name")
     return render(request, "website/books.html", _base(request, books=cards, majors=majors))
 
@@ -344,13 +403,29 @@ def book(request, slug):
     is_preparing = bool(b.is_coming_soon or not chapters)
     related_books = []
     if is_preparing:
+        from apps.commerce.pricing import book_price_quotes
+
         other = [x for x in _published() if x.id != b.id and not x.is_coming_soon][:6]
-        related_books = [_card(request, x) for x in other]
+        other_quotes = book_price_quotes(other)
+        related_books = [_card(request, item, other_quotes[item.pk]) for item in other]
+    from apps.commerce.pricing import book_price_quote
+
+    price_quote = book_price_quote(b)
+    book_discount = None
+    if price_quote.is_discounted:
+        book_discount = {
+            "percent": fa_percent(price_quote.discount_percent),
+            "saving": toman(price_quote.discount_amount),
+            "end_date": fa_date(price_quote.campaign.ends_at),
+        }
     upd = book_updated_on(b)
     return render(request, "website/book.html", _base(
         request, b=b, cover=_cover(request, b), majors=list(b.majors.all()), chapters=chapters, stats=[s for s in stats if s[0] != "۰"],
         samples=sample_list, samples_json=json.dumps(sample_list, ensure_ascii=False), first_free=first_free,
-        price=toman(b.price) if b.price else None, open_url=app_url(f"book/{b.slug}"), buy_url=app_url(f"buy/{b.slug}"),
+        price=toman(price_quote.price) if price_quote.price else None,
+        regular_price=toman(price_quote.regular_price) if price_quote.regular_price else None,
+        discount=book_discount,
+        open_url=app_url(f"book/{b.slug}"), buy_url=app_url(f"buy/{b.slug}"),
         about=about_text, updated_on=fa_date(upd) if upd else "",
         is_preparing=is_preparing, release_estimate=b.release_estimate, related_books=related_books,
     ))
@@ -361,7 +436,11 @@ def download(request):
 
 
 def pricing(request):
-    paid = [b.price for b in _published() if b.price and not b.is_coming_soon]
+    from apps.commerce.pricing import book_price_quotes
+
+    books = list(_published())
+    quotes = book_price_quotes(books)
+    paid = [quotes[b.pk].price for b in books if quotes[b.pk].price and not b.is_coming_soon]
     return render(request, "website/pricing.html", _base(
         request, plans=_plans(), min_price=toman(min(paid)) if paid else None, faq=FaqItem.objects.filter(is_hidden=False)[:6],
     ))

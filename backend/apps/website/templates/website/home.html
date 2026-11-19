@@ -32,7 +32,7 @@
   </div>
 </section>
 
-{% if s.show_updates and banners or s.show_updates and updates %}
+{% if banners or s.show_updates and updates %}
 <section class="sec wrap">
   <div class="sechead"><div><h2>تازه‌های لیموخوان</h2><p class="sub">آخرین اطلاعیه‌ها و به‌روزرسانی‌های محتوای درسی</p></div></div>
   {% if banners %}
@@ -40,7 +40,15 @@
     {% for bn in banners %}
     <a class="feat row banner-card" href="{{ bn.url }}">
       <div class="ic" style="margin:0">{% icon "bell" 24 %}</div>
-      <div class="grow"><b>{{ bn.title }}</b>{% if bn.subtitle %}<p>{{ bn.subtitle }}</p>{% endif %}</div>
+      <div class="grow"><b>{{ bn.title }}</b>{% if bn.subtitle %}<p>{{ bn.subtitle }}</p>{% endif %}
+        {% if bn.discount %}
+        <div class="bn-deal">
+          <span class="bn-product">{{ bn.discount.product_title }}</span>
+          <span class="bn-values"><del>{{ bn.discount.regular_price }}</del><strong>{{ bn.discount.price }}</strong><em>{{ bn.discount.percent }}٪ تخفیف</em></span>
+          <small>صرفه‌جویی {{ bn.discount.saving }}{% if bn.discount.end_date %} · پایان {{ bn.discount.end_date }}{% endif %}</small>
+        </div>
+        {% endif %}
+      </div>
       <span class="btn lemon small">{{ bn.button }}</span>
     </a>
     {% endfor %}

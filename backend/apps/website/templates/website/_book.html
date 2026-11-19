@@ -12,5 +12,6 @@
   </span>
   {% else %}
   <span class="tagbtn {{ c.label.kind }}">{% icon c.label.icon 15 %}{{ c.label.text }}</span>
+  {% if c.discount %}<span class="bk-sale">{{ c.discount.percent }}٪ تخفیف زمان‌دار</span>{% endif %}
   {% endif %}
 </a>

@@ -42,7 +42,9 @@ export default function PaymentResult() {
           <Text style={styles.text}>
             {status.title}
             {'\n'}
-            {formatToman(status.amount)}
+            {status.regular_amount > status.amount
+              ? `قیمت عادی: ${formatToman(status.regular_amount)}\n${status.campaign_title ? `${status.campaign_title} · ` : ''}تخفیف: ${formatToman(status.discount_amount)}\nمبلغ پرداخت‌شده: ${formatToman(status.amount)}`
+              : `مبلغ: ${formatToman(status.amount)}`}
             {status.ref_number ? `\nشماره‌ی پیگیری: ${toPersianDigits(status.ref_number)}` : ''}
           </Text>
         )}
