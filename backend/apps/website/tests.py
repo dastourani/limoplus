@@ -429,3 +429,11 @@ class AppPagesTests(TestCase):
         self.assertIsNotNone(self.terms.important_at)
         self.assertEqual(self.client.get("/admin/website/helppage/add/").status_code, 200)
         self.assertContains(self.client.get("/admin/website/helppage/add/"), "data-md-editor")
+
+    def test_navigation_and_footer_contain_teacher_portal_links(self):
+        from django.urls import reverse
+        r = Client().get("/site/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "درگاه اساتید")
+        self.assertContains(r, "ورود اساتید و مؤلفان")
+        self.assertContains(r, reverse("admin:login"))
