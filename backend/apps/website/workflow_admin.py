@@ -718,7 +718,7 @@ class BookAccessMemberAdmin(BookAccessActionAdminMixin, admin.ModelAdmin):
         if request.method == "POST" and form.is_valid():
             now = timezone.now()
             with transaction.atomic():
-                member = BookAccessMember.objects.select_for_update().select_related("entitlement").get(pk=member.pk)
+                member = BookAccessMember.objects.select_for_update(of=("self",)).select_related("entitlement").get(pk=member.pk)
                 if (
                     member.status != BookAccessMember.Status.ACTIVE
                     or not member.entitlement_id
@@ -751,7 +751,7 @@ class BookAccessMemberAdmin(BookAccessActionAdminMixin, admin.ModelAdmin):
         form = GroupAccessRevokeForm(request.POST or None)
         if request.method == "POST" and form.is_valid():
             with transaction.atomic():
-                member = BookAccessMember.objects.select_for_update().select_related("entitlement").get(pk=member.pk)
+                member = BookAccessMember.objects.select_for_update(of=("self",)).select_related("entitlement").get(pk=member.pk)
                 if member.status in (BookAccessMember.Status.REVOKED, BookAccessMember.Status.REJECTED):
                     form.add_error(None, "این ردیف قبلاً لغو یا رد شده است.")
                 else:
