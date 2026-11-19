@@ -1,11 +1,14 @@
 /**
  * One button-shaped label under every book on the shelves, the same size and shape for all; only its colour and icon
  * say what it is. Only «خبرم کن» is a real button.
+ *
+ * The pill holds the price and nothing else: the free-preview label («۲ فصل رایگان») rides on the cover as a ribbon
+ * (see `shelfLabel`), so it is not repeated here.
  */
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { BookListItem } from '../../api/endpoints';
-import { colors, toPersianDigits, toPersianOrdinal } from '../../theme';
+import { colors, toPersianDigits } from '../../theme';
 import { currentPrice, percentLabel } from '../../lib/pricing';
 import { Icon, type IconName } from '../Icon';
 import { Text } from '../Text';
@@ -23,17 +26,7 @@ type Look = {
   fg: string;
   border: string;
   discountPercent?: number;
-  sampleText?: string;
 };
-
-function sampleLabel(book: BookListItem): string | undefined {
-  if (book.product_status.preview !== 'sample') return undefined;
-  const count = book.free_chapters ?? (book.free_chapter ? 1 : 0);
-  if (count === 1 && book.free_chapter) return `فصل ${toPersianOrdinal(book.free_chapter)} رایگان`;
-  if (count > 1) return `${toPersianDigits(count)} فصل رایگان`;
-  // Only a part of a chapter is free: there is no chapter to name.
-  return 'بخشی رایگان';
-}
 
 /** Option «ب»: the old wide button for every state; free and owned green, the price soft lemon, «خبرم کن» white,
  * «خبرت می‌کنیم» lemon with a ringing bell. Product categories come only from the API's product_status. */
@@ -56,30 +49,26 @@ export function bookPillLook(book: BookListItem, notify: { on: boolean; canCance
       icon: 'tag',
       text: price.price == null ? 'قیمت در دسترس نیست' : shortToman(price.price),
       discountPercent: discounted ? price.discount?.percent : undefined,
-      sampleText: sampleLabel(book),
       bg: discounted ? colors.redSoft : '#FDF4D3',
       fg: discounted ? colors.redDark : '#7A5B00',
       border: discounted ? '#EBC0BE' : '#F1DE94',
     };
   }
   if (state === 'preparing') return { icon: 'book-open', text: 'در حال آماده‌سازی', ...neutral };
-  if (state === 'unpriced') return { icon: 'tag', text: 'قیمت تعیین نشده', sampleText: sampleLabel(book), ...neutral };
+  if (state === 'unpriced') return { icon: 'tag', text: 'قیمت تعیین نشده', ...neutral };
   return { icon: 'lock', text: 'در دسترس نیست', ...neutral };
 }
 
 export function BookPill({ book, notify, onNotify }: { book: BookListItem; notify: { on: boolean; canCancel: boolean }; onNotify: () => void }) {
   const look = bookPillLook(book, notify);
   const body = (
-    <>
-      <View style={look.sampleText ? styles.primaryWithSample : styles.labelLine}>
-        <Icon name={look.icon} size={15} color={look.fg} />
-        <Text style={[styles.text, { color: look.fg }]} numberOfLines={1}>{look.text}</Text>
-        {look.discountPercent != null && <Text style={styles.percent}>{percentLabel(look.discountPercent)}٪</Text>}
-      </View>
-      {look.sampleText && <Text style={styles.sampleText} numberOfLines={1}>{look.sampleText}</Text>}
-    </>
+    <View style={styles.labelLine}>
+      <Icon name={look.icon} size={15} color={look.fg} />
+      <Text style={[styles.text, { color: look.fg }]} numberOfLines={1}>{look.text}</Text>
+      {look.discountPercent != null && <Text style={styles.percent}>{percentLabel(look.discountPercent)}٪</Text>}
+    </View>
   );
-  const style = [styles.pill, { backgroundColor: look.bg, borderColor: look.border }, look.sampleText && styles.pillWithSample];
+  const style = [styles.pill, { backgroundColor: look.bg, borderColor: look.border }];
   if (book.product_status.state === 'coming_soon')
     return (
       <Pressable
@@ -98,10 +87,7 @@ export function BookPill({ book, notify, onNotify }: { book: BookListItem; notif
 
 const styles = StyleSheet.create({
   pill: { alignSelf: 'stretch', minHeight: 38, borderRadius: 12, borderWidth: 1, paddingHorizontal: 8, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  pillWithSample: { minHeight: 48, paddingVertical: 4, flexDirection: 'column', gap: 1 },
   labelLine: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0 },
-  primaryWithSample: { alignSelf: 'stretch', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0 },
   text: { flexShrink: 1, fontSize: 12, fontWeight: '700' },
   percent: { flexShrink: 0, overflow: 'hidden', borderRadius: 6, paddingHorizontal: 4, paddingVertical: 1, backgroundColor: colors.redDark, color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
-  sampleText: { alignSelf: 'stretch', textAlign: 'center', color: colors.greenDark, fontSize: 10, fontWeight: '800', lineHeight: 14 },
 });
