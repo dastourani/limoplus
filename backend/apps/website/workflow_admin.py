@@ -6,7 +6,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
 from apps.catalog import access
+from apps.catalog.jalali import jalali_datetime
 from apps.catalog.models import BookEditor, ContentNode
 from apps.commerce.models import Entitlement
 
@@ -99,13 +100,37 @@ class TeacherInvitationAdminForm(forms.ModelForm):
         return data
 
 
+class TeacherInvitationStatusFilter(admin.SimpleListFilter):
+    title = "وضعیت دعوت"
+    parameter_name = "effective_status"
+
+    def lookups(self, request, model_admin):
+        return TeacherInvitation.Status.choices
+
+    def queryset(self, request, queryset):
+        status = self.value()
+        if status == TeacherInvitation.Status.ISSUED:
+            return queryset.filter(status=status, expires_at__gt=timezone.now())
+        if status == TeacherInvitation.Status.EXPIRED:
+            return queryset.filter(
+                Q(status=TeacherInvitation.Status.EXPIRED)
+                | Q(status=TeacherInvitation.Status.ISSUED, expires_at__lte=timezone.now())
+            )
+        if status:
+            return queryset.filter(status=status)
+        return queryset
+
+
 @admin.register(TeacherInvitation)
 class TeacherInvitationAdmin(admin.ModelAdmin):
     """Only the manager issues or revokes a hashed, one-use link; its raw token is shown only once."""
 
     form = TeacherInvitationAdminForm
-    list_display = ("application", "book", "status_label", "expires_at", "created_by", "created_at", "accepted_by", "accepted_at")
-    list_filter = ("status", "book")
+    list_display = (
+        "application", "book", "status_label", "expires_at", "capability_summary",
+        "issued_audit", "accepted_audit", "revoked_audit", "revocation_reason_label",
+    )
+    list_filter = (TeacherInvitationStatusFilter, "book")
     search_fields = ("application__name", "application__phone", "book__title")
     list_select_related = ("application", "book", "created_by", "accepted_by", "revoked_by")
     ordering = ("-created_at", "-pk")
@@ -117,11 +142,48 @@ class TeacherInvitationAdmin(admin.ModelAdmin):
             return "منقضی‌شده"
         return obj.get_status_display()
 
+    @admin.display(description="قابلیت‌های این دعوت")
+    def capability_summary(self, obj):
+        labels = (
+            str(TeacherInvitation._meta.get_field(field).verbose_name)
+            for field in _TEACHER_CAPABILITIES
+            if getattr(obj, field)
+        )
+        rendered = tuple(labels)
+        if not rendered:
+            return "قابلیتی ثبت نشده"
+        return format_html_join("<br>", "{}", ((label,) for label in rendered))
+
+    @admin.display(description="دعوت‌کننده · زمان صدور")
+    def issued_audit(self, obj):
+        return format_html("{}<br>{}", obj.created_by, jalali_datetime(obj.created_at))
+
+    @admin.display(description="پذیرنده · زمان پذیرش")
+    def accepted_audit(self, obj):
+        if not obj.accepted_by or not obj.accepted_at:
+            return "—"
+        return format_html("{}<br>{}", obj.accepted_by, jalali_datetime(obj.accepted_at))
+
+    @admin.display(description="لغوکننده · زمان لغو")
+    def revoked_audit(self, obj):
+        if not obj.revoked_by or not obj.revoked_at:
+            return "—"
+        return format_html("{}<br>{}", obj.revoked_by, jalali_datetime(obj.revoked_at))
+
+    @admin.display(description="دلیل لغو")
+    def revocation_reason_label(self, obj):
+        return obj.revocation_reason or "—"
+
     def get_fields(self, request, obj=None):
         if obj is None:
             return ("application", "book", "expires_at", *_TEACHER_CAPABILITIES)
+        status_field = (
+            "status_label"
+            if obj.status == TeacherInvitation.Status.ISSUED and obj.is_expired
+            else "status"
+        )
         return (
-            "application", "book", "status", "expires_at", *_TEACHER_CAPABILITIES,
+            "application", "book", status_field, "expires_at", *_TEACHER_CAPABILITIES,
             "created_by", "created_at", "accepted_by", "accepted_at", "revoked_by", "revoked_at", "revocation_reason",
         )
 
@@ -132,7 +194,9 @@ class TeacherInvitationAdmin(admin.ModelAdmin):
             "application", "book", "expires_at", *_TEACHER_CAPABILITIES,
             "created_by", "created_at", "accepted_by", "accepted_at", "revoked_by", "revoked_at",
         )
-        if obj.status != TeacherInvitation.Status.ISSUED or obj.is_expired:
+        if obj.status == TeacherInvitation.Status.ISSUED and obj.is_expired:
+            return (*fields, "status_label", "revocation_reason")
+        if obj.status != TeacherInvitation.Status.ISSUED:
             return (*fields, "status", "revocation_reason")
         return fields
 

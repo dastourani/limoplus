@@ -137,6 +137,97 @@ class TeacherInvitationWorkflowTests(WorkflowFixture):
         self.assertIsNotNone(invitation.revoked_at)
         self.assertEqual(invitation.revocation_reason, "شماره‌ی دعوت اشتباه ثبت شده بود.")
 
+    def test_admin_navigation_separates_teacher_workflows_from_site_content(self):
+        manager_client = Client()
+        manager_client.force_login(self.manager)
+        response = manager_client.get(reverse("admin:index"))
+
+        self.assertEqual(response.status_code, 200)
+        app_list = response.context["app_list"]
+        site_app = next(app for app in app_list if app["name"] == "سایت")
+        workflow_app = next(app for app in app_list if app["name"] == "اساتید و مؤلفان")
+        site_models = {model["object_name"] for model in site_app["models"]}
+        workflow_models = {model["object_name"] for model in workflow_app["models"]}
+
+        self.assertTrue({"SiteSettings", "SitePage", "HelpPage", "SiteNavItem", "FaqItem"} <= site_models)
+        self.assertFalse({"TeacherApplication", "TeacherInvitation", "BookAccessRequest"} & site_models)
+        self.assertTrue({
+            "BookEditor", "TeacherApplication", "TeacherInvitation", "PublicationRequest",
+            "PublicationRequestEvent", "BookAccessRequest", "BookAccessRequestEvent",
+            "BookAccessMember", "BookAccessEvent",
+        } <= workflow_models)
+
+    def test_invitation_list_and_details_show_effective_status_capabilities_and_audit(self):
+        issued_application = self.make_teacher_application(phone="09120000011")
+        issued, _ = self.make_invitation(issued_application, can_edit_content=True)
+
+        accepted_application = self.make_teacher_application(phone="09120000012")
+        accepted, _ = self.make_invitation(accepted_application, can_request_publication=True)
+        accepted_user = User.objects.create_user("09120000013")
+        accepted.accepted_by = accepted_user
+        accepted.accepted_at = timezone.now() - timedelta(days=2)
+        accepted.status = TeacherInvitation.Status.ACCEPTED
+        accepted.save(update_fields=("accepted_by", "accepted_at", "status"))
+
+        revoked_application = self.make_teacher_application(phone="09120000014")
+        revoked, _ = self.make_invitation(revoked_application, can_request_group_access=True)
+        revoked.revoked_by = self.manager
+        revoked.revoked_at = timezone.now() - timedelta(hours=3)
+        revoked.revocation_reason = "درخواست مدیر برای لغو پیوند آزمایشی."
+        revoked.status = TeacherInvitation.Status.REVOKED
+        revoked.save(update_fields=("revoked_by", "revoked_at", "revocation_reason", "status"))
+
+        expired_application = self.make_teacher_application(phone="09120000015")
+        expired, _ = self.make_invitation(expired_application, can_view_reports=True)
+        TeacherInvitation.objects.filter(pk=expired.pk).update(
+            expires_at=timezone.now() - timedelta(seconds=1)
+        )
+        expired.refresh_from_db()
+        self.assertEqual(expired.status, TeacherInvitation.Status.ISSUED)
+
+        manager_client = Client()
+        manager_client.force_login(self.manager)
+        list_url = reverse("admin:website_teacherinvitation_changelist")
+        response = manager_client.get(list_url)
+        self.assertEqual(response.status_code, 200)
+        for label in ("صادرشده", "پذیرفته‌شده", "لغوشده", "منقضی‌شده"):
+            self.assertContains(response, label)
+        for label in (
+            "انقضای پیوند", "قابلیت‌های این دعوت", "دعوت‌کننده · زمان صدور",
+            "پذیرنده · زمان پذیرش", "لغوکننده · زمان لغو", "دلیل لغو",
+            "ویرایش پیش‌نویس", "درخواست بازبینی انتشار عمومی", "درخواست دسترسی گروهی",
+            self.manager.phone, accepted_user.phone, revoked.revocation_reason,
+        ):
+            self.assertContains(response, label)
+
+        expired_response = manager_client.get(f"{list_url}?effective_status=expired")
+        self.assertEqual(expired_response.status_code, 200)
+        self.assertEqual(list(expired_response.context["cl"].result_list), [expired])
+
+        accepted_detail = manager_client.get(
+            reverse("admin:website_teacherinvitation_change", args=[accepted.pk])
+        )
+        self.assertEqual(accepted_detail.status_code, 200)
+        for label in ("پذیرفته‌شده", "پذیرنده", "زمان پذیرش", accepted_user.phone, "درخواست بازبینی انتشار عمومی"):
+            self.assertContains(accepted_detail, label)
+
+        revoked_detail = manager_client.get(
+            reverse("admin:website_teacherinvitation_change", args=[revoked.pk])
+        )
+        self.assertEqual(revoked_detail.status_code, 200)
+        for label in (
+            "لغوشده", "دعوت‌کننده", "زمان صدور", "لغوکننده", "زمان لغو", "دلیل لغو",
+            self.manager.phone, revoked.revocation_reason, "درخواست دسترسی گروهی",
+        ):
+            self.assertContains(revoked_detail, label)
+
+        expired_detail = manager_client.get(
+            reverse("admin:website_teacherinvitation_change", args=[expired.pk])
+        )
+        self.assertEqual(expired_detail.status_code, 200)
+        self.assertContains(expired_detail, "منقضی‌شده")
+        self.assertNotContains(expired_detail, "صادرشده")
+
     def test_invitation_otp_grants_only_the_selected_book_capability_and_creates_admin_session(self):
         invitation, token = self.make_invitation(
             can_request_publication=True,
