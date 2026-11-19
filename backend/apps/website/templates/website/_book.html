@@ -6,7 +6,7 @@
   <div class="bk-action">
     {% if c.label.kind == 'soon' %}
     <span class="tip-wrap tip-up" style="width:100%">
-      <span class="tagbtn {{ c.label.kind }}" title="{{ c.label.text }}">{% icon c.label.icon 15 %}{{ c.label.text }}</span>
+      <span class="tagbtn {{ c.label.kind }}">{% icon c.label.icon 15 %}{{ c.label.text }}</span>
       <span class="tip-bubble">
         <b>زمان حدودی انتشار: {{ c.release_estimate|default:"به‌زودی" }}</b>
         <span>برای ثبت «خبرم کن» و دریافت پیامک به محض انتشار این کتاب کلیک کنید.</span>
@@ -14,7 +14,7 @@
     </span>
     {% elif c.discount %}
     <span class="tip-wrap tip-up" style="width:100%">
-      <span class="tagbtn {{ c.label.kind }}" title="{{ c.label.text }}">
+      <span class="tagbtn {{ c.label.kind }}">
         {% icon c.label.icon 15 %}<span class="bk-price">{{ c.label.text }}</span><span class="bk-discount-chip">{{ c.discount.percent }}٪</span>
       </span>
       <span class="tip-bubble">
@@ -25,7 +25,7 @@
       </span>
     </span>
     {% else %}
-    <span class="tagbtn {{ c.label.kind }}" title="{{ c.label.text }}">{% icon c.label.icon 15 %}<span class="bk-price">{{ c.label.text }}</span></span>
+    <span class="tagbtn {{ c.label.kind }}">{% icon c.label.icon 15 %}<span class="bk-price">{{ c.label.text }}</span></span>
     {% endif %}
   </div>
 </a>
