@@ -84,6 +84,8 @@ api = [
     path("me/mistakes/questions/", mistakes.mistake_questions),
     path("me/mistakes/<int:question_id>/reason/", mistakes.mistake_reason),
     path("me/flashcards/due/", study.due_flashcards),
+    path("me/library/reorder/", study.reorder_library),
+    path("me/library/books/<int:book_id>/", study.library_book),
     path("me/library/", study.library),
     path("me/stats/", study.stats),
     path("books/<str:slug>/offline/", study.offline_bundle),

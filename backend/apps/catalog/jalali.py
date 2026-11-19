@@ -1,5 +1,7 @@
 """Jalali (Persian calendar) dates for the panel."""
 
+import datetime
+
 from django.utils import timezone
 
 _FA = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
@@ -31,9 +33,12 @@ def jalali_datetime(value) -> str:
 
 
 def jalali_date(value) -> str:
-    """A date as «۱۴۰۵/۸/۹»."""
+    """A date as «۱۴۰۵/۸/۹»; datetimes are first reduced in the project's local time zone."""
     if value is None:
         return ""
+    if isinstance(value, datetime.datetime):
+        value = timezone.localtime(value) if timezone.is_aware(value) else value
+        value = value.date()
     y, m, d = to_jalali(value.year, value.month, value.day)
     return f"{y}/{m}/{d}".translate(_FA)
 

@@ -62,6 +62,7 @@ import UnfoldVertical from 'lucide-react-native/icons/unfold-vertical';
 import BadgeCheck from 'lucide-react-native/icons/badge-check';
 import Type from 'lucide-react-native/icons/type';
 import ChevronDown from 'lucide-react-native/icons/chevron-down';
+import ChevronUp from 'lucide-react-native/icons/chevron-up';
 import MapIcon from 'lucide-react-native/icons/map';
 import Languages from 'lucide-react-native/icons/languages';
 import Volume2 from 'lucide-react-native/icons/volume-2';
@@ -136,6 +137,7 @@ const ICONS = {
   'badge-check': BadgeCheck,
   'type': Type,
   'chevron-down': ChevronDown,
+  'chevron-up': ChevronUp,
   'map': MapIcon,
   'languages': Languages,
   'volume-2': Volume2,

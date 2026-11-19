@@ -12,7 +12,7 @@ from apps.accounts.models import User
 from apps.catalog.filters import BookFKFilter, NodeBookFilter, NodeChapterFilter, YesNoFilter
 from apps.catalog.models import ContentNode
 
-from .models import Dashboard, ExamAttempt, Note, SectionProgress
+from .models import Dashboard, ExamAttempt, LibraryBook, Note, SectionProgress
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):
@@ -26,6 +26,16 @@ class ReadOnlyAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(LibraryBook)
+class LibraryBookAdmin(ReadOnlyAdmin):
+    """Support can inspect shelf preferences, but cannot alter a learner's library or access rights."""
+
+    list_display = ("user", "book", "status", "is_hidden", "position", "updated_at")
+    list_filter = ("status", "is_hidden")
+    list_select_related = ("user", "book")
+    search_fields = ("user__phone", "book__title")
 
 
 @admin.register(SectionProgress)

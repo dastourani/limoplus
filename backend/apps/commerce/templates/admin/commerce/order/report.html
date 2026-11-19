@@ -23,8 +23,8 @@ h2.rp{margin-top:24px}
 </div>
 <form class="rp-custom" method="get">
   <input type="hidden" name="range" value="custom">
-  <span>از</span><input name="from" value="{{ from_text|default:start }}" placeholder="۱۴۰۵/۸/۱" dir="ltr">
-  <span>تا</span><input name="to" value="{{ to_text|default:end }}" placeholder="۱۴۰۵/۸/۳۰" dir="ltr">
+  <span>از</span><input class="lp-jalali-date" name="from" value="{{ from_text|default:start }}" placeholder="۱۴۰۵/۸/۱" dir="ltr" autocomplete="off" inputmode="numeric">
+  <span>تا</span><input class="lp-jalali-date" name="to" value="{{ to_text|default:end }}" placeholder="۱۴۰۵/۸/۳۰" dir="ltr" autocomplete="off" inputmode="numeric">
   <button type="submit" class="button">نمایش</button>
   <a class="button" href="{% url 'admin:commerce_order_report_csv' %}?{{ query }}">دریافت فایل برای اکسل</a>
 </form>
