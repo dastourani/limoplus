@@ -3,6 +3,7 @@ import os
 from django import forms
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models import Count, Q
 from django.shortcuts import redirect
 from django.urls import path, reverse
@@ -224,6 +225,7 @@ class BookAdmin(admin.ModelAdmin):
         extra = extra_context or {}
         extra["orphans"] = [n for n in panel.orphans() if not n.is_archived] if request.user.is_superuser else []
         extra["can_manage_access"] = request.user.is_superuser
+        extra["can_create_book"] = bool(request.user.is_superuser or access.is_book_teacher(request.user))
         return super().changelist_view(request, extra_context=extra)
 
     def _majors_json(self):
@@ -276,6 +278,7 @@ class BookAdmin(admin.ModelAdmin):
     def get_urls(self):
         site = self.admin_site.admin_view
         custom = [
+            path("new-draft/", site(self.teacher_create_book_view), name="catalog_book_teacher_new"),
             path("import/", site(lambda r: panel.import_view(self.admin_site, r)), name="catalog_import"),
             path("<int:book_id>/import/", site(lambda r, book_id: panel.import_view(self.admin_site, r, book_id)), name="catalog_book_import"),
             path("<int:book_id>/export/", site(panel.book_export), name="catalog_book_export"),
@@ -296,6 +299,68 @@ class BookAdmin(admin.ModelAdmin):
             path("chapter/<int:chapter_id>/history/<int:revision_id>/", site(panel.revision_text), name="catalog_revision_text"),
         ]
         return custom + super().get_urls()
+
+    def teacher_create_book_view(self, request):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import render, redirect
+        import re
+
+        if not request.user.is_superuser and not access.is_book_teacher(request.user):
+            raise PermissionDenied("فقط اساتید تأییدشده و مدیران امکان ایجاد کتاب دارند.")
+
+        if request.method == "POST":
+            title = request.POST.get("title", "").strip()
+            title_en = request.POST.get("title_en", "").strip()
+            author = request.POST.get("author", "").strip()
+            about = request.POST.get("about", "").strip()
+
+            if not title:
+                messages.error(request, "عنوان کتاب الزامی است.")
+            else:
+                # Generate clean unique slug
+                base_slug = re.sub(r"[^\w\s-]", "", title_en or title).strip()
+                base_slug = re.sub(r"[-\s]+", "-", base_slug) or "book"
+                slug_candidate = f"{base_slug}-{request.user.pk}".lower()
+                suffix = 1
+                while ContentNode.objects.filter(slug=slug_candidate).exists():
+                    slug_candidate = f"{base_slug}-{request.user.pk}-{suffix}".lower()
+                    suffix += 1
+
+                with transaction.atomic():
+                    book = ContentNode(
+                        kind=ContentNode.Kind.BOOK,
+                        title=title,
+                        title_en=title_en,
+                        slug=slug_candidate,
+                        author=author or (f"استاد {request.user.phone}"),
+                        about=about,
+                        is_published=False,  # strictly draft
+                    )
+                    ContentNode.add_root(instance=book)
+
+                    # Assign teacher as editor with full draft rights
+                    from .models import BookEditor
+                    BookEditor.objects.create(
+                        book=book,
+                        user=request.user,
+                        can_edit_content=True,
+                        can_request_publication=True,
+                        can_request_group_access=True,
+                        can_view_reports=True,
+                        note="ایجادشده توسط مؤلف",
+                    )
+
+                messages.success(request, f"کتاب پیش‌نویس «{book.title}» با موفقیت ایجاد شد.")
+                return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "ایجاد کتاب پیش‌نویس تازه",
+            "opts": self.model._meta,
+        }
+        return render(request, "admin/catalog/book/teacher_create_book.html", context)
+
 
 
 class GroupFilter(admin.SimpleListFilter):

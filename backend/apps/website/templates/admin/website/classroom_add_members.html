@@ -1,0 +1,30 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div class="card" style="max-width: 600px; margin: 20px auto; padding: 24px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+  <h2>{{ title }}</h2>
+  <p style="color: #6b7280; margin-bottom: 20px;">
+    شماره‌های دانشجویان کلاس <b>«{{ classroom.title }}»</b> را وارد کنید. دانشجویان با اولین ورود پیامکی، کتاب این کلاس را دریافت خواهند کرد.
+  </p>
+  <form method="post">
+    {% csrf_token %}
+    <div style="margin-bottom: 16px;">
+      {{ form.member_phones.label_tag }}
+      {{ form.member_phones }}
+      {% if form.member_phones.help_text %}
+        <p class="help" style="color: #6b7280; font-size: 13px;">{{ form.member_phones.help_text }}</p>
+      {% endif %}
+      {% if form.member_phones.errors %}
+        <p class="errornote" style="color: #dc2626;">{{ form.member_phones.errors }}</p>
+      {% endif %}
+    </div>
+    <div style="display: flex; gap: 12px; margin-top: 24px;">
+      <button type="submit" class="button" style="background: #2563eb; color: white; padding: 8px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer;">
+        ثبت و افزودن شماره‌ها
+      </button>
+      <a href="{% url 'admin:website_classroom_changelist' %}" class="button" style="background: #f3f4f6; color: #374151; padding: 8px 16px; border-radius: 6px; text-decoration: none;">
+        انصراف
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -4,7 +4,7 @@ from django import forms
 
 from apps.accounts.phone import InvalidPhone, normalize_phone
 
-from .models import BookAccessRequest, TeacherApplication
+from .models import BookAccessRequest, Classroom, TeacherApplication
 
 
 class TeacherApplicationForm(forms.ModelForm):
@@ -143,3 +143,63 @@ class GroupAccessRevokeForm(forms.Form):
         if not value:
             raise forms.ValidationError("دلیل لغو را ثبت کنید.")
         return value
+
+
+class ClassroomCreateForm(forms.ModelForm):
+    member_phones = forms.CharField(
+        label="شماره‌های اولیه دانشجویان (اختیاری)",
+        max_length=20000,
+        required=False,
+        widget=forms.Textarea(attrs={
+            "rows": 6,
+            "dir": "ltr",
+            "placeholder": "09121111111\n09122222222",
+            "autocomplete": "off",
+        }),
+        help_text="می‌توانید شماره‌های دانشجویان را با اینتر، کاما یا سمیکالن وارد کنید. دانشجویان با اولین ورود پیامکی کتاب را دریافت خواهند کرد.",
+    )
+
+    class Meta:
+        model = Classroom
+        fields = ("title", "book", "description", "capacity", "expiry_policy", "ends_on", "duration_days")
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.request_user = kwargs.pop("user", None)
+        super().__init__(*args, **kwargs)
+        if self.request_user and not self.request_user.is_superuser:
+            from apps.catalog.access import books_for_editor
+            self.fields["book"].queryset = books_for_editor(self.request_user, capability="can_edit_content")
+
+    def clean_member_phones(self):
+        raw = self.cleaned_data.get("member_phones", "").strip()
+        if not raw:
+            self.normalized_phones = []
+            self.duplicate_count = 0
+            return raw
+        phones, duplicates = normalized_phone_list(raw)
+        self.normalized_phones = phones
+        self.duplicate_count = duplicates
+        return raw
+
+
+class ClassroomAddMembersForm(forms.Form):
+    member_phones = forms.CharField(
+        label="افزودن شماره‌های دانشجویان",
+        max_length=20000,
+        widget=forms.Textarea(attrs={
+            "rows": 8,
+            "dir": "ltr",
+            "placeholder": "09121111111\n09122222222",
+            "autocomplete": "off",
+        }),
+        help_text="هر شماره در یک خط؛ نرمال‌سازی خودکار و حذف تکراری‌ها انجام می‌شود.",
+    )
+
+    def clean_member_phones(self):
+        phones, duplicates = normalized_phone_list(self.cleaned_data["member_phones"])
+        self.normalized_phones = phones
+        self.duplicate_count = duplicates
+        return self.cleaned_data["member_phones"]

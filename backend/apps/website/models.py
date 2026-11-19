@@ -594,3 +594,260 @@ class FaqItem(models.Model):
 
     def __str__(self):
         return self.question
+
+
+_INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+def generate_classroom_code(length: int = 8) -> str:
+    """Generate a clean, unambiguous 8-character invitation token (no 0/O/1/I)."""
+    return "".join(secrets.choice(_INVITE_CODE_ALPHABET) for _ in range(length))
+
+
+class Classroom(models.Model):
+    """A teacher's course or cohort offering access to one book via an invite link or phone list."""
+
+    class AccessType(models.TextChoices):
+        FREE = "free", "رایگان کلاس"
+        STUDENT_PAID = "student_paid", "پرداخت توسط دانشجو (آینده)"
+        TEACHER_PAID = "teacher_paid", "اشتراک/پرداخت مدرس (آینده)"
+
+    class ExpiryPolicy(models.TextChoices):
+        FIXED_DATE = "fixed_date", "تاریخ پایان ترم / انقضای مشخص"
+        FROM_JOIN = "from_join", "مدت روز مشخص از زمان پیوستن"
+        UNLIMITED = "unlimited", "بدون محدودیت زمانی"
+
+    teacher = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="taught_classrooms",
+        verbose_name="مدرس / استاد",
+    )
+    book = models.ForeignKey(
+        "catalog.ContentNode",
+        on_delete=models.PROTECT,
+        related_name="classrooms",
+        verbose_name="کتاب کلاس",
+    )
+    title = models.CharField(
+        "عنوان کلاس یا دوره",
+        max_length=150,
+        help_text="مثلاً «ریاضی عمومی ۱ - دانشگاه صنعتی شریف - پاییز ۱۴۰۵»",
+    )
+    description = models.TextField("توضیحات و پیام خوش‌آمد استاد", blank=True)
+    code = models.CharField(
+        "کد دعوت کلاس",
+        max_length=16,
+        unique=True,
+        db_index=True,
+        default=generate_classroom_code,
+        help_text="شناسه‌ی کوتاه برای آدرس دعوت اختصاصی: /join/CODE",
+    )
+    is_active = models.BooleanField(
+        "لینک دعوت فعال است",
+        default=True,
+        help_text="در صورت غیرفعال شدن، دانشجوی جدید نمی‌تواند با این لینک ثبت‌نام کند، اما دسترسی‌های قبلی برقرار می‌ماند.",
+    )
+    capacity = models.PositiveIntegerField(
+        "سقف ظرفیت دانشجویان",
+        default=100,
+        help_text="حداکثر تعداد دانشجویانی که می‌توانند به این کلاس بپیوندند (برای امنیت و کنترل سوءاستفاده).",
+    )
+    expiry_policy = models.CharField(
+        "سیاست انقضای دسترسی",
+        max_length=16,
+        choices=ExpiryPolicy.choices,
+        default=ExpiryPolicy.FIXED_DATE,
+    )
+    ends_on = models.DateField(
+        "تاریخ پایان دسترسی (شمسی / میلادی)",
+        null=True,
+        blank=True,
+        help_text="پایان این تاریخ، دسترسی کتاب منقضی می‌شود. برای سیاست «تاریخ پایان مشخص».",
+    )
+    duration_days = models.PositiveIntegerField(
+        "مدت دسترسی پس از پیوستن (روز)",
+        null=True,
+        blank=True,
+        help_text="تعداد روزهای مجاز مطالعه از لحظه فعال‌سازی با OTP. برای سیاست «مدت روز مشخص».",
+    )
+    access_type = models.CharField(
+        "نوع دسترسی (آینده‌نگر)",
+        max_length=20,
+        choices=AccessType.choices,
+        default=AccessType.FREE,
+    )
+    price = models.PositiveIntegerField(
+        "هزینه به تومان (اختیاری برای آینده)",
+        null=True,
+        blank=True,
+        default=0,
+    )
+    created_at = models.DateTimeField("زمان ساخت کلاس", auto_now_add=True)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "کلاس و دوره اختصاصی"
+        verbose_name_plural = "کلاس‌ها و دوره‌های اختصاصی"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["teacher", "is_active", "-created_at"], name="class_teacher_active_idx"),
+            models.Index(fields=["book", "is_active"], name="class_book_active_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.teacher})"
+
+    def clean(self):
+        from apps.catalog.models import ContentNode
+
+        errors = {}
+        if self.book_id and (
+            self.book.kind != ContentNode.Kind.BOOK or self.book.depth != 1 or self.book.is_inbox or self.book.is_archived
+        ):
+            errors["book"] = "فقط یک کتاب فعال و معتبر را برای کلاس انتخاب کنید."
+
+        if self.code:
+            self.code = self.code.strip().upper()
+
+        if self.expiry_policy == self.ExpiryPolicy.FIXED_DATE:
+            if not self.ends_on:
+                errors["ends_on"] = "برای تاریخ پایان مشخص، فیلد «تاریخ پایان دسترسی» الزامی است."
+        elif self.expiry_policy == self.ExpiryPolicy.FROM_JOIN:
+            if not self.duration_days or self.duration_days <= 0:
+                errors["duration_days"] = "برای مدت مشخص از زمان پیوستن، تعداد روزهای مجاز را وارد کنید."
+
+        if self.capacity <= 0:
+            errors["capacity"] = "سقف ظرفیت باید عددی مثبت باشد."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def calculate_end_time(self, joined_at=None):
+        """Calculate exclusive ends_at instant based on class expiry policy."""
+        now = joined_at or timezone.now()
+        if self.expiry_policy == self.ExpiryPolicy.UNLIMITED:
+            return None
+        if self.expiry_policy == self.ExpiryPolicy.FIXED_DATE and self.ends_on:
+            exclusive_date = self.ends_on + timedelta(days=1)
+            return timezone.make_aware(datetime.combine(exclusive_date, time.min))
+        if self.expiry_policy == self.ExpiryPolicy.FROM_JOIN and self.duration_days:
+            return now + timedelta(days=self.duration_days)
+        return None
+
+    @property
+    def active_members_count(self) -> int:
+        return self.members.filter(status=ClassroomMember.Status.ACTIVE).count()
+
+    @property
+    def has_capacity(self) -> bool:
+        return self.active_members_count < self.capacity
+
+
+class ClassroomMember(models.Model):
+    """A student's membership in a classroom granting access to the assigned book."""
+
+    class Status(models.TextChoices):
+        WAITING_OTP = "waiting_otp", "در انتظار اولین ورود دانشجو با OTP"
+        ACTIVE = "active", "فعال در کلاس"
+        EXPIRED = "expired", "پایان مهلت / منقضی‌شده"
+        REVOKED = "revoked", "لغوشده توسط استاد یا مدیر"
+
+    class JoinMethod(models.TextChoices):
+        LINK = "link", "پیوستن مستقیم با لینک دعوت"
+        BULK_IMPORT = "bulk_import", "واردسازی شماره توسط استاد"
+        MANUAL = "manual", "ثبت دستی"
+
+    classroom = models.ForeignKey(
+        Classroom,
+        on_delete=models.CASCADE,
+        related_name="members",
+        verbose_name="کلاس",
+    )
+    phone = models.CharField(
+        "شماره موبایل دانشجو",
+        max_length=11,
+        db_index=True,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classroom_memberships",
+        verbose_name="کاربر دانشجو",
+        editable=False,
+    )
+    entitlement = models.OneToOneField(
+        "commerce.Entitlement",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classroom_membership",
+        verbose_name="ردیف دسترسی ایجادشده",
+        editable=False,
+    )
+    join_method = models.CharField(
+        "روش پیوستن",
+        max_length=16,
+        choices=JoinMethod.choices,
+        default=JoinMethod.LINK,
+    )
+    status = models.CharField(
+        "وضعیت عضویت",
+        max_length=16,
+        choices=Status.choices,
+        default=Status.WAITING_OTP,
+        db_index=True,
+    )
+    joined_at = models.DateTimeField(
+        "زمان پیوستن به کلاس",
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    created_at = models.DateTimeField("زمان ثبت ردیف", auto_now_add=True)
+    revoked_at = models.DateTimeField("زمان لغو", null=True, blank=True, editable=False)
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="لغوکننده",
+        editable=False,
+    )
+    revocation_reason = models.CharField("علت لغو", max_length=300, blank=True)
+
+    class Meta:
+        verbose_name = "عضویت دانشجو در کلاس"
+        verbose_name_plural = "عضویت‌های دانشجویان در کلاس‌ها"
+        ordering = ["-created_at", "phone"]
+        constraints = [
+            models.UniqueConstraint(fields=["classroom", "phone"], name="uniq_classroom_member_phone"),
+        ]
+        indexes = [
+            models.Index(fields=["classroom", "status"], name="class_member_status_idx"),
+            models.Index(fields=["phone", "status"], name="class_member_phone_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.classroom.title} · {self.phone}"
+
+    def clean(self):
+        from apps.accounts.phone import InvalidPhone, normalize_phone
+
+        try:
+            self.phone = normalize_phone(self.phone)
+        except InvalidPhone as exc:
+            raise ValidationError({"phone": str(exc)}) from exc
+
+    @property
+    def is_active(self) -> bool:
+        return bool(
+            self.status == self.Status.ACTIVE
+            and self.entitlement_id
+            and not self.entitlement.is_archived
+            and self.entitlement.starts_at <= timezone.now()
+            and (self.entitlement.ends_at is None or self.entitlement.ends_at > timezone.now())
+        )

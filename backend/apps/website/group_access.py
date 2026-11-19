@@ -95,3 +95,65 @@ def activate_approved_members(user, *, now=None) -> int:
             activated += 1
 
     return activated
+
+
+def activate_classroom_members(user, *, now=None) -> int:
+    """Attach matching classroom memberships to this OTP-authenticated account and grant entitlement.
+
+    Called during OTP login or invite link redemption. Both the membership and the entitlement
+    are written atomically.
+    """
+    if not user or not user.pk or not user.is_active or not user.phone:
+        return 0
+    from .models import Classroom, ClassroomMember
+
+    now = now or timezone.now()
+    activated = 0
+
+    with transaction.atomic():
+        members = list(
+            ClassroomMember.objects.select_for_update(of=("self", "classroom"))
+            .filter(
+                phone=user.phone,
+                status=ClassroomMember.Status.WAITING_OTP,
+                classroom__is_active=True,
+                entitlement__isnull=True,
+            )
+            .select_related("classroom", "classroom__book", "classroom__teacher")
+            .order_by("pk")
+        )
+        for member in members:
+            classroom = member.classroom
+            book = classroom.book
+            if (
+                book.kind != ContentNode.Kind.BOOK
+                or book.depth != 1
+                or book.is_archived
+                or book.is_inbox
+            ):
+                member.status = ClassroomMember.Status.EXPIRED
+                member.save(update_fields=["status"])
+                continue
+
+            end_at = classroom.calculate_end_time(now)
+            if end_at is not None and end_at <= now:
+                member.status = ClassroomMember.Status.EXPIRED
+                member.save(update_fields=["status"])
+                continue
+
+            entitlement = Entitlement.objects.create(
+                user=user,
+                book=book,
+                starts_at=now,
+                ends_at=end_at,
+                granted_by=classroom.teacher,
+                note=f"کلاس اختصاصی: {classroom.title}"[:200],
+            )
+            member.user = user
+            member.entitlement = entitlement
+            member.joined_at = now
+            member.status = ClassroomMember.Status.ACTIVE
+            member.save(update_fields=["user", "entitlement", "joined_at", "status"])
+            activated += 1
+
+    return activated
