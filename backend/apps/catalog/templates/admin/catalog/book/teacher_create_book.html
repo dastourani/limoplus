@@ -1,0 +1,42 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div class="card" style="max-width: 650px; margin: 20px auto; padding: 28px; background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.1);">
+  <h2 style="margin-top:0; color:#111827;">{{ title }}</h2>
+  <p style="color: #4b5563; font-size: 14px; line-height: 1.6; margin-bottom: 24px;">
+    کتاب شما ابتدا در حالت <b>«پیش‌نویس محرمانه»</b> ساخته می‌شود. شما بلافاصله به عنوان مؤلف این کتاب شناخته می‌شوید و می‌توانید سرفصل‌ها، درسنامه‌ها و تست‌های آن را ویرایش کنید. تا پیش از بازبینی مدیر، این کتاب در ویترین عمومی سایت نمایش داده نخواهد شد.
+  </p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <div style="margin-bottom: 18px;">
+      <label for="id_title" style="display:block; font-weight:bold; margin-bottom:6px;">عنوان فارسی کتاب: <span style="color:#dc2626;">*</span></label>
+      <input type="text" name="title" id="id_title" required placeholder="مثلاً: ریاضی عمومی ۱ یا شیمی آلی پیشرفته" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+    </div>
+
+    <div style="margin-bottom: 18px;">
+      <label for="id_title_en" style="display:block; font-weight:bold; margin-bottom:6px;">عنوان لاتین کتاب (اختیاری):</label>
+      <input type="text" name="title_en" id="id_title_en" dir="ltr" placeholder="Calculus I" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+    </div>
+
+    <div style="margin-bottom: 18px;">
+      <label for="id_author" style="display:block; font-weight:bold; margin-bottom:6px;">نام مؤلف / استاد:</label>
+      <input type="text" name="author" id="id_author" placeholder="مثلاً: دکتر محمدی" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+    </div>
+
+    <div style="margin-bottom: 18px;">
+      <label for="id_about" style="display:block; font-weight:bold; margin-bottom:6px;">معرفی و توضیح کوتاه کتاب:</label>
+      <textarea name="about" id="id_about" rows="4" placeholder="توضیح مختصر درباره محتوای درس و جامعه هدف..." style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;"></textarea>
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-top: 28px;">
+      <button type="submit" class="button" style="background: #10b981; color: white; padding: 10px 24px; border-radius: 6px; border: none; font-size:15px; font-weight: bold; cursor: pointer;">
+        ✓ ایجاد پیش‌نویس کتاب
+      </button>
+      <a href="{% url 'admin:catalog_book_changelist' %}" class="button" style="background: #f3f4f6; color: #374151; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-size:14px;">
+        انصراف
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

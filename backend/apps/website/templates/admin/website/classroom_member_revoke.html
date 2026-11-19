@@ -1,0 +1,27 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div class="card" style="max-width: 500px; margin: 20px auto; padding: 24px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+  <h2 style="color: #dc2626;">{{ title }}</h2>
+  <p style="margin-bottom: 16px;">
+    آیا از لغو دسترسی دانشجو با شماره <b>{{ member.phone }}</b> از کلاس <b>«{{ member.classroom.title }}»</b> اطمینان دارید؟
+  </p>
+  <p style="color: #6b7280; font-size: 13px; margin-bottom: 20px;">
+    با لغو دسترسی، کتاب بلافاصله از حساب دانشجو خارج شده و دیگر قادر به مطالعه آن نخواهد بود.
+  </p>
+  <form method="post">
+    {% csrf_token %}
+    <div style="margin-bottom: 16px;">
+      <label for="id_reason" style="display:block; margin-bottom: 6px; font-weight: bold;">علت لغو:</label>
+      <input type="text" id="id_reason" name="reason" value="لغو توسط مدرس" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px;">
+    </div>
+    <div style="display: flex; gap: 12px; margin-top: 24px;">
+      <button type="submit" class="button danger" style="background: #dc2626; color: white; padding: 8px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer;">
+        بله، لغو شود
+      </button>
+      <a href="{% url 'admin:website_classroommember_changelist' %}?classroom_id={{ member.classroom_id }}" class="button" style="background: #f3f4f6; color: #374151; padding: 8px 16px; border-radius: 6px; text-decoration: none;">
+        انصراف
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

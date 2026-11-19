@@ -7,6 +7,8 @@ from django.urls import reverse
 
 _TEACHER_WORKFLOW_MODELS = frozenset({
     ("catalog", "BookEditor"),
+    ("website", "Classroom"),
+    ("website", "ClassroomMember"),
     ("website", "TeacherApplication"),
     ("website", "TeacherInvitation"),
     ("website", "BookAccessRequest"),

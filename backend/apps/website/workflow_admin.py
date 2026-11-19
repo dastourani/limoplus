@@ -18,12 +18,21 @@ from apps.catalog.jalali import jalali_datetime
 from apps.catalog.models import BookEditor, ContentNode
 from apps.commerce.models import Entitlement
 
-from .forms import BookAccessRequestChangeForm, BookAccessRequestCreateForm, GroupAccessRenewForm, GroupAccessRevokeForm
+from .forms import (
+    BookAccessRequestChangeForm,
+    BookAccessRequestCreateForm,
+    ClassroomAddMembersForm,
+    ClassroomCreateForm,
+    GroupAccessRenewForm,
+    GroupAccessRevokeForm,
+)
 from .models import (
     BookAccessEvent,
     BookAccessMember,
     BookAccessRequest,
     BookAccessRequestEvent,
+    Classroom,
+    ClassroomMember,
     PublicationRequest,
     PublicationRequestEvent,
     TeacherApplication,
@@ -845,3 +854,256 @@ class PublicationRequestEventAdmin(AppendOnlyEventAdmin):
     list_filter = ("action",)
     search_fields = ("request__book__title", "request__requested_by__phone", "reason", "content_digest")
     list_select_related = ("request", "actor", "request__book", "request__requested_by")
+
+
+@admin.register(Classroom)
+class ClassroomAdmin(admin.ModelAdmin):
+    """Classroom management for teachers and managers: shareable invite link and bulk phone entry."""
+
+    form = ClassroomCreateForm
+    list_display = ("title", "teacher_phone", "book_link", "code_pill", "members_summary", "expiry_display", "is_active", "share_links")
+    list_filter = ("is_active", "expiry_policy", "created_at")
+    search_fields = ("title", "code", "teacher__phone", "book__title")
+    list_select_related = ("teacher", "book")
+    ordering = ("-created_at", "-id")
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(teacher=request.user)
+
+    def get_form(self, request, obj=None, **kwargs):
+        form_class = super().get_form(request, obj, **kwargs)
+        class UserForm(form_class):
+            def __init__(self, *args, **form_kwargs):
+                form_kwargs.setdefault("user", request.user)
+                super().__init__(*args, **form_kwargs)
+        return UserForm
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser or access.is_book_teacher(request.user))
+
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if not access.is_book_teacher(request.user):
+            return False
+        return bool(obj is None or obj.teacher_id == request.user.pk)
+
+    def has_add_permission(self, request):
+        if request.user.is_superuser:
+            return True
+        return access.is_book_teacher(request.user)
+
+    def has_change_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if not access.is_book_teacher(request.user):
+            return False
+        return bool(obj is None or obj.teacher_id == request.user.pk)
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    @admin.display(description="مدرس", ordering="teacher__phone")
+    def teacher_phone(self, obj):
+        return format_html('<span dir="ltr">{}</span>', obj.teacher.phone)
+
+    @admin.display(description="کتاب", ordering="book__title")
+    def book_link(self, obj):
+        return obj.book.title
+
+    @admin.display(description="کد دعوت")
+    def code_pill(self, obj):
+        return format_html('<code style="font-size:14px;font-weight:bold;padding:2px 8px;background:#f3f4f6;border-radius:4px;letter-spacing:1px">{}</code>', obj.code)
+
+    @admin.display(description="اعضای فعال / سقف")
+    def members_summary(self, obj):
+        count = obj.active_members_count
+        return f"{count} / {obj.capacity}"
+
+    @admin.display(description="سیاست انقضا")
+    def expiry_display(self, obj):
+        if obj.expiry_policy == Classroom.ExpiryPolicy.UNLIMITED:
+            return "همیشگی"
+        if obj.expiry_policy == Classroom.ExpiryPolicy.FIXED_DATE and obj.ends_on:
+            from apps.catalog.panel_display import jalali_date
+            return f"تا {jalali_date(obj.ends_on)}"
+        if obj.expiry_policy == Classroom.ExpiryPolicy.FROM_JOIN and obj.duration_days:
+            return f"{obj.duration_days} روز پس از پیوستن"
+        return obj.get_expiry_policy_display()
+
+    @admin.display(description="لینک دعوت و عملیات")
+    def share_links(self, obj):
+        join_url = f"/join/{obj.code}"
+        add_url = reverse("admin:website_classroom_add_members", args=[obj.pk])
+        members_url = reverse("admin:website_classroommember_changelist") + f"?classroom_id={obj.pk}"
+        return format_html(
+            '<a class="button" href="{}" target="_blank" style="margin-left:4px" title="مشاهده صفحه دعوت دانشجو">صفحه دعوت</a>'
+            '<a class="button" href="{}" style="margin-left:4px" title="افزودن دسته‌جمعی شماره‌ها">+ افزودن دانشجو</a>'
+            '<a class="button" href="{}">لیست اعضا</a>',
+            join_url, add_url, members_url
+        )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            if not request.user.is_superuser:
+                obj.teacher = request.user
+            elif not obj.teacher_id:
+                obj.teacher = request.user
+        super().save_model(request, obj, form, change)
+
+        # Handle initial member phones if provided
+        normalized_phones = getattr(form, "normalized_phones", [])
+        if normalized_phones:
+            for phone in normalized_phones:
+                ClassroomMember.objects.get_or_create(
+                    classroom=obj,
+                    phone=phone,
+                    defaults={"join_method": ClassroomMember.JoinMethod.BULK_IMPORT},
+                )
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path("<int:classroom_id>/add-members/", self.admin_site.admin_view(self.add_members_view), name="website_classroom_add_members"),
+        ]
+        return custom_urls + urls
+
+    def add_members_view(self, request, classroom_id):
+        classroom = get_object_or_404(Classroom, pk=classroom_id)
+        if not request.user.is_superuser and classroom.teacher_id != request.user.pk:
+            raise PermissionDenied("شما دسترسی ویرایش این کلاس را ندارید.")
+
+        if request.method == "POST":
+            form = ClassroomAddMembersForm(request.POST)
+            if form.is_valid():
+                phones = form.normalized_phones
+                created_count = 0
+                for phone in phones:
+                    _, created = ClassroomMember.objects.get_or_create(
+                        classroom=classroom,
+                        phone=phone,
+                        defaults={"join_method": ClassroomMember.JoinMethod.BULK_IMPORT},
+                    )
+                    if created:
+                        created_count += 1
+                messages.success(request, f"{created_count} شماره با موفقیت به کلاس اضافه شد.")
+                return redirect(reverse("admin:website_classroom_changelist"))
+        else:
+            form = ClassroomAddMembersForm()
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": f"افزودن دسته‌جمعی شماره به کلاس: {classroom.title}",
+            "classroom": classroom,
+            "form": form,
+            "opts": self.model._meta,
+        }
+        return render(request, "admin/website/classroom_add_members.html", context)
+
+
+@admin.register(ClassroomMember)
+class ClassroomMemberAdmin(admin.ModelAdmin):
+    """View and manage enrolled students per classroom."""
+
+    list_display = ("classroom", "phone_ltr", "student_user", "status_label", "join_method", "joined_at", "entitlement_link", "actions_display")
+    list_filter = ("status", "join_method", "created_at")
+    search_fields = ("phone", "user__phone", "classroom__title", "classroom__teacher__phone")
+    list_select_related = ("classroom", "classroom__teacher", "user", "entitlement")
+    ordering = ("-created_at", "-id")
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(classroom__teacher=request.user)
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser or access.is_book_teacher(request.user))
+
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if not access.is_book_teacher(request.user):
+            return False
+        return bool(obj is None or obj.classroom.teacher_id == request.user.pk)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if not access.is_book_teacher(request.user):
+            return False
+        return bool(obj and obj.classroom.teacher_id == request.user.pk)
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    @admin.display(description="شماره دانشجو", ordering="phone")
+    def phone_ltr(self, obj):
+        return format_html('<span dir="ltr">{}</span>', obj.phone)
+
+    @admin.display(description="حساب کاربری")
+    def student_user(self, obj):
+        if obj.user:
+            return obj.user.phone
+        return "— (هنوز وارد نشده)"
+
+    @admin.display(description="وضعیت", ordering="status")
+    def status_label(self, obj):
+        color = "green" if obj.status == ClassroomMember.Status.ACTIVE else "grey"
+        if obj.status == ClassroomMember.Status.REVOKED:
+            color = "red"
+        return format_html('<span style="font-weight:bold;color:{}">{}</span>', color, obj.get_status_display())
+
+    @admin.display(description="دسترسی کتاب")
+    def entitlement_link(self, obj):
+        if obj.entitlement:
+            return "✓ فعال"
+        return "—"
+
+    @admin.display(description="عملیات")
+    def actions_display(self, obj):
+        if obj.status in (ClassroomMember.Status.ACTIVE, ClassroomMember.Status.WAITING_OTP):
+            revoke_url = reverse("admin:website_classroommember_revoke", args=[obj.pk])
+            return format_html('<a class="button danger small" href="{}">لغو عضویت</a>', revoke_url)
+        return "—"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path("<int:member_id>/revoke/", self.admin_site.admin_view(self.revoke_view), name="website_classroommember_revoke"),
+        ]
+        return custom + urls
+
+    def revoke_view(self, request, member_id):
+        member = get_object_or_404(ClassroomMember, pk=member_id)
+        if not request.user.is_superuser and member.classroom.teacher_id != request.user.pk:
+            raise PermissionDenied("شما دسترسی به لغو این عضویت را ندارید.")
+
+        if request.method == "POST":
+            with transaction.atomic():
+                member.status = ClassroomMember.Status.REVOKED
+                member.revoked_at = timezone.now()
+                member.revoked_by = request.user
+                member.revocation_reason = request.POST.get("reason", "لغو توسط استاد")
+                member.save(update_fields=["status", "revoked_at", "revoked_by", "revocation_reason"])
+
+                if member.entitlement_id and not member.entitlement.is_archived:
+                    member.entitlement.is_archived = True
+                    member.entitlement.save(update_fields=["is_archived"])
+
+            messages.success(request, f"دسترسی دانشجو با شماره {member.phone} لغو شد.")
+            return redirect(reverse("admin:website_classroommember_changelist") + f"?classroom_id={member.classroom_id}")
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": f"لغو عضویت دانشجو: {member.phone}",
+            "member": member,
+            "opts": self.model._meta,
+        }
+        return render(request, "admin/website/classroom_member_revoke.html", context)

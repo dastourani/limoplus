@@ -192,9 +192,10 @@ def _verify_otp(request, next_url):
                         now = timezone.now()
                         otp.consumed_at = now
                         otp.save(update_fields=["consumed_at"])
-                        from apps.website.group_access import activate_approved_members
+                        from apps.website.group_access import activate_approved_members, activate_classroom_members
 
                         activate_approved_members(user, now=now)
+                        activate_classroom_members(user, now=now)
 
     if error:
         return _render_login(request, error=error, next_url=next_url)

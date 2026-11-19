@@ -247,7 +247,7 @@ def verify_otp(request):
                 user, _ = User.objects.get_or_create(phone=phone)
                 if not user.is_active:
                     return _error("این حساب غیرفعال شده است.", "user_inactive", status.HTTP_403_FORBIDDEN)
-                from apps.website.group_access import activate_approved_members
+                from apps.website.group_access import activate_approved_members, activate_classroom_members
                 from apps.website.invitations import accept_teacher_invitation
 
                 accept_teacher_invitation(invitation, user)
@@ -255,6 +255,7 @@ def verify_otp(request):
                 otp.consumed_at = now
                 otp.save(update_fields=["consumed_at"])
                 activate_approved_members(user, now=now)
+                activate_classroom_members(user, now=now)
                 # This special OTP flow creates the staff account and a Django admin session only after the invited
                 # phone has been verified. It does not consume an app-device slot or grant a DeviceSession token.
                 django_login(request._request, user, backend="django.contrib.auth.backends.ModelBackend")
@@ -278,9 +279,10 @@ def verify_otp(request):
     now = timezone.now()
     otp.consumed_at = now
     otp.save(update_fields=["consumed_at"])
-    from apps.website.group_access import activate_approved_members
+    from apps.website.group_access import activate_approved_members, activate_classroom_members
 
     activate_approved_members(user, now=now)
+    activate_classroom_members(user, now=now)
     session, token = DeviceSession.start(user, data.validated_data["device_name"], data.validated_data["platform"])
     return Response({"token": token, "session_id": session.id, "user": _user_payload(user)})
 
