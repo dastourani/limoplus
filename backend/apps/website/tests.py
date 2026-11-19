@@ -2,6 +2,7 @@ import io
 import shutil
 import tempfile
 from datetime import timedelta
+from pathlib import Path
 
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
@@ -186,6 +187,13 @@ class WebsiteTests(TestCase):
         self.assertContains(quiet_home, long_title)
         quiet_html = quiet_home.content.decode()
         self.assertLess(quiet_html.index('id="special-offers"'), quiet_html.index('class="prices"'))
+
+    def test_offer_cards_wrap_and_remain_compact_for_one_or_many_campaigns(self):
+        css = (Path(__file__).resolve().parent / "static/website/site.css").read_text(encoding="utf-8")
+        self.assertIn("flex-wrap: wrap", css)
+        self.assertIn("justify-content: center", css)
+        self.assertIn("flex: 1 1 300px", css)
+        self.assertIn("max-width: 360px", css)
 
     def test_discount_prices_and_the_same_campaign_banner_render_on_the_website(self):
         from apps.catalog.models import Banner

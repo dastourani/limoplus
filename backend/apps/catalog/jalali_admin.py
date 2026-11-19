@@ -9,7 +9,7 @@ import re
 
 from django import forms
 from django.contrib.admin.options import BaseModelAdmin
-from django.contrib.admin.widgets import AdminSplitDateTime, AdminTimeWidget
+from django.contrib.admin.widgets import AdminSplitDateTime, BaseAdminTimeWidget
 from django.db import models
 from django.utils import timezone
 
@@ -86,12 +86,14 @@ class JalaliAdminDateInput(forms.DateInput):
 
 
 class JalaliAdminSplitDateTime(AdminSplitDateTime):
-    """Django's split date/time control with a Jalali date input and the normal local-time input."""
+    """Split Jalali date and local time into aligned admin rows with a functional custom date picker."""
+
+    template_name = "admin/widgets/lp_split_datetime.html"
 
     def __init__(self, attrs=None, date_attrs=None, time_attrs=None):
         widgets = [
             JalaliAdminDateInput(attrs=date_attrs),
-            AdminTimeWidget(attrs=time_attrs),
+            BaseAdminTimeWidget(attrs=time_attrs),
         ]
         # Use MultiWidget directly so Django's default vDateField/Gregorian calendar is never attached.
         forms.MultiWidget.__init__(self, widgets, attrs)

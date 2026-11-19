@@ -1,3 +1,18 @@
+/* A shared two-column date/time row keeps both localized labels and inputs aligned in RTL forms. */
+.lp-split-datetime {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  align-items: center;
+  gap: 6px 9px;
+  width: max-content;
+  max-width: 100%;
+  direction: rtl;
+}
+.lp-split-label { color: var(--body-quiet-color); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.lp-split-control { display: flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
+.lp-split-control > input { margin: 0 !important; }
+.lp-split-control .datetimeshortcuts { font-size: 11px; font-weight: 400; white-space: nowrap; }
+
 /* Jalali date entry: keep Django's admin layout, but replace its Gregorian calendar with a compact Persian one. */
 .lp-jalali-wrap {
   display: inline-flex;
@@ -7,6 +22,7 @@
   direction: rtl;
   vertical-align: middle;
 }
+.lp-jalali-wrap:focus-within { z-index: 20; }
 .lp-jalali-wrap > input.lp-jalali-date {
   box-sizing: border-box;
   width: 150px;
