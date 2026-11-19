@@ -472,6 +472,9 @@ class Label(models.Model):
     numbered = models.BooleanField("شماره‌دار", default=False, help_text="کادرهای این برچسب در درسنامه در کل فصل شماره می‌خورند («مثال ۳-۵»)، و با «[[#نام]]» می‌شود به آن‌ها ارجاع داد.")
     icon = models.CharField("آیکون", max_length=40, blank=True, default="", choices=ICON_CHOICES,
                             help_text="کنار عنوان کادر در درسنامه و بخش چکیده. خالی: بدون آیکون.")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True,
+                                   related_name="custom_labels", verbose_name="ایجادکننده (استاد)",
+                                   help_text="خالی: برچسب عمومی سیستم. پر: برچسب اختصاصی این استاد.")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -486,7 +489,7 @@ class Label(models.Model):
         split = lambda text, sep: [x.strip() for x in re.split(sep, text or "") if x.strip()]  # noqa: E731
         return {"name": self.name, "group": self.group, "style": self.style, "role": self.role,
                 "aliases": split(self.aliases, r"[،,]"), "columns": split(self.columns, r"\|"), "hidden": self.is_hidden,
-                "numbered": self.numbered, "icon": self.icon}
+                "numbered": self.numbered, "icon": self.icon, "is_custom": bool(self.created_by_id)}
 
 
 class BookChange(models.Model):
