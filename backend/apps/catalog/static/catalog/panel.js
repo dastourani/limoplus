@@ -485,7 +485,24 @@
     var t = item[1] || item[0];
     return t.replace(/‸/g, '\\square').replace(/\{\}/g, '{\\square}');
   }
+  var RECENT_KEY = 'limo.recent_symbols';
+  function getRecentSymbols() {
+    try {
+      var raw = localStorage.getItem(RECENT_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function saveRecentSymbol(item) {
+    try {
+      var list = getRecentSymbols();
+      list = list.filter(function (it) { return it[0] !== item[0]; });
+      list.unshift(item);
+      if (list.length > 15) list = list.slice(0, 15);
+      localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+    } catch (e) {}
+  }
   function insertTex(ta, item) {
+    saveRecentSymbol(item);
     var snip = item[0];
     if (item[3] === 'text') { insertText(ta, snip); return; }
     var v = ta.value, at = ta.selectionStart, end = ta.selectionEnd, sel = v.slice(at, end);
@@ -512,16 +529,22 @@
   function fxBox(ta) {
     var box = h('div', { class: 'fx-box' });
     var tabs = h('div', { class: 'fx-tabs' }), grid = h('div', { class: 'fx-grid' });
-    var all = FX_TABS.concat([['دستورهای من', null]]);
+    var all = [['نمادهای اخیر', 'recent']].concat(FX_TABS).concat([['دستورهای من', null]]);
     function show(i) {
       lastFxTab = i;
       tabs.querySelectorAll('button').forEach(function (b, j) { b.classList.toggle('on', i === j); });
       grid.innerHTML = '';
-      var items = all[i][1] || macroItems();
-      if (!items.length) grid.appendChild(h('span', { class: 'hint' }, 'هنوز دستوری تعریف نشده؛ از «دستورهای فرمول» در پنل اضافه کنید (مثلاً \\R برای ℝ).'));
+      var tabData = all[i];
+      var items = tabData[1] === 'recent' ? getRecentSymbols() : (tabData[1] || macroItems());
+      if (!items.length) {
+        var msg = tabData[1] === 'recent'
+          ? 'هنوز نمادی استفاده نشده؛ با کلیک روی هریک از نمادهای فرمول، آخرین ۱۵ نماد اینجا دم دست شما قرار می‌گیرد.'
+          : 'هنوز دستوری تعریف نشده؛ از «دستورهای فرمول» در پنل اضافه کنید (مثلاً \\R برای ℝ).';
+        grid.appendChild(h('span', { class: 'hint' }, msg));
+      }
       items.forEach(function (it) {
         var b = h('button', { type: 'button', title: (it[2] ? it[2] + '\n' : '') + it[0].replace(/‸/g, ''),
-          onmousedown: function (e) { e.preventDefault(); }, onclick: function (e) { e.preventDefault(); insertTex(ta, it); } });
+          onmousedown: function (e) { e.preventDefault(); }, onclick: function (e) { e.preventDefault(); insertTex(ta, it); if (tabData[1] === 'recent') show(i); } });
         if (it[3] === 'text' || !P || !P.mathHtml) b.textContent = it[1] || it[0];
         else { try { b.innerHTML = P.mathHtml(fxShow(it)); } catch (er) { b.textContent = it[0]; } }
         grid.appendChild(b);

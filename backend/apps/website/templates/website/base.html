@@ -34,8 +34,8 @@
         {% endif %}
       {% endfor %}
       <span class="grow"></span>
-      <a class="nav-teacher-link" href="{% url 'admin:login' %}" style="margin-inline-end: 8px; color: #15803d; font-size: 13.5px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" aria-label="ورود اساتید و مؤلفان به کارگاه محتوا و کلاس‌ها">
-        {% icon "graduation-cap" 16 %}درگاه اساتید
+      <a class="btn ghost small nav-teacher-link" href="{% url 'admin:login' %}" style="display: inline-flex; align-items: center; gap: 6px;" aria-label="ورود اساتید و مؤلفان به کارگاه محتوا و کلاس‌ها">
+        {% icon "graduation-cap" 16 %}<span>درگاه اساتید</span>
       </a>
       <a class="btn ghost small" href="{{ app_url }}">ورود</a>
       <a class="btn lemon small" href="{% url 'website:download' %}">{% icon "download" 16 %}دانلود اپ</a>
