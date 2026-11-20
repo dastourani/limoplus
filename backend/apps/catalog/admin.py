@@ -1691,6 +1691,52 @@ def _assets_each_context_with_version(request):
             .select_related("content_type")
             .order_by("-action_time")[:10]
         )
+
+        # محاسبه کارت‌های شاخص تحلیلی اختصاصی استاد
+        try:
+            from datetime import timedelta
+            from django.utils import timezone
+            from django.db.models import Sum
+            from apps.catalog.panel_display import fa_number
+            from apps.website.models import ClassroomMember
+            from apps.study.models import StudyTime, StudyDay
+
+            now = timezone.now()
+            today = timezone.localdate()
+            week_start = today - timedelta(days=6)
+            month_start = today - timedelta(days=29)
+
+            if user.is_superuser:
+                teacher_b_ids = [b["pk"] for b in teacher_books]
+                c_qs = Classroom.objects.filter(is_active=True)
+            else:
+                teacher_b_ids = list(BookEditor.objects.filter(user=user).values_list("book_id", flat=True))
+                c_qs = Classroom.objects.filter(teacher=user, is_active=True)
+
+            tot_students = ClassroomMember.objects.filter(classroom__in=c_qs, status="active").values("user_id").distinct().count()
+            week_students = ClassroomMember.objects.filter(classroom__in=c_qs, status="active", joined_at__date__gte=week_start).values("user_id").distinct().count()
+            tot_classes = c_qs.count()
+
+            act_students = StudyDay.objects.filter(date__gte=month_start, user__classroom_memberships__classroom__in=c_qs, user__classroom_memberships__status="active").values("user_id").distinct().count()
+            sec_month = StudyTime.objects.filter(day__gte=month_start, book_id__in=teacher_b_ids).aggregate(s=Sum("seconds"))["s"] or 0
+            hrs_month = round(sec_month / 3600, 1)
+
+            tot_chapters = sum(b.get("chapters_count", 0) for b in teacher_books)
+            tot_tasks = sum(b.get("pending_tasks_count", 0) for b in teacher_books)
+            tot_reports = sum(b.get("pending_reports_count", 0) for b in teacher_books)
+
+            context["teacher_kpis"] = {
+                "students_total": fa_number(tot_students),
+                "students_week": fa_number(week_students),
+                "classes_count": fa_number(tot_classes),
+                "active_students": fa_number(act_students),
+                "study_hours": fa_number(hrs_month),
+                "chapters_count": fa_number(tot_chapters),
+                "pending_tasks": fa_number(tot_tasks),
+                "pending_reports": fa_number(tot_reports),
+            }
+        except Exception:
+            pass
     return context
 
 
