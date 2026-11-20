@@ -46,7 +46,7 @@
   <div class="teacher-dash">
     <div class="teacher-hero">
       <h2>کارگاه آموزش و تألیف اساتید</h2>
-      <p>درود، {{ user.get_full_name|default:user.phone }}. از این بخش می‌توانید کتاب‌های درسی، کلاس‌های ترم و برچسب‌های متن اختصاصی خود را مدیریت کنید.</p>
+      <p>درود، {{ user.full_name|default:user.phone }}. از این بخش می‌توانید کتاب‌های درسی، کلاس‌های ترم و برچسب‌های متن اختصاصی خود را مدیریت کنید.</p>
       <div class="teacher-actions">
         <a href="{% url 'admin:catalog_book_teacher_new' %}" class="teacher-btn teacher-btn-primary">
           + ایجاد کتاب پیش‌نویس

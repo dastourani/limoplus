@@ -260,9 +260,25 @@ class BookAdmin(admin.ModelAdmin):
 
             extra["health"] = book_health(book)
             extra["can_manage_access"] = request.user.is_superuser
+            from .models import BookEditor
+            # Load assistants/editors for this book (both for teacher and superuser)
+            assistants = []
+            for ed in BookEditor.objects.filter(book=book).select_related("user"):
+                is_self = (ed.user_id == request.user.id)
+                assistants.append({
+                    "pk": ed.pk,
+                    "user": ed.user,
+                    "phone": ed.user.phone,
+                    "name": ed.user.full_name or ed.user.phone,
+                    "can_edit_content": ed.can_edit_content,
+                    "can_view_reports": ed.can_view_reports,
+                    "can_view_aggregate_study": ed.can_view_aggregate_study,
+                    "can_publish": ed.can_publish,
+                    "note": ed.note,
+                    "is_self": is_self,
+                })
+            extra["assistants"] = assistants
             if not request.user.is_superuser and access.is_book_teacher(request.user):
-                from .models import BookEditor
-
                 editor = BookEditor.objects.filter(book=book, user=request.user).first()
                 extra["can_request_publication"] = bool(editor and editor.can_request_publication)
                 extra["can_request_group_access"] = bool(editor and editor.can_request_group_access)
@@ -285,6 +301,7 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/email-export/", site(panel.book_email_export), name="catalog_book_email_export"),
             path("orphan/<int:node_id>/archive/", site(panel.archive_orphan), name="catalog_archive_orphan"),
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
+            path("<int:book_id>/assistants/", site(self.book_assistants_action), name="catalog_book_assistants_action"),
             path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
                  name="catalog_book_publish"),
             path("inbox/", site(panel.open_inbox), name="catalog_inbox"),
@@ -362,6 +379,78 @@ class BookAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
         }
         return render(request, "admin/catalog/book/teacher_create_book.html", context)
+
+    def book_assistants_action(self, request, book_id):
+        from django.contrib import messages
+        from django.contrib.auth import get_user_model
+        from django.contrib.auth.models import Group
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import get_object_or_404, redirect
+        from .access import BOOK_EDITOR_GROUP, can_edit_book
+        from .models import BookEditor
+
+        book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK)
+        if not can_edit_book(request.user, book):
+            raise PermissionDenied("دسترسی مدیریت دستیاران این کتاب را ندارید.")
+
+        if request.method != "POST":
+            return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
+
+        action = request.POST.get("action")
+        if action == "add":
+            phone = (request.POST.get("phone") or "").strip().translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
+            if not phone.startswith("09") or len(phone) != 11 or not phone.isdigit():
+                messages.error(request, "شماره موبایل نامعتبر است (باید ۱۱ رقم و با 09 شروع شود).")
+                return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#assistants")
+
+            can_edit_content = bool(request.POST.get("can_edit_content"))
+            can_view_reports = bool(request.POST.get("can_view_reports"))
+            can_view_aggregate_study = bool(request.POST.get("can_view_aggregate_study"))
+            note = (request.POST.get("note") or "").strip()[:200]
+
+            User = get_user_model()
+            user, _ = User.objects.get_or_create(phone=phone)
+            if not user.is_staff:
+                user.is_staff = True
+                user.save(update_fields=["is_staff"])
+            group = Group.objects.filter(name=BOOK_EDITOR_GROUP).first()
+            if group:
+                user.groups.add(group)
+
+            editor, created = BookEditor.objects.get_or_create(
+                book=book,
+                user=user,
+                defaults={
+                    "can_edit_content": can_edit_content,
+                    "can_view_reports": can_view_reports,
+                    "can_view_aggregate_study": can_view_aggregate_study,
+                    "note": note,
+                }
+            )
+            if not created:
+                editor.can_edit_content = can_edit_content
+                editor.can_view_reports = can_view_reports
+                editor.can_view_aggregate_study = can_view_aggregate_study
+                if note:
+                    editor.note = note
+                editor.save(update_fields=["can_edit_content", "can_view_reports", "can_view_aggregate_study", "note"])
+                messages.success(request, f"دسترسی‌های دستیار با شماره {phone} به‌روزرسانی شد.")
+            else:
+                messages.success(request, f"دستیار آموزشی با شماره {phone} با موفقیت به کتاب اضافه شد.")
+
+        elif action == "remove":
+            editor_id = request.POST.get("editor_id")
+            editor = BookEditor.objects.filter(pk=editor_id, book=book).first()
+            if not editor:
+                messages.error(request, "دستیار پیدا نشد.")
+            elif editor.user_id == request.user.id and not request.user.is_superuser:
+                messages.error(request, "امکان حذف دسترسی خودتان وجود ندارد.")
+            else:
+                phone = editor.user.phone
+                editor.delete()
+                messages.success(request, f"دسترسی دستیار با شماره {phone} از این کتاب حذف شد.")
+
+        return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#assistants")
 
 
 
@@ -982,7 +1071,7 @@ class LabelAdmin(admin.ModelAdmin):
     def owner_display(self, obj):
         if not obj.created_by:
             return format_html('<span style="color:#6b7280;font-size:12px;">سیستمی (عمومی)</span>')
-        return format_html('<span style="color:#15803d;font-weight:700;font-size:12px;">استاد: {}</span>', obj.created_by.get_full_name() or obj.created_by.phone)
+        return format_html('<span style="color:#15803d;font-weight:700;font-size:12px;">استاد: {}</span>', obj.created_by.full_name or obj.created_by.phone)
 
     @admin.display(description="نمونه")
     def preview(self, obj):

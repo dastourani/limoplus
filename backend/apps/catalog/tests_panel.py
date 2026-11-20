@@ -2240,3 +2240,61 @@ class TeacherDashboardTests(TestCase):
         self.assertEqual(res_back.status_code, 200)
         self.assertNotContains(res_back, "کارگاه آموزش و تألیف اساتید")
         self.assertContains(res_back, "🎓 پنل اساتید")
+from django.test import TestCase
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
+from apps.catalog.access import BOOK_EDITOR_GROUP
+from apps.catalog.models import ContentNode, BookEditor
+
+User = get_user_model()
+
+class TeacherAssistantTests(TestCase):
+    def setUp(self):
+        self.group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        self.teacher = User.objects.create_user("09121113344", is_staff=True, first_name="دکتر", last_name="استاد")
+        self.teacher.groups.add(self.group)
+
+        self.book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="ریاضی فیزیک", author="دکتر استاد")
+        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True)
+
+        self.client.force_login(self.teacher)
+
+    def test_teacher_can_view_assistants_section_on_book_page(self):
+        res = self.client.get(f"/admin/catalog/book/{self.book.pk}/change/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "دستیاران و همکاران آموزشی (TA)")
+        self.assertContains(res, "09121113344")
+        self.assertContains(res, "شما (استاد)")
+
+    def test_teacher_can_add_ta_with_granular_permissions(self):
+        res = self.client.post(f"/admin/catalog/book/{self.book.pk}/assistants/", {
+            "action": "add",
+            "phone": "09125556677",
+            "can_edit_content": "1",
+            "can_view_reports": "1",
+            "note": "مهندس احمدی - TA حل تمرین",
+        })
+        self.assertEqual(res.status_code, 302)
+
+        ta_user = User.objects.get(phone="09125556677")
+        self.assertTrue(ta_user.is_staff)
+        self.assertTrue(ta_user.groups.filter(name=BOOK_EDITOR_GROUP).exists())
+
+        ta_editor = BookEditor.objects.get(book=self.book, user=ta_user)
+        self.assertTrue(ta_editor.can_edit_content)
+        self.assertTrue(ta_editor.can_view_reports)
+        self.assertFalse(ta_editor.can_view_aggregate_study)
+        self.assertFalse(ta_editor.can_publish)
+        self.assertEqual(ta_editor.note, "مهندس احمدی - TA حل تمرین")
+
+    def test_teacher_can_remove_ta(self):
+        ta_user = User.objects.create_user("09128889900", is_staff=True)
+        ta_user.groups.add(self.group)
+        ta_editor = BookEditor.objects.create(book=self.book, user=ta_user, can_edit_content=True)
+
+        res = self.client.post(f"/admin/catalog/book/{self.book.pk}/assistants/", {
+            "action": "remove",
+            "editor_id": ta_editor.pk,
+        })
+        self.assertEqual(res.status_code, 302)
+        self.assertFalse(BookEditor.objects.filter(pk=ta_editor.pk).exists())
