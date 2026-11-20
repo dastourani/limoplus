@@ -398,6 +398,36 @@
           <span>کل درآمد: <b>{{ kpi_rev_total }} تومان</b></span>
         </div>
       </div>
+
+      <!-- کارت جامعه اساتید و کلاس‌ها -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">🎓</span> اساتید و کلاس‌ها</span>
+          <a href="{% url 'admin:catalog_bookeditor_changelist' %}" class="admin-kpi-link">استادان کتاب ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ kpi_teachers_total }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">استاد</span></div>
+        <div class="admin-kpi-sub">
+          <span title="اساتیدی که کتاب دارند اما در ۳۰ روز اخیر تغییر نداده‌اند">کم‌کار / غایب ۳۰ روز: <b style="color:#b91c1c;">{{ kpi_teachers_inactive }}</b></span>
+          <span>•</span>
+          <span>کلاس‌ها: <b>{{ kpi_active_classes }}</b> ({{ kpi_class_students }} دانشجو)</span>
+        </div>
+      </div>
+
+      <!-- کارت خط تولید محتوا و تألیف -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">📚</span> کتب تألیفی و گلوگاه‌ها</span>
+          <a href="{% url 'admin:catalog_book_changelist' %}" class="admin-kpi-link">کتاب‌ها ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ kpi_draft_books }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">کتاب پیش‌نویس (Draft)</span></div>
+        <div class="admin-kpi-sub">
+          <span>منتشرشده: <b>{{ kpi_published_books }}</b></span>
+          <span>•</span>
+          <span title="درخواست‌های انتشار منتظر بررسی مدیر کل">درخواست انتشار: <b style="color:#b45309;">{{ kpi_pending_pubs }}</b></span>
+          <span>•</span>
+          <span title="درخواست‌های جدید همکاری آموزشی">درخواست همکاری: <b style="color:#0284c7;">{{ kpi_pending_teacher_apps }}</b></span>
+        </div>
+      </div>
     </div>
   </div>
   {% endif %}

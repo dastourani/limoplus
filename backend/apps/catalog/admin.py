@@ -1372,6 +1372,29 @@ def _admin_kpis_payload():
     rev_month = paid.filter(paid_at__date__gte=month_start).aggregate(s=Sum("amount"))["s"] or 0
     rev_total = paid.aggregate(s=Sum("amount"))["s"] or 0
 
+    from apps.catalog.models import ContentNode, BookEditor
+    from apps.website.models import Classroom, PublicationRequest, TeacherApplication
+
+    # آمار جامعه اساتید و تألیف
+    all_teachers_count = User.objects.filter(groups__name="استاد کتاب").count()
+    active_teachers_recent = ContentNode.objects.filter(
+        kind=ContentNode.Kind.BOOK,
+        updated_at__gte=now - timedelta(days=30),
+    ).values_list("editors__user_id", flat=True).distinct().count()
+    inactive_teachers_count = max(0, all_teachers_count - active_teachers_recent)
+
+    # وضعیت کتب تألیفی
+    draft_books_count = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, is_published=False, is_inbox=False, is_archived=False).count()
+    published_books_count = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, is_published=True, is_archived=False).count()
+
+    # کلاس‌ها و دانشجویان
+    active_classrooms_count = Classroom.objects.filter(is_active=True).count()
+    classroom_students_count = User.objects.filter(classroom_memberships__classroom__is_active=True, classroom_memberships__status="active").distinct().count()
+
+    # گلوگاه‌ها و هشدارهای نیازمند اقدام مدیر
+    pending_pubs = PublicationRequest.objects.filter(status__in=(PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO)).count()
+    pending_teacher_apps = TeacherApplication.objects.filter(status=TeacherApplication.Status.PENDING).count()
+
     return {
         "kpi_users_today": fa_number(new_users_today),
         "kpi_users_week": fa_number(new_users_week),
@@ -1381,6 +1404,15 @@ def _admin_kpis_payload():
         "kpi_rev_today": fa_number(rev_today),
         "kpi_rev_month": fa_number(rev_month),
         "kpi_rev_total": fa_number(rev_total),
+        # شاخص‌های اساتید و خط تولید محتوا
+        "kpi_teachers_total": fa_number(all_teachers_count),
+        "kpi_teachers_inactive": fa_number(inactive_teachers_count),
+        "kpi_draft_books": fa_number(draft_books_count),
+        "kpi_published_books": fa_number(published_books_count),
+        "kpi_active_classes": fa_number(active_classrooms_count),
+        "kpi_class_students": fa_number(classroom_students_count),
+        "kpi_pending_pubs": fa_number(pending_pubs),
+        "kpi_pending_teacher_apps": fa_number(pending_teacher_apps),
     }
 
 
@@ -1390,8 +1422,15 @@ def _index_with_daily_cleanup(request, extra_context=None):
     if request.user.is_active and request.user.is_superuser:
         run_if_due()
     ctx = dict(extra_context or {})
-    # Only calculate and attach main admin KPIs when viewing main admin index
-    is_teacher_preview = request.session.get("admin_view_mode") == "teacher"
+
+    # Sync view mode from query parameters before deciding on KPI rendering
+    if request and hasattr(request, "session"):
+        if request.GET.get("view") == "teacher":
+            request.session["admin_view_mode"] = "teacher"
+        elif request.GET.get("view") == "admin":
+            request.session.pop("admin_view_mode", None)
+
+    is_teacher_preview = (request.session.get("admin_view_mode") == "teacher") if hasattr(request, "session") else False
     if request.user.is_active and request.user.is_superuser and not is_teacher_preview:
         try:
             ctx.update(_admin_kpis_payload())
@@ -1560,8 +1599,8 @@ def _assets_each_context_with_version(request):
 
     context["teacher_view_mode"] = teacher_view_mode
     is_teacher = bool(user and user.is_authenticated and (access.is_book_teacher(user) or (user.is_superuser and teacher_view_mode)))
+    context["is_teacher"] = is_teacher
     if is_teacher:
-        context["is_teacher"] = True
         from django.conf import settings
         from django.db.models import Q
         from apps.website.models import Classroom
