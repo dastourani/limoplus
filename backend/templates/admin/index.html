@@ -80,6 +80,101 @@
     font-weight: 700;
     font-size: 12px;
   }
+
+  /* Menu item tooltips and guide toggle */
+  .lp-guide-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0 0 14px;
+    padding: 8px 14px;
+    background: var(--darkened-bg);
+    border: 1px solid var(--hairline-color);
+    border-radius: 10px;
+    font-size: 12.5px;
+    color: var(--body-quiet-color);
+  }
+  .lp-guide-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid var(--hairline-color);
+    background: var(--body-bg);
+    color: var(--body-fg);
+    transition: all .15s ease;
+    font-family: inherit;
+  }
+  .lp-guide-btn:hover {
+    background: var(--darkened-bg);
+  }
+  .lp-guide-btn.active {
+    background: #fef3c7;
+    border-color: #fde68a;
+    color: #92400e;
+  }
+  html[data-theme="dark"] .lp-guide-btn.active {
+    background: #78350f;
+    border-color: #b45309;
+    color: #fef3c7;
+  }
+
+  .lp-menu-bubble {
+    position: fixed;
+    z-index: 99999;
+    pointer-events: none;
+    max-width: 290px;
+    background: #17201A;
+    color: #FFFFFF;
+    border: 1px solid rgba(245, 197, 24, 0.4);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.65;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  html[data-theme="light"] .lp-menu-bubble {
+    background: #1e293b;
+    color: #f8fafc;
+    border-color: rgba(245, 197, 24, 0.3);
+  }
+  .lp-menu-bubble.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .lp-menu-bubble::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    right: 24px;
+    border-width: 6px;
+    border-style: solid;
+    border-color: #17201A transparent transparent transparent;
+  }
+  html[data-theme="light"] .lp-menu-bubble::after {
+    border-color: #1e293b transparent transparent transparent;
+  }
+  .lp-menu-bubble.arrow-top::after {
+    top: auto;
+    bottom: 100%;
+    border-color: transparent transparent #17201A transparent;
+  }
+  html[data-theme="light"] .lp-menu-bubble.arrow-top::after {
+    border-color: transparent transparent #1e293b transparent;
+  }
+  .lp-menu-bubble b {
+    display: block;
+    color: #F5C518;
+    font-size: 12.5px;
+    margin-bottom: 3px;
+  }
 </style>
 {% endblock %}
 
@@ -104,9 +199,6 @@
         </a>
         <a href="{% url 'admin:website_classroom_add' %}" class="teacher-btn teacher-btn-ghost">
           + ایجاد کلاس جدید
-        </a>
-        <a href="{% url 'admin:catalog_label_add' %}" class="teacher-btn teacher-btn-ghost">
-          + تعریف برچسب اختصاصی
         </a>
       </div>
     </div>
@@ -190,8 +282,147 @@
   {% endif %}
 
   <div class="{% if is_teacher %}teacher-mode-apps{% endif %}">
+    <div class="lp-guide-bar">
+      <span>💡 با نگه‌داشتن نشانگر روی هر منو، راهنمای سریع و کاربرد آن نمایش داده می‌شود.</span>
+      <button type="button" class="lp-guide-btn" id="lp-guide-toggle" title="روشن/خاموش کردن حباب‌های راهنما">
+        <span id="lp-guide-icon">💡</span>
+        <span id="lp-guide-text">خاموش کردن راهنما</span>
+      </button>
+    </div>
     {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
   </div>
+
+  <div id="lp-bubble" class="lp-menu-bubble" role="tooltip"></div>
+
+  <script>
+    (function () {
+      var GUIDES = {
+        // تست‌ها و فلش‌کارت‌ها (learning)
+        'learning-question': { title: 'تست‌ها', desc: 'بانک جامع سوالات چهارگزینه‌ای؛ مشاهده، جستجو، ویرایش گزینه‌ها، پاسخ تشریحی و کلید سوالات.' },
+        'learning-flashcard': { title: 'فلش‌کارت‌ها', desc: 'کارت‌های مرور و یادگیری سریع (پرسش و پاسخ پشت کارت) متصل به جعبه لایتنر هوشمند.' },
+        'learning-examsource': { title: 'منابع کنکور و آزمون', desc: 'دسته‌بندی سوالات بر اساس سال آزمون و منبع سراسری یا تألیفی برای ساخت آزمون جامع.' },
+        'learning-report': { title: 'گزارش‌های ایراد', desc: 'اشکالات علمی یا تایپی که کاربران و دانشجویان حین مطالعه برای سوالات ارسال کرده‌اند.' },
+
+        // اساتید و مؤلفان (teacher_workflows)
+        'teacher_workflows-publicationrequest': { title: 'درخواست‌های بازبینی انتشار عمومی', desc: 'ارسال و پیگیری وضعیت انتشار کتاب‌های آماده‌شده برای نمایش و عرضه در ویترین سراسری پلتفرم.' },
+        'teacher_workflows-classroommember': { title: 'عضویت‌های دانشجویان در کلاس‌ها', desc: 'فهرست دانشجویان دوره‌ها و وضعیت فعال‌سازی و مطالعه کتاب درسی در حساب آن‌ها.' },
+        'teacher_workflows-classroom': { title: 'کلاس‌ها و دوره‌های اختصاصی', desc: 'تعریف دوره‌های ترمی و تولید پیوند اختصاصی دعوت دانشجو جهت ورود مستقیم به کتاب کلاس.' },
+        'teacher_workflows-bookaccessrequest': { title: 'درخواست‌های دسترسی گروهی', desc: 'پیشنهاد و اعطای مستقیم دسترسی به مجموعه‌ای از شماره‌های دانشجویان کلاس برای کتاب.' },
+        'teacher_workflows-bookeditor': { title: 'استادان کتاب', desc: 'مدیریت مؤلفان همکار، دبیران درس و دستیاران آموزشی مجاز برای هر کتاب.' },
+        'teacher_workflows-teacherapplication': { title: 'درخواست‌های همکاری آموزشی', desc: 'پرونده‌ها و رزومه‌های دریافتی متقاضیان تدریس و تألیف در لیموخوان.' },
+        'teacher_workflows-teacherinvitation': { title: 'دعوت‌های استاد', desc: 'پیوندهای امن و زمان‌دار صدور دسترسی مؤلف جدید به کتاب‌های سامانه.' },
+
+        // محتوا (catalog)
+        'catalog-section': { title: 'بخش‌ها (جزوه و خلاصه)', desc: 'درسنامه‌ها، چکیده‌ها و متون آموزشی فصول کتاب که قالب تعاملی اپلیکیشن را تشکیل می‌دهند.' },
+        'catalog-label': { title: 'برچسب‌های متن', desc: 'کادرهای رنگی اختصاصی متن (مانند تعریف، قضیه، نکته، تله، فرمول و برچسب‌های سفارشی شما).' },
+        'catalog-sharesettings': { title: 'تنظیمات اشتراک‌گذاری', desc: 'پیوندها و بنرهای پیش‌فرض برای معرفی و اشتراک‌گذاری کتاب‌ها با سایرین.' },
+        'catalog-chapterrevision': { title: 'نسخه‌های فصل', desc: 'تاریخچه تغییرات و نسخه‌های ذخیره‌شده فایل فصول با امکان بازیابی نسخه‌های قبلی.' },
+        'catalog-book': { title: 'کتاب‌ها', desc: 'میز کار اصلی تألیف، مدیریت سرفصل‌ها، صندوق تست کتاب و دریافت خروجی‌های LaTeX.' },
+        'catalog-banner': { title: 'بنرهای تبلیغاتی', desc: 'اسلایدرها و بنرهای معرفی کتاب در صفحه اول وب‌اپ و اپلیکیشن.' },
+        'catalog-major': { title: 'رشته‌ها و شاخه‌ها', desc: 'دسته‌بندی‌های تحصیلی (مانند ریاضی، تجربی، مهندسی) که کتاب‌ها در قفسه آن‌ها قرار می‌گیرند.' },
+        'catalog-shelf': { title: 'قفسه‌های ویترین', desc: 'ردیف‌های کتاب در صفحه اصلی اپلیکیشن برای دسته‌بندی و چیدمان بصری کتاب‌ها.' },
+        'catalog-formulacommand': { title: 'دستورهای فرمول KaTeX', desc: 'ماکروها و دستورات سفارشی ریاضی برای نمایش یکدست فرمول‌ها در کل کتاب‌ها.' },
+        'catalog-bookwaitlist': { title: 'درخواست‌های خبرم کن', desc: 'دانشجویان منتظر انتشار کتاب که به محض انتشار عمومی پیامک اطلاع‌رسانی دریافت می‌کنند.' },
+
+        // سایر بخش‌ها
+        'accounts-user': { title: 'کاربران', desc: 'حساب‌های کاربری دانشجویان، اساتید و مدیران سیستم و نقش‌های دسترسی.' },
+        'accounts-devicesession': { title: 'نشست‌های فعال', desc: 'دستگاه‌های متصل کاربران برای حفظ امنیت حساب و پیشگیری از ورود غیرمجاز.' },
+        'commerce-order': { title: 'سفارش‌ها', desc: 'تراکنش‌های مالی، صورت‌حساب‌ها و گزارش خریدهای انجام‌شده در سامانه.' },
+        'commerce-entitlement': { title: 'دسترسی‌های فعال', desc: 'حق دسترسی و مالکیت دانشجویان به کتاب‌های خریداری‌شده یا اعطاشده.' },
+        'study-sectionprogress': { title: 'پیشرفت مطالعه', desc: 'آمار مطالعه خط‌به‌خط، درصد پیشروی و نقاط توقف کاربران در کتاب‌ها.' },
+        'study-examattempt': { title: 'آزمون‌های کاربران', desc: 'نتایج آزمون‌های آزمایشی، کارنامه‌ها و تحلیل درصدهای دانشجویان.' }
+      };
+
+      var bubble = document.getElementById('lp-bubble');
+      var toggleBtn = document.getElementById('lp-guide-toggle');
+      var iconEl = document.getElementById('lp-guide-icon');
+      var textEl = document.getElementById('lp-guide-text');
+
+      var KEY = 'lp_admin_menu_guide_enabled';
+      var isEnabled = localStorage.getItem(KEY) !== 'false'; // default true
+
+      function updateToggleUI() {
+        if (isEnabled) {
+          toggleBtn.classList.remove('active');
+          iconEl.textContent = '💡';
+          textEl.textContent = 'خاموش کردن راهنما';
+        } else {
+          toggleBtn.classList.add('active');
+          iconEl.textContent = '💤';
+          textEl.textContent = 'روشن کردن راهنما';
+          hideBubble();
+        }
+      }
+
+      toggleBtn.addEventListener('click', function () {
+        isEnabled = !isEnabled;
+        localStorage.setItem(KEY, isEnabled ? 'true' : 'false');
+        updateToggleUI();
+      });
+
+      updateToggleUI();
+
+      function showBubble(target, data) {
+        if (!isEnabled || !data) return;
+        bubble.innerHTML = '<b>' + data.title + '</b>' + data.desc;
+        bubble.classList.add('visible');
+
+        var rect = target.getBoundingClientRect();
+        var bubbleW = Math.min(290, window.innerWidth - 20);
+        var bubbleH = bubble.offsetHeight || 60;
+
+        var left = rect.right - bubbleW;
+        if (left < 10) left = 10;
+        if (left + bubbleW > window.innerWidth - 10) left = window.innerWidth - bubbleW - 10;
+
+        // Position above by default; if not enough room on top, position below
+        var top = rect.top - bubbleH - 10;
+        if (top < 10) {
+          top = rect.bottom + 10;
+          bubble.classList.add('arrow-top');
+        } else {
+          bubble.classList.remove('arrow-top');
+        }
+
+        bubble.style.width = bubbleW + 'px';
+        bubble.style.left = left + 'px';
+        bubble.style.top = top + 'px';
+      }
+
+      function hideBubble() {
+        if (bubble) bubble.classList.remove('visible');
+      }
+
+      document.querySelectorAll('.app-learning, .app-catalog, .app-teacher_workflows, .app-accounts, .app-commerce, .app-study, .app-website').forEach(function (appBox) {
+        appBox.querySelectorAll('tr').forEach(function (row) {
+          var th = row.querySelector('th');
+          if (!th) return;
+          var key = th.id;
+          var data = GUIDES[key];
+          if (!data) {
+            // Try matching by link text or class
+            var link = th.querySelector('a');
+            var txt = (link ? link.textContent : th.textContent).trim();
+            for (var k in GUIDES) {
+              if (GUIDES[k].title === txt) {
+                data = GUIDES[k];
+                break;
+              }
+            }
+          }
+          if (data) {
+            row.addEventListener('mouseenter', function () {
+              showBubble(row, data);
+            });
+            row.addEventListener('mouseleave', hideBubble);
+          }
+        });
+      });
+
+      window.addEventListener('scroll', hideBubble, { passive: true });
+    })();
+  </script>
+
 </div>
 {% endblock %}
 
