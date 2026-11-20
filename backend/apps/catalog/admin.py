@@ -309,6 +309,7 @@ class BookAdmin(admin.ModelAdmin):
             path("import/", site(lambda r: panel.import_view(self.admin_site, r)), name="catalog_import"),
             path("<int:book_id>/import/", site(lambda r, book_id: panel.import_view(self.admin_site, r, book_id)), name="catalog_book_import"),
             path("<int:book_id>/export/", site(panel.book_export), name="catalog_book_export"),
+            path("<int:book_id>/export/tex/", site(panel.book_tex_export), name="catalog_book_tex_export"),
             path("<int:book_id>/email-export/", site(panel.book_email_export), name="catalog_book_email_export"),
             path("orphan/<int:node_id>/archive/", site(panel.archive_orphan), name="catalog_archive_orphan"),
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
@@ -1411,19 +1412,30 @@ def _assets_each_context_with_version(request):
     if is_teacher:
         context["is_teacher"] = True
         from django.conf import settings
+        from django.db.models import Q
         from apps.website.models import Classroom
-        from .models import BookEditor
+        from apps.learning.models import Report
+        from .models import BookEditor, BookTeamTask
 
         if user.is_superuser:
             # For superuser previewing teacher portal: show recently edited draft books or all books
             teacher_books = []
             for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, is_published=False)[:6]:
                 ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
+                pending_tasks = BookTeamTask.objects.filter(book=b, is_done=False).count()
+                report_q = (
+                    Q(node__path__startswith=b.path)
+                    | Q(question__node__path__startswith=b.path)
+                    | Q(flashcard__node__path__startswith=b.path)
+                )
+                pending_reports = Report.objects.filter(report_q, status=Report.Status.OPEN).count()
                 teacher_books.append({
                     "pk": b.pk,
                     "title": b.title,
                     "author": b.author,
                     "chapters_count": ch_count,
+                    "pending_tasks_count": pending_tasks,
+                    "pending_reports_count": pending_reports,
                 })
             context["teacher_books"] = teacher_books
 
@@ -1446,11 +1458,20 @@ def _assets_each_context_with_version(request):
             teacher_books = []
             for b in ContentNode.objects.filter(pk__in=book_ids, kind=ContentNode.Kind.BOOK):
                 ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
+                pending_tasks = BookTeamTask.objects.filter(book=b, is_done=False).count()
+                report_q = (
+                    Q(node__path__startswith=b.path)
+                    | Q(question__node__path__startswith=b.path)
+                    | Q(flashcard__node__path__startswith=b.path)
+                )
+                pending_reports = Report.objects.filter(report_q, status=Report.Status.OPEN).count()
                 teacher_books.append({
                     "pk": b.pk,
                     "title": b.title,
                     "author": b.author,
                     "chapters_count": ch_count,
+                    "pending_tasks_count": pending_tasks,
+                    "pending_reports_count": pending_reports,
                 })
             context["teacher_books"] = teacher_books
 

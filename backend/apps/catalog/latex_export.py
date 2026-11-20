@@ -499,9 +499,113 @@ def chapter_tex_bundle(chapter) -> tuple[str, bytes, str]:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(f"{chapter.slug}.tex", tex)
+        archive.writestr("preamble.tex", "\n".join(_preamble(list(ENVIRONMENT_NAMES.keys()))) + "\n")
         for path in paths:
             if default_storage.exists(path):
                 with default_storage.open(path, "rb") as handle:
                     archive.writestr(f"images/{posixpath.basename(path)}", handle.read())
     return f"{chapter.slug}.zip", buffer.getvalue(), "application/zip"
+
+
+def book_tex_bundle(book) -> tuple[str, bytes, str]:
+    """Generate a complete multi-chapter LaTeX project for the entire book.
+
+    Archive structure:
+      - main.tex (uses \\documentclass{book}, includes table of contents, and \\include for each chapter)
+      - preamble.tex (global preamble, package definitions, and box environments)
+      - chapters/
+          - 01-slug.tex
+          - 02-slug.tex
+      - images/
+    """
+    import io
+    import zipfile
+    from django.core.files.storage import default_storage
+    from apps.catalog.exporter import chapter_from_db, export_chapter, media_paths
+    from apps.catalog.models import ContentNode
+
+    chapters = list(book.get_children().filter(kind=ContentNode.Kind.CHAPTER, is_archived=False))
+    all_labels: list[str] = []
+    chapter_files: list[tuple[str, str, str]] = []  # (folder_rel_path, tex_body, chapter_title)
+    all_media_paths: set[str] = set()
+
+    for i, chapter in enumerate(chapters, start=1):
+        parsed = chapter_from_db(chapter)
+        intro = list(parsed.intro.full_lines) if parsed.intro else []
+        sections = [(section.title, section.slug, list(section.full_lines)) for section in parsed.sections]
+
+        for label in _labels_in(intro):
+            if label not in all_labels:
+                all_labels.append(label)
+        for _title, _slug, body in sections:
+            for label in _labels_in(body):
+                if label not in all_labels:
+                    all_labels.append(label)
+
+        for path in media_paths(export_chapter(chapter)):
+            all_media_paths.add(path)
+
+        # Build chapter content for book class
+        ch_out = [
+            r"\chapter{" + inline(chapter.title) + "}" + (r"\label{" + _label_name(chapter.slug) + "}" if chapter.slug else ""),
+            "",
+        ]
+        if intro:
+            ch_out += blocks(intro)
+            ch_out.append("")
+        for sec_title, sec_slug, sec_body in sections:
+            line = r"\section{" + inline(sec_title) + "}"
+            if sec_slug:
+                line += r"\label{" + _label_name(sec_slug) + "}"
+            ch_out.append(line)
+            ch_out += blocks(sec_body)
+            ch_out.append("")
+
+        ch_tex = re.sub(r"\n{3,}", "\n\n", "\n".join(ch_out))
+        ch_filename = f"chapters/{i:02d}-{chapter.slug}.tex"
+        chapter_files.append((ch_filename, ch_tex, chapter.title))
+
+    # Preamble adapted for book class
+    preamble_lines = _preamble(all_labels or list(ENVIRONMENT_NAMES.keys()))
+    # Replace documentclass article with book
+    preamble_content = "\n".join(preamble_lines)
+    preamble_content = preamble_content.replace(r"\documentclass[12pt,a4paper]{article}", r"\documentclass[12pt,a4paper]{book}")
+
+    # Build main.tex
+    main_lines = [
+        r"% ----------------------------------------------------------------",
+        r"%  پروژه کتاب کامل لاتک — ایجادشده از سامانه لیمو",
+        r"%  کامپایل با XeLaTeX (فایل اصلی: main.tex)",
+        r"% ----------------------------------------------------------------",
+        r"\input{preamble.tex}",
+        "",
+        r"\title{" + _escape(book.title) + "}",
+        r"\author{" + _escape(book.author or "") + "}",
+        r"\date{\today}",
+        "",
+        r"\begin{document}",
+        r"\maketitle",
+        r"\tableofcontents",
+        r"\newpage",
+        "",
+    ]
+    for ch_path, _, _ in chapter_files:
+        include_path = ch_path[:-4] if ch_path.endswith(".tex") else ch_path
+        main_lines.append(r"\include{" + include_path + "}")
+
+    main_lines += ["", r"\end{document}", ""]
+    main_tex = "\n".join(main_lines)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("main.tex", main_tex)
+        archive.writestr("preamble.tex", preamble_content)
+        for ch_path, ch_tex, _ in chapter_files:
+            archive.writestr(ch_path, ch_tex)
+        for path in all_media_paths:
+            if default_storage.exists(path):
+                with default_storage.open(path, "rb") as handle:
+                    archive.writestr(f"images/{posixpath.basename(path)}", handle.read())
+
+    return f"{book.slug}-latex.zip", buffer.getvalue(), "application/zip"
 

@@ -2424,6 +2424,42 @@ class TeacherAssistantTests(TestCase):
         self.assertEqual(res_del.status_code, 302)
         self.assertFalse(BookTeamTask.objects.filter(pk=task.pk).exists())
 
+    def test_book_latex_export_and_dashboard_badges(self):
+        import zipfile
+        import io
+        from apps.catalog.models import BookTeamTask
+        from apps.learning.models import Report
+
+        # Add a task and a report
+        BookTeamTask.objects.create(book=self.book, author=self.teacher, text="تسک شماره ۱", is_done=False)
+        ch = self.book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل تست", slug="test-ch")
+        sec = ch.add_child(kind=ContentNode.Kind.SECTION, title="بخش تست", slug="test-sec")
+        Report.objects.create(user=self.teacher, node=sec, reason=Report.Reason.TYPO, note="غلط تایپی", status=Report.Status.OPEN)
+
+        # Check teacher dashboard badges
+        res_dash = self.client.get("/admin/")
+        self.assertEqual(res_dash.status_code, 200)
+        self.assertContains(res_dash, "1 یادداشت")
+        self.assertContains(res_dash, "1 اشکال")
+
+        # Test book tex export
+        res_tex = self.client.get(f"/admin/catalog/book/{self.book.pk}/export/tex/")
+        self.assertEqual(res_tex.status_code, 200)
+        self.assertEqual(res_tex["Content-Type"], "application/zip")
+        self.assertIn("attachment; filename=", res_tex["Content-Disposition"])
+
+        # Inspect ZIP contents
+        with zipfile.ZipFile(io.BytesIO(res_tex.content)) as z:
+            names = z.namelist()
+            self.assertIn("main.tex", names)
+            self.assertIn("preamble.tex", names)
+            main_content = z.read("main.tex").decode("utf-8")
+            self.assertIn(r"\input{preamble.tex}", main_content)
+            self.assertIn(r"\tableofcontents", main_content)
+            preamble_content = z.read("preamble.tex").decode("utf-8")
+            self.assertIn(r"\documentclass[12pt,a4paper]{book}", preamble_content)
+
+
 
 
 

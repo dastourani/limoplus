@@ -885,6 +885,17 @@ def book_export(request, book_id):
     return response
 
 
+def book_tex_export(request, book_id):
+    """Download the complete multi-chapter LaTeX project of the book."""
+    from .latex_export import book_tex_bundle
+    book = _book(book_id)
+    _can_edit(request, book)
+    name, data, content_type = book_tex_bundle(book)
+    response = HttpResponse(data, content_type=content_type)
+    response["Content-Disposition"] = f'attachment; filename="{name}"'
+    return response
+
+
 def book_email_export(request, book_id):
     """Email the complete book ZIP archive directly to the verified teacher."""
     from django.contrib import messages
