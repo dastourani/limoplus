@@ -2349,4 +2349,22 @@ class TeacherAssistantTests(TestCase):
         new_book = ContentNode.objects.get(title="هوش مصنوعی و داده‌کاوی")
         self.assertTrue(ContentNode.objects.filter(path__startswith=new_book.path, depth=2).exists())
 
+    def test_superuser_teacher_view_mode_filters_admin_apps(self):
+        from django.contrib import admin
+        from django.test import RequestFactory
+        admin_user = User.objects.create_superuser("09129998877", is_staff=True)
+        rf = RequestFactory()
+
+        req_teacher = rf.get('/admin/?view=teacher')
+        req_teacher.user = admin_user
+        req_teacher.session = {"admin_view_mode": "teacher"}
+        apps_teacher = admin.site.get_app_list(req_teacher)
+        teacher_labels = {a['app_label'] for a in apps_teacher}
+        self.assertNotIn("accounts", teacher_labels)
+        self.assertNotIn("commerce", teacher_labels)
+        self.assertNotIn("guard", teacher_labels)
+        self.assertIn("catalog", teacher_labels)
+        self.assertIn("learning", teacher_labels)
+
+
 

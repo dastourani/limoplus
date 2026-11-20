@@ -25,10 +25,41 @@
   #changelist-filter h2 { font-size: 14px; } #changelist-filter summary, #changelist-filter li { font-size: 13px; }
   .button, input[type=submit], input[type=button], .submit-row input, a.button { font-weight: 700; }
   html { overflow-anchor: none; }
+  /* Uniform header action pill buttons */
+  .lp-header-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-decoration: none;
+    line-height: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.10);
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .15s ease;
+    vertical-align: middle;
+  }
+  .lp-header-btn:hover {
+    background: rgba(255, 255, 255, 0.20);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.35);
+  }
+  .lp-header-btn.lemon {
+    background: #F5C518;
+    color: #17201A;
+    border-color: #F5C518;
+  }
+  .lp-header-btn.lemon:hover {
+    background: #FFD84A;
+    border-color: #FFD84A;
+    color: #17201A;
+  }
   .lp-open-app { display: inline; margin: 0; }
-  .lp-open-app button { background: #F5C518; color: #1D2B23; border: 0; border-radius: 8px; padding: 3px 10px;
-    font: inherit; font-weight: 700; cursor: pointer; }
-  .lp-open-app button:hover { background: #FFD84A; }
   /* One «وضعیت» cell (panel_display.badges) instead of rows of ✓/✗. */
   .lp-badges { display: inline-flex; gap: 4px; flex-wrap: wrap; }
   .lp-badge { padding: 1px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; line-height: 20px; }
@@ -125,31 +156,31 @@
 
 {% block userlinks %}
 {% if user.is_active and user.is_staff %}
-  <span style="display:inline-flex; align-items:center; gap:6px; margin-inline-end:10px; font-size:12px;">
+  <span style="display:inline-flex; align-items:center; gap:6px; margin-inline-end:8px; font-size:12px;">
     {% if user.email %}
       {% if user.is_email_verified %}
-        <span class="lp-badge lp-b-green" title="ایمیل تأییدشده: {{ user.email }}">✓ {{ user.email }}</span>
+        <span class="lp-header-btn" title="ایمیل تأییدشده: {{ user.email }}" style="cursor:default;">✓ {{ user.email }}</span>
       {% else %}
-        <span class="lp-badge lp-b-yellow" title="ایمیل تأییدنشده: {{ user.email }}">⚠️ ایمیل در انتظار تأیید: {{ user.email }}</span>
-        <a href="{% url 'admin:accounts_user_send_verification' %}" style="font-size:11px; text-decoration:underline;">ارسال مجدد لینک</a>
+        <span class="lp-header-btn" title="ایمیل در انتظار تأیید: {{ user.email }}" style="cursor:default; border-color:#eab308; color:#fef08a;">⚠️ تأیید نشده: {{ user.email }}</span>
+        <a href="{% url 'admin:accounts_user_send_verification' %}" style="font-size:11px; text-decoration:underline;">ارسال مجدد</a>
       {% endif %}
     {% else %}
-      <a href="{% url 'admin:accounts_user_change_email' %}" class="lp-badge lp-b-blue" title="ثبت ایمیل برای دریافت خروجی‌های کتاب">+ ثبت ایمیل کاری</a>
+      <a href="{% url 'admin:accounts_user_change_email' %}" class="lp-header-btn" title="ثبت ایمیل برای دریافت خروجی‌های کتاب">+ ثبت ایمیل کاری</a>
     {% endif %}
   </span>
   {% if user.is_superuser %}
     {% if teacher_view_mode %}
-      <a href="?view=admin" class="lp-badge lp-b-red" style="text-decoration:none; margin-inline-end:6px; font-weight:800;" title="خروج از نمای آزمایشی استاد و بازگشت به نمای کامل مدیر کل">
+      <a href="?view=admin" class="lp-header-btn" style="border-color:#f87171; color:#fca5a5; margin-inline-end:6px;" title="خروج از نمای آزمایشی استاد و بازگشت به نمای کامل مدیر کل">
         ✕ خروج از نمای استاد
       </a>
     {% else %}
-      <a href="?view=teacher" class="lp-badge lp-b-green" style="text-decoration:none; margin-inline-end:6px; font-weight:800;" title="مشاهده پیش‌نمایش صفحه و امکانات اختصاصی اساتید">
+      <a href="?view=teacher" class="lp-header-btn" style="margin-inline-end:6px;" title="مشاهده پیش‌نمایش صفحه و امکانات اختصاصی اساتید">
         🎓 پنل اساتید
       </a>
     {% endif %}
   {% endif %}
   <form class="lp-open-app" method="post" action="{% url 'panel-open-app' %}" target="_blank" rel="noopener">{% csrf_token %}
-    <button type="submit" title="وب اپ در زبانه‌ی تازه، با همین حساب و بدون پیامک باز می‌شود">وب‌اپ</button>
+    <button type="submit" class="lp-header-btn" title="وب اپ در زبانه‌ی تازه، با همین حساب و بدون پیامک باز می‌شود">وب‌اپ</button>
   </form> /
 {% endif %}
 {{ block.super }}

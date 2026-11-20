@@ -19,6 +19,25 @@ _TEACHER_WORKFLOW_MODELS = frozenset({
     ("website", "PublicationRequestEvent"),
 })
 
+# Models visible to a teacher in their standard workspace
+_TEACHER_VISIBLE_MODELS = frozenset({
+    # catalog
+    ("catalog", "Book"),
+    ("catalog", "Section"),
+    ("catalog", "ChapterRevision"),
+    ("catalog", "Label"),
+    ("catalog", "ShareSettings"),
+    # learning
+    ("learning", "Question"),
+    ("learning", "Flashcard"),
+    ("learning", "ExamSource"),
+    ("learning", "Report"),
+    # workflows
+    ("teacher_workflows", "Classroom"),
+    ("teacher_workflows", "ClassroomMember"),
+    ("teacher_workflows", "PublicationRequest"),
+})
+
 
 class LimoAdminSite(AdminSite):
     """Group author, invitation, publication-review, and group-access workflows separately."""
@@ -55,6 +74,28 @@ class LimoAdminSite(AdminSite):
             # Keep it next to «سایت», but as a separate peer in the admin navigation.
             insert_at = site_index + 1 if site_index is not None else len(retained_apps)
             retained_apps.insert(insert_at, workflow_app)
+
+        # If a superuser has switched to teacher view mode, scope the navigation strictly to teacher's view
+        user = getattr(request, "user", None)
+        teacher_view_mode = False
+        if request and hasattr(request, "session"):
+            if "view" in request.GET:
+                teacher_view_mode = (request.GET.get("view") == "teacher")
+            else:
+                teacher_view_mode = (request.session.get("admin_view_mode") == "teacher")
+
+        if user and user.is_authenticated and user.is_superuser and teacher_view_mode:
+            filtered_apps = []
+            for app in retained_apps:
+                app_models = [
+                    m for m in app["models"]
+                    if (app["app_label"], m["object_name"]) in _TEACHER_VISIBLE_MODELS
+                ]
+                if app_models:
+                    app_copy = dict(app)
+                    app_copy["models"] = app_models
+                    filtered_apps.append(app_copy)
+            return filtered_apps
 
         return retained_apps
 
