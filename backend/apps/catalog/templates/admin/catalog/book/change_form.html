@@ -243,6 +243,55 @@
     </tbody>
   </table>
   {% endif %}
+
+  {% if has_real_assistants %}
+  <div id="team-notes" style="margin-top:24px; padding-top:18px; border-top:1px dashed var(--hairline-color);">
+    <h3 style="margin:0 0 6px; font-size:15px; font-weight:800; color:var(--body-fg);">
+      📝 تخته یادداشت و هماهنگی با دستیاران
+    </h3>
+    <p class="hint" style="margin:0 0 12px;">
+      این یادداشت‌ها فقط برای شما و دستیاران این کتاب قابل مشاهده است (جهت تعیین وظایف، پیگیری تایپ تست‌ها یا حل تمرین).
+    </p>
+
+    <form class="cm-card row" method="post" action="{% url 'admin:catalog_book_team_tasks_action' original.pk %}" style="align-items:flex-end; gap:10px; flex-wrap:wrap; padding:12px 14px;">{% csrf_token %}
+      <input type="hidden" name="action" value="add">
+      <div class="grow" style="min-width:260px;">
+        <label class="f" style="font-weight:700;">+ افزودن یادداشت / وظیفه جدید برای تیم:</label>
+        <input type="text" name="text" maxlength="300" required placeholder="مثلاً: آقای احمدی لطفاً پاسخ تست‌های فصل ۲ را تا فردا بررسی کنید" style="width:100%; margin-top:4px;">
+      </div>
+      <button class="btn primary" type="submit" style="white-space:nowrap;">ثبت یادداشت</button>
+    </form>
+
+    {% if team_tasks %}
+    <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
+      {% for task in team_tasks %}
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--darkened-bg); border-radius:8px; border:1px solid var(--hairline-color); {% if task.is_done %}opacity:0.65; text-decoration:line-through;{% endif %}">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <form class="inline" method="post" action="{% url 'admin:catalog_book_team_tasks_action' original.pk %}">{% csrf_token %}
+            <input type="hidden" name="action" value="toggle">
+            <input type="hidden" name="task_id" value="{{ task.pk }}">
+            <input type="checkbox" onchange="this.form.submit();" {% if task.is_done %}checked{% endif %} title="تغییر وضعیت انجام">
+          </form>
+          <div>
+            <span style="font-size:13.5px; font-weight:700; color:var(--body-fg);">{{ task.text }}</span>
+            <div style="font-size:11px; color:var(--body-quiet-color); margin-top:2px;">
+              توسط: {{ task.author.full_name|default:task.author.phone }} · {{ task.created_at|date:"Y-m-d H:i" }}
+            </div>
+          </div>
+        </div>
+        <form class="inline" method="post" action="{% url 'admin:catalog_book_team_tasks_action' original.pk %}" onsubmit="return confirm('آیا از حذف این یادداشت اطمینان دارید؟');">{% csrf_token %}
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="task_id" value="{{ task.pk }}">
+          <button class="btn small" type="submit" style="color:#ef4444; background:none; border:none; padding:2px 6px; cursor:pointer;" title="حذف یادداشت">✕</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p style="margin:10px 0 0; font-size:12px; color:var(--body-quiet-color); font-style:italic;">هنوز یادداشتی ثبت نشده است.</p>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 
 {% if can_manage_access %}

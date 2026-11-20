@@ -607,3 +607,32 @@ class BookEditor(models.Model):
             raise ValidationError({"book": "فقط یک کتاب (نه فصل یا بخش) می‌تواند اینجا باشد."})
         if self.book_id and self.book.is_inbox:
             raise ValidationError({"book": "صندوق تست دسترسی استاد کتاب نمی‌گیرد؛ فقط مدیر کل آن را باز می‌کند."})
+
+
+class BookTeamTask(models.Model):
+    """Internal task board / coordination notes between the lead teacher and teaching assistants of a book."""
+
+    book = models.ForeignKey(
+        ContentNode,
+        on_delete=models.CASCADE,
+        related_name="team_tasks",
+        limit_choices_to={"kind": ContentNode.Kind.BOOK, "depth": 1},
+        verbose_name="کتاب",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="created_book_tasks",
+        verbose_name="نویسنده یادداشت",
+    )
+    text = models.CharField("متن یادداشت / وظیفه", max_length=300)
+    is_done = models.BooleanField("انجام شد", default=False)
+    created_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "یادداشت هماهنگی تیم کتاب"
+        verbose_name_plural = "یادداشت‌های هماهنگی تیم کتاب"
+        ordering = ["is_done", "-created_at"]
+
+    def __str__(self):
+        return f"{self.book.title}: {self.text[:40]}"
