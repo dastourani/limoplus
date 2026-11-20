@@ -284,6 +284,7 @@
     {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
   </div>
 
+  {% if is_teacher %}
   <div id="lp-bubble" class="lp-menu-bubble" role="tooltip"></div>
 
   <script>
@@ -418,7 +419,7 @@
             var icon = document.createElement('span');
             icon.className = 'lp-help-icon';
             icon.textContent = '؟';
-            icon.setAttribute('title', 'راهنمای این بخش');
+            icon.setAttribute('aria-label', 'راهنمای این بخش');
             icon.setAttribute('tabindex', '0');
             icon.addEventListener('mouseenter', function (e) {
               e.stopPropagation();
@@ -436,6 +437,7 @@
       window.addEventListener('scroll', hideBubble, { passive: true });
     })();
   </script>
+  {% endif %}
 
 </div>
 {% endblock %}
