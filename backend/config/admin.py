@@ -47,6 +47,21 @@ class LimoAdminSite(AdminSite):
         workflow_models = []
         retained_apps = []
 
+        _CATALOG_ORDER = {
+            "Book": 1,
+            "Section": 2,
+            "Label": 3,
+            "ChapterRevision": 4,
+            "ShareSettings": 5,
+            "Major": 6,
+            "Shelf": 7,
+            "Banner": 8,
+            "FormulaCommand": 9,
+            "BookWaitlist": 10,
+            "BookChange": 11,
+            "CleanupRun": 12,
+        }
+
         for app in app_list:
             retained_models = []
             for model in app["models"]:
@@ -55,11 +70,33 @@ class LimoAdminSite(AdminSite):
                 else:
                     retained_models.append(model)
             if retained_models:
+                if app["app_label"] == "catalog":
+                    retained_models.sort(
+                        key=lambda model: (
+                            _CATALOG_ORDER.get(model["object_name"], 50),
+                            model["name"].casefold(),
+                        )
+                    )
                 app["models"] = retained_models
                 retained_apps.append(app)
 
         if workflow_models:
-            workflow_models.sort(key=lambda model: model["name"].casefold())
+            # Custom ordering for teacher_workflows models: most frequently used first
+            _WORKFLOW_ORDER = {
+                "Classroom": 1,
+                "ClassroomMember": 2,
+                "PublicationRequest": 3,
+                "BookAccessRequest": 4,
+                "BookEditor": 5,
+                "TeacherInvitation": 6,
+                "TeacherApplication": 7,
+            }
+            workflow_models.sort(
+                key=lambda model: (
+                    _WORKFLOW_ORDER.get(model["object_name"], 50),
+                    model["name"].casefold(),
+                )
+            )
             workflow_app = {
                 "name": "اساتید و مؤلفان",
                 "app_label": "teacher_workflows",

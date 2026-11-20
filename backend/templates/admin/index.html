@@ -81,46 +81,43 @@
     font-size: 12px;
   }
 
-  /* Menu item tooltips and guide toggle */
-  .lp-guide-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin: 0 0 14px;
-    padding: 8px 14px;
-    background: var(--darkened-bg);
-    border: 1px solid var(--hairline-color);
-    border-radius: 10px;
-    font-size: 12.5px;
-    color: var(--body-quiet-color);
-  }
-  .lp-guide-btn {
+  /* Menu item tooltips and inline guide icon */
+  .lp-help-icon {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 12px;
-    border-radius: 999px;
-    font-size: 11.5px;
+    justify-content: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    margin-inline-start: 7px;
+    font-size: 10.5px;
     font-weight: 700;
-    cursor: pointer;
-    border: 1px solid var(--hairline-color);
-    background: var(--body-bg);
-    color: var(--body-fg);
+    cursor: help;
+    background: rgba(245, 197, 24, 0.16);
+    color: #b45309;
+    border: 1px solid rgba(245, 197, 24, 0.4);
+    line-height: 1;
     transition: all .15s ease;
-    font-family: inherit;
+    vertical-align: middle;
+    user-select: none;
   }
-  .lp-guide-btn:hover {
-    background: var(--darkened-bg);
+  .lp-help-icon:hover {
+    background: #F5C518;
+    color: #17201A;
+    border-color: #F5C518;
+    transform: scale(1.1);
   }
-  .lp-guide-btn.active {
-    background: #fef3c7;
-    border-color: #fde68a;
-    color: #92400e;
+  html[data-theme="dark"] .lp-help-icon {
+    background: rgba(245, 197, 24, 0.18);
+    color: #F5C518;
+    border-color: rgba(245, 197, 24, 0.35);
   }
-  html[data-theme="dark"] .lp-guide-btn.active {
-    background: #78350f;
-    border-color: #b45309;
-    color: #fef3c7;
+  html[data-theme="dark"] .lp-help-icon:hover {
+    background: #F5C518;
+    color: #17201A;
+  }
+  .lp-guides-off .lp-help-icon {
+    display: none !important;
   }
 
   .lp-menu-bubble {
@@ -186,13 +183,15 @@
 
 {% block nav-sidebar %}{% endblock %}
 
+{% block content_title %}{% endblock %}
+
 {% block content %}
 <div id="content-main">
   {% if is_teacher %}
   <div class="teacher-dash">
     <div class="teacher-hero">
       <h2>کارگاه آموزش و تألیف اساتید</h2>
-      <p>درود، {{ user.full_name|default:user.phone }}. از این بخش می‌توانید کتاب‌های درسی، کلاس‌های ترم و برچسب‌های متن اختصاصی خود را مدیریت کنید.</p>
+      <p>درود، {{ user.full_name|default:user.phone }}. از این بخش می‌توانید کتاب‌های درسی و کلاس‌های ترم خود را مدیریت کنید.</p>
       <div class="teacher-actions">
         <a href="{% url 'admin:catalog_book_teacher_new' %}" class="teacher-btn teacher-btn-primary">
           + ایجاد کتاب پیش‌نویس
@@ -281,14 +280,7 @@
   </div>
   {% endif %}
 
-  <div class="{% if is_teacher %}teacher-mode-apps{% endif %}">
-    <div class="lp-guide-bar">
-      <span>💡 با نگه‌داشتن نشانگر روی هر منو، راهنمای سریع و کاربرد آن نمایش داده می‌شود.</span>
-      <button type="button" class="lp-guide-btn" id="lp-guide-toggle" title="روشن/خاموش کردن حباب‌های راهنما">
-        <span id="lp-guide-icon">💡</span>
-        <span id="lp-guide-text">خاموش کردن راهنما</span>
-      </button>
-    </div>
+  <div class="{% if is_teacher %}teacher-mode-apps{% endif %}" id="lp-apps-container">
     {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
   </div>
 
@@ -300,27 +292,30 @@
         // تست‌ها و فلش‌کارت‌ها (learning)
         'learning-question': { title: 'تست‌ها', desc: 'بانک جامع سوالات چهارگزینه‌ای؛ مشاهده، جستجو، ویرایش گزینه‌ها، پاسخ تشریحی و کلید سوالات.' },
         'learning-flashcard': { title: 'فلش‌کارت‌ها', desc: 'کارت‌های مرور و یادگیری سریع (پرسش و پاسخ پشت کارت) متصل به جعبه لایتنر هوشمند.' },
-        'learning-examsource': { title: 'منابع کنکور و آزمون', desc: 'دسته‌بندی سوالات بر اساس سال آزمون و منبع سراسری یا تألیفی برای ساخت آزمون جامع.' },
+        'learning-examsource': {
+          title: 'منابع تست‌ها',
+          desc: 'در این بخش منابع تست‌ها (مانند تألیفی، سال کنکور سراسری، یا کتاب و آزمون خاص) را تعریف می‌کنید تا هنگام ثبت سوال استفاده شوند. نتیجه این است که برای دانشجویان تست‌ها بر اساس سال کنکور و منابع تفکیک و دسته‌بندی می‌شوند.'
+        },
         'learning-report': { title: 'گزارش‌های ایراد', desc: 'اشکالات علمی یا تایپی که کاربران و دانشجویان حین مطالعه برای سوالات ارسال کرده‌اند.' },
 
         // اساتید و مؤلفان (teacher_workflows)
-        'teacher_workflows-publicationrequest': { title: 'درخواست‌های بازبینی انتشار عمومی', desc: 'ارسال و پیگیری وضعیت انتشار کتاب‌های آماده‌شده برای نمایش و عرضه در ویترین سراسری پلتفرم.' },
-        'teacher_workflows-classroommember': { title: 'عضویت‌های دانشجویان در کلاس‌ها', desc: 'فهرست دانشجویان دوره‌ها و وضعیت فعال‌سازی و مطالعه کتاب درسی در حساب آن‌ها.' },
         'teacher_workflows-classroom': { title: 'کلاس‌ها و دوره‌های اختصاصی', desc: 'تعریف دوره‌های ترمی و تولید پیوند اختصاصی دعوت دانشجو جهت ورود مستقیم به کتاب کلاس.' },
+        'teacher_workflows-classroommember': { title: 'عضویت‌های دانشجویان در کلاس‌ها', desc: 'فهرست دانشجویان دوره‌ها و وضعیت فعال‌سازی و مطالعه کتاب درسی در حساب آن‌ها.' },
+        'teacher_workflows-publicationrequest': { title: 'درخواست‌های بازبینی انتشار عمومی', desc: 'ارسال و پیگیری وضعیت انتشار کتاب‌های آماده‌شده برای نمایش و عرضه در ویترین سراسری پلتفرم.' },
         'teacher_workflows-bookaccessrequest': { title: 'درخواست‌های دسترسی گروهی', desc: 'پیشنهاد و اعطای مستقیم دسترسی به مجموعه‌ای از شماره‌های دانشجویان کلاس برای کتاب.' },
         'teacher_workflows-bookeditor': { title: 'استادان کتاب', desc: 'مدیریت مؤلفان همکار، دبیران درس و دستیاران آموزشی مجاز برای هر کتاب.' },
-        'teacher_workflows-teacherapplication': { title: 'درخواست‌های همکاری آموزشی', desc: 'پرونده‌ها و رزومه‌های دریافتی متقاضیان تدریس و تألیف در لیموخوان.' },
         'teacher_workflows-teacherinvitation': { title: 'دعوت‌های استاد', desc: 'پیوندهای امن و زمان‌دار صدور دسترسی مؤلف جدید به کتاب‌های سامانه.' },
+        'teacher_workflows-teacherapplication': { title: 'درخواست‌های همکاری آموزشی', desc: 'پرونده‌ها و رزومه‌های دریافتی متقاضیان تدریس و تألیف در لیموخوان.' },
 
         // محتوا (catalog)
+        'catalog-book': { title: 'کتاب‌ها', desc: 'میز کار اصلی تألیف، مدیریت سرفصل‌ها، صندوق تست کتاب و دریافت خروجی‌های LaTeX.' },
         'catalog-section': { title: 'بخش‌ها (جزوه و خلاصه)', desc: 'درسنامه‌ها، چکیده‌ها و متون آموزشی فصول کتاب که قالب تعاملی اپلیکیشن را تشکیل می‌دهند.' },
         'catalog-label': { title: 'برچسب‌های متن', desc: 'کادرهای رنگی اختصاصی متن (مانند تعریف، قضیه، نکته، تله، فرمول و برچسب‌های سفارشی شما).' },
-        'catalog-sharesettings': { title: 'تنظیمات اشتراک‌گذاری', desc: 'پیوندها و بنرهای پیش‌فرض برای معرفی و اشتراک‌گذاری کتاب‌ها با سایرین.' },
         'catalog-chapterrevision': { title: 'نسخه‌های فصل', desc: 'تاریخچه تغییرات و نسخه‌های ذخیره‌شده فایل فصول با امکان بازیابی نسخه‌های قبلی.' },
-        'catalog-book': { title: 'کتاب‌ها', desc: 'میز کار اصلی تألیف، مدیریت سرفصل‌ها، صندوق تست کتاب و دریافت خروجی‌های LaTeX.' },
-        'catalog-banner': { title: 'بنرهای تبلیغاتی', desc: 'اسلایدرها و بنرهای معرفی کتاب در صفحه اول وب‌اپ و اپلیکیشن.' },
+        'catalog-sharesettings': { title: 'تنظیمات اشتراک‌گذاری', desc: 'پیوندها و بنرهای پیش‌فرض برای معرفی و اشتراک‌گذاری کتاب‌ها با سایرین.' },
         'catalog-major': { title: 'رشته‌ها و شاخه‌ها', desc: 'دسته‌بندی‌های تحصیلی (مانند ریاضی، تجربی، مهندسی) که کتاب‌ها در قفسه آن‌ها قرار می‌گیرند.' },
         'catalog-shelf': { title: 'قفسه‌های ویترین', desc: 'ردیف‌های کتاب در صفحه اصلی اپلیکیشن برای دسته‌بندی و چیدمان بصری کتاب‌ها.' },
+        'catalog-banner': { title: 'بنرهای تبلیغاتی', desc: 'اسلایدرها و بنرهای معرفی کتاب در صفحه اول وب‌اپ و اپلیکیشن.' },
         'catalog-formulacommand': { title: 'دستورهای فرمول KaTeX', desc: 'ماکروها و دستورات سفارشی ریاضی برای نمایش یکدست فرمول‌ها در کل کتاب‌ها.' },
         'catalog-bookwaitlist': { title: 'درخواست‌های خبرم کن', desc: 'دانشجویان منتظر انتشار کتاب که به محض انتشار عمومی پیامک اطلاع‌رسانی دریافت می‌کنند.' },
 
@@ -337,30 +332,39 @@
       var toggleBtn = document.getElementById('lp-guide-toggle');
       var iconEl = document.getElementById('lp-guide-icon');
       var textEl = document.getElementById('lp-guide-text');
+      var container = document.getElementById('lp-apps-container');
 
       var KEY = 'lp_admin_menu_guide_enabled';
       var isEnabled = localStorage.getItem(KEY) !== 'false'; // default true
 
       function updateToggleUI() {
+        if (container) {
+          if (isEnabled) {
+            container.classList.remove('lp-guides-off');
+          } else {
+            container.classList.add('lp-guides-off');
+          }
+        }
+        if (!toggleBtn) return;
         if (isEnabled) {
           toggleBtn.classList.remove('active');
-          iconEl.textContent = '💡';
-          textEl.textContent = 'خاموش کردن راهنما';
+          if (iconEl) iconEl.textContent = '💡';
+          if (textEl) textEl.textContent = 'راهنما: روشن';
         } else {
           toggleBtn.classList.add('active');
-          iconEl.textContent = '💤';
-          textEl.textContent = 'روشن کردن راهنما';
+          if (iconEl) iconEl.textContent = '💤';
+          if (textEl) textEl.textContent = 'راهنما: خاموش';
           hideBubble();
         }
       }
 
-      toggleBtn.addEventListener('click', function () {
-        isEnabled = !isEnabled;
-        localStorage.setItem(KEY, isEnabled ? 'true' : 'false');
-        updateToggleUI();
-      });
-
-      updateToggleUI();
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', function () {
+          isEnabled = !isEnabled;
+          localStorage.setItem(KEY, isEnabled ? 'true' : 'false');
+          updateToggleUI();
+        });
+      }
 
       function showBubble(target, data) {
         if (!isEnabled || !data) return;
@@ -368,17 +372,17 @@
         bubble.classList.add('visible');
 
         var rect = target.getBoundingClientRect();
-        var bubbleW = Math.min(290, window.innerWidth - 20);
-        var bubbleH = bubble.offsetHeight || 60;
+        var bubbleW = Math.min(300, window.innerWidth - 20);
+        var bubbleH = bubble.offsetHeight || 65;
 
-        var left = rect.right - bubbleW;
+        var left = rect.right - bubbleW + 10;
         if (left < 10) left = 10;
         if (left + bubbleW > window.innerWidth - 10) left = window.innerWidth - bubbleW - 10;
 
-        // Position above by default; if not enough room on top, position below
-        var top = rect.top - bubbleH - 10;
+        // Position above target icon; fallback to below if close to window top
+        var top = rect.top - bubbleH - 12;
         if (top < 10) {
-          top = rect.bottom + 10;
+          top = rect.bottom + 12;
           bubble.classList.add('arrow-top');
         } else {
           bubble.classList.remove('arrow-top');
@@ -393,6 +397,7 @@
         if (bubble) bubble.classList.remove('visible');
       }
 
+      // Attach inline help icons to model headers in the app lists
       document.querySelectorAll('.app-learning, .app-catalog, .app-teacher_workflows, .app-accounts, .app-commerce, .app-study, .app-website').forEach(function (appBox) {
         appBox.querySelectorAll('tr').forEach(function (row) {
           var th = row.querySelector('th');
@@ -400,7 +405,6 @@
           var key = th.id;
           var data = GUIDES[key];
           if (!data) {
-            // Try matching by link text or class
             var link = th.querySelector('a');
             var txt = (link ? link.textContent : th.textContent).trim();
             for (var k in GUIDES) {
@@ -411,14 +415,24 @@
             }
           }
           if (data) {
-            row.addEventListener('mouseenter', function () {
-              showBubble(row, data);
+            var icon = document.createElement('span');
+            icon.className = 'lp-help-icon';
+            icon.textContent = '؟';
+            icon.setAttribute('title', 'راهنمای این بخش');
+            icon.setAttribute('tabindex', '0');
+            icon.addEventListener('mouseenter', function (e) {
+              e.stopPropagation();
+              showBubble(icon, data);
             });
-            row.addEventListener('mouseleave', hideBubble);
+            icon.addEventListener('mouseleave', hideBubble);
+            icon.addEventListener('focus', function () { showBubble(icon, data); });
+            icon.addEventListener('blur', hideBubble);
+            th.appendChild(icon);
           }
         });
       });
 
+      updateToggleUI();
       window.addEventListener('scroll', hideBubble, { passive: true });
     })();
   </script>

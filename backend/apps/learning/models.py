@@ -14,8 +14,8 @@ class ExamSource(models.Model):
     booklet = models.CharField("دفترچه", max_length=60, blank=True)
 
     class Meta:
-        verbose_name = "منبع کنکور"
-        verbose_name_plural = "منابع کنکور"
+        verbose_name = "منبع تست"
+        verbose_name_plural = "منابع تست‌ها"
         ordering = ["-year", "name"]
         unique_together = [("name", "year", "group", "booklet")]
 
@@ -78,7 +78,7 @@ class Question(models.Model):
     estimated_seconds = models.PositiveSmallIntegerField("زمان تخمینی (ثانیه)", null=True, blank=True)
     order = models.PositiveIntegerField("ترتیب در بخش", default=0)
     is_original = models.BooleanField("تألیفی", default=False)
-    sources = models.ManyToManyField(ExamSource, through="QuestionSource", blank=True, verbose_name="منابع کنکور")
+    sources = models.ManyToManyField(ExamSource, through="QuestionSource", blank=True, verbose_name="منابع تست‌ها")
     flashcards = models.ManyToManyField(Flashcard, blank=True, related_name="questions", verbose_name="فلش‌کارت‌های مرتبط")
     # «مشابه:» in the file: the same test that came back in another exam with a change. One way (the file that says it);
     # the app shows both ways (similar_to and similar_from).
