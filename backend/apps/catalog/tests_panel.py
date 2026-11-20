@@ -2473,6 +2473,17 @@ class TeacherAssistantTests(TestCase):
         res = self.client.get("/admin/?view=teacher")
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, "فعالیت‌های تألیف و تدریس من")
+        self.assertContains(res, "/admin/?view=admin")
+
+        # Test from inner page (books changelist)
+        res_books = self.client.get("/admin/catalog/book/")
+        self.assertEqual(res_books.status_code, 200)
+        self.assertContains(res_books, "/admin/?view=admin")
+
+        # Exit to admin view
+        res_admin = self.client.get("/admin/?view=admin")
+        self.assertEqual(res_admin.status_code, 200)
+        self.assertContains(res_admin, "/admin/?view=teacher")
 
     def test_book_study_analytics_csv_export(self):
         # Teacher with permission can download CSV
