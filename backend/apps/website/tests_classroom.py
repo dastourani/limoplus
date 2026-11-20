@@ -170,6 +170,7 @@ class ClassroomJoinLandingTests(TestCase):
         self.assertContains(res, self.classroom.title)
         self.assertContains(res, self.book.title)
         self.assertContains(res, "شماره موبایل دانشجو")
+        self.assertContains(res, "resend-otp-btn")
 
     def test_authenticated_student_can_join_and_gain_entitlement(self):
         student = User.objects.create(phone="09123334444")
@@ -182,6 +183,12 @@ class ClassroomJoinLandingTests(TestCase):
         self.assertEqual(member.status, ClassroomMember.Status.ACTIVE)
         self.assertIsNotNone(member.entitlement)
         self.assertEqual(member.entitlement.book, self.book)
+
+        # Check that landing page renders deep link for active members
+        res_member = self.client.get(f"/join/{self.classroom.code}/")
+        self.assertEqual(res_member.status_code, 200)
+        self.assertContains(res_member, f"limookhan://book/{self.book.slug}")
+        self.assertContains(res_member, "deep-link-btn")
 
     def test_inactive_classroom_shows_error_state(self):
         self.classroom.is_active = False

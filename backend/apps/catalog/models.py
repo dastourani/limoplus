@@ -636,3 +636,54 @@ class BookTeamTask(models.Model):
 
     def __str__(self):
         return f"{self.book.title}: {self.text[:40]}"
+
+
+class BookAssistantAuditLog(models.Model):
+    """Audit log for teaching assistant assignments and permission changes for a book."""
+
+    class Action(models.TextChoices):
+        ADDED = "added", "افزودن دستیار"
+        UPDATED = "updated", "ویرایش دسترسی‌ها"
+        REMOVED = "removed", "حذف دسترسی دستیار"
+
+    book = models.ForeignKey(
+        ContentNode,
+        on_delete=models.CASCADE,
+        related_name="assistant_audit_logs",
+        limit_choices_to={"kind": ContentNode.Kind.BOOK, "depth": 1},
+        verbose_name="کتاب",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assistant_audit_actions",
+        verbose_name="اقدام‌کننده",
+    )
+    assistant_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assistant_audit_records",
+        verbose_name="کاربر دستیار",
+    )
+    assistant_phone = models.CharField("شماره دستیار", max_length=20)
+    action = models.CharField("نوع عملیات", max_length=20, choices=Action.choices)
+    details = models.CharField("شرح تغییرات / دسترسی‌ها", max_length=300, blank=True)
+    ip = models.CharField("نشانی IP", max_length=45, blank=True)
+    created_at = models.DateTimeField("زمان ثبت رویداد", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "لاگ ممیزی دستیار آموزشی"
+        verbose_name_plural = "لاگ‌های ممیزی دستیاران آموزشی"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["book", "-created_at"]),
+            models.Index(fields=["assistant_phone", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_action_display()} — {self.assistant_phone} ({self.book.title})"
+

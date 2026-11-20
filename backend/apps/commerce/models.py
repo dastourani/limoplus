@@ -211,6 +211,7 @@ class Entitlement(models.Model):
     )
     is_archived = models.BooleanField("لغو شده", default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    expiry_warning_sent_at = models.DateTimeField("زمان ارسال هشدار انقضا", null=True, blank=True)
 
     class Meta:
         verbose_name = "دسترسی خریداری‌شده"

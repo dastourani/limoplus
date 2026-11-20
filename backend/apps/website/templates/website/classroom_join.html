@@ -51,9 +51,14 @@
           <div style="background: #ecfdf5; border-radius: 10px; padding: 16px; margin-bottom: 20px; color: #065f46; font-size: 14px;">
             ✓ شما پیش از این عضو این کلاس شده‌اید و کتاب در کتابخانه شما فعال است.
           </div>
-          <a href="{{ app_book_url }}" class="btn lemon wide" style="display: block; padding: 12px; font-size: 16px; font-weight: bold; text-decoration: none; border-radius: 8px;">
-            ورود به کتاب و شروع مطالعه
-          </a>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <a id="deep-link-btn" href="{{ deep_link_url }}" class="btn dark wide" style="display: none; padding: 12px; font-size: 15px; font-weight: bold; text-decoration: none; border-radius: 8px;">
+              📱 باز کردن در اپلیکیشن لیموخوان
+            </a>
+            <a href="{{ app_book_url }}" class="btn lemon wide" style="display: block; padding: 12px; font-size: 16px; font-weight: bold; text-decoration: none; border-radius: 8px;">
+              ورود به کتاب در وب و شروع مطالعه
+            </a>
+          </div>
         {% else %}
           <form method="post">
             {% csrf_token %}
@@ -85,6 +90,14 @@
             <button id="verify-otp-btn" type="button" class="btn dark wide" style="width: 100%; padding: 10px; margin-top: 10px; font-size: 15px; font-weight: bold; border-radius: 8px; cursor: pointer;">
               تأیید و دریافت کتاب
             </button>
+
+            <!-- Resend OTP Timer & Button -->
+            <div id="resend-container" style="margin-top: 14px; text-align: center; font-size: 13px;">
+              <span id="countdown-text" style="color: #6b7280;">ارسال مجدد پیامک تا <b id="countdown-timer" dir="ltr">02:00</b> دیگر</span>
+              <button id="resend-otp-btn" type="button" style="display: none; background: none; border: none; color: #0284c7; font-weight: bold; cursor: pointer; text-decoration: underline; font-size: 13px; font-family: inherit;">
+                🔄 ارسال مجدد کد پیامکی
+              </button>
+            </div>
           </div>
 
           <div id="otp-message" style="margin-top: 14px; font-size: 13px; text-align: center; color: #6b7280;"></div>
@@ -104,8 +117,38 @@
   const codeInput = document.getElementById('student-otp');
   const verifyBtn = document.getElementById('verify-otp-btn');
   const message = document.getElementById('otp-message');
+  const resendBtn = document.getElementById('resend-otp-btn');
+  const countdownText = document.getElementById('countdown-text');
+  const countdownTimer = document.getElementById('countdown-timer');
   const classroomCode = "{{ classroom.code }}";
   const bookUrl = "{{ app_book_url }}";
+
+  let timerInterval = null;
+
+  function startCountdown(seconds) {
+    clearInterval(timerInterval);
+    if (resendBtn) resendBtn.style.display = 'none';
+    if (countdownText) countdownText.style.display = 'inline';
+
+    let left = seconds;
+    const updateDisplay = () => {
+      const m = String(Math.floor(left / 60)).padStart(2, '0');
+      const s = String(left % 60).padStart(2, '0');
+      if (countdownTimer) countdownTimer.textContent = `${m}:${s}`;
+    };
+    updateDisplay();
+
+    timerInterval = setInterval(() => {
+      left--;
+      if (left <= 0) {
+        clearInterval(timerInterval);
+        if (countdownText) countdownText.style.display = 'none';
+        if (resendBtn) resendBtn.style.display = 'inline';
+      } else {
+        updateDisplay();
+      }
+    }, 1000);
+  }
 
   async function postJson(url, body) {
     const res = await fetch(url, {
@@ -119,7 +162,7 @@
     return { ok: res.ok, data };
   }
 
-  sendBtn.addEventListener('click', async () => {
+  async function requestOtp() {
     const phone = phoneInput.value.trim();
     if (!phone) {
       message.textContent = 'لطفاً شماره موبایل خود را وارد کنید.';
@@ -127,6 +170,7 @@
       return;
     }
     sendBtn.disabled = true;
+    if (resendBtn) resendBtn.disabled = true;
     message.textContent = 'در حال ارسال کد…';
     message.style.color = '#4b5563';
 
@@ -136,17 +180,27 @@
         message.textContent = res.data.message || 'خطا در ارسال کد. شماره را بررسی کنید.';
         message.style.color = '#dc2626';
         sendBtn.disabled = false;
+        if (resendBtn) resendBtn.disabled = false;
         return;
       }
       message.textContent = 'کد پیامکی با موفقیت ارسال شد.';
       message.style.color = '#10b981';
       codeBox.style.display = 'block';
+      sendBtn.style.display = 'none';
       codeInput.focus();
+      startCountdown(120);
     } catch (_) {
       message.textContent = 'خطا در اتصال به سرور.';
       message.style.color = '#dc2626';
       sendBtn.disabled = false;
+      if (resendBtn) resendBtn.disabled = false;
     }
+  }
+
+  sendBtn.addEventListener('click', requestOtp);
+  if (resendBtn) resendBtn.addEventListener('click', () => {
+    resendBtn.disabled = false;
+    requestOtp();
   });
 
   verifyBtn.addEventListener('click', async () => {
@@ -187,4 +241,15 @@
 })();
 </script>
 {% endif %}
+
+<script>
+(() => {
+  // Mobile app deep-link detection
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const deepBtn = document.getElementById('deep-link-btn');
+  if (deepBtn && isMobile) {
+    deepBtn.style.display = 'block';
+  }
+})();
+</script>
 {% endblock %}

@@ -370,13 +370,13 @@ class EntitlementAdmin(admin.ModelAdmin):
     """Admins can grant access by hand and revoke it by archiving; nothing is deleted. A book given by hand here is a
     gift from the admin who saves it (the book page's «هدیه به کاربر» is the easier way)."""
 
-    list_display = ("owner", "scope", "left", "came_from", "start")
+    list_display = ("owner", "scope", "left", "came_from", "start", "warning_sent")
     list_filter = (EntitlementStateFilter, EntitlementKindFilter)
     search_fields = ("user__phone", "book__title")
     list_select_related = ("user", "book", "major", "order", "granted_by")
     autocomplete_fields = ("user",)
     raw_id_fields = ("book", "order")
-    readonly_fields = ("order", "granted_by", "created_at")
+    readonly_fields = ("order", "granted_by", "created_at", "expiry_warning_sent_at")
 
     def has_view_permission(self, request, obj=None):
         return bool(request.user.is_superuser)
@@ -409,6 +409,12 @@ class EntitlementAdmin(admin.ModelAdmin):
     @admin.display(description="از کجا")
     def came_from(self, obj):
         return entitlement_source(obj)
+
+    @admin.display(description="هشدار انقضا", ordering="expiry_warning_sent_at")
+    def warning_sent(self, obj):
+        if not obj.expiry_warning_sent_at:
+            return "—"
+        return when(obj.expiry_warning_sent_at, with_time=True)
 
     def save_model(self, request, obj, form, change):
         if not change and obj.book_id and not obj.order_id and not obj.granted_by_id:

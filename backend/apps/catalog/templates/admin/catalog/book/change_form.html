@@ -307,6 +307,47 @@
     {% endif %}
   </div>
   {% endif %}
+
+  {% if assistant_audit_logs %}
+  <div id="assistants-audit" style="margin-top:24px; padding-top:18px; border-top:1px dashed var(--hairline-color);">
+    <h3 style="margin:0 0 6px; font-size:15px; font-weight:800; color:var(--body-fg);">
+      📜 تاریخچه و لاگ تغییرات دستیاران (Audit Trail)
+    </h3>
+    <p class="hint" style="margin:0 0 12px;">
+      ثبت خودکار کلیه عملیات‌های افزودن، ویرایش دسترسی‌ها یا حذف دستیاران این کتاب جهت ممیزی و نظارت.
+    </p>
+    <table class="lp-table" style="width:100%; font-size:12px;">
+      <thead>
+        <tr>
+          <th>زمان</th>
+          <th>عملیات</th>
+          <th>دستیار</th>
+          <th>اقدام‌کننده</th>
+          <th>شرح تغییرات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in assistant_audit_logs %}
+        <tr>
+          <td style="white-space:nowrap; color:var(--body-quiet-color);">{{ log.created_at|date:"Y-m-d H:i" }}</td>
+          <td>
+            {% if log.action == 'added' %}
+            <span class="lp-badge lp-b-green">افزودن دستیار</span>
+            {% elif log.action == 'updated' %}
+            <span class="lp-badge lp-b-blue">ویرایش دسترسی‌ها</span>
+            {% else %}
+            <span class="lp-badge" style="background:#fee2e2; color:#b91c1c;">حذف دستیار</span>
+            {% endif %}
+          </td>
+          <td dir="ltr" style="text-align:right; font-weight:600;">{{ log.assistant_phone }}</td>
+          <td>{{ log.actor.full_name|default:log.actor.phone|default:"سیستم" }}</td>
+          <td style="color:var(--body-quiet-color);">{{ log.details }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 </div>
 
 {% if can_manage_access %}

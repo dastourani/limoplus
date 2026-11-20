@@ -2364,6 +2364,13 @@ class TeacherAssistantTests(TestCase):
         self.assertFalse(ta_editor.can_publish)
         self.assertEqual(ta_editor.note, "مهندس احمدی - TA حل تمرین")
 
+        from apps.catalog.models import BookAssistantAuditLog
+        log_entry = BookAssistantAuditLog.objects.filter(book=self.book, assistant_phone="09125556677").first()
+        self.assertIsNotNone(log_entry)
+        self.assertEqual(log_entry.action, BookAssistantAuditLog.Action.ADDED)
+        self.assertEqual(log_entry.actor, self.teacher)
+        self.assertIn("ویرایش محتوا", log_entry.details)
+
     def test_teacher_can_remove_ta(self):
         ta_user = User.objects.create_user("09128889900", is_staff=True)
         ta_user.groups.add(self.group)
@@ -2375,6 +2382,12 @@ class TeacherAssistantTests(TestCase):
         })
         self.assertEqual(res.status_code, 302)
         self.assertFalse(BookEditor.objects.filter(pk=ta_editor.pk).exists())
+
+        from apps.catalog.models import BookAssistantAuditLog
+        remove_log = BookAssistantAuditLog.objects.filter(book=self.book, assistant_phone="09128889900").first()
+        self.assertIsNotNone(remove_log)
+        self.assertEqual(remove_log.action, BookAssistantAuditLog.Action.REMOVED)
+        self.assertEqual(remove_log.actor, self.teacher)
 
     def test_study_analytics_permission_and_view(self):
         # Teacher with can_view_aggregate_study=True can view

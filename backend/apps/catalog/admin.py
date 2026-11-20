@@ -15,7 +15,7 @@ from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
 from .filters import BookFilter, BookFKFilter, ChapterFilter, YesNoFilter
 from .panel_display import badges
-from .models import (Banner, Book, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
+from .models import (Banner, Book, BookAssistantAuditLog, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
                      ShareSettings, Shelf, ShelfBook)
 
 
@@ -280,8 +280,11 @@ class BookAdmin(admin.ModelAdmin):
             extra["assistants"] = assistants
             has_real_assistants = any(not a["is_self"] for a in assistants)
             extra["has_real_assistants"] = has_real_assistants
-            from .models import BookTeamTask
+            from .models import BookTeamTask, BookAssistantAuditLog
             extra["team_tasks"] = list(BookTeamTask.objects.filter(book=book).select_related("author"))
+            extra["assistant_audit_logs"] = list(
+                BookAssistantAuditLog.objects.filter(book=book).select_related("actor", "assistant_user")[:25]
+            )
             can_view_study = bool(
                 request.user.is_superuser
                 or (access.is_book_teacher(request.user) and BookEditor.objects.filter(book=book, user=request.user, can_view_aggregate_study=True).exists())
@@ -416,8 +419,9 @@ class BookAdmin(admin.ModelAdmin):
         from django.contrib.auth.models import Group
         from django.core.exceptions import PermissionDenied
         from django.shortcuts import get_object_or_404, redirect
+        from apps.accounts.views import _client_ip
         from .access import BOOK_EDITOR_GROUP, can_edit_book
-        from .models import BookEditor
+        from .models import BookEditor, BookAssistantAuditLog
 
         book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK)
         if not can_edit_book(request.user, book):
@@ -426,6 +430,7 @@ class BookAdmin(admin.ModelAdmin):
         if request.method != "POST":
             return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
 
+        client_ip = _client_ip(request)
         action = request.POST.get("action")
         if action == "add":
             phone = (request.POST.get("phone") or "").strip().translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
@@ -437,6 +442,17 @@ class BookAdmin(admin.ModelAdmin):
             can_view_reports = bool(request.POST.get("can_view_reports"))
             can_view_aggregate_study = bool(request.POST.get("can_view_aggregate_study"))
             note = (request.POST.get("note") or "").strip()[:200]
+
+            perms_list = []
+            if can_edit_content:
+                perms_list.append("ویرایش محتوا")
+            if can_view_reports:
+                perms_list.append("گزارش ایرادها")
+            if can_view_aggregate_study:
+                perms_list.append("آمار مطالعه")
+            perms_str = "، ".join(perms_list) if perms_list else "بدون مجوز تخصصی"
+            if note:
+                perms_str += f" (یادداشت: {note})"
 
             User = get_user_model()
             user, _ = User.objects.get_or_create(phone=phone)
@@ -464,8 +480,26 @@ class BookAdmin(admin.ModelAdmin):
                 if note:
                     editor.note = note
                 editor.save(update_fields=["can_edit_content", "can_view_reports", "can_view_aggregate_study", "note"])
+                BookAssistantAuditLog.objects.create(
+                    book=book,
+                    actor=request.user,
+                    assistant_user=user,
+                    assistant_phone=phone,
+                    action=BookAssistantAuditLog.Action.UPDATED,
+                    details=f"به‌روزرسانی دسترسی‌ها: {perms_str}",
+                    ip=client_ip,
+                )
                 messages.success(request, f"دسترسی‌های دستیار با شماره {phone} به‌روزرسانی شد.")
             else:
+                BookAssistantAuditLog.objects.create(
+                    book=book,
+                    actor=request.user,
+                    assistant_user=user,
+                    assistant_phone=phone,
+                    action=BookAssistantAuditLog.Action.ADDED,
+                    details=f"افزودن دستیار جدید: {perms_str}",
+                    ip=client_ip,
+                )
                 messages.success(request, f"دستیار آموزشی با شماره {phone} با موفقیت به کتاب اضافه شد.")
                 # Send SMS notification to assistant
                 try:
@@ -484,7 +518,17 @@ class BookAdmin(admin.ModelAdmin):
                 messages.error(request, "امکان حذف دسترسی خودتان وجود ندارد.")
             else:
                 phone = editor.user.phone
+                assistant_user = editor.user
                 editor.delete()
+                BookAssistantAuditLog.objects.create(
+                    book=book,
+                    actor=request.user,
+                    assistant_user=assistant_user,
+                    assistant_phone=phone,
+                    action=BookAssistantAuditLog.Action.REMOVED,
+                    details="حذف کامل دسترسی دستیار از کتاب",
+                    ip=client_ip,
+                )
                 messages.success(request, f"دسترسی دستیار با شماره {phone} از این کتاب حذف شد.")
 
         return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#assistants")
@@ -937,6 +981,40 @@ class BookEditorAdmin(admin.ModelAdmin):
         if "book" in form.base_fields:
             form.base_fields["book"].help_text = "فقط کتاب؛ فصل یا بخش را اینجا نگذارید."
         return form
+
+
+@admin.register(BookAssistantAuditLog)
+class BookAssistantAuditLogAdmin(admin.ModelAdmin):
+    list_display = ("book", "action_badge", "assistant_phone", "assistant_user", "actor", "ip", "created_at", "details")
+    list_filter = ("action", BookFilter, "created_at")
+    search_fields = ("book__title", "assistant_phone", "assistant_user__phone", "actor__phone", "details")
+    readonly_fields = ("book", "actor", "assistant_user", "assistant_phone", "action", "details", "ip", "created_at")
+
+    @admin.display(description="عملیات")
+    def action_badge(self, obj):
+        colors = {
+            BookAssistantAuditLog.Action.ADDED: "#15803d",
+            BookAssistantAuditLog.Action.UPDATED: "#0284c7",
+            BookAssistantAuditLog.Action.REMOVED: "#b91c1c",
+        }
+        color = colors.get(obj.action, "#64748b")
+        return format_html(
+            '<span style="display:inline-block; padding:2px 8px; border-radius:4px; font-weight:700; font-size:12px; color:#fff; background:{};">{}</span>',
+            color,
+            obj.get_action_display(),
+        )
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
 
 
 @admin.register(ChapterRevision)

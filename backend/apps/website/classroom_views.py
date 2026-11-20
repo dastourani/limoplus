@@ -42,6 +42,7 @@ def classroom_join(request, code):
         "teacher": classroom.teacher,
         "already_member": already_member,
         "app_book_url": f"/book/{classroom.book.slug}",
+        "deep_link_url": f"limookhan://book/{classroom.book.slug}",
     })
 
     if classroom.expiry_policy == Classroom.ExpiryPolicy.FIXED_DATE and classroom.ends_on:
