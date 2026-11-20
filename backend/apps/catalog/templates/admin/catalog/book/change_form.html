@@ -139,6 +139,89 @@
     </div>
   </div>
 </div>
+
+<div class="lp chapters-box" id="assistants" style="margin-top:24px;">
+  <h2>👥 دستیاران و همکاران آموزشی (TA)</h2>
+  <p class="hint">دستیاران آموزشی می‌توانند در تایپ درسنامه‌ها، مدیریت تست‌ها یا بررسی گزارش‌های دانشجویان به شما کمک کنند. برای امنیت کتاب، مجوزهای حساس (مانند انتشار یا فروش) فقط در اختیار استاد و مدیر کل است.</p>
+
+  <form class="cm-card" method="post" action="{% url 'admin:catalog_book_assistants_action' original.pk %}" style="margin-top:12px; padding:16px;">{% csrf_token %}
+    <input type="hidden" name="action" value="add">
+    <b>+ افزودن یا به‌روزرسانی دسترسی دستیار (TA)</b>
+    <div class="row" style="margin-top:10px; gap:16px; align-items:flex-start; flex-wrap:wrap;">
+      <div style="width:180px;">
+        <label class="f">شماره موبایل دستیار</label>
+        <input type="text" name="phone" dir="ltr" required placeholder="09121234567" style="width:100%;">
+      </div>
+      <div class="grow" style="min-width:220px;">
+        <label class="f">یادداشت استاد (اختیاری)</label>
+        <input type="text" name="note" maxlength="200" placeholder="مثلاً حل تمرین فصل ۱ و ۲" style="width:100%;">
+      </div>
+    </div>
+
+    <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:18px; background:var(--darkened-bg); padding:10px 14px; border-radius:8px;">
+      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:700;">
+        <input type="checkbox" name="can_edit_content" value="1" checked>
+        <span>✏️ ویرایش محتوا و درسنامه‌ها</span>
+      </label>
+      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:700;">
+        <input type="checkbox" name="can_view_reports" value="1" checked>
+        <span>🚩 مشاهده گزارش اشکالات دانشجویان</span>
+      </label>
+      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:700;">
+        <input type="checkbox" name="can_view_aggregate_study" value="1">
+        <span>📊 مشاهده آمار تجمیعی مطالعه کلاس</span>
+      </label>
+    </div>
+
+    <button class="btn primary" type="submit" style="margin-top:12px;">ثبت دستیار آموزشی</button>
+  </form>
+
+  {% if assistants %}
+  <table class="lp-table" style="margin-top:14px; width:100%;">
+    <thead>
+      <tr>
+        <th>همکار / دستیار</th>
+        <th>شماره موبایل</th>
+        <th>دسترسی‌های فعال</th>
+        <th>یادداشت</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in assistants %}
+      <tr>
+        <td>
+          <b>{{ a.name }}</b>
+          {% if a.is_self %}<span class="lp-badge lp-b-blue" style="margin-inline-start:4px;">شما (استاد)</span>{% endif %}
+        </td>
+        <td dir="ltr" style="text-align:right;">{{ a.phone }}</td>
+        <td>
+          <div class="lp-badges">
+            {% if a.can_edit_content %}<span class="lp-badge lp-b-green">ویرایش محتوا</span>{% endif %}
+            {% if a.can_view_reports %}<span class="lp-badge lp-b-yellow">گزارش اشکالات</span>{% endif %}
+            {% if a.can_view_aggregate_study %}<span class="lp-badge lp-b-blue">آمار مطالعه</span>{% endif %}
+            {% if a.can_publish %}<span class="lp-badge lp-b-green">ناشر</span>{% endif %}
+          </div>
+        </td>
+        <td style="color:var(--body-quiet-color); font-size:12px;">{{ a.note|default:"—" }}</td>
+        <td>
+          {% if not a.is_self %}
+          <form class="inline" method="post" action="{% url 'admin:catalog_book_assistants_action' original.pk %}" onsubmit="return confirm('آیا از حذف دسترسی این دستیار به این کتاب اطمینان دارید؟');">{% csrf_token %}
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="editor_id" value="{{ a.pk }}">
+            <button class="btn small danger" type="submit">حذف دسترسی</button>
+          </form>
+          {% else %}
+          <span style="color:var(--body-quiet-color); font-size:11px;">مالک اصلی</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
 {% if can_manage_access %}
 <div class="lp chapters-box" id="gifts">
   <h2>هدیه به کاربر</h2>
