@@ -578,15 +578,21 @@ class BookAdmin(admin.ModelAdmin):
 
         questions = (
             Question.objects.filter(node__path__startswith=book.path, answer_count__gte=3, is_archived=False)
+            .select_related("node")
             .annotate(rate=Cast("correct_count", FloatField()) / F("answer_count"))
-            .order_by("rate", "id")[:8]
+            .order_by("rate", "id")[:10]
         )
         hardest_questions = []
         for q in questions:
+            correct_pct = round(100 * q.correct_count / q.answer_count)
+            error_pct = max(0, 100 - correct_pct)
             hardest_questions.append({
                 "id": q.id,
                 "stem": q.stem[:140],
-                "rate": fa_digits(round(100 * q.correct_count / q.answer_count)),
+                "chapter_or_section": q.node.title if q.node else "—",
+                "rate": fa_digits(correct_pct),
+                "error_rate": fa_digits(error_pct),
+                "error_rate_num": error_pct,
                 "answer_count": fa_number(q.answer_count),
             })
 
@@ -1662,6 +1668,7 @@ _assets_each_context = admin.site.each_context
 
 
 def _assets_each_context_with_version(request):
+    from django.utils import timezone
     context = _assets_each_context(request)
     context["assets_v"] = _assets_version()
     user = getattr(request, "user", None)
@@ -1709,8 +1716,10 @@ def _assets_each_context_with_version(request):
 
             classrooms = []
             site_url = getattr(settings, "SITE_URL", "").rstrip("/")
+            today_date = timezone.localdate()
             for c in Classroom.objects.filter(is_active=True).select_related("book").order_by("-created_at")[:6]:
                 m_count = c.members.filter(status="active").count()
+                days_left = (c.ends_on - today_date).days if (c.expiry_policy == Classroom.ExpiryPolicy.FIXED_DATE and c.ends_on) else None
                 classrooms.append({
                     "pk": c.pk,
                     "title": c.title,
@@ -1718,6 +1727,9 @@ def _assets_each_context_with_version(request):
                     "code": c.code,
                     "capacity": c.capacity,
                     "members_count": m_count,
+                    "days_left": days_left,
+                    "is_expiring": (days_left is not None and 0 <= days_left <= 7),
+                    "is_expired": (days_left is not None and days_left < 0),
                 })
             context["teacher_classrooms"] = classrooms
             context["site_url"] = site_url
@@ -1745,8 +1757,10 @@ def _assets_each_context_with_version(request):
 
             classrooms = []
             site_url = getattr(settings, "SITE_URL", "").rstrip("/")
+            today_date = timezone.localdate()
             for c in Classroom.objects.filter(teacher=user, is_active=True).select_related("book").order_by("-created_at")[:6]:
                 m_count = c.members.filter(status="active").count()
+                days_left = (c.ends_on - today_date).days if (c.expiry_policy == Classroom.ExpiryPolicy.FIXED_DATE and c.ends_on) else None
                 classrooms.append({
                     "pk": c.pk,
                     "title": c.title,
@@ -1754,6 +1768,9 @@ def _assets_each_context_with_version(request):
                     "code": c.code,
                     "capacity": c.capacity,
                     "members_count": m_count,
+                    "days_left": days_left,
+                    "is_expiring": (days_left is not None and 0 <= days_left <= 7),
+                    "is_expired": (days_left is not None and days_left < 0),
                 })
             context["teacher_classrooms"] = classrooms
             context["site_url"] = site_url

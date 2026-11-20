@@ -584,10 +584,22 @@ class ReportAdmin(admin.ModelAdmin):
         return format_html('{} {}<div class="lp-quiet" style="white-space:nowrap">{}</div>',
                            reporter, tag, jalali_datetime(obj.created_at))
 
-    @admin.display(description="وضعیت", ordering="status")
+    @admin.display(description="وضعیت و اقدام سریع", ordering="status")
     def state(self, obj):
         color = {Report.Status.OPEN: "red", Report.Status.FIXED: "green"}.get(obj.status, "grey")
-        return badges((obj.get_status_display(), color))
+        badge_html = badges((obj.get_status_display(), color))
+        if obj.status == Report.Status.OPEN:
+            fix_url = reverse("admin:learning_report_quick_action", args=[obj.pk, "fixed"])
+            reject_url = reverse("admin:learning_report_quick_action", args=[obj.pk, "rejected"])
+            return format_html(
+                '{}'
+                '<div style="margin-top:6px; display:flex; gap:4px; flex-wrap:wrap;">'
+                '<a class="button" href="{}" style="padding:2px 8px; font-size:11px; background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;" title="علامت‌گذاری به عنوان اصلاح شد">✓ اصلاح شد</a>'
+                '<a class="button" href="{}" style="padding:2px 8px; font-size:11px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;" title="بررسی شد، درست بود">بررسی شد</a>'
+                '</div>',
+                badge_html, fix_url, reject_url
+            )
+        return badge_html
 
     @admin.display(description="")
     def manage(self, obj):
@@ -613,6 +625,38 @@ class ReportAdmin(admin.ModelAdmin):
             anchor += "&gone=1&r=" + q((obj.quote or obj.note or "")[:300], safe="")
         url = reverse("admin:catalog_chapter_manager", args=[obj.p_chapter_id]) + anchor
         return format_html('<a class="button" style="white-space:nowrap" href="{}">باز کردن</a>', url)
+
+    def get_urls(self):
+        from django.urls import path
+
+        custom = [
+            path("<int:object_id>/action/<str:action_type>/", self.admin_site.admin_view(self.quick_action_view), name="learning_report_quick_action"),
+        ]
+        return custom + super().get_urls()
+
+    def quick_action_view(self, request, object_id, action_type):
+        from django.core.exceptions import PermissionDenied
+        from django.http import HttpResponseRedirect
+        from django.shortcuts import get_object_or_404
+
+        report = get_object_or_404(self.get_queryset(request), pk=object_id)
+        if not self.has_change_permission(request, report) and not self.has_view_permission(request, report):
+            raise PermissionDenied
+
+        now = timezone.now()
+        if action_type == "fixed":
+            report.status = Report.Status.FIXED
+            report.resolved_at = now
+            report.save(update_fields=["status", "resolved_at"])
+            self.message_user(request, f"گزارش #{report.pk} به عنوان «اصلاح شد» ثبت گردید.")
+        elif action_type == "rejected":
+            report.status = Report.Status.REJECTED
+            report.resolved_at = now
+            report.save(update_fields=["status", "resolved_at"])
+            self.message_user(request, f"گزارش #{report.pk} به عنوان «بررسی شد، درست بود» ثبت گردید.")
+
+        next_url = request.META.get("HTTP_REFERER") or reverse("admin:learning_report_changelist")
+        return HttpResponseRedirect(next_url)
 
     @admin.action(description="علامت «اصلاح شد»")
     def mark_fixed(self, request, queryset):

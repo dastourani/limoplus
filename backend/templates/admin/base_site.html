@@ -219,6 +219,73 @@
     font-weight: 700 !important;
   }
   {% endif %}
+
+  /* Refined Typography & Contrast for Dark Mode (Golden-Lemon Accents) */
+  html[data-theme="dark"] #content h1,
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #content h1 {
+      color: #F5C518;
+      letter-spacing: -0.3px;
+    }
+  }
+  html[data-theme="dark"] #content h1 {
+    color: #F5C518;
+  }
+  html[data-theme="dark"] #changelist-filter h2,
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #changelist-filter h2 {
+      color: #F5C518;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+    }
+  }
+  html[data-theme="dark"] #changelist-filter h2 {
+    color: #F5C518;
+    font-weight: 800;
+  }
+
+  /* Filter sidebar header background styling in both themes */
+  #changelist-filter h2 {
+    background: linear-gradient(135deg, #133a28 0%, #166534 100%) !important;
+    color: #F5C518 !important;
+    border-radius: 8px 8px 0 0;
+    margin: -1px -1px 12px -1px;
+    padding: 10px 14px !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
+  }
+  #changelist-filter {
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  /* Harmonized filter pill badges in light and dark mode */
+  #changelist-filter .lp-filter-row a {
+    border-color: var(--hairline-color);
+    transition: all .15s ease;
+  }
+  #changelist-filter .lp-filter-row li.selected a {
+    background: #15803d !important;
+    color: #fff !important;
+    border-color: #15803d !important;
+    font-weight: 700;
+  }
+  html[data-theme="dark"] #changelist-filter .lp-filter-row li.selected a {
+    background: #166534 !important;
+    color: #F5C518 !important;
+    border-color: #F5C518 !important;
+    box-shadow: 0 0 6px rgba(245, 197, 24, 0.25);
+  }
+
+  /* Table active row / item styling in dark mode */
+  html[data-theme="dark"] #nav-sidebar .current-model a {
+    color: #F5C518 !important;
+    font-weight: 800 !important;
+  }
+  html[data-theme="dark"] #nav-sidebar caption a {
+    color: #4ade80 !important;
+    font-weight: 800;
+  }
 </style>
 <script>
   // The side menu keeps its place: where it was scrolled to is remembered for this tab and put back on the next

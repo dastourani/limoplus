@@ -116,24 +116,31 @@
       <thead>
         <tr>
           <th>صورت تست / سوال</th>
+          <th>مبحث / بخش</th>
           <th>تعداد پاسخ‌ها</th>
           <th>درصد پاسخ درست</th>
-          <th>وضعیت دشواری</th>
+          <th>میزان خطا و دشواری</th>
           <th>عملیات</th>
         </tr>
       </thead>
       <tbody>
         {% for q in hardest_questions %}
         <tr>
-          <td style="max-width:480px; line-height:1.6;">{{ q.stem }}</td>
+          <td style="max-width:420px; line-height:1.6;"><b>#{{ q.id }}</b>: {{ q.stem }}</td>
+          <td><span style="font-size:12px; color:var(--body-quiet-color);">{{ q.chapter_or_section }}</span></td>
           <td>{{ q.answer_count }} پاسخ</td>
-          <td><b>{{ q.rate }}٪</b></td>
+          <td><b style="color:{% if q.error_rate_num > 50 %}#ef4444{% else %}#eab308{% endif %};">{{ q.rate }}٪</b></td>
           <td>
-            <span class="badge-warn">⚠️ نیاز به بررسی و رفع اشکال</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div class="prog-bar-bg" style="width:90px; background:rgba(239,68,68,0.15);">
+                <div class="prog-bar-fill" style="width: {{ q.error_rate_num }}%; background:#ef4444;"></div>
+              </div>
+              <span class="badge-warn" style="font-size:11px;">{{ q.error_rate }}٪ خطا</span>
+            </div>
           </td>
           <td>
-            <a href="{% url 'admin:learning_question_change' q.id %}" target="_blank" class="study-back-btn" style="background:var(--darkened-bg); color:var(--body-fg); border-color:var(--hairline-color);">
-              مشاهده تست ↗
+            <a href="{% url 'admin:learning_question_change' q.id %}" target="_blank" class="study-back-btn" style="background:var(--darkened-bg); color:var(--body-fg); border-color:var(--hairline-color); padding:4px 10px; font-size:11.5px;">
+              ویرایش تست ↗
             </a>
           </td>
         </tr>

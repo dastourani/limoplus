@@ -424,7 +424,14 @@
           {% for c in teacher_classrooms %}
           <li class="teacher-list-item">
             <div class="meta">
-              <a href="{% url 'admin:website_classroom_change' c.pk %}" class="title">{{ c.title }}</a>
+              <a href="{% url 'admin:website_classroom_change' c.pk %}" class="title">
+                {{ c.title }}
+                {% if c.is_expired %}
+                  <span style="font-size:10px; padding:2px 6px; border-radius:10px; background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); margin-right:4px;">⚠️ منقضی شده</span>
+                {% elif c.is_expiring %}
+                  <span style="font-size:10px; padding:2px 6px; border-radius:10px; background:rgba(245,197,24,0.15); color:#eab308; border:1px solid rgba(245,197,24,0.3); margin-right:4px;">⚠️ {{ c.days_left }} روز تا پایان دوره</span>
+                {% endif %}
+              </a>
               <span class="sub">
                 کتاب: {{ c.book.title }} • {{ c.members_count }} از {{ c.capacity }} دانشجو
               </span>
@@ -557,7 +564,7 @@
         'catalog-section': { title: 'بخش‌ها (جزوه و خلاصه)', desc: 'درسنامه‌ها، چکیده‌ها و متون آموزشی فصول کتاب که قالب تعاملی اپلیکیشن را تشکیل می‌دهند.' },
         'catalog-label': { title: 'برچسب‌های متن', desc: 'کادرهای رنگی اختصاصی متن (مانند تعریف، قضیه، نکته، تله، فرمول و برچسب‌های سفارشی شما).' },
         'catalog-chapterrevision': { title: 'نسخه‌های فصل', desc: 'تاریخچه تغییرات و نسخه‌های ذخیره‌شده فایل فصول با امکان بازیابی نسخه‌های قبلی.' },
-        'catalog-sharesettings': { title: 'تنظیمات اشتراک‌گذاری', desc: 'پیوندها و بنرهای پیش‌فرض برای معرفی و اشتراک‌گذاری کتاب‌ها با سایرین.' },
+        'catalog-sharesettings': { title: 'پیوند معرفی اپلیکیشن', desc: 'پیوند پیش‌فرض سراسری برای دکمه «اشتراک‌گذاری کتاب با دوستان» در اپلیکیشن (مانند لینک کانال بله یا صفحه دانلود).' },
         'catalog-major': { title: 'رشته‌ها و شاخه‌ها', desc: 'دسته‌بندی‌های تحصیلی (مانند ریاضی، تجربی، مهندسی) که کتاب‌ها در قفسه آن‌ها قرار می‌گیرند.' },
         'catalog-shelf': { title: 'قفسه‌های ویترین', desc: 'ردیف‌های کتاب در صفحه اصلی اپلیکیشن برای دسته‌بندی و چیدمان بصری کتاب‌ها.' },
         'catalog-banner': { title: 'بنرهای تبلیغاتی', desc: 'اسلایدرها و بنرهای معرفی کتاب در صفحه اول وب‌اپ و اپلیکیشن.' },
