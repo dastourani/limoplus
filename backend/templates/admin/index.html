@@ -3,37 +3,13 @@
 
 {% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "admin/css/dashboard.css" %}">
 <style>
-  /* Two-column layout balance: content-main 58% on right, content-related 42% on left */
-  @media (min-width: 900px) {
-    #content.colMS {
-      display: flex !important;
-      flex-direction: row-reverse !important;
-      align-items: flex-start !important;
-      gap: 24px !important;
-    }
-    #content-main {
-      flex: 1 1 58% !important;
-      width: 58% !important;
-      min-width: 0 !important;
-      margin: 0 !important;
-      float: none !important;
-    }
-    #content-related {
-      flex: 0 0 40% !important;
-      width: 40% !important;
-      min-width: 320px !important;
-      margin: 0 !important;
-      float: none !important;
-    }
-  }
-
-  .admin-kpi-section { margin-bottom: 20px; }
-  .admin-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .admin-kpi-section { margin-bottom: 24px; }
+  .admin-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 22px; }
   .admin-kpi-card {
     background: var(--body-bg);
     border: 1px solid var(--hairline-color);
     border-radius: 12px;
-    padding: 14px 16px;
+    padding: 16px 18px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.03);
     position: relative;
     overflow: hidden;
@@ -56,10 +32,10 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   .admin-kpi-title {
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 700;
     color: var(--body-quiet-color);
     display: flex;
@@ -67,25 +43,25 @@
     gap: 6px;
   }
   .admin-kpi-icon {
-    font-size: 15px;
+    font-size: 16px;
   }
   .admin-kpi-main-val {
-    font-size: 22px;
+    font-size: 26px;
     font-weight: 900;
     color: var(--body-fg);
     line-height: 1.2;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     letter-spacing: -0.5px;
   }
   .admin-kpi-sub {
-    font-size: 11px;
+    font-size: 11.5px;
     color: var(--body-quiet-color);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     flex-wrap: wrap;
     border-top: 1px solid var(--hairline-color);
-    padding-top: 6px;
+    padding-top: 8px;
     margin-top: 6px;
   }
   .admin-kpi-sub b {
@@ -93,7 +69,7 @@
     font-weight: 700;
   }
   .admin-kpi-link {
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 700;
     color: #0284c7;
     text-decoration: none;
@@ -302,7 +278,59 @@
       </div>
     </div>
 
-        <div class="teacher-grid">
+    {% if teacher_kpis %}
+    <div class="admin-kpi-grid" style="margin-bottom: 20px;">
+      <!-- کارت دانشجویان من -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">🎓</span> دانشجویان من</span>
+          <a href="{% url 'admin:website_classroom_changelist' %}" class="admin-kpi-link">کلاس‌ها ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ teacher_kpis.students_total }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">دانشجو</span></div>
+        <div class="admin-kpi-sub">
+          <span>ورودی این هفته: <b>{{ teacher_kpis.students_week }}</b></span>
+          <span>•</span>
+          <span>کلاس‌ها: <b>{{ teacher_kpis.classes_count }}</b></span>
+        </div>
+      </div>
+
+      <!-- کارت فعالیت و مطالعه کلاسی -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">⚡</span> مطالعه کلاس در ۳۰ روز</span>
+        </div>
+        <div class="admin-kpi-main-val">{{ teacher_kpis.study_hours }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">ساعت مطالعه</span></div>
+        <div class="admin-kpi-sub">
+          <span>دانشجویان فعال در ۳۰ روز اخیر: <b>{{ teacher_kpis.active_students }} نفر</b></span>
+        </div>
+      </div>
+
+      <!-- کارت وضعیت تألیف و فصول -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">📚</span> تألیف و سرفصل‌ها</span>
+        </div>
+        <div class="admin-kpi-main-val">{{ teacher_kpis.chapters_count }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">فصل در کتاب‌های من</span></div>
+        <div class="admin-kpi-sub">
+          <span>وظایف و یادداشت‌های تیمی باز: <b>{{ teacher_kpis.pending_tasks }}</b></span>
+        </div>
+      </div>
+
+      <!-- کارت اشکالات و بازخورد دانشجویان -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">⚠️</span> اشکالات و بازخوردها</span>
+          <a href="{% url 'admin:learning_report_changelist' %}" class="admin-kpi-link">گزارش‌ها ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ teacher_kpis.pending_reports }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">اشکال نیازمند بررسی</span></div>
+        <div class="admin-kpi-sub">
+          <span>گزارش‌های علمی و نگارشی ارسالی توسط دانشجویان</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="teacher-grid">
       <!-- کتاب‌های من -->
       <div class="teacher-card">
         <div class="teacher-card-head">
@@ -380,7 +408,83 @@
   </div>
   {% endif %}
 
-    <div class="{% if is_teacher %}teacher-mode-apps{% endif %}" id="lp-apps-container">
+  {% if show_admin_kpis and not is_teacher %}
+  <div class="admin-kpi-section">
+    <div class="admin-kpi-grid">
+      <!-- کارت اعضای جدید -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">👥</span> اعضای جدید</span>
+          <a href="{% url 'admin:accounts_user_changelist' %}" class="admin-kpi-link">مدیریت کاربران ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ kpi_users_today }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">نفر امروز</span></div>
+        <div class="admin-kpi-sub">
+          <span>هفته اخیر: <b>{{ kpi_users_week }}</b></span>
+          <span>•</span>
+          <span>کل اعضا: <b>{{ kpi_users_total }}</b></span>
+        </div>
+      </div>
+
+      <!-- کارت کاربران فعال -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">⚡</span> کاربران فعال (MAU)</span>
+          <a href="{% url 'admin:accounts_devicesession_changelist' %}" class="admin-kpi-link">دستگاه‌ها ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ kpi_active_month }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">کاربر فعال در ۳۰ روز</span></div>
+        <div class="admin-kpi-sub">
+          <span>آنلاین/فعال اخیر (۱۵ دقیقه): <b>{{ kpi_active_now }}</b></span>
+        </div>
+      </div>
+
+      <!-- کارت درآمدهای تجمیعی -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">💳</span> درآمد و فروش</span>
+          <a href="{% url 'admin:commerce_order_changelist' %}" class="admin-kpi-link">سفارش‌ها ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ kpi_rev_month }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">تومان در ۳۰ روز</span></div>
+        <div class="admin-kpi-sub">
+          <span>امروز: <b>{{ kpi_rev_today }} تومان</b></span>
+          <span>•</span>
+          <span>کل درآمد: <b>{{ kpi_rev_total }} تومان</b></span>
+        </div>
+      </div>
+
+      <!-- کارت جامعه اساتید و کلاس‌ها -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">🎓</span> اساتید و کلاس‌ها</span>
+          <a href="{% url 'admin:catalog_bookeditor_changelist' %}" class="admin-kpi-link">استادان کتاب ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ kpi_teachers_total }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">استاد</span></div>
+        <div class="admin-kpi-sub">
+          <span title="اساتیدی که کتاب دارند اما در ۳۰ روز اخیر تغییر نداده‌اند">کم‌کار / غایب ۳۰ روز: <b style="color:#b91c1c;">{{ kpi_teachers_inactive }}</b></span>
+          <span>•</span>
+          <span>کلاس‌ها: <b>{{ kpi_active_classes }}</b> ({{ kpi_class_students }} دانشجو)</span>
+        </div>
+      </div>
+
+      <!-- کارت خط تولید محتوا و تألیف -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">📚</span> کتب تألیفی و گلوگاه‌ها</span>
+          <a href="{% url 'admin:catalog_book_changelist' %}" class="admin-kpi-link">کتاب‌ها ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ kpi_draft_books }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">کتاب پیش‌نویس (Draft)</span></div>
+        <div class="admin-kpi-sub">
+          <span>منتشرشده: <b>{{ kpi_published_books }}</b></span>
+          <span>•</span>
+          <span title="درخواست‌های انتشار منتظر بررسی مدیر کل">درخواست انتشار: <b style="color:#b45309;">{{ kpi_pending_pubs }}</b></span>
+          <span>•</span>
+          <span title="درخواست‌های جدید همکاری آموزشی">درخواست همکاری: <b style="color:#0284c7;">{{ kpi_pending_teacher_apps }}</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="{% if is_teacher %}teacher-mode-apps{% endif %}" id="lp-apps-container">
     {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
   </div>
 
@@ -544,132 +648,6 @@
 
 {% block sidebar %}
 <div id="content-related">
-  {% if show_admin_kpis and not is_teacher %}
-  <div class="admin-kpi-section">
-    <div class="admin-kpi-grid">
-      <!-- کارت اعضای جدید -->
-      <div class="admin-kpi-card">
-        <div class="admin-kpi-header">
-          <span class="admin-kpi-title"><span class="admin-kpi-icon">👥</span> اعضای جدید</span>
-          <a href="{% url 'admin:accounts_user_changelist' %}" class="admin-kpi-link">مدیریت کاربران ›</a>
-        </div>
-        <div class="admin-kpi-main-val">{{ kpi_users_today }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">نفر امروز</span></div>
-        <div class="admin-kpi-sub">
-          <span>هفته اخیر: <b>{{ kpi_users_week }}</b></span>
-          <span>•</span>
-          <span>کل اعضا: <b>{{ kpi_users_total }}</b></span>
-        </div>
-      </div>
-
-      <!-- کارت کاربران فعال -->
-      <div class="admin-kpi-card">
-        <div class="admin-kpi-header">
-          <span class="admin-kpi-title"><span class="admin-kpi-icon">⚡</span> کاربران فعال (MAU)</span>
-          <a href="{% url 'admin:accounts_devicesession_changelist' %}" class="admin-kpi-link">دستگاه‌ها ›</a>
-        </div>
-        <div class="admin-kpi-main-val">{{ kpi_active_month }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">کاربر فعال در ۳۰ روز</span></div>
-        <div class="admin-kpi-sub">
-          <span>آنلاین/فعال اخیر (۱۵ دقیقه): <b>{{ kpi_active_now }}</b></span>
-        </div>
-      </div>
-
-      <!-- کارت درآمدهای تجمیعی -->
-      <div class="admin-kpi-card">
-        <div class="admin-kpi-header">
-          <span class="admin-kpi-title"><span class="admin-kpi-icon">💳</span> درآمد و فروش</span>
-          <a href="{% url 'admin:commerce_order_changelist' %}" class="admin-kpi-link">سفارش‌ها ›</a>
-        </div>
-        <div class="admin-kpi-main-val">{{ kpi_rev_month }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">تومان در ۳۰ روز</span></div>
-        <div class="admin-kpi-sub">
-          <span>امروز: <b>{{ kpi_rev_today }} تومان</b></span>
-          <span>•</span>
-          <span>کل درآمد: <b>{{ kpi_rev_total }} تومان</b></span>
-        </div>
-      </div>
-
-      <!-- کارت جامعه اساتید و کلاس‌ها -->
-      <div class="admin-kpi-card">
-        <div class="admin-kpi-header">
-          <span class="admin-kpi-title"><span class="admin-kpi-icon">🎓</span> اساتید و کلاس‌ها</span>
-          <a href="{% url 'admin:catalog_bookeditor_changelist' %}" class="admin-kpi-link">استادان کتاب ›</a>
-        </div>
-        <div class="admin-kpi-main-val">{{ kpi_teachers_total }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">استاد</span></div>
-        <div class="admin-kpi-sub">
-          <span title="اساتیدی که کتاب دارند اما در ۳۰ روز اخیر تغییر نداده‌اند">کم‌کار / غایب ۳۰ روز: <b style="color:#b91c1c;">{{ kpi_teachers_inactive }}</b></span>
-          <span>•</span>
-          <span>کلاس‌ها: <b>{{ kpi_active_classes }}</b> ({{ kpi_class_students }} دانشجو)</span>
-        </div>
-      </div>
-
-      <!-- کارت خط تولید محتوا و تألیف -->
-      <div class="admin-kpi-card">
-        <div class="admin-kpi-header">
-          <span class="admin-kpi-title"><span class="admin-kpi-icon">📚</span> کتب تألیفی و گلوگاه‌ها</span>
-          <a href="{% url 'admin:catalog_book_changelist' %}" class="admin-kpi-link">کتاب‌ها ›</a>
-        </div>
-        <div class="admin-kpi-main-val">{{ kpi_draft_books }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">کتاب پیش‌نویس (Draft)</span></div>
-        <div class="admin-kpi-sub">
-          <span>منتشرشده: <b>{{ kpi_published_books }}</b></span>
-          <span>•</span>
-          <span title="درخواست‌های انتشار منتظر بررسی مدیر کل">درخواست انتشار: <b style="color:#b45309;">{{ kpi_pending_pubs }}</b></span>
-          <span>•</span>
-          <span title="درخواست‌های جدید همکاری آموزشی">درخواست همکاری: <b style="color:#0284c7;">{{ kpi_pending_teacher_apps }}</b></span>
-        </div>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-  {% if teacher_kpis %}
-    <div class="admin-kpi-grid" style="margin-bottom: 20px;">
-      <!-- کارت دانشجویان من -->
-      <div class="admin-kpi-card">
-        <div class="admin-kpi-header">
-          <span class="admin-kpi-title"><span class="admin-kpi-icon">🎓</span> دانشجویان من</span>
-          <a href="{% url 'admin:website_classroom_changelist' %}" class="admin-kpi-link">کلاس‌ها ›</a>
-        </div>
-        <div class="admin-kpi-main-val">{{ teacher_kpis.students_total }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">دانشجو</span></div>
-        <div class="admin-kpi-sub">
-          <span>ورودی این هفته: <b>{{ teacher_kpis.students_week }}</b></span>
-          <span>•</span>
-          <span>کلاس‌ها: <b>{{ teacher_kpis.classes_count }}</b></span>
-        </div>
-      </div>
-
-      <!-- کارت فعالیت و مطالعه کلاسی -->
-      <div class="admin-kpi-card">
-        <div class="admin-kpi-header">
-          <span class="admin-kpi-title"><span class="admin-kpi-icon">⚡</span> مطالعه کلاس در ۳۰ روز</span>
-        </div>
-        <div class="admin-kpi-main-val">{{ teacher_kpis.study_hours }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">ساعت مطالعه</span></div>
-        <div class="admin-kpi-sub">
-          <span>دانشجویان فعال در ۳۰ روز اخیر: <b>{{ teacher_kpis.active_students }} نفر</b></span>
-        </div>
-      </div>
-
-      <!-- کارت وضعیت تألیف و فصول -->
-      <div class="admin-kpi-card">
-        <div class="admin-kpi-header">
-          <span class="admin-kpi-title"><span class="admin-kpi-icon">📚</span> تألیف و سرفصل‌ها</span>
-        </div>
-        <div class="admin-kpi-main-val">{{ teacher_kpis.chapters_count }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">فصل در کتاب‌های من</span></div>
-        <div class="admin-kpi-sub">
-          <span>وظایف و یادداشت‌های تیمی باز: <b>{{ teacher_kpis.pending_tasks }}</b></span>
-        </div>
-      </div>
-
-      <!-- کارت اشکالات و بازخورد دانشجویان -->
-      <div class="admin-kpi-card">
-        <div class="admin-kpi-header">
-          <span class="admin-kpi-title"><span class="admin-kpi-icon">⚠️</span> اشکالات و بازخوردها</span>
-          <a href="{% url 'admin:learning_report_changelist' %}" class="admin-kpi-link">گزارش‌ها ›</a>
-        </div>
-        <div class="admin-kpi-main-val">{{ teacher_kpis.pending_reports }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">اشکال نیازمند بررسی</span></div>
-        <div class="admin-kpi-sub">
-          <span>گزارش‌های علمی و نگارشی ارسالی توسط دانشجویان</span>
-        </div>
-      </div>
-    </div>
-    {% endif %}
     <div class="module" id="recent-actions-module">
         <h2>{% translate 'Recent actions' %}</h2>
         <h3>{% if is_teacher %}فعالیت‌های تألیف و تدریس من{% else %}{% translate 'My actions' %}{% endif %}</h3>
