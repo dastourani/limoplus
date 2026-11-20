@@ -361,6 +361,14 @@ def run_due(now=None, force=False) -> list[str]:
             done.append("waitlist-sms")
     except Exception as exc:  # noqa: BLE001
         log.error("waitlist SMS retry failed: %s", _safe(exc))
+    try:
+        from apps.commerce.management.commands.check_expiring_entitlements import check_and_notify_expiring_entitlements
+
+        expiring_res = check_and_notify_expiring_entitlements(now=now)
+        if expiring_res["notified_count"] > 0:
+            done.append("expiring-entitlements")
+    except Exception as exc:  # noqa: BLE001
+        log.error("expiring entitlements check failed: %s", _safe(exc))
     return done
 
 
