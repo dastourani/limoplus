@@ -43,6 +43,19 @@
     {% endif %}
   {% else %}
     <p class="hint">{{ publish.why }}</p>
+    <div style="margin-top:14px; padding:14px 16px; background:var(--darkened-bg); border-radius:10px; border:1px solid var(--hairline-color); font-size:13px; line-height:1.75;">
+      <div style="margin-bottom:10px; color:var(--body-fg);">
+        <b>دسترسی دانشجویان دوره:</b> شما می‌توانید در هر مرحله از نگارش، دسترسی به این اثر را صرفاً برای دانشجویان کلاس خود فعال فرمایید. دانشجویان منتخب (چه پیش‌تر در سامانه لیموخوان عضویت داشته باشند و چه کاربر جدید باشند) بلافاصله پس از ورود به وب‌اپلیکیشن یا نرم‌افزار، کتاب را در کتابخانه شخصی خود مشاهده خواهند کرد، در حالی که این اثر در ویترین و جستجوی عمومی سامانه برای سایر کاربران نمایش داده نخواهد شد.
+        {% if can_request_group_access %}
+          <div style="margin-top:6px;">
+            <a href="{% url 'admin:website_bookaccessrequest_add' %}?book={{ original.pk }}" class="btn small" style="font-weight:700;">👥 ثبت شماره‌های دانشجویان دوره</a>
+          </div>
+        {% endif %}
+      </div>
+      <div style="border-top:1px solid var(--hairline-color); padding-top:10px; color:var(--body-fg);">
+        <b>انتشار در ویترین عمومی لیمو:</b> در صورتی که تمایل دارید کتاب برای عموم مخاطبان کشور عرضه و قابل خرید/مطالعه شود، می‌توانید پس از تکمیل محتوا، از طریق دکمه «درخواست بازبینی انتشار عمومی»، اثر را برای ارزیابی و تأیید نهایی به شورای بررسی ارسال فرمایید.
+      </div>
+    </div>
     {% if can_request_publication %}
       <div style="margin-top:14px; padding:12px 14px; background:var(--darkened-bg); border-radius:8px; border:1px solid var(--hairline-color);">
         {% if publication_request %}
