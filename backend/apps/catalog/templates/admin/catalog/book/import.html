@@ -49,6 +49,42 @@
     {% if report.warnings %}
       <div class="msg warn"><b>هشدارها ({{ report.warnings|length }})</b><ul>{% for issue in report.warnings %}<li>{{ issue }}</li>{% endfor %}</ul></div>
     {% endif %}
+    {% if report.mapping_candidates %}
+    <div class="card" style="background:var(--darkened-bg); border:1px solid var(--hairline-color); border-radius:10px; padding:16px 20px; margin:18px 0;">
+      <h3 style="margin-top:0; font-size:15px; font-weight:800; display:flex; align-items:center; gap:8px;">
+        🏷️ نگاشت کادرهای سفارشی فایل (دستورات <code>\newtheorem</code>)
+      </h3>
+      <p style="font-size:13px; color:var(--body-quiet-color); margin-bottom:14px; line-height:1.6;">
+        محیط‌های سفارشی زیر در فایل شما شناسایی شدند و به کادرهای استاندارد لیموخوان نگاشت شدند. در صورت تمایل می‌توانید کادر مقصد هر یک را تغییر دهید.
+      </p>
+      <table class="lp-table" style="width:100%; max-width:650px; background:var(--body-bg); border-radius:8px; overflow:hidden;">
+        <thead>
+          <tr>
+            <th style="padding:8px 12px; text-align:right;">نام دستور LaTeX</th>
+            <th style="padding:8px 12px; text-align:right;">عنوان در فایل</th>
+            <th style="padding:8px 12px; text-align:right;">کادر مقصد در لیموخوان</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in report.mapping_candidates %}
+          <tr>
+            <td style="padding:8px 12px; font-family:monospace; direction:ltr; text-align:left;">\begin{<b>{{ c.env }}</b>}</td>
+            <td style="padding:8px 12px;">{{ c.title }}</td>
+            <td style="padding:8px 12px;">
+              <select class="custom-box-select" data-env="{{ c.env }}" style="padding:4px 8px; border-radius:6px; border:1px solid var(--hairline-color); font-size:13px;">
+                <option value="">(متن بدون کادر)</option>
+                {% for lbl in report.available_labels %}
+                  <option value="{{ lbl }}" {% if lbl == c.mapped %}selected{% endif %}>{{ lbl }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
     {% if report.markdown %}
     {# The chapter as the reader will get it, drawn by the same renderer the app uses. #}
     <details class="import-preview" {% if report.existing %}open{% endif %}>
@@ -70,10 +106,28 @@
           });
         </script>
       {% endif %}
-      <form method="post" class="cm-save">
+      <form method="post" class="cm-save" id="import-confirm-form">
         {% csrf_token %}
         <input type="hidden" name="token" value="{{ report.token }}">
         <input type="hidden" name="filename" value="{{ report.filename }}">
+        <input type="hidden" name="custom_boxes" id="id_custom_boxes" value="{{ report.custom_boxes_json|escape }}">
+        <script>
+          document.addEventListener('DOMContentLoaded', function () {
+            var form = document.getElementById('import-confirm-form');
+            if (form) {
+              form.addEventListener('submit', function () {
+                var map = {};
+                document.querySelectorAll('.custom-box-select').forEach(function (sel) {
+                  var env = sel.getAttribute('data-env');
+                  var val = sel.value.trim();
+                  if (env && val) { map[env] = val; }
+                });
+                var input = document.getElementById('id_custom_boxes');
+                if (input) { input.value = JSON.stringify(map); }
+              });
+            }
+          });
+        </script>
         {% if request.user.is_superuser %}
           <label class="btn"><input type="checkbox" name="publish"> انتشار فوری</label>
         {% else %}

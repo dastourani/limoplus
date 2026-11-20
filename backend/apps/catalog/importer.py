@@ -206,7 +206,7 @@ class ParsedChapter:
 # --- Reading the upload --------------------------------------------------------------------------------------
 
 
-def read_upload(filename: str, data: bytes, book: ContentNode | None = None) -> ParsedChapter:
+def read_upload(filename: str, data: bytes, book: ContentNode | None = None, custom_boxes: dict[str, str] | None = None) -> ParsedChapter:
     """Accept a .md file, a .tex file, or a .zip holding one of them plus its images.
 
     A .tex (or a ZIP of a LaTeX project) is converted to the same Markdown first (apps/catalog/latex.py), then read by
@@ -217,7 +217,7 @@ def read_upload(filename: str, data: bytes, book: ContentNode | None = None) -> 
         return _read_pptx(filename, data, book)
     if lowered.endswith(".zip"):
         if _zip_is_latex(data):
-            return _read_latex_zip(filename, data, book)
+            return _read_latex_zip(filename, data, book, custom_boxes=custom_boxes)
         return _read_zip(data, book)
     if lowered.endswith(".tex"):
         from .latex import Converter
@@ -226,7 +226,7 @@ def read_upload(filename: str, data: bytes, book: ContentNode | None = None) -> 
             chapter = ParsedChapter()
             chapter.error("فایل متن بیشتر از ۲ مگابایت است؛ فصل را کوچک‌تر کنید.")
             return chapter
-        converter = Converter(data.decode("utf-8-sig", errors="replace"))
+        converter = Converter(data.decode("utf-8-sig", errors="replace"), custom_boxes=custom_boxes)
         converter.slug = _slug_from_name(filename) or "ch1"
         converter.book = book
         markdown = converter.to_chapter()
@@ -265,11 +265,11 @@ def _slug_from_name(filename: str) -> str:
     return re.sub(r"[^\w\-]+", "-", stem, flags=re.UNICODE).strip("-")[:60]
 
 
-def _read_latex_zip(filename: str, data: bytes, book: ContentNode | None = None) -> ParsedChapter:
+def _read_latex_zip(filename: str, data: bytes, book: ContentNode | None = None, custom_boxes: dict[str, str] | None = None) -> ParsedChapter:
     """A ZIP of a LaTeX project → a chapter, its images kept under the names the text points at."""
     from .latex import read_latex
 
-    markdown, images, warnings = read_latex(filename, data, book, slug=_slug_from_name(filename))
+    markdown, images, warnings = read_latex(filename, data, book, slug=_slug_from_name(filename), custom_boxes=custom_boxes)
     chapter = parse_chapter(markdown, book=book) if markdown.strip() else ParsedChapter()
     for warning in warnings:
         chapter.warn(warning)

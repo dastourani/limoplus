@@ -2,9 +2,19 @@
 {% block content %}
 <div class="card" style="max-width: 650px; margin: 20px auto; padding: 28px; background: var(--body-bg, #fff); color: var(--body-fg, #111827); border-radius: 12px; border: 1px solid var(--hairline-color, #e5e7eb); box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
   <h2 style="margin-top:0; color: var(--body-fg, #111827); font-size:20px; font-weight:800;">{{ title }}</h2>
-  <p style="color: var(--body-quiet-color, #4b5563); font-size: 13.5px; line-height: 1.7; margin-bottom: 24px;">
-    کتاب شما ابتدا در حالت <b>«پیش‌نویس محرمانه»</b> ساخته می‌شود. شما بلافاصله به عنوان مؤلف این کتاب شناخته می‌شوید و می‌توانید سرفصل‌ها، درسنامه‌ها و تست‌های آن را ویرایش کنید. تا پیش از بازبینی مدیر، این کتاب در ویترین عمومی سایت نمایش داده نخواهد شد.
-  </p>
+  <div style="background: var(--darkened-bg, #f8fafc); border: 1px solid var(--hairline-color, #e2e8f0); border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; font-size: 13.5px; line-height: 1.8; color: var(--body-fg, #1e293b);">
+    <p style="margin: 0 0 8px;">
+      با ایجاد این کتاب، ساختار اثر در وضعیت <b>«پیش‌نویس اختصاصی (غیرعمومی)»</b> قرار می‌گیرد و جنابعالی به عنوان مؤلف و مدیر محتوایی آن تعیین می‌شوید. در این وضعیت، دسترسی کامل برای تدوین سرفصل‌ها، نگارش درسنامه‌ها و بارگذاری بانک تست در اختیار شما خواهد بود.
+    </p>
+    <ul style="margin: 0; padding-right: 20px; font-size: 13px; color: var(--body-quiet-color, #475569);">
+      <li style="margin-bottom: 4px;">
+        <b>دسترسی دانشجویان دوره:</b> می‌توانید در هر مرحله از نگارش، دسترسی به این اثر را صرفاً برای دانشجویان کلاس خود فعال فرمایید. دانشجویان منتخب (چه عضو فعلی لیموخوان باشند و چه کاربر جدید) بلافاصله پس از ورود، کتاب را در کتابخانه شخصی خود مشاهده خواهند کرد و این اثر در ویترین عمومی برای سایر کاربران نمایش داده نخواهد شد.
+      </li>
+      <li>
+        <b>انتشار در ویترین عمومی:</b> در صورتی که تمایل دارید کتاب برای عموم کاربران کشور عرضه شود، پس از تکمیل محتوا می‌توانید از دکمه «درخواست بازبینی انتشار عمومی» برای بررسی و تأیید نهایی استفاده کنید.
+      </li>
+    </ul>
+  </div>
 
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}

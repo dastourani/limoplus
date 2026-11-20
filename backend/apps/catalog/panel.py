@@ -995,7 +995,13 @@ def import_view(admin_site, request, book_id=None):
         with default_storage.open(found[0], "rb") as fh:
             data = fh.read()
         default_storage.delete(found[0])
-        parsed = read_upload(found[0], data, book)
+        custom_boxes = {}
+        if request.POST.get("custom_boxes"):
+            try:
+                custom_boxes = json.loads(request.POST["custom_boxes"])
+            except Exception:
+                custom_boxes = {}
+        parsed = read_upload(found[0], data, book, custom_boxes=custom_boxes)
         check_against_db(parsed)
         if parsed.errors:
             messages.error(request, "فایل خطا دارد؛ چیزی وارد نشد.")
@@ -1026,7 +1032,22 @@ def import_view(admin_site, request, book_id=None):
             report = {"filename": upload.name, "errors": ["حجم فایل بیشتر از ۵۰ مگابایت است."], "warnings": []}
         else:
             data = upload.read()
-            parsed = read_upload(upload.name, data, book)
+            from .labels import all_labels
+            from .latex import extract_tex_sources, discover_custom_environments, infer_label_for_title
+            avail_labels = [l["name"] for l in all_labels(user=request.user) if not l.get("hidden")]
+            discovered_envs = discover_custom_environments(*extract_tex_sources(upload.name, data))
+            custom_boxes = {}
+            mapping_candidates = []
+            for env_name, env_title in discovered_envs.items():
+                inferred = infer_label_for_title(env_title, avail_labels)
+                if inferred:
+                    custom_boxes[env_name] = inferred
+                mapping_candidates.append({
+                    "env": env_name,
+                    "title": env_title,
+                    "mapped": inferred or "",
+                })
+            parsed = read_upload(upload.name, data, book, custom_boxes=custom_boxes)
             check_against_db(parsed)
             existing = _existing_chapter(parsed) if not parsed.errors else None
             if existing and not access.can_edit_chapter(request.user, existing):
@@ -1058,6 +1079,9 @@ def import_view(admin_site, request, book_id=None):
                     # What the chapter will LOOK like, before anything is saved. A professor could not see this until
                     # after «اعمال تغییرات», which is where a mis-read \note or a lost table was found — too late.
                     markdown=write_chapter(parsed),
+                    mapping_candidates=mapping_candidates,
+                    custom_boxes_json=json.dumps(custom_boxes, ensure_ascii=False),
+                    available_labels=avail_labels,
                 )
     return TemplateResponse(
         request,
