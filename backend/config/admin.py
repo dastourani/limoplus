@@ -42,6 +42,87 @@ _TEACHER_VISIBLE_MODELS = frozenset({
 class LimoAdminSite(AdminSite):
     """Group author, invitation, publication-review, and group-access workflows separately."""
 
+    def _transform_teacher_app_list(self, raw_apps):
+        """Re-organize app groups, rename categories, and order models specifically for teacher ergonomics."""
+        # Buckets for teacher models
+        authoring_models = []
+        teaching_models = []
+        assessment_models = []
+
+        catalog_app = next((a for a in raw_apps if a["app_label"] == "catalog"), None)
+        workflows_app = next((a for a in raw_apps if a["app_label"] == "teacher_workflows"), None)
+        learning_app = next((a for a in raw_apps if a["app_label"] == "learning"), None)
+
+        authoring_url = catalog_app["app_url"] if catalog_app else reverse("admin:index")
+        teaching_url = workflows_app["app_url"] if workflows_app else reverse("admin:index")
+        assessment_url = learning_app["app_url"] if learning_app else reverse("admin:index")
+
+        # Collect models from all apps
+        all_models = {}
+        for app in raw_apps:
+            for m in app["models"]:
+                all_models[(app["app_label"], m["object_name"])] = m
+
+        # 1. میز تألیف و کتاب‌ها (Authoring Desk)
+        _AUTHORING_KEYS = [
+            ("catalog", "Book"),
+            ("catalog", "Section"),
+            ("catalog", "Label"),
+            ("catalog", "ChapterRevision"),
+            ("teacher_workflows", "PublicationRequest"),
+        ]
+        for key in _AUTHORING_KEYS:
+            if key in all_models:
+                authoring_models.append(all_models[key])
+
+        # 2. مدیریت کلاس‌ها و دوره‌ها (Classrooms & Students)
+        _TEACHING_KEYS = [
+            ("teacher_workflows", "Classroom"),
+            ("teacher_workflows", "ClassroomMember"),
+        ]
+        for key in _TEACHING_KEYS:
+            if key in all_models:
+                teaching_models.append(all_models[key])
+
+        # 3. ارزیابی، تمرین و بازخورد (Assessment & Feedback)
+        _ASSESSMENT_KEYS = [
+            ("learning", "Question"),
+            ("learning", "Flashcard"),
+            ("learning", "ExamSource"),
+            ("learning", "Report"),
+        ]
+        for key in _ASSESSMENT_KEYS:
+            if key in all_models:
+                assessment_models.append(all_models[key])
+
+        teacher_apps = []
+        if authoring_models:
+            teacher_apps.append({
+                "name": "میز تألیف و کتاب‌ها",
+                "app_label": "catalog",
+                "app_url": authoring_url,
+                "has_module_perms": True,
+                "models": authoring_models,
+            })
+        if teaching_models:
+            teacher_apps.append({
+                "name": "مدیریت کلاس‌ها و دوره‌ها",
+                "app_label": "teacher_workflows",
+                "app_url": teaching_url,
+                "has_module_perms": True,
+                "models": teaching_models,
+            })
+        if assessment_models:
+            teacher_apps.append({
+                "name": "ارزیابی، تمرین و بازخورد",
+                "app_label": "learning",
+                "app_url": assessment_url,
+                "has_module_perms": True,
+                "models": assessment_models,
+            })
+
+        return teacher_apps
+
     def get_app_list(self, request, app_label=None):
         app_list = super().get_app_list(request, app_label)
         workflow_models = []
@@ -121,7 +202,16 @@ class LimoAdminSite(AdminSite):
             else:
                 teacher_view_mode = (request.session.get("admin_view_mode") == "teacher")
 
-        if user and user.is_authenticated and user.is_superuser and teacher_view_mode:
+        from apps.catalog.access import is_book_teacher
+
+        # If user is a teacher OR a superuser previewing teacher view mode:
+        is_teacher = bool(
+            user and user.is_authenticated and (
+                (user.is_superuser and teacher_view_mode) or (not user.is_superuser and is_book_teacher(user))
+            )
+        )
+
+        if is_teacher:
             filtered_apps = []
             for app in retained_apps:
                 app_models = [
@@ -132,7 +222,7 @@ class LimoAdminSite(AdminSite):
                     app_copy = dict(app)
                     app_copy["models"] = app_models
                     filtered_apps.append(app_copy)
-            return filtered_apps
+            return self._transform_teacher_app_list(filtered_apps)
 
         # If viewing as superuser (admin view), append real-time action counters to model names
         if user and user.is_authenticated and user.is_superuser and not teacher_view_mode:

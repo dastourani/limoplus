@@ -2456,6 +2456,18 @@ class TeacherAssistantTests(TestCase):
         self.assertIn("catalog", teacher_labels)
         self.assertIn("learning", teacher_labels)
 
+        # Check reorganized names for teacher workspace
+        catalog_app = next(a for a in apps_teacher if a['app_label'] == 'catalog')
+        self.assertEqual(catalog_app['name'], "میز تألیف و کتاب‌ها")
+        catalog_models = [m['object_name'] for m in catalog_app['models']]
+        self.assertIn("PublicationRequest", catalog_models)
+
+        wf_app = next(a for a in apps_teacher if a['app_label'] == 'teacher_workflows')
+        self.assertEqual(wf_app['name'], "مدیریت کلاس‌ها و دوره‌ها")
+
+        learning_app = next(a for a in apps_teacher if a['app_label'] == 'learning')
+        self.assertEqual(learning_app['name'], "ارزیابی، تمرین و بازخورد")
+
         # Test index page rendering in teacher mode with isolated log
         self.client.force_login(admin_user)
         res = self.client.get("/admin/?view=teacher")
