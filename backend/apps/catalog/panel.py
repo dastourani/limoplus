@@ -751,6 +751,16 @@ def open_inbox(request):
     return redirect(reverse("admin:catalog_chapter_manager", args=[inbox_chapter().pk]))
 
 
+def open_book_inbox(request, book_id: int):
+    """«صندوق تست کتاب»: dedicated workbench chapter for teachers of this book."""
+    book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK, depth=1)
+    _can_edit(request, book)
+    from .inbox import book_inbox_chapter
+
+    chapter = book_inbox_chapter(book)
+    return redirect(reverse("admin:catalog_chapter_manager", args=[chapter.pk]))
+
+
 def chapter_manager(admin_site, request, chapter_id):
     chapter = _chapter(chapter_id)
     _can_edit_draft(request, chapter)

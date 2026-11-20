@@ -319,6 +319,7 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/request-publication/", site(self.book_request_publication_view), name="catalog_book_request_publication"),
             path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
                  name="catalog_book_publish"),
+            path("<int:book_id>/inbox/", site(panel.open_book_inbox), name="catalog_book_inbox"),
             path("inbox/", site(panel.open_inbox), name="catalog_inbox"),
             path("<int:book_id>/gift/", site(bookpanel.book_gift), name="catalog_book_gift"),
             path("<int:book_id>/notify-waitlist/", site(lambda r, book_id: bookpanel.waitlist_notify(self.admin_site, r, book_id)),
