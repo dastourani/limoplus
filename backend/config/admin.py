@@ -134,6 +134,41 @@ class LimoAdminSite(AdminSite):
                     filtered_apps.append(app_copy)
             return filtered_apps
 
+        # If viewing as superuser (admin view), append real-time action counters to model names
+        if user and user.is_authenticated and user.is_superuser and not teacher_view_mode:
+            try:
+                from apps.catalog.panel_display import fa_number
+                from apps.learning.models import Report
+                from apps.website.models import PublicationRequest, TeacherApplication, BookAccessRequest
+                from apps.commerce.models import Order
+                from django.utils import timezone
+                from datetime import timedelta
+
+                today = timezone.localdate()
+                reports_open = Report.objects.filter(status=Report.Status.OPEN).count()
+                pub_pending = PublicationRequest.objects.filter(status__in=(PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO)).count()
+                teacher_app_pending = TeacherApplication.objects.filter(status=TeacherApplication.Status.PENDING).count()
+                access_req_pending = BookAccessRequest.objects.filter(status=BookAccessRequest.Status.PENDING).count()
+                orders_today = Order.objects.filter(status=Order.Status.PAID, paid_at__date=today).count()
+
+                badges_map = {
+                    ("learning", "Report"): (reports_open, "#b91c1c", "#fee2e2", "گزارش باز"),
+                    ("teacher_workflows", "PublicationRequest"): (pub_pending, "#b45309", "#fef3c7", "در انتظار بررسی"),
+                    ("teacher_workflows", "TeacherApplication"): (teacher_app_pending, "#b45309", "#fef3c7", "درخواست جدید"),
+                    ("teacher_workflows", "BookAccessRequest"): (access_req_pending, "#0369a1", "#e0f2fe", "درخواست باز"),
+                    ("commerce", "Order"): (orders_today, "#15803d", "#dcfce7", "خرید امروز"),
+                }
+
+                for app in retained_apps:
+                    for model in app.get("models", []):
+                        key = (app.get("app_label"), model.get("object_name"))
+                        if key in badges_map:
+                            cnt, fg, bg, title = badges_map[key]
+                            if cnt > 0:
+                                model["name"] = f"{model['name']} ({fa_number(cnt)})"
+            except Exception:
+                pass
+
         return retained_apps
 
 

@@ -611,6 +611,17 @@ class BookAdmin(admin.ModelAdmin):
                 pending.save(update_fields=["request_note", "content_digest", "status"])
                 record_publication_request(pending, actor=request.user, action=PublicationRequestEvent.Action.SUBMITTED, reason=note)
                 messages.success(request, "درخواست بازبینی شما با موفقیت به‌روزرسانی شد و برای مدیر کل ارسال گردید.")
+                try:
+                    from apps.catalog.backups import notify_bale
+                    user_desc = f"{request.user.phone}" + (f" ({request.user.full_name})" if getattr(request.user, 'full_name', None) else "")
+                    notify_bale(
+                        f"📢 به‌روزرسانی درخواست انتشار کتاب\n"
+                        f"کتاب: {book.title}\n"
+                        f"استاد/مؤلف: {user_desc}\n"
+                        f"توضیحات: {note or 'بدون توضیح'}"
+                    )
+                except Exception:
+                    pass
             else:
                 new_req = PublicationRequest.objects.create(
                     book=book,
@@ -621,6 +632,17 @@ class BookAdmin(admin.ModelAdmin):
                 )
                 record_publication_request(new_req, actor=request.user, action=PublicationRequestEvent.Action.SUBMITTED, reason=note)
                 messages.success(request, f"درخواست بازبینی انتشار کتاب «{book.title}» با موفقیت برای مدیر کل ارسال شد.")
+                try:
+                    from apps.catalog.backups import notify_bale
+                    user_desc = f"{request.user.phone}" + (f" ({request.user.full_name})" if getattr(request.user, 'full_name', None) else "")
+                    notify_bale(
+                        f"📚 درخواست جدید انتشار کتاب\n"
+                        f"کتاب: {book.title}\n"
+                        f"استاد/مؤلف: {user_desc}\n"
+                        f"توضیحات: {note or 'بدون توضیح'}"
+                    )
+                except Exception:
+                    pass
 
             return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#publish")
 
@@ -808,19 +830,95 @@ class SectionAdmin(admin.ModelAdmin):
 
 
 @admin.register(BookEditor)
+class TeacherInactivityFilter(admin.SimpleListFilter):
+    title = "وضعیت فعالیت تألیف محتوا"
+    parameter_name = "inactivity_period"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("active_7", "فعال در ۷ روز اخیر"),
+            ("inactive_15", "بدون تغییر محتوا در ۱۵ روز گذشته"),
+            ("inactive_30", "بدون تغییر محتوا در ۳۰ روز گذشته"),
+            ("inactive_60", "بدون تغییر محتوا در ۶۰ روز گذشته"),
+            ("never", "بدون سابقه ویرایش فصول"),
+        )
+
+    def queryset(self, request, queryset):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.catalog.models import ContentNode
+
+        val = self.value()
+        if not val:
+            return queryset
+
+        now = timezone.now()
+        # Find books with recent or older updates in their tree (chapters, sections, revisions)
+        if val == "active_7":
+            recent_books = ContentNode.objects.filter(
+                kind=ContentNode.Kind.BOOK,
+                updated_at__gte=now - timedelta(days=7),
+            ).values_list("pk", flat=True)
+            return queryset.filter(book_id__in=recent_books)
+
+        if val == "inactive_15":
+            cutoff = now - timedelta(days=15)
+            inactive_books = ContentNode.objects.filter(
+                kind=ContentNode.Kind.BOOK,
+                updated_at__lt=cutoff,
+            ).values_list("pk", flat=True)
+            return queryset.filter(book_id__in=inactive_books)
+
+        if val == "inactive_30":
+            cutoff = now - timedelta(days=30)
+            inactive_books = ContentNode.objects.filter(
+                kind=ContentNode.Kind.BOOK,
+                updated_at__lt=cutoff,
+            ).values_list("pk", flat=True)
+            return queryset.filter(book_id__in=inactive_books)
+
+        if val == "inactive_60":
+            cutoff = now - timedelta(days=60)
+            inactive_books = ContentNode.objects.filter(
+                kind=ContentNode.Kind.BOOK,
+                updated_at__lt=cutoff,
+            ).values_list("pk", flat=True)
+            return queryset.filter(book_id__in=inactive_books)
+
+        return queryset
+
+
 class BookEditorAdmin(admin.ModelAdmin):
     """«استادان کتاب»: only the manager assigns a reviewed, approved editor to a book."""
 
     list_display = (
-        "book", "user", "can_edit_content", "can_request_publication", "can_request_group_access",
+        "book", "user", "last_book_update", "can_edit_content", "can_request_publication", "can_request_group_access",
         "can_view_reports", "can_view_aggregate_study", "can_view_aggregate_sales", "can_publish", "note", "created_at",
     )
     list_filter = (
+        TeacherInactivityFilter,
         "can_edit_content", "can_request_publication", "can_request_group_access", "can_view_reports",
         "can_view_aggregate_study", "can_view_aggregate_sales", BookFilter,
     )
     search_fields = ("book__title", "user__phone", "user__first_name", "user__last_name", "note")
     list_select_related = ("book", "user")
+
+
+    @admin.display(description="آخرین ویرایش کتاب")
+    def last_book_update(self, obj):
+        from apps.catalog.panel_display import fa_number
+        from apps.catalog.jalali import jalali_date
+        from django.utils import timezone
+        diff = timezone.now() - obj.book.updated_at
+        days = diff.days
+        date_str = jalali_date(obj.book.updated_at)
+        if days == 0:
+            return format_html('<span style="color:#15803d; font-weight:700;">امروز ({})</span>', date_str)
+        if days <= 7:
+            return format_html('<span style="color:#0284c7; font-weight:700;">{} روز پیش</span>', fa_number(days))
+        if days >= 30:
+            return format_html('<span style="color:#b91c1c; font-weight:700;" title="عدم فعالیت بیش از ۳۰ روز">⚠️ {} روز پیش ({})</span>', fa_number(days), date_str)
+        return f"{fa_number(days)} روز پیش ({date_str})"
 
     def has_view_permission(self, request, obj=None):
         return bool(request.user.is_superuser)

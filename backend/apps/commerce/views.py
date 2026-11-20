@@ -214,6 +214,21 @@ def settle(track_id: str) -> Order | None:
             order.card_number = str(result.get("cardNumber") or "")[:20]
             order.save()
             _grant(order)
+            try:
+                from apps.catalog.backups import notify_bale
+                from apps.catalog.panel_display import fa_number
+                item_title = order.book.title if order.book else (order.plan.title if order.plan else order.title)
+                user_desc = f"{order.user.phone}" + (f" ({order.user.full_name})" if getattr(order.user, 'full_name', None) else "")
+                msg = (
+                    f"💳 خرید جدید در لیموپلاس\n"
+                    f"مبلغ: {fa_number(order.amount)} تومان\n"
+                    f"عنوان: {item_title}\n"
+                    f"کاربر: {user_desc}\n"
+                    f"شماره پیگیری: {order.ref_number or '—'}"
+                )
+                notify_bale(msg)
+            except Exception:
+                pass
         else:
             verified = result.get("result") in (100, 201)
             # Verified but without an amount to compare: stay pending (re-checkable) instead of failing a real payment.

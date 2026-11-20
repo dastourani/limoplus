@@ -46,6 +46,16 @@ def _store_if_new(form):
         application = form.save(commit=False)
         application.phone = phone
         application.save()
+        try:
+            from apps.catalog.backups import notify_bale
+            notify_bale(
+                f"🎓 درخواست جدید همکاری آموزشی\n"
+                f"نام: {application.name}\n"
+                f"شماره تماس: {application.phone}\n"
+                f"کتاب/درس: {application.book_or_link}"
+            )
+        except Exception:
+            pass
 
 
 def _render_form(request, form, *, submitted=False, rate_limited=False, status=200):

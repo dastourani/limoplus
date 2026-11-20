@@ -582,3 +582,16 @@ def restore_upload(uploaded) -> dict:
         else:
             raise RestoreError("فقط فایل ‎.zip یا ‎.sqlite3 یا ‎.sqlite3.gz")
     return result
+
+
+def notify_bale(text: str) -> bool:
+    """Send an operational alert message to Bale bot without interrupting caller if Bale is unreachable."""
+    if not bale_ready():
+        return False
+    try:
+        send_text(text)
+        return True
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to send Bale notification: %s", _safe(exc))
+        return False
