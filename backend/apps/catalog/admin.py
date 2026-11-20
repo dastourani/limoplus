@@ -278,6 +278,11 @@ class BookAdmin(admin.ModelAdmin):
                     "is_self": is_self,
                 })
             extra["assistants"] = assistants
+            can_view_study = bool(
+                request.user.is_superuser
+                or (access.is_book_teacher(request.user) and BookEditor.objects.filter(book=book, user=request.user, can_view_aggregate_study=True).exists())
+            )
+            extra["can_view_study"] = can_view_study
             if not request.user.is_superuser and access.is_book_teacher(request.user):
                 editor = BookEditor.objects.filter(book=book, user=request.user).first()
                 extra["can_request_publication"] = bool(editor and editor.can_request_publication)
@@ -302,6 +307,7 @@ class BookAdmin(admin.ModelAdmin):
             path("orphan/<int:node_id>/archive/", site(panel.archive_orphan), name="catalog_archive_orphan"),
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
             path("<int:book_id>/assistants/", site(self.book_assistants_action), name="catalog_book_assistants_action"),
+            path("<int:book_id>/study-analytics/", site(self.book_study_analytics_view), name="catalog_book_study_analytics"),
             path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
                  name="catalog_book_publish"),
             path("inbox/", site(panel.open_inbox), name="catalog_inbox"),
@@ -451,6 +457,76 @@ class BookAdmin(admin.ModelAdmin):
                 messages.success(request, f"دسترسی دستیار با شماره {phone} از این کتاب حذف شد.")
 
         return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#assistants")
+
+    def book_study_analytics_view(self, request, book_id):
+        from django.core.exceptions import PermissionDenied
+        from django.db.models import Count, F, FloatField, Sum
+        from django.db.models.functions import Cast
+        from django.shortcuts import get_object_or_404, render
+        from apps.catalog.jalali import fa_digits
+        from apps.catalog.panel_display import fa_number
+        from apps.learning.models import Question
+        from apps.study.admin import _hms
+        from apps.study.models import SectionProgress, StudyTime
+        from .models import BookEditor
+
+        book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK)
+        can_view_study = bool(
+            request.user.is_superuser
+            or (access.is_book_teacher(request.user) and BookEditor.objects.filter(book=book, user=request.user, can_view_aggregate_study=True).exists())
+        )
+        if not can_view_study:
+            raise PermissionDenied("شما مجوز مشاهده آمار مطالعه این کتاب را ندارید.")
+
+        total_readers = SectionProgress.objects.filter(book=book).values("user").distinct().count()
+        completed_readers = SectionProgress.objects.filter(book=book, is_done=True).values("user").distinct().count()
+        total_seconds = StudyTime.objects.filter(book=book).aggregate(s=Sum("seconds"))["s"] or 0
+
+        chapters = ContentNode.objects.filter(path__startswith=book.path, depth=2, is_archived=False).order_by("path")
+        chapter_stats = []
+        for ch in chapters:
+            ch_sec_ids = ContentNode.objects.filter(path__startswith=ch.path, depth=3, is_archived=False).values_list("pk", flat=True)
+            ch_progress = SectionProgress.objects.filter(node_id__in=ch_sec_ids)
+            ch_readers = ch_progress.values("user").distinct().count()
+            ch_done = ch_progress.filter(is_done=True).values("user").distinct().count()
+            ch_time = StudyTime.objects.filter(node_id__in=ch_sec_ids).aggregate(s=Sum("seconds"))["s"] or 0
+            rate = round(100 * ch_done / max(1, ch_readers)) if ch_readers else 0
+            chapter_stats.append({
+                "title": ch.title,
+                "sections_count": len(ch_sec_ids),
+                "readers": fa_number(ch_readers),
+                "done": fa_number(ch_done),
+                "rate": fa_digits(rate),
+                "total_time": _hms(ch_time) if ch_time else "—",
+                "avg_time": _hms(ch_time // max(1, ch_readers)) if ch_readers and ch_time else "—",
+            })
+
+        questions = (
+            Question.objects.filter(node__path__startswith=book.path, answer_count__gte=3, is_archived=False)
+            .annotate(rate=Cast("correct_count", FloatField()) / F("answer_count"))
+            .order_by("rate", "id")[:8]
+        )
+        hardest_questions = []
+        for q in questions:
+            hardest_questions.append({
+                "id": q.id,
+                "stem": q.stem[:140],
+                "rate": fa_digits(round(100 * q.correct_count / q.answer_count)),
+                "answer_count": fa_number(q.answer_count),
+            })
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": f"آمار و پیشرفت مطالعه کلاس: {book.title}",
+            "book": book,
+            "total_readers": fa_number(total_readers),
+            "completed_readers": fa_number(completed_readers),
+            "total_time": _hms(total_seconds) if total_seconds else "—",
+            "chapter_stats": chapter_stats,
+            "hardest_questions": hardest_questions,
+            "opts": self.model._meta,
+        }
+        return render(request, "admin/catalog/book/book_study_analytics.html", context)
 
 
 

@@ -2255,7 +2255,7 @@ class TeacherAssistantTests(TestCase):
         self.teacher.groups.add(self.group)
 
         self.book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="ریاضی فیزیک", author="دکتر استاد")
-        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True)
+        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True, can_view_aggregate_study=True)
 
         self.client.force_login(self.teacher)
 
@@ -2298,3 +2298,26 @@ class TeacherAssistantTests(TestCase):
         })
         self.assertEqual(res.status_code, 302)
         self.assertFalse(BookEditor.objects.filter(pk=ta_editor.pk).exists())
+
+    def test_study_analytics_permission_and_view(self):
+        # Teacher with can_view_aggregate_study=True can view
+        res = self.client.get(f"/admin/catalog/book/{self.book.pk}/study-analytics/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "آمار و گزارش پیشرفت مطالعه کتاب")
+        self.assertContains(res, self.book.title)
+
+        # TA without can_view_aggregate_study cannot view
+        ta_user = User.objects.create_user("09123334455", is_staff=True)
+        ta_user.groups.add(self.group)
+        BookEditor.objects.create(book=self.book, user=ta_user, can_edit_content=True, can_view_aggregate_study=False)
+
+        self.client.force_login(ta_user)
+        res_ta = self.client.get(f"/admin/catalog/book/{self.book.pk}/study-analytics/")
+        self.assertEqual(res_ta.status_code, 403)
+
+        # TA with can_view_aggregate_study can view
+        BookEditor.objects.filter(book=self.book, user=ta_user).update(can_view_aggregate_study=True)
+        res_ta_ok = self.client.get(f"/admin/catalog/book/{self.book.pk}/study-analytics/")
+        self.assertEqual(res_ta_ok.status_code, 200)
+        self.assertContains(res_ta_ok, self.book.title)
+

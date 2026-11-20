@@ -2,6 +2,9 @@
 {% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
 {% block object-tools-items %}
   {% if original %}
+    {% if can_view_study %}
+      <li><a href="{% url 'admin:catalog_book_study_analytics' original.pk %}" style="background:#0284c7;color:#fff;font-weight:700;">📊 آمار مطالعه کلاس</a></li>
+    {% endif %}
     <li><a href="{% url 'admin:catalog_book_export' original.pk %}">دریافت کل کتاب (ZIP)</a></li>
     {% if request.user.email and request.user.is_email_verified %}
       <li><a href="{% url 'admin:catalog_book_email_export' original.pk %}" title="ارسال فایل زیپ کامل کتاب به ایمیل شما">📧 ارسال کل کتاب به ایمیل</a></li>
