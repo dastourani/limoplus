@@ -2180,3 +2180,48 @@ class TeacherCustomLabelsTests(TestCase):
         self.assertIn(sys_lbl, qs1)
         self.assertIn(lbl1, qs1)
         self.assertNotIn(lbl2, qs1)
+from django.test import TestCase
+from django.contrib import admin
+from django.test import RequestFactory
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
+from apps.catalog.access import BOOK_EDITOR_GROUP
+from apps.catalog.models import ContentNode, BookEditor
+from apps.website.models import Classroom
+
+User = get_user_model()
+
+class TeacherDashboardTests(TestCase):
+    def test_teacher_dashboard_rendered_on_admin_index(self):
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        teacher = User.objects.create_user("09121112233", is_staff=True, first_name="رضا", last_name="دستورانی")
+        teacher.groups.add(group)
+
+        # Create book assigned to teacher
+        book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="ریاضی مهندسی پیشرفته", author="دکتر دستورانی")
+        BookEditor.objects.create(book=book, user=teacher)
+
+        # Create classroom
+        classroom = Classroom.objects.create(
+            teacher=teacher,
+            book=book,
+            title="کلاس ریاضی مهندسی پاییز ۱۴۰۳",
+            capacity=40,
+        )
+
+        self.client.force_login(teacher)
+        res = self.client.get("/admin/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "کارگاه آموزش و تألیف اساتید")
+        self.assertContains(res, "ریاضی مهندسی پیشرفته")
+        self.assertContains(res, "کلاس ریاضی مهندسی پاییز ۱۴۰۳")
+        self.assertContains(res, "+ ایجاد کتاب پیش‌نویس")
+        self.assertContains(res, "+ ایجاد کلاس جدید")
+        self.assertContains(res, "+ تعریف برچسب اختصاصی")
+
+    def test_admin_does_not_see_teacher_dashboard(self):
+        superuser = User.objects.create_superuser("09120000000", is_staff=True)
+        self.client.force_login(superuser)
+        res = self.client.get("/admin/")
+        self.assertEqual(res.status_code, 200)
+        self.assertNotContains(res, "کارگاه آموزش و تألیف اساتید")

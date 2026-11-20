@@ -1,0 +1,159 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "admin/css/dashboard.css" %}">
+<style>
+  .teacher-dash { margin-bottom: 24px; }
+  .teacher-hero { background: linear-gradient(135deg, #17201A 0%, #1e3328 100%); color: #fff; border-radius: 14px; padding: 22px 26px; margin-bottom: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .teacher-hero h2 { margin: 0 0 6px; font-size: 20px; color: #F5C518; }
+  .teacher-hero p { margin: 0; color: #D1D5DB; font-size: 13.5px; }
+  .teacher-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .teacher-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 700; text-decoration: none; transition: all .15s ease; cursor: pointer; border: 0; }
+  .teacher-btn-primary { background: #F5C518; color: #17201A; }
+  .teacher-btn-primary:hover { background: #FFD84A; color: #17201A; }
+  .teacher-btn-ghost { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.25); }
+  .teacher-btn-ghost:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+  .teacher-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .teacher-card { background: var(--body-bg); border: 1px solid var(--hairline-color); border-radius: 12px; padding: 16px 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
+  .teacher-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--hairline-color); }
+  .teacher-card-head h3 { margin: 0; font-size: 15px; font-weight: 800; color: var(--body-fg); display: flex; align-items: center; gap: 6px; }
+  .teacher-card-head .count { font-size: 11px; font-weight: 700; background: var(--darkened-bg); padding: 2px 8px; border-radius: 999px; }
+
+  .teacher-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .teacher-list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--darkened-bg); border-radius: 8px; font-size: 13.5px; }
+  .teacher-list-item .meta { display: flex; flex-direction: column; gap: 2px; }
+  .teacher-list-item .title { font-weight: 700; color: var(--body-fg); text-decoration: none; }
+  .teacher-list-item .title:hover { text-decoration: underline; color: #15803d; }
+  .teacher-list-item .sub { font-size: 11.5px; color: var(--body-quiet-color); }
+  .teacher-list-empty { padding: 14px; text-align: center; color: var(--body-quiet-color); font-size: 12.5px; font-style: italic; }
+  .copy-btn { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; cursor: pointer; font-family: inherit; font-weight: 700; }
+  .copy-btn:hover { background: #bae6fd; }
+</style>
+{% endblock %}
+
+{% block coltype %}colMS{% endblock %}
+
+{% block bodyclass %}{{ block.super }} dashboard{% endblock %}
+
+{% block nav-breadcrumbs %}{% endblock %}
+
+{% block nav-sidebar %}{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  {% if is_teacher %}
+  <div class="teacher-dash">
+    <div class="teacher-hero">
+      <h2>کارگاه آموزش و تألیف اساتید</h2>
+      <p>درود، {{ user.get_full_name|default:user.phone }}. از این بخش می‌توانید کتاب‌های درسی، کلاس‌های ترم و برچسب‌های متن اختصاصی خود را مدیریت کنید.</p>
+      <div class="teacher-actions">
+        <a href="{% url 'admin:catalog_book_teacher_new' %}" class="teacher-btn teacher-btn-primary">
+          + ایجاد کتاب پیش‌نویس
+        </a>
+        <a href="{% url 'admin:website_classroom_add' %}" class="teacher-btn teacher-btn-ghost">
+          + ایجاد کلاس جدید
+        </a>
+        <a href="{% url 'admin:catalog_label_add' %}" class="teacher-btn teacher-btn-ghost">
+          + تعریف برچسب اختصاصی
+        </a>
+      </div>
+    </div>
+
+    <div class="teacher-grid">
+      <!-- کتاب‌های من -->
+      <div class="teacher-card">
+        <div class="teacher-card-head">
+          <h3>📚 کتاب‌های در دست تألیف من</h3>
+          <span class="count">{{ teacher_books|length }}</span>
+        </div>
+        {% if teacher_books %}
+        <ul class="teacher-list">
+          {% for b in teacher_books %}
+          <li class="teacher-list-item">
+            <div class="meta">
+              <a href="{% url 'admin:catalog_book_change' b.pk %}" class="title">{{ b.title }}</a>
+              <span class="sub">{{ b.author|default:"بدون نام نویسنده" }} • {{ b.chapters_count }} فصل</span>
+            </div>
+            <a href="{% url 'admin:catalog_book_change' b.pk %}" class="teacher-btn teacher-btn-primary" style="padding: 4px 10px; font-size: 11.5px;">
+              ورود به کتاب
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="teacher-list-empty">هنوز کتاب پیش‌نویسی ایجاد نکرده‌اید. با دکمهٔ بالا اولین کتاب خود را بسازید.</div>
+        {% endif %}
+      </div>
+
+      <!-- کلاس‌های من -->
+      <div class="teacher-card">
+        <div class="teacher-card-head">
+          <h3>🎓 کلاس‌های فعال من</h3>
+          <span class="count">{{ teacher_classrooms|length }}</span>
+        </div>
+        {% if teacher_classrooms %}
+        <ul class="teacher-list">
+          {% for c in teacher_classrooms %}
+          <li class="teacher-list-item">
+            <div class="meta">
+              <a href="{% url 'admin:website_classroom_change' c.pk %}" class="title">{{ c.title }}</a>
+              <span class="sub">
+                کتاب: {{ c.book.title }} • {{ c.members_count }} از {{ c.capacity }} دانشجو
+              </span>
+            </div>
+            <div style="display:flex; gap:4px; align-items:center;">
+              <button type="button" class="copy-btn" onclick="navigator.clipboard.writeText('{{ site_url }}/join/{{ c.code }}/').then(function(){alert('لینک دعوت دانشجو کپی شد.');});">
+                کپی لینک
+              </button>
+              <a href="{% url 'admin:website_classroom_change' c.pk %}" class="teacher-btn teacher-btn-ghost" style="padding: 3px 8px; font-size: 11px; color:var(--body-fg); border-color:var(--border-color);">
+                مدیریت
+              </a>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="teacher-list-empty">هنوز کلاسی ثبت نکرده‌اید. برای دعوت دانشجویان کلاس جدید ایجاد کنید.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+</div>
+{% endblock %}
+
+{% block sidebar %}
+<div id="content-related">
+    <div class="module" id="recent-actions-module">
+        <h2>{% translate 'Recent actions' %}</h2>
+        <h3>{% translate 'My actions' %}</h3>
+            {% load log %}
+            {% get_admin_log 10 as admin_log for_user user %}
+            {% if not admin_log %}
+            <p>{% translate 'None available' %}</p>
+            {% else %}
+            <ul class="actionlist">
+            {% for entry in admin_log %}
+            <li class="{% if entry.is_addition %}addlink{% endif %}{% if entry.is_change %}changelink{% endif %}{% if entry.is_deletion %}deletelink{% endif %}">
+                <span class="visually-hidden">{% if entry.is_addition %}{% translate 'Added:' %}{% elif entry.is_change %}{% translate 'Changed:' %}{% elif entry.is_deletion %}{% translate 'Deleted:' %}{% endif %}</span>
+                {% if entry.is_deletion or not entry.get_admin_url %}
+                    {{ entry.object_repr }}
+                {% else %}
+                    <a href="{{ entry.get_admin_url }}">{{ entry.object_repr }}</a>
+                {% endif %}
+                <br>
+                {% if entry.content_type %}
+                    <span class="mini quiet">{% filter capfirst %}{{ entry.content_type.name }}{% endfilter %}</span>
+                {% else %}
+                    <span class="mini quiet">{% translate 'Unknown content' %}</span>
+                {% endif %}
+            </li>
+            {% endfor %}
+            </ul>
+            {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1086,6 +1086,39 @@ _assets_each_context = admin.site.each_context
 def _assets_each_context_with_version(request):
     context = _assets_each_context(request)
     context["assets_v"] = _assets_version()
+    user = getattr(request, "user", None)
+    if user and user.is_authenticated and access.is_book_teacher(user):
+        context["is_teacher"] = True
+        from django.conf import settings
+        from apps.website.models import Classroom
+        from .models import BookEditor
+
+        book_ids = list(BookEditor.objects.filter(user=user).values_list("book_id", flat=True))
+        teacher_books = []
+        for b in ContentNode.objects.filter(pk__in=book_ids, kind=ContentNode.Kind.BOOK):
+            ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
+            teacher_books.append({
+                "pk": b.pk,
+                "title": b.title,
+                "author": b.author,
+                "chapters_count": ch_count,
+            })
+        context["teacher_books"] = teacher_books
+
+        classrooms = []
+        site_url = getattr(settings, "SITE_URL", "").rstrip("/")
+        for c in Classroom.objects.filter(teacher=user, is_active=True).select_related("book").order_by("-created_at")[:6]:
+            m_count = c.members.filter(status="active").count()
+            classrooms.append({
+                "pk": c.pk,
+                "title": c.title,
+                "book": c.book,
+                "code": c.code,
+                "capacity": c.capacity,
+                "members_count": m_count,
+            })
+        context["teacher_classrooms"] = classrooms
+        context["site_url"] = site_url
     return context
 
 
