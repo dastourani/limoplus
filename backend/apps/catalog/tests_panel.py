@@ -2366,5 +2366,11 @@ class TeacherAssistantTests(TestCase):
         self.assertIn("catalog", teacher_labels)
         self.assertIn("learning", teacher_labels)
 
+        # Test index page rendering in teacher mode with isolated log
+        self.client.force_login(admin_user)
+        res = self.client.get("/admin/?view=teacher")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "فعالیت‌های تألیف و تدریس من")
+
 
 
