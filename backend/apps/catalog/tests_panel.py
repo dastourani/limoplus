@@ -2255,7 +2255,7 @@ class TeacherAssistantTests(TestCase):
         self.teacher.groups.add(self.group)
 
         self.book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="ریاضی فیزیک", author="دکتر استاد")
-        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True, can_view_aggregate_study=True)
+        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True, can_view_aggregate_study=True, can_request_publication=True)
 
         self.client.force_login(self.teacher)
 
@@ -2320,4 +2320,33 @@ class TeacherAssistantTests(TestCase):
         res_ta_ok = self.client.get(f"/admin/catalog/book/{self.book.pk}/study-analytics/")
         self.assertEqual(res_ta_ok.status_code, 200)
         self.assertContains(res_ta_ok, self.book.title)
+
+    def test_publication_request_flow(self):
+        from apps.website.models import PublicationRequest
+        res = self.client.get(f"/admin/catalog/book/{self.book.pk}/request-publication/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "درخواست بازبینی انتشار")
+
+        res_post = self.client.post(f"/admin/catalog/book/{self.book.pk}/request-publication/", {
+            "note": "لطفاً کتاب بازبینی شود، فصل‌ها آماده هستند.",
+        })
+        self.assertEqual(res_post.status_code, 302)
+        req = PublicationRequest.objects.get(book=self.book, requested_by=self.teacher)
+        self.assertEqual(req.status, PublicationRequest.Status.PENDING)
+        self.assertEqual(req.request_note, "لطفاً کتاب بازبینی شود، فصل‌ها آماده هستند.")
+
+    def test_teacher_create_book_with_optional_initial_file(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        tex_content = r"\chapter{آغاز}\section{بخش اول}متن نمونه".encode("utf-8")
+        uploaded = SimpleUploadedFile("ch1.tex", tex_content, content_type="text/plain")
+
+        res = self.client.post("/admin/catalog/book/new-draft/", {
+            "title": "هوش مصنوعی و داده‌کاوی",
+            "author": "دکتر هوش",
+            "initial_file": uploaded,
+        })
+        self.assertEqual(res.status_code, 302)
+        new_book = ContentNode.objects.get(title="هوش مصنوعی و داده‌کاوی")
+        self.assertTrue(ContentNode.objects.filter(path__startswith=new_book.path, depth=2).exists())
+
 
