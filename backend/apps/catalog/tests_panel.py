@@ -1716,11 +1716,27 @@ class BookEditorAccessTests(_Base):
 
 
 class ImportPreviewBeforeSaveTests(TestCase):
-    """«فصل از فایل» draws the chapter before anything is saved.
+    def test_import_view_detects_custom_boxes_and_accepts_mapping(self):
+        """LaTeX newtheorem custom environments are discovered and mapped to Limo boxes."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        import json
 
-    The drawing is JavaScript (checked in a browser); these tests keep the page wired to it — a preview that stayed an
-    empty grey box would be invisible in the test runner, so the data it reads and the frame it draws into are pinned.
-    """
+        tex = (
+            "\\documentclass{book}\n"
+            "\\newtheorem{mythm}{قضیه اساسی}\n"
+            "\\begin{document}\n"
+            "\\chapter{فصل قضیه‌ها}\n"
+            "\\section{بخش اول}\n"
+            "\\begin{mythm}\nمتن قضیه جدید\\end{mythm}\n"
+            "\\end{document}\n"
+        ).encode('utf-8')
+
+        resp = self.client.post(self.url, {"file": SimpleUploadedFile("theorems.tex", tex, content_type="text/plain")})
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn("mythm", html)
+        self.assertIn("قضیه اساسی", html)
+        self.assertIn("نگاشت کادرهای سفارشی", html)
 
     def setUp(self):
         Major.objects.create(name="اقتصاد", slug="economics")

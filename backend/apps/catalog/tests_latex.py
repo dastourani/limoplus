@@ -329,6 +329,40 @@ class ZipTests(SimpleTestCase):
         self.assertTrue(warnings)
 
 
+
+    def test_custom_environments_discovery_and_mapping(self):
+        from .latex import discover_custom_environments, infer_label_for_title, Converter
+
+        tex = (
+            "\\documentclass{book}\n"
+            "\\newtheorem{mythm}{قضیه اساسی}\n"
+            "\\newtheorem{mydef}[mythm]{تعریف مهم}\n"
+            "\\newtheorem*{myremark}{نکته طلایی}\n"
+            "\\declaretheorem[name=قضیه]{specialthm}\n"
+            "\\begin{document}\n"
+            "\\chapter{فصل تست}\n"
+            "\\begin{mythm}\nمتن قضیه تستی\n\\end{mythm}\n"
+            "\\begin{mydef}\nمتن تعریف تستی\n\\end{mydef}\n"
+            "\\end{document}\n"
+        )
+        envs = discover_custom_environments(tex)
+        self.assertEqual(envs.get("mythm"), "قضیه اساسی")
+        self.assertEqual(envs.get("mydef"), "تعریف مهم")
+        self.assertEqual(envs.get("myremark"), "نکته طلایی")
+        self.assertEqual(envs.get("specialthm"), "قضیه")
+
+        avail = ["تعریف", "قضیه", "نکته", "گزاره"]
+        self.assertEqual(infer_label_for_title("قضیه اساسی", avail), "قضیه")
+        self.assertEqual(infer_label_for_title("تعریف مهم", avail), "تعریف")
+        self.assertEqual(infer_label_for_title("نکته طلایی", avail), "نکته")
+
+        # Test Converter with custom_boxes mapping
+        conv = Converter(tex, custom_boxes={"mythm": "قضیه", "mydef": "تعریف"})
+        md = conv.to_markdown()
+        self.assertIn(":::قضیه", md)
+        self.assertIn(":::تعریف", md)
+
+
 class UploadTests(TestCase):
     """A .tex file uploaded into a book: the same path as chapter.md, all of the format's checks included."""
 

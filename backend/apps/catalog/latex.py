@@ -206,6 +206,68 @@ def _strip_comments(text: str) -> str:
     return "\n".join(out)
 
 
+def extract_tex_sources(filename: str, data: bytes) -> list[str]:
+    """Extract .tex, .cls and .sty file contents from a .tex upload or a ZIP project."""
+    import io
+    import zipfile
+    lowered = filename.lower()
+    if lowered.endswith(".tex"):
+        return [data.decode("utf-8-sig", errors="replace")]
+    if lowered.endswith(".zip"):
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                out = []
+                for info in archive.infolist():
+                    if not info.is_dir() and info.filename.lower().endswith((".tex", ".cls", ".sty")):
+                        out.append(archive.read(info.filename).decode("utf-8-sig", errors="replace"))
+                return out
+        except Exception:
+            return []
+    return []
+
+
+def discover_custom_environments(*sources: str) -> dict[str, str]:
+    """Find custom environment definitions like \newtheorem{mythm}{قضیه اساسی} in LaTeX sources."""
+    discovered: dict[str, str] = {}
+    for source in sources:
+        cleaned = _strip_comments(source)
+        for m in re.finditer(r"\\newtheorem\*?\s*\{([^}]+)\}(?:\[[^\]]*\])?\s*\{([^}]+)\}", cleaned):
+            discovered[m.group(1).strip()] = m.group(2).strip()
+        for m in re.finditer(r"\\declaretheorem\s*\[([^\]]*?)\]\s*\{([^}]+)\}", cleaned):
+            opts, env = m.group(1), m.group(2).strip()
+            nm = re.search(r"name\s*=\s*([^,\]]+)", opts)
+            if nm:
+                discovered[env] = nm.group(1).strip()
+        for m in re.finditer(r"\\declaretheorem\s*\{([^}]+)\}\s*\[([^\]]*?)\]", cleaned):
+            env, opts = m.group(1).strip(), m.group(2)
+            nm = re.search(r"name\s*=\s*([^,\]]+)", opts)
+            if nm:
+                discovered[env] = nm.group(1).strip()
+        for m in re.finditer(r"\\newenvironment\*?\s*\{([^}]+)\}", cleaned):
+            env = m.group(1).strip()
+            if env not in discovered and env not in BOX_ENVIRONMENTS:
+                discovered[env] = env
+    return discovered
+
+
+def infer_label_for_title(title: str, available_labels: list[str]) -> str | None:
+    """Match a Persian theorem/box title to an official Limo label."""
+    t = title.strip()
+    if t in available_labels:
+        return t
+    keywords = [
+        ("قضیه", "قضیه"), ("تعریف", "تعریف"), ("مثال نقض", "مثال نقض"),
+        ("مثال", "مثال"), ("تمرین", "تمرین"), ("نکته", "نکته"),
+        ("گزاره", "گزاره"), ("لم", "گزاره"), ("نتیجه", "نتیجه"),
+        ("فرمول", "فرمول"), ("قاعده", "قاعده"), ("یادآوری", "یادآوری"),
+        ("هشدار", "هشدار"), ("تله", "تله"), ("مهم", "مهم"),
+    ]
+    for kw, target in keywords:
+        if kw in t and target in available_labels:
+            return target
+    return None
+
+
 def _slug_name(label: str) -> str:
     """\\label{fig:sin} → a name the book accepts ([[#sin]]): Latin letters, digits and dashes.
 
@@ -446,10 +508,11 @@ def _strip_preamble(text: str) -> str:
 class Converter:
     """One .tex document → the chapter Markdown of docs/content-format.md."""
 
-    def __init__(self, text: str, macros: dict | None = None, sources: dict[str, str] | None = None):
+    def __init__(self, text: str, macros: dict | None = None, sources: dict[str, str] | None = None, custom_boxes: dict[str, str] | None = None):
         self.raw = text
         # The author's own shortcuts, read from the text itself when the caller did not pass the ZIP's classes too.
         self.macros = collect_macros(text) if macros is None else macros
+        self.custom_boxes = dict(custom_boxes or {})
         # The other .tex files of the ZIP, by name without extension, for \input / \include.
         self.sources = sources or {}
         self.warnings: list[str] = []
@@ -707,8 +770,9 @@ class Converter:
             return self._tikz(body)
         if env in ("algorithm", "algorithm*", "algorithm2e", "algorithmic", "algorithmicx", "algpseudocode"):
             return self._algorithm(body, env)
-        if env in BOX_ENVIRONMENTS:
-            return self._box(BOX_ENVIRONMENTS[env], body, opening)
+        box_label = self.custom_boxes.get(env) or BOX_ENVIRONMENTS.get(env)
+        if box_label:
+            return self._box(box_label, body, opening)
         # An unknown environment is not a reason to lose the text inside it.
         self._warn_once(f"محیط «{env}» شناخته نشد؛ متن داخلش بدون کادر آورده شد.")
         return self._blocks(body)
@@ -1173,7 +1237,7 @@ class Converter:
 
 # --- Reading an upload ----------------------------------------------------------------------------------------
 
-def read_latex(filename: str, data: bytes, book=None, slug: str = "") -> tuple[str, dict[str, bytes], list[str]]:
+def read_latex(filename: str, data: bytes, book=None, slug: str = "", custom_boxes: dict[str, str] | None = None) -> tuple[str, dict[str, bytes], list[str]]:
     """A .tex file or a .zip of the project → (chapter Markdown text, images by path, warnings).
 
     The caller (importer.read_upload) parses the text exactly as it parses an uploaded .md, so all of the format's
@@ -1186,7 +1250,7 @@ def read_latex(filename: str, data: bytes, book=None, slug: str = "") -> tuple[s
     warnings: list[str] = []
     if filename.lower().endswith(".tex"):
         text = data.decode("utf-8-sig", errors="replace")
-        converter = Converter(text)
+        converter = Converter(text, custom_boxes=custom_boxes)
         return converter.to_markdown(), {}, converter.report()
 
     try:
@@ -1223,7 +1287,7 @@ def read_latex(filename: str, data: bytes, book=None, slug: str = "") -> tuple[s
     text = sources[main_file]
 
     macros = collect_macros(text, *style)
-    converter = Converter(text, macros=macros, sources=sources)
+    converter = Converter(text, macros=macros, sources=sources, custom_boxes=custom_boxes)
     converter.book = book
     converter.slug = slug or posixpath.splitext(posixpath.basename(main_file))[0] or "ch1"
     markdown = converter.to_chapter()
