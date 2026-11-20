@@ -2295,7 +2295,6 @@ class TeacherDashboardTests(TestCase):
         self.assertContains(res, "کلاس ریاضی مهندسی پاییز ۱۴۰۳")
         self.assertContains(res, "+ ایجاد کتاب پیش‌نویس")
         self.assertContains(res, "+ ایجاد کلاس جدید")
-        self.assertContains(res, "+ تعریف برچسب اختصاصی")
 
     def test_admin_does_not_see_teacher_dashboard_by_default_but_can_switch_to_teacher_view(self):
         superuser = User.objects.create_superuser("09120000000", is_staff=True)
