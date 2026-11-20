@@ -1407,6 +1407,18 @@ def _assets_each_context_with_version(request):
                 })
             context["teacher_classrooms"] = classrooms
             context["site_url"] = site_url
+
+        # Filter recent admin actions strictly to teacher workspace items when in teacher mode
+        from django.contrib.admin.models import LogEntry
+        _teacher_log_models = (
+            "contentnode", "question", "flashcard", "label", "classroom",
+            "classroommember", "report", "examsource", "sharesettings", "publicationrequest"
+        )
+        context["teacher_admin_log"] = (
+            LogEntry.objects.filter(user=user, content_type__model__in=_teacher_log_models)
+            .select_related("content_type")
+            .order_by("-action_time")[:10]
+        )
     return context
 
 
