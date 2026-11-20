@@ -98,3 +98,13 @@ jobs:
             app/limookhan-test-${{ github.run_number }}.apk
             app/limookhan-test-${{ github.run_number }}-arm64.apk
             app/limookhan-test-${{ github.run_number }}-32bit.apk
+
+      - name: Notify server to sync the new release
+        # If PARSPACK_SYNC_URL and RELEASE_WEBHOOK_SECRET are configured as secrets, trigger automatic sync
+        env:
+          SYNC_URL: ${{ secrets.PARSPACK_SYNC_URL || 'https://limookhan.ir/api/releases/sync-github/' }}
+          SECRET: ${{ secrets.RELEASE_WEBHOOK_SECRET }}
+        run: |
+          if [ -n "$SECRET" ]; then
+            curl -s -X POST "$SYNC_URL"               -H "X-Release-Secret: $SECRET"               -H "Content-Type: application/json" || echo "Webhook call skipped/failed silently"
+          fi

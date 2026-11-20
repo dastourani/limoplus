@@ -17,6 +17,29 @@ class AppReleaseAdmin(admin.ModelAdmin):
         (None, {"fields": ("is_required", "is_published")}),
     )
 
+    change_list_template = "admin/releases/apprelease/change_list.html"
+
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path("sync-github/", self.admin_site.admin_view(self.sync_github_view), name="releases_apprelease_sync_github"),
+        ]
+        return custom_urls + urls
+
+    def sync_github_view(self, request):
+        from django.contrib import messages
+        from django.shortcuts import redirect
+        from .github_sync import sync_release_from_github
+
+        if request.method == "POST":
+            rel, msg = sync_release_from_github(download_files=False)
+            if rel:
+                messages.success(request, msg)
+            else:
+                messages.error(request, msg)
+        return redirect("..")
+
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         clear_cache()
