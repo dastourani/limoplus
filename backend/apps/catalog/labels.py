@@ -73,20 +73,28 @@ _cache: tuple[float, list[dict]] | None = None
 TTL = 20  # seconds: other server processes see a panel change this soon
 
 
-def all_labels() -> list[dict]:
+def all_labels(user=None) -> list[dict]:
+    """Return all system labels plus custom labels of the given teacher user (if provided)."""
     global _cache
-    if _cache and time.monotonic() - _cache[0] < TTL:
-        return _cache[1]
+    if user is None:
+        if _cache and time.monotonic() - _cache[0] < TTL:
+            return _cache[1]
     from django.db import DatabaseError
+    from django.db.models import Q
 
     from .models import Label
 
     try:
-        rows = [label.as_json() for label in Label.objects.all()]
+        if user and user.is_authenticated and not user.is_superuser:
+            qs = Label.objects.filter(Q(created_by__isnull=True) | Q(created_by=user))
+        else:
+            qs = Label.objects.all()
+        rows = [label.as_json() for label in qs]
     except DatabaseError:
         rows = []
     result = rows or _defaults()
-    _cache = (time.monotonic(), result)
+    if user is None:
+        _cache = (time.monotonic(), result)
     return result
 
 

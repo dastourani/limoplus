@@ -973,10 +973,16 @@ class ShareSettingsAdmin(admin.ModelAdmin):
 class LabelAdmin(admin.ModelAdmin):
     """«برچسب‌های متن»: boxes in the notes (:::تعریف) and parts of the summary (تعریف:). Never deleted: hide instead."""
 
-    list_display = ("preview", "name", "group", "style", "icon", "numbered", "role", "order", "is_hidden")
+    list_display = ("preview", "name", "owner_display", "group", "style", "icon", "numbered", "role", "order", "is_hidden")
     list_display_links = ("name",)
     list_editable = ("group", "style", "icon", "numbered", "order", "is_hidden")
     ordering = ("group", "order", "name")
+
+    @admin.display(description="سازنده")
+    def owner_display(self, obj):
+        if not obj.created_by:
+            return format_html('<span style="color:#6b7280;font-size:12px;">سیستمی (عمومی)</span>')
+        return format_html('<span style="color:#15803d;font-weight:700;font-size:12px;">استاد: {}</span>', obj.created_by.get_full_name() or obj.created_by.phone)
 
     @admin.display(description="نمونه")
     def preview(self, obj):
@@ -987,19 +993,39 @@ class LabelAdmin(admin.ModelAdmin):
         return format_html('<span style="display:inline-block;min-width:76px;padding:3px 10px;border-inline-start:3px solid {};'
                            'background:{};border-radius:6px;font-weight:700;color:{};opacity:{}">{}</span>',
                            line, bg, line, ".45" if obj.is_hidden else "1", obj.name)
-    list_filter = ("group", "style", "is_hidden")
+    list_filter = ("created_by", "group", "style", "is_hidden")
     search_fields = ("name", "aliases")
     fieldsets = (
         (None, {"fields": ("name", "group", "style", "icon", "numbered", "order", "is_hidden"),
                 "description": "هر برچسب در «درسنامه» یک کادر است (:::تعریف … :::) و در «چکیده» یک بخش (تعریف: و بعد موردها با «- »). "
                                "برچسبی را که در متن‌ها به کار رفته پاک نکنید؛ «پنهان» کنید تا در دکمه‌های پنل نیاید."}),
-        ("بیشتر", {"fields": ("aliases", "columns", "role"), "classes": ("collapse",)}),
+        ("بیشتر", {"fields": ("aliases", "columns", "role", "created_by"), "classes": ("collapse",)}),
     )
 
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        from django.db.models import Q
+        return qs.filter(Q(created_by__isnull=True) | Q(created_by=request.user))
+
+    def has_change_permission(self, request, obj=None):
+        if not super().has_change_permission(request, obj):
+            return False
+        if obj and not request.user.is_superuser and obj.created_by != request.user:
+            return False
+        return True
+
     def has_delete_permission(self, request, obj=None):
+        if obj and not request.user.is_superuser and obj.created_by == request.user:
+            return True
         return False
 
     def save_model(self, request, obj, form, change):
+        if not request.user.is_superuser and not change:
+            obj.created_by = request.user
+            if not obj.group:
+                obj.group = "برچسب‌های اختصاصی"
         super().save_model(request, obj, form, change)
         from .labels import forget
 

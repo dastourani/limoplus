@@ -263,7 +263,7 @@ def chapter_state(chapter: ContentNode, user=None) -> dict:
         "suggest": {k: editing.suggest_slug(book, parsed, k) for k in ("section", "question", "flashcard")},
         "media_url": settings.MEDIA_URL if settings.MEDIA_URL.startswith("/") else "/" + settings.MEDIA_URL,
         "revisions": chapter.revisions.count(),
-        "labels": all_labels(),
+        "labels": all_labels(user=user),
         "macros": formula_macros(),
         "inbox": chapter.is_inbox,
         "refs": panel_refs(book),

@@ -1353,6 +1353,7 @@ class BookEditorAccessTests(_Base):
         expected = {
             ("catalog", "view_book"), ("catalog", "view_contentnode"), ("catalog", "change_contentnode"),
             ("catalog", "view_section"), ("catalog", "view_chapterrevision"),
+            ("catalog", "view_label"), ("catalog", "add_label"), ("catalog", "change_label"), ("catalog", "delete_label"),
             ("learning", "view_question"), ("learning", "view_flashcard"), ("learning", "view_examsource"),
             ("learning", "view_report"), ("learning", "change_report"),
         }
@@ -2112,3 +2113,70 @@ class ChapterCardTests(_Base):
         exported = editing.export_chapter(chapter)
         self.assertIn("Ax = \\lambda x", exported)
         self.assertIn(":::تعریف", exported)
+from django.test import TestCase
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group, Permission
+from django.contrib.contenttypes.models import ContentType
+from django.test import RequestFactory
+from django.contrib import admin
+from apps.catalog.models import Label
+from apps.catalog.access import BOOK_EDITOR_GROUP
+from apps.catalog.labels import all_labels
+
+User = get_user_model()
+
+class TeacherCustomLabelsTests(TestCase):
+    def test_teacher_custom_labels(self):
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        ct = ContentType.objects.get_for_model(Label)
+        for codename in ("add_label", "change_label", "delete_label", "view_label"):
+            perm, _ = Permission.objects.get_or_create(content_type=ct, codename=codename)
+            group.permissions.add(perm)
+
+        teacher1 = User.objects.create_user("09121110001", is_staff=True)
+        teacher1.groups.add(group)
+
+        teacher2 = User.objects.create_user("09121110002", is_staff=True)
+        teacher2.groups.add(group)
+
+        admin_user = User.objects.create_superuser("09121110000", is_staff=True)
+
+        # 1. System label
+        sys_lbl = Label.objects.create(name="نکته طلایی", group="عمومی", style="note")
+
+        # 2. Teacher 1 creates custom label
+        lbl1 = Label.objects.create(name="اثبات قضیه", group="اختصاصی دکتر ۱", style="formal", created_by=teacher1)
+
+        # 3. Teacher 2 creates custom label
+        lbl2 = Label.objects.create(name="شبیه‌سازی عددی", group="اختصاصی دکتر ۲", style="warn", created_by=teacher2)
+
+        # Check all_labels for teacher1: should contain sys_lbl and lbl1, but NOT lbl2
+        t1_labels = [l["name"] for l in all_labels(user=teacher1)]
+        self.assertIn("نکته طلایی", t1_labels)
+        self.assertIn("اثبات قضیه", t1_labels)
+        self.assertNotIn("شبیه‌سازی عددی", t1_labels)
+
+        # Check all_labels for admin_user: should see all
+        admin_labels = [l["name"] for l in all_labels(user=admin_user)]
+        self.assertIn("نکته طلایی", admin_labels)
+        self.assertIn("اثبات قضیه", admin_labels)
+        self.assertIn("شبیه‌سازی عددی", admin_labels)
+
+        # Test Admin permissions
+        label_admin = admin.site._registry[Label]
+        rf = RequestFactory()
+
+        r1 = rf.get("/admin/catalog/label/")
+        r1.user = teacher1
+        self.assertTrue(label_admin.has_change_permission(r1, lbl1))
+        self.assertFalse(label_admin.has_change_permission(r1, sys_lbl))
+        self.assertFalse(label_admin.has_change_permission(r1, lbl2))
+
+        self.assertTrue(label_admin.has_delete_permission(r1, lbl1))
+        self.assertFalse(label_admin.has_delete_permission(r1, sys_lbl))
+
+        # Queryset for teacher1
+        qs1 = list(label_admin.get_queryset(r1))
+        self.assertIn(sys_lbl, qs1)
+        self.assertIn(lbl1, qs1)
+        self.assertNotIn(lbl2, qs1)
