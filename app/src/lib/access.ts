@@ -1,14 +1,15 @@
 import type { ProductStatus } from '../api/endpoints';
 import { toPersianDigits, toPersianOrdinal } from '../theme';
 
-type AccessKind = 'purchase' | 'gift' | 'subscription' | 'staff' | null;
+type AccessKind = 'purchase' | 'gift' | 'subscription' | 'staff' | 'editor' | null;
 
 /** The one label a book's open access shows, on the shelf and on the book page alike. */
-export function accessLabel(book: { owned: boolean; access?: AccessKind }): string | null {
-  if (!book.owned) return null;
+export function accessLabel(book: { owned: boolean; access?: AccessKind; is_published?: boolean }): string | null {
+  if (!book.owned && book.access !== 'editor') return null;
+  if (book.access === 'editor') return 'دوره اختصاصی';
   if (book.access === 'subscription') return 'با اشتراک';
   if (book.access === 'staff') return 'دسترسی مدیر';
-  if (book.access === 'gift') return 'هدیه';
+  if (book.access === 'gift') return 'دوره اختصاصی';
   return 'خریداری شده';
 }
 
