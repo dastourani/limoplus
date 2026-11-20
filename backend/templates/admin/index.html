@@ -73,7 +73,19 @@
           <li class="teacher-list-item">
             <div class="meta">
               <a href="{% url 'admin:catalog_book_change' b.pk %}" class="title">{{ b.title }}</a>
-              <span class="sub">{{ b.author|default:"بدون نام نویسنده" }} • {{ b.chapters_count }} فصل</span>
+              <span class="sub">
+                {{ b.author|default:"بدون نام نویسنده" }} • {{ b.chapters_count }} فصل
+                {% if b.pending_tasks_count %}
+                  <span class="teacher-badge" style="background:#fef3c7; color:#92400e; padding:1px 6px; border-radius:10px; font-size:11px; margin-inline-start:6px;" title="وظایف باز تیم">
+                    📝 {{ b.pending_tasks_count }} یادداشت
+                  </span>
+                {% endif %}
+                {% if b.pending_reports_count %}
+                  <span class="teacher-badge" style="background:#fee2e2; color:#b91c1c; padding:1px 6px; border-radius:10px; font-size:11px; margin-inline-start:4px;" title="گزارش‌های اشکال بررسی‌نشده">
+                    ⚠️ {{ b.pending_reports_count }} اشکال
+                  </span>
+                {% endif %}
+              </span>
             </div>
             <div style="display:flex; gap:6px; align-items:center;">
               <a href="{% url 'admin:catalog_book_study_analytics' b.pk %}" class="teacher-btn teacher-btn-ghost" style="padding: 4px 8px; font-size: 11.5px; color:var(--body-fg); border-color:var(--hairline-color);" title="مشاهده آمار پیشرفت و مطالعه کلاس">
