@@ -8,9 +8,9 @@
   .teacher-hero h2 { margin: 0 0 6px; font-size: 20px; color: #F5C518; }
   .teacher-hero p { margin: 0; color: #D1D5DB; font-size: 13.5px; }
   .teacher-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
-  .teacher-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 700; text-decoration: none; transition: all .15s ease; cursor: pointer; border: 0; }
-  .teacher-btn-primary { background: #F5C518; color: #17201A; }
-  .teacher-btn-primary:hover { background: #FFD84A; color: #17201A; }
+  .teacher-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 800; text-decoration: none; transition: all .15s ease; cursor: pointer; border: 0; }
+  .teacher-btn-primary { background: #F5C518; color: #000000 !important; }
+  .teacher-btn-primary:hover { background: #FFD84A; color: #000000 !important; }
   .teacher-btn-ghost { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.25); }
   .teacher-btn-ghost:hover { background: rgba(255,255,255,0.2); color: #fff; }
 
@@ -29,6 +29,57 @@
   .teacher-list-empty { padding: 14px; text-align: center; color: var(--body-quiet-color); font-size: 12.5px; font-style: italic; }
   .copy-btn { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; cursor: pointer; font-family: inherit; font-weight: 700; }
   .copy-btn:hover { background: #bae6fd; }
+
+  /* Teacher dashboard custom styling for app list modules */
+  .teacher-mode-apps .module {
+    background: var(--body-bg) !important;
+    border: 1px solid var(--hairline-color) !important;
+    border-radius: 12px !important;
+    overflow: hidden;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+  }
+  .teacher-mode-apps .module table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .teacher-mode-apps .module caption,
+  .teacher-mode-apps .module h2 {
+    background: linear-gradient(135deg, #17201A 0%, #1e3328 100%) !important;
+    color: #F5C518 !important;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    border-bottom: 1px solid var(--hairline-color) !important;
+  }
+  .teacher-mode-apps .module caption a {
+    color: #F5C518 !important;
+  }
+  .teacher-mode-apps .module th,
+  .teacher-mode-apps .module td {
+    padding: 9px 16px !important;
+    border-bottom: 1px solid var(--hairline-color) !important;
+    background: var(--body-bg) !important;
+    color: var(--body-fg) !important;
+    font-size: 13px !important;
+  }
+  .teacher-mode-apps .module tr:last-child th,
+  .teacher-mode-apps .module tr:last-child td {
+    border-bottom: none !important;
+  }
+  .teacher-mode-apps .module a {
+    color: var(--body-fg) !important;
+    font-weight: 600;
+  }
+  .teacher-mode-apps .module a:hover {
+    color: #15803d !important;
+  }
+  .teacher-mode-apps .module a.addlink,
+  .teacher-mode-apps .module a.changelink,
+  .teacher-mode-apps .module a.viewlink {
+    font-weight: 700;
+    font-size: 12px;
+  }
 </style>
 {% endblock %}
 
@@ -138,7 +189,9 @@
   </div>
   {% endif %}
 
-  {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+  <div class="{% if is_teacher %}teacher-mode-apps{% endif %}">
+    {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+  </div>
 </div>
 {% endblock %}
 
