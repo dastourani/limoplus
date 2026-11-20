@@ -287,6 +287,8 @@ class BookAdmin(admin.ModelAdmin):
                 editor = BookEditor.objects.filter(book=book, user=request.user).first()
                 extra["can_request_publication"] = bool(editor and editor.can_request_publication)
                 extra["can_request_group_access"] = bool(editor and editor.can_request_group_access)
+                from apps.website.models import PublicationRequest
+                extra["publication_request"] = PublicationRequest.objects.filter(book=book, requested_by=request.user).order_by("-submitted_at").first()
             else:
                 extra["can_request_publication"] = False
                 extra["can_request_group_access"] = False
@@ -308,6 +310,7 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
             path("<int:book_id>/assistants/", site(self.book_assistants_action), name="catalog_book_assistants_action"),
             path("<int:book_id>/study-analytics/", site(self.book_study_analytics_view), name="catalog_book_study_analytics"),
+            path("<int:book_id>/request-publication/", site(self.book_request_publication_view), name="catalog_book_request_publication"),
             path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
                  name="catalog_book_publish"),
             path("inbox/", site(panel.open_inbox), name="catalog_inbox"),
@@ -376,7 +379,21 @@ class BookAdmin(admin.ModelAdmin):
                         note="ایجادشده توسط مؤلف",
                     )
 
-                messages.success(request, f"کتاب پیش‌نویس «{book.title}» با موفقیت ایجاد شد.")
+                    # Optional initial file import
+                    initial_file = request.FILES.get("initial_file")
+                    imported_summary = ""
+                    if initial_file:
+                        from .importer import read_upload, check_against_db, apply_chapter
+                        data = initial_file.read()
+                        parsed = read_upload(initial_file.name, data, book=book)
+                        check_against_db(parsed)
+                        if not parsed.errors:
+                            res = apply_chapter(parsed, publish=False)
+                            imported_summary = f" همچنین فصل «{res.chapter.title}» با موفقیت از فایل وارد شد."
+                        else:
+                            messages.warning(request, f"کتاب ایجاد شد، اما فایل اولیه به دلیل خطا وارد نشد: {'، '.join(str(e) for e in parsed.errors[:3])}")
+
+                messages.success(request, f"کتاب پیش‌نویس «{book.title}» با موفقیت ایجاد شد.{imported_summary}")
                 return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
 
         context = {
@@ -443,6 +460,13 @@ class BookAdmin(admin.ModelAdmin):
                 messages.success(request, f"دسترسی‌های دستیار با شماره {phone} به‌روزرسانی شد.")
             else:
                 messages.success(request, f"دستیار آموزشی با شماره {phone} با موفقیت به کتاب اضافه شد.")
+                # Send SMS notification to assistant
+                try:
+                    from apps.accounts.sms import send_sms
+                    sms_text = f"سلام، شما به عنوان دستیار آموزشی به کتاب «{book.title}» در سامانه لیمو افزوده شدید."
+                    send_sms(phone, sms_text)
+                except Exception:
+                    pass
 
         elif action == "remove":
             editor_id = request.POST.get("editor_id")
@@ -527,6 +551,65 @@ class BookAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
         }
         return render(request, "admin/catalog/book/book_study_analytics.html", context)
+
+    def book_request_publication_view(self, request, book_id):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import get_object_or_404, redirect, render
+        from apps.website.models import PublicationRequest, PublicationRequestEvent
+        from apps.website.publication import publication_content_digest, record_publication_request
+        from .models import BookEditor
+
+        book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK)
+        if request.user.is_superuser:
+            messages.info(request, "شما به عنوان مدیر کل می‌توانید مستقیماً کتاب را منتشر کنید.")
+            return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#publish")
+
+        editor = BookEditor.objects.filter(book=book, user=request.user, can_request_publication=True).first()
+        if not editor or not access.is_book_teacher(request.user):
+            raise PermissionDenied("شما دسترسی ارسال درخواست بازبینی انتشار این کتاب را ندارید.")
+
+        latest_req = PublicationRequest.objects.filter(book=book, requested_by=request.user).order_by("-submitted_at").first()
+
+        if request.method == "POST":
+            note = request.POST.get("note", "").strip()
+            digest = publication_content_digest(book)
+
+            # Check if pending request exists
+            pending = PublicationRequest.objects.filter(
+                book=book,
+                requested_by=request.user,
+                status__in=(PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO),
+            ).first()
+
+            if pending:
+                pending.request_note = note
+                pending.content_digest = digest
+                pending.status = PublicationRequest.Status.PENDING
+                pending.save(update_fields=["request_note", "content_digest", "status"])
+                record_publication_request(pending, actor=request.user, action=PublicationRequestEvent.Action.SUBMITTED, reason=note)
+                messages.success(request, "درخواست بازبینی شما با موفقیت به‌روزرسانی شد و برای مدیر کل ارسال گردید.")
+            else:
+                new_req = PublicationRequest.objects.create(
+                    book=book,
+                    requested_by=request.user,
+                    request_note=note,
+                    content_digest=digest,
+                    status=PublicationRequest.Status.PENDING,
+                )
+                record_publication_request(new_req, actor=request.user, action=PublicationRequestEvent.Action.SUBMITTED, reason=note)
+                messages.success(request, f"درخواست بازبینی انتشار کتاب «{book.title}» با موفقیت برای مدیر کل ارسال شد.")
+
+            return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#publish")
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": f"درخواست بازبینی انتشار: {book.title}",
+            "book": book,
+            "latest_req": latest_req,
+            "opts": self.model._meta,
+        }
+        return render(request, "admin/catalog/book/book_request_publication.html", context)
 
 
 
