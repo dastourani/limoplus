@@ -1418,9 +1418,9 @@ def _assets_each_context_with_version(request):
         from .models import BookEditor, BookTeamTask
 
         if user.is_superuser:
-            # For superuser previewing teacher portal: show recently edited draft books or all books
+            # For superuser previewing teacher portal: show recently edited draft books or all books (excluding inbox)
             teacher_books = []
-            for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, is_published=False)[:6]:
+            for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, is_published=False, is_inbox=False)[:6]:
                 ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
                 pending_tasks = BookTeamTask.objects.filter(book=b, is_done=False).count()
                 report_q = (
@@ -1456,7 +1456,7 @@ def _assets_each_context_with_version(request):
         else:
             book_ids = list(BookEditor.objects.filter(user=user).values_list("book_id", flat=True))
             teacher_books = []
-            for b in ContentNode.objects.filter(pk__in=book_ids, kind=ContentNode.Kind.BOOK):
+            for b in ContentNode.objects.filter(pk__in=book_ids, kind=ContentNode.Kind.BOOK, is_inbox=False):
                 ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
                 pending_tasks = BookTeamTask.objects.filter(book=b, is_done=False).count()
                 report_q = (
