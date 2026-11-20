@@ -829,7 +829,6 @@ class SectionAdmin(admin.ModelAdmin):
         return super().change_view(request, object_id, form_url, extra_context)
 
 
-@admin.register(BookEditor)
 class TeacherInactivityFilter(admin.SimpleListFilter):
     title = "وضعیت فعالیت تألیف محتوا"
     parameter_name = "inactivity_period"
@@ -888,6 +887,7 @@ class TeacherInactivityFilter(admin.SimpleListFilter):
         return queryset
 
 
+@admin.register(BookEditor)
 class BookEditorAdmin(admin.ModelAdmin):
     """«استادان کتاب»: only the manager assigns a reviewed, approved editor to a book."""
 
