@@ -407,11 +407,11 @@ class ShareSettings(models.Model):
     default_link = models.URLField("لینک پیش‌فرض", blank=True, help_text="مثلاً لینک کانال یا صفحه‌ی دانلود اپ.")
 
     class Meta:
-        verbose_name = "تنظیمات اشتراک"
-        verbose_name_plural = "تنظیمات اشتراک"
+        verbose_name = "پیوند معرفی اپلیکیشن"
+        verbose_name_plural = "پیوند معرفی اپلیکیشن"
 
     def __str__(self):
-        return "تنظیمات اشتراک"
+        return "پیوند معرفی اپلیکیشن"
 
     @classmethod
     def link_for(cls, book) -> str:
