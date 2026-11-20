@@ -2219,9 +2219,24 @@ class TeacherDashboardTests(TestCase):
         self.assertContains(res, "+ ایجاد کلاس جدید")
         self.assertContains(res, "+ تعریف برچسب اختصاصی")
 
-    def test_admin_does_not_see_teacher_dashboard(self):
+    def test_admin_does_not_see_teacher_dashboard_by_default_but_can_switch_to_teacher_view(self):
         superuser = User.objects.create_superuser("09120000000", is_staff=True)
         self.client.force_login(superuser)
+        # By default superuser sees normal admin and the button "🎓 پنل اساتید"
         res = self.client.get("/admin/")
         self.assertEqual(res.status_code, 200)
         self.assertNotContains(res, "کارگاه آموزش و تألیف اساتید")
+        self.assertContains(res, "🎓 پنل اساتید")
+        self.assertContains(res, "وب‌اپ")
+
+        # Superuser clicks to switch to teacher view
+        res_t = self.client.get("/admin/?view=teacher")
+        self.assertEqual(res_t.status_code, 200)
+        self.assertContains(res_t, "کارگاه آموزش و تألیف اساتید")
+        self.assertContains(res_t, "✕ خروج از نمای استاد")
+
+        # Superuser exits teacher view
+        res_back = self.client.get("/admin/?view=admin")
+        self.assertEqual(res_back.status_code, 200)
+        self.assertNotContains(res_back, "کارگاه آموزش و تألیف اساتید")
+        self.assertContains(res_back, "🎓 پنل اساتید")

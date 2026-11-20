@@ -449,7 +449,7 @@ class PanelLoginTests(TestCase):
 
     def test_panel_shows_the_button(self):
         page = self.web.get("/admin/")
-        self.assertContains(page, "باز کردن وب اپ با حساب من")
+        self.assertContains(page, "وب‌اپ")
         self.assertContains(page, "lp.nav.scroll")
 
 
