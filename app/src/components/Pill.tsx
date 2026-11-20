@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { colors, type } from '../theme';
+import { colors, toPersianDigits, type } from '../theme';
 import { Text } from './Text';
 
 /**

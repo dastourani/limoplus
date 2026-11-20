@@ -1243,12 +1243,64 @@ class StorageAdmin(admin.ModelAdmin):
 _admin_index = admin.site.index
 
 
+def _admin_kpis_payload():
+    from datetime import timedelta
+    from django.db.models import Sum
+    from django.utils import timezone
+    from apps.catalog.panel_display import fa_number
+    from apps.accounts.models import User, DeviceSession
+    from apps.commerce.models import Order
+    from apps.study.models import StudyDay
+
+    now = timezone.now()
+    today = timezone.localdate()
+    week_start = today - timedelta(days=6)
+    month_start = today - timedelta(days=29)
+
+    # کاربران: امروز، هفته اخیر (۷ روز)، کل اعضا
+    new_users_today = User.objects.filter(date_joined__date=today).count()
+    new_users_week = User.objects.filter(date_joined__date__gte=week_start).count()
+    total_users = User.objects.count()
+
+    # کاربران فعال: آنلاین/فعال اخیر (۱۵ دقیقه گذشته) و کاربران فعال ماهانه (MAU در ۳۰ روز اخیر)
+    active_now = DeviceSession.objects.filter(
+        revoked_at__isnull=True, expires_at__gt=now, last_seen_at__gte=now - timedelta(minutes=15)
+    ).values("user_id").distinct().count()
+    active_month = StudyDay.objects.filter(date__gte=month_start).values("user").distinct().count()
+
+    # درآمدهای تجمیعی: فروش امروز، فروش ۳۰ روز گذشته، و درآمد کل سامانه
+    paid = Order.objects.filter(status=Order.Status.PAID)
+    rev_today = paid.filter(paid_at__date=today).aggregate(s=Sum("amount"))["s"] or 0
+    rev_month = paid.filter(paid_at__date__gte=month_start).aggregate(s=Sum("amount"))["s"] or 0
+    rev_total = paid.aggregate(s=Sum("amount"))["s"] or 0
+
+    return {
+        "kpi_users_today": fa_number(new_users_today),
+        "kpi_users_week": fa_number(new_users_week),
+        "kpi_users_total": fa_number(total_users),
+        "kpi_active_now": fa_number(active_now),
+        "kpi_active_month": fa_number(active_month),
+        "kpi_rev_today": fa_number(rev_today),
+        "kpi_rev_month": fa_number(rev_month),
+        "kpi_rev_total": fa_number(rev_total),
+    }
+
+
 def _index_with_daily_cleanup(request, extra_context=None):
     from .maintenance import run_if_due
 
     if request.user.is_active and request.user.is_superuser:
         run_if_due()
-    return _admin_index(request, extra_context)
+    ctx = dict(extra_context or {})
+    # Only calculate and attach main admin KPIs when viewing main admin index
+    is_teacher_preview = request.session.get("admin_view_mode") == "teacher"
+    if request.user.is_active and request.user.is_superuser and not is_teacher_preview:
+        try:
+            ctx.update(_admin_kpis_payload())
+            ctx["show_admin_kpis"] = True
+        except Exception:
+            pass
+    return _admin_index(request, ctx)
 
 
 admin.site.index = _index_with_daily_cleanup
