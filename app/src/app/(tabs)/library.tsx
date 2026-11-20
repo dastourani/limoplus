@@ -13,6 +13,7 @@ import { Pill } from '../../components/Pill';
 import { useAuth } from '../../lib/auth';
 import { useFeedback } from '../../components/Feedback';
 import { QuoteView } from '../../components/QuoteView';
+import { accessLabel } from '../../lib/access';
 import { relativeDay } from '../../lib/jalali';
 import { colors, radius, rtl, toPersianDigits } from '../../theme';
 
@@ -108,7 +109,14 @@ function PersonalBookCard({
       >
         <BookCover book={item.book} major={item.book.major} width={54} edge />
         <View style={styles.bookCopy}>
-          <Text style={[styles.itemTitle, rtl]} numberOfLines={2}>{item.book.title}</Text>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <Text style={[styles.itemTitle, rtl, { flexShrink: 1 }]} numberOfLines={2}>{item.book.title}</Text>
+            {!!accessLabel(item.book) && (
+              <View style={styles.accessBadge}>
+                <Text style={styles.accessBadgeText}>{accessLabel(item.book)}</Text>
+              </View>
+            )}
+          </View>
           {!!details && <Text style={[styles.muted, rtl]} numberOfLines={1}>{details}</Text>}
         </View>
         <Icon name="chevron-left" size={20} color={colors.muted} />
@@ -294,10 +302,17 @@ export default function LibraryTab() {
   return (
     <Screen tab desktopMax={1600}>
       <Text style={[styles.title, rtl]}>کتابخانه‌ی من</Text>
-      <View style={styles.tabs}>
-        {TABS.map(([key, label]) => (
-          <Pill key={key} label={label} selected={tab === key} onPress={() => setTab(key)} role="tab" />
-        ))}
+      <View style={styles.tabsWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsContent}
+          style={styles.tabsScroll}
+        >
+          {TABS.map(([key, label]) => (
+            <Pill key={key} label={label} selected={tab === key} onPress={() => setTab(key)} role="tab" />
+          ))}
+        </ScrollView>
       </View>
       {!data ? (
         error ? <ErrorState message={error} onRetry={load} /> : <Loading />
@@ -325,24 +340,31 @@ export default function LibraryTab() {
             ))}
           {tab === 'books' && (
             <View style={styles.booksTab}>
-              <View style={styles.shelfFilters}>
-                {BOOK_SHELVES.map((shelf) => (
+              <View style={styles.shelfFiltersWrapper}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.shelfFiltersContent}
+                  style={styles.shelfFiltersScroll}
+                >
+                  {BOOK_SHELVES.map((shelf) => (
+                    <Pill
+                      key={shelf.id}
+                      label={shelf.label}
+                      count={shelfCount(shelf.id)}
+                      selected={bookShelf === shelf.id}
+                      onPress={() => setBookShelf(shelf.id)}
+                      role="tab"
+                    />
+                  ))}
                   <Pill
-                    key={shelf.id}
-                    label={`${shelf.label} · ${toPersianDigits(shelfCount(shelf.id))}`}
-                    selected={bookShelf === shelf.id}
-                    onPress={() => setBookShelf(shelf.id)}
-                    small
+                    label="پنهان‌شده‌ها"
+                    count={hiddenBookCount}
+                    selected={hiddenView}
+                    onPress={() => setBookShelf('hidden')}
                     role="tab"
                   />
-                ))}
-                <Pill
-                  label={`پنهان‌شده‌ها · ${toPersianDigits(hiddenBookCount)}`}
-                  selected={hiddenView}
-                  onPress={() => setBookShelf('hidden')}
-                  small
-                  role="tab"
-                />
+                </ScrollView>
               </View>
               {shelfBooks.length === 0 ? (
                 <Empty
@@ -414,7 +436,25 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   booksTab: { gap: 12 },
-  shelfFilters: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 },
+  tabsWrapper: { marginBottom: 12 },
+  tabsScroll: { flexGrow: 0 },
+  tabsContent: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 16 },
+  shelfFiltersWrapper: { marginHorizontal: -16, marginBottom: 4 },
+  shelfFiltersScroll: { flexGrow: 0 },
+  shelfFiltersContent: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 16, paddingVertical: 2 },
+  accessBadge: {
+    backgroundColor: 'rgba(63, 184, 169, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(63, 184, 169, 0.45)',
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  accessBadgeText: {
+    color: '#047857',
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
   bookCard: { gap: 10, padding: 12 },
   bookMain: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
   bookCopy: { flex: 1, minWidth: 0, gap: 4 },
@@ -433,7 +473,6 @@ const styles = StyleSheet.create({
   goText: { fontSize: 12, fontWeight: '800', color: colors.ink },
   // The four tabs start alike: the page title 12 from the top, on the 16 margin.
   title: { fontSize: 22, fontWeight: '800', color: colors.ink, paddingHorizontal: 16, paddingTop: 12 },
-  tabs: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
   page: { padding: 16, paddingTop: 0, gap: 12 },
   itemTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   muted: { fontSize: 12, color: colors.muted },

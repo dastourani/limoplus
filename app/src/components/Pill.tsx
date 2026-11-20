@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { colors, type } from '../theme';
 import { Text } from './Text';
@@ -10,6 +10,7 @@ import { Text } from './Text';
  */
 export function Pill({
   label,
+  count,
   selected,
   onPress,
   small = false,
@@ -17,6 +18,7 @@ export function Pill({
   role = 'button',
 }: {
   label: string;
+  count?: number | string;
   selected: boolean;
   onPress: () => void;
   small?: boolean;
@@ -33,15 +35,62 @@ export function Pill({
       <Text style={[styles.text, small && styles.smallText, selected && styles.textOn]} numberOfLines={1}>
         {label}
       </Text>
+      {count !== undefined && count !== null && (
+        <View style={[styles.badge, selected ? styles.badgeOn : styles.badgeOff]}>
+          <Text style={[styles.badgeText, selected ? styles.badgeTextOn : styles.badgeTextOff]}>
+            {typeof count === 'number' ? toPersianDigits(count) : count}
+          </Text>
+        </View>
+      )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  pill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
-  small: { paddingHorizontal: 12, paddingVertical: 5 },
+  pill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+  },
+  small: { paddingHorizontal: 12, paddingVertical: 5, gap: 6 },
   on: { backgroundColor: colors.ink, borderColor: colors.ink },
   text: { fontSize: type.small, fontWeight: '700', color: colors.ink },
   smallText: { fontSize: type.caption },
   textOn: { color: colors.lemon },
+  badge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeOn: {
+    backgroundColor: 'rgba(245, 197, 24, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 197, 24, 0.45)',
+  },
+  badgeOff: {
+    backgroundColor: colors.ground,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 15,
+  },
+  badgeTextOn: {
+    color: colors.lemon,
+  },
+  badgeTextOff: {
+    color: colors.muted,
+  },
 });
