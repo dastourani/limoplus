@@ -21,3 +21,30 @@ def app_version(request):
         elif newest and int(build) < newest.build:
             status = "optional"
     return Response({"status": status, "min_build": floor, "latest": describe(newest, abis_of(request))})
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def sync_github_webhook(request):
+    """Webhook triggered by GitHub Actions or admin to sync the latest released APK."""
+    from django.conf import settings
+    from .github_sync import sync_release_from_github
+
+    secret = request.headers.get("X-Release-Secret") or request.query_params.get("secret")
+    expected_secret = getattr(settings, "RELEASE_WEBHOOK_SECRET", None) or settings.SECRET_KEY
+    if not secret or secret != expected_secret:
+        return Response({"error": "unauthorized"}, status=403)
+
+    download_files = request.query_params.get("download") in ("1", "true", "True")
+    rel, msg = sync_release_from_github(download_files=download_files)
+    if not rel:
+        return Response({"ok": False, "message": msg}, status=400)
+
+    return Response({
+        "ok": True,
+        "message": msg,
+        "build": rel.build,
+        "version_name": rel.version_name,
+        "download_url": rel.download_url,
+    })

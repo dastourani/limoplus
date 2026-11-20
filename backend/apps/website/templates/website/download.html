@@ -14,16 +14,41 @@
     {% if apk.version %}<div class="dl-meta"><span class="q-badge">نسخه‌ی {{ apk.version }}</span>{% if apk.date_fa %}<span class="mut">انتشار: {{ apk.date_fa }}</span>{% endif %}</div>{% endif %}
     <div class="stores">
       {% if apk %}<a class="store" href="{{ apk.url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دانلود مستقیم، سازگار با همه‌ی گوشی‌ها</small><b>دریافت فایل APK (همه‌کاره)</b></span></a>{% endif %}
-      {% if s.bazaar_url %}<a class="store" href="{{ s.bazaar_url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دریافت از</small><b>کافه‌بازار</b></span></a>{% endif %}
-      {% if s.myket_url %}<a class="store" href="{{ s.myket_url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دریافت از</small><b>مایکت</b></span></a>{% endif %}
+      {% if s.bazaar_url or s.myket_url %}
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:2px;">
+        {% if s.bazaar_url %}<a class="store" href="{{ s.bazaar_url }}" style="flex:1; min-width:140px; margin:0;"><span class="si">{% icon "download" 18 %}</span><span><small>دریافت از</small><b>کافه‌بازار</b></span></a>{% endif %}
+        {% if s.myket_url %}<a class="store" href="{{ s.myket_url }}" style="flex:1; min-width:140px; margin:0;"><span class="si">{% icon "download" 18 %}</span><span><small>دریافت از</small><b>مایکت</b></span></a>{% endif %}
+      </div>
+      {% endif %}
       {% if not apk and not s.bazaar_url and not s.myket_url %}<p class="sub">لینک دانلود به‌زودی اینجا قرار می‌گیرد.</p>{% endif %}
     </div>
-    {% if apk.arm64 or apk.bit32 %}
-    <div class="abi-grid">
-      {% if apk.arm64 %}<a class="abi-card" href="{{ apk.arm64 }}"><b>{% icon "download" 15 %} نسخه‌ی ۶۴ بیتی (سبک‌تر)</b><span>مناسب بیشتر گوشی‌های سال‌های اخیر</span></a>{% endif %}
-      {% if apk.bit32 %}<a class="abi-card" href="{{ apk.bit32 }}"><b>{% icon "download" 15 %} نسخه‌ی ۳۲ بیتی (سبک‌تر)</b><span>مناسب گوشی‌های اقتصادی یا قدیمی‌تر</span></a>{% endif %}
-    </div>
-    <p class="mut small apk-light">اگر مدل پردازنده‌ی گوشی را نمی‌دانید همان دکمه‌ی اصلی بالا (همه‌کاره) را بزنید. به‌روزرسانی‌های بعدی را خودِ اپ متناسب با گوشی شما دریافت می‌کند.</p>
+    {% if apk.arm64 or apk.bit32 or apk.github_url %}
+    <details class="more-downloads" style="margin-top:14px; background:rgba(0,0,0,0.02); border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:13px;">
+      <summary style="cursor:pointer; font-weight:700; color:var(--ink); user-select:none; outline:none;">
+        ⚙️ سایر نسخه‌ها و لینک‌های کمکی دانلود
+      </summary>
+      <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+        {% if apk.arm64 %}
+          <a class="abi-card" href="{{ apk.arm64 }}" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--surface); border:1px solid var(--line); border-radius:8px; text-decoration:none; color:inherit;">
+            <div><b>نسخه‌ی ۶۴ بیتی (arm64 - سبک‌تر)</b><span style="display:block; font-size:11px; color:var(--mut);">مناسب اکثر گوشی‌های جدید (۳۶ مگابایت)</span></div>
+            <span style="font-weight:700; color:#0284c7; font-size:12px;">دانلود {% icon "download" 14 %}</span>
+          </a>
+        {% endif %}
+        {% if apk.bit32 %}
+          <a class="abi-card" href="{{ apk.bit32 }}" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--surface); border:1px solid var(--line); border-radius:8px; text-decoration:none; color:inherit;">
+            <div><b>نسخه‌ی ۳۲ بیتی (سبک‌تر)</b><span style="display:block; font-size:11px; color:var(--mut);">مناسب گوشی‌های اقتصادی یا قدیمی (۲۸ مگابایت)</span></div>
+            <span style="font-weight:700; color:#0284c7; font-size:12px;">دانلود {% icon "download" 14 %}</span>
+          </a>
+        {% endif %}
+        {% if apk.github_url %}
+          <a class="abi-card" href="{{ apk.github_url }}" target="_blank" rel="noopener" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--surface); border:1px solid var(--line); border-radius:8px; text-decoration:none; color:inherit;">
+            <div><b>لینک کمکی دانلود از GitHub Releases</b><span style="display:block; font-size:11px; color:var(--mut);">پشتیبان در صورت کندی اینترنت داخلی</span></div>
+            <span style="font-weight:700; color:#0284c7; font-size:12px;">دریافت {% icon "download" 14 %}</span>
+          </a>
+        {% endif %}
+        <p class="mut small" style="margin:4px 0 0; font-size:11.5px; line-height:1.6;">اگر نوع پردازنده گوشی خود را نمی‌دانید، دکمه اصلی بالا (همه‌کاره) مناسب است و به‌روزرسانی‌های بعدی خودکار دانلود می‌شوند.</p>
+      </div>
+    </details>
     {% endif %}
     {% if apk.notes %}
     <div class="rel-notes">

@@ -220,10 +220,17 @@ def _apk(s: SiteSettings) -> dict | None:
     if not r:
         return None
     notes = [line.strip().lstrip("-• ").strip() for line in (r.notes or "").splitlines() if line.strip()]
+    # If the universal link is hosted locally on this server, we can still provide github_url as fallback
+    github_fallback = r.download_url if r.apk and r.download_url else ""
     return {
-        "url": r.link or r.link_arm64 or r.link_32, "arm64": r.link_arm64, "bit32": r.link_32,
-        "version": r.version_name or fa(r.build), "date": r.created_at,
-        "date_fa": fa_date(r.created_at), "notes": notes,
+        "url": r.link or r.link_arm64 or r.link_32,
+        "arm64": r.link_arm64,
+        "bit32": r.link_32,
+        "github_url": github_fallback,
+        "version": r.version_name or fa(r.build),
+        "date": r.created_at,
+        "date_fa": fa_date(r.created_at),
+        "notes": notes,
     }
 
 
