@@ -152,20 +152,27 @@ class LimoAdminSite(AdminSite):
                 orders_today = Order.objects.filter(status=Order.Status.PAID, paid_at__date=today).count()
 
                 badges_map = {
-                    ("learning", "Report"): (reports_open, "#b91c1c", "#fee2e2", "گزارش باز"),
-                    ("teacher_workflows", "PublicationRequest"): (pub_pending, "#b45309", "#fef3c7", "در انتظار بررسی"),
-                    ("teacher_workflows", "TeacherApplication"): (teacher_app_pending, "#b45309", "#fef3c7", "درخواست جدید"),
-                    ("teacher_workflows", "BookAccessRequest"): (access_req_pending, "#0369a1", "#e0f2fe", "درخواست باز"),
-                    ("commerce", "Order"): (orders_today, "#15803d", "#dcfce7", "خرید امروز"),
+                    ("learning", "Report"): (reports_open, "lp-b-red", "گزارش‌های باز"),
+                    ("teacher_workflows", "PublicationRequest"): (pub_pending, "lp-b-yellow", "در انتظار بررسی"),
+                    ("teacher_workflows", "TeacherApplication"): (teacher_app_pending, "lp-b-yellow", "درخواست جدید"),
+                    ("teacher_workflows", "BookAccessRequest"): (access_req_pending, "lp-b-blue", "درخواست باز"),
+                    ("commerce", "Order"): (orders_today, "lp-b-green", "خرید امروز"),
                 }
 
                 for app in retained_apps:
                     for model in app.get("models", []):
                         key = (app.get("app_label"), model.get("object_name"))
                         if key in badges_map:
-                            cnt, fg, bg, title = badges_map[key]
+                            cnt, color_cls, title = badges_map[key]
                             if cnt > 0:
-                                model["name"] = f"{model['name']} ({fa_number(cnt)})"
+                                from django.utils.html import format_html
+                                model["name"] = format_html(
+                                    '{} <span class="lp-badge {} lp-menu-badge" title="{}">{}</span>',
+                                    model["name"],
+                                    color_cls,
+                                    title,
+                                    fa_number(cnt),
+                                )
             except Exception:
                 pass
 
