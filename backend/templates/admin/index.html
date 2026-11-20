@@ -13,11 +13,12 @@
     box-shadow: 0 2px 6px rgba(0,0,0,0.03);
     position: relative;
     overflow: hidden;
-    transition: transform .15s ease, box-shadow .15s ease;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
   }
   .admin-kpi-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+    border-color: rgba(245, 197, 24, 0.4);
   }
   .admin-kpi-card::before {
     content: "";
@@ -26,57 +27,84 @@
     right: 0;
     left: 0;
     height: 3px;
-    background: linear-gradient(90deg, #F5C518, #3FB8A9);
+    background: linear-gradient(90deg, #F5C518, #10b981);
   }
   .admin-kpi-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--hairline-color);
   }
   .admin-kpi-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--body-fg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .admin-kpi-icon {
+    font-size: 17px;
+    line-height: 1;
+  }
+  .admin-kpi-val-box {
+    background: var(--darkened-bg);
+    border: 1px solid var(--hairline-color);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .admin-kpi-num {
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--body-fg);
+    line-height: 1;
+    letter-spacing: -0.5px;
+  }
+  .admin-kpi-unit {
     font-size: 13px;
     font-weight: 700;
     color: var(--body-quiet-color);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .admin-kpi-icon {
-    font-size: 16px;
-  }
-  .admin-kpi-main-val {
-    font-size: 26px;
-    font-weight: 900;
-    color: var(--body-fg);
-    line-height: 1.2;
-    margin-bottom: 6px;
-    letter-spacing: -0.5px;
   }
   .admin-kpi-sub {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--body-quiet-color);
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    border-top: 1px solid var(--hairline-color);
-    padding-top: 8px;
-    margin-top: 6px;
+    line-height: 1.5;
   }
   .admin-kpi-sub b {
     color: var(--body-fg);
     font-weight: 700;
   }
   .admin-kpi-link {
-    font-size: 11px;
-    font-weight: 700;
-    color: #0284c7;
+    font-size: 11.5px;
+    font-weight: 800;
+    color: #15803d;
+    background: rgba(34, 197, 94, 0.12);
+    padding: 2px 8px;
+    border-radius: 999px;
     text-decoration: none;
     margin-inline-start: auto;
+    transition: all .15s ease;
   }
   .admin-kpi-link:hover {
-    text-decoration: underline;
+    background: rgba(34, 197, 94, 0.22);
+    text-decoration: none;
+  }
+  html[data-theme="dark"] .admin-kpi-link {
+    color: #4ade80;
+    background: rgba(34, 197, 94, 0.18);
+  }
+  html[data-theme="dark"] .admin-kpi-val-box {
+    background: rgba(255, 255, 255, 0.04);
   }
 
   .teacher-dash { margin-bottom: 24px; }
@@ -286,7 +314,10 @@
           <span class="admin-kpi-title"><span class="admin-kpi-icon">🎓</span> دانشجویان من</span>
           <a href="{% url 'admin:website_classroom_changelist' %}" class="admin-kpi-link">کلاس‌ها ›</a>
         </div>
-        <div class="admin-kpi-main-val">{{ teacher_kpis.students_total }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">دانشجو</span></div>
+        <div class="admin-kpi-val-box">
+          <span class="admin-kpi-num">{{ teacher_kpis.students_total }}</span>
+          <span class="admin-kpi-unit">دانشجو</span>
+        </div>
         <div class="admin-kpi-sub">
           <span>ورودی این هفته: <b>{{ teacher_kpis.students_week }}</b></span>
           <span>•</span>
@@ -299,7 +330,10 @@
         <div class="admin-kpi-header">
           <span class="admin-kpi-title"><span class="admin-kpi-icon">⚡</span> مطالعه کلاس در ۳۰ روز</span>
         </div>
-        <div class="admin-kpi-main-val">{{ teacher_kpis.study_hours }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">ساعت مطالعه</span></div>
+        <div class="admin-kpi-val-box">
+          <span class="admin-kpi-num">{{ teacher_kpis.study_hours }}</span>
+          <span class="admin-kpi-unit">ساعت مطالعه</span>
+        </div>
         <div class="admin-kpi-sub">
           <span>دانشجویان فعال در ۳۰ روز اخیر: <b>{{ teacher_kpis.active_students }} نفر</b></span>
         </div>
@@ -310,7 +344,10 @@
         <div class="admin-kpi-header">
           <span class="admin-kpi-title"><span class="admin-kpi-icon">📚</span> تألیف و سرفصل‌ها</span>
         </div>
-        <div class="admin-kpi-main-val">{{ teacher_kpis.chapters_count }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">فصل در کتاب‌های من</span></div>
+        <div class="admin-kpi-val-box">
+          <span class="admin-kpi-num">{{ teacher_kpis.chapters_count }}</span>
+          <span class="admin-kpi-unit">فصل در کتاب‌های من</span>
+        </div>
         <div class="admin-kpi-sub">
           <span>وظایف و یادداشت‌های تیمی باز: <b>{{ teacher_kpis.pending_tasks }}</b></span>
         </div>
@@ -322,7 +359,10 @@
           <span class="admin-kpi-title"><span class="admin-kpi-icon">⚠️</span> اشکالات و بازخوردها</span>
           <a href="{% url 'admin:learning_report_changelist' %}" class="admin-kpi-link">گزارش‌ها ›</a>
         </div>
-        <div class="admin-kpi-main-val">{{ teacher_kpis.pending_reports }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">اشکال نیازمند بررسی</span></div>
+        <div class="admin-kpi-val-box">
+          <span class="admin-kpi-num">{{ teacher_kpis.pending_reports }}</span>
+          <span class="admin-kpi-unit">اشکال نیازمند بررسی</span>
+        </div>
         <div class="admin-kpi-sub">
           <span>گزارش‌های علمی و نگارشی ارسالی توسط دانشجویان</span>
         </div>
