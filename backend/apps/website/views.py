@@ -212,18 +212,21 @@ def _base(request, **extra) -> dict:
 
 
 def _apk(s: SiteSettings) -> dict | None:
-    if s.apk_url:
-        return {"url": s.apk_url, "version": "", "date": None, "date_fa": "", "notes": []}
     from apps.releases.models import AppRelease
 
     r = AppRelease.objects.filter(is_published=True).order_by("-build").first()
     if not r:
+        if s.apk_url:
+            return {"url": s.apk_url, "version": "", "date": None, "date_fa": "", "notes": []}
         return None
+
     notes = [line.strip().lstrip("-• ").strip() for line in (r.notes or "").splitlines() if line.strip()]
-    # If the universal link is hosted locally on this server, we can still provide github_url as fallback
-    github_fallback = r.download_url if r.apk and r.download_url else ""
+    # Prefer uploaded APK or release link; fall back to s.apk_url if configured
+    main_url = r.link or r.link_arm64 or r.link_32 or s.apk_url
+    github_fallback = r.download_url if (r.apk and r.download_url) or (main_url != r.download_url and r.download_url) else ""
+
     return {
-        "url": r.link or r.link_arm64 or r.link_32,
+        "url": main_url,
         "arm64": r.link_arm64,
         "bit32": r.link_32,
         "github_url": github_fallback,
