@@ -1006,6 +1006,8 @@ class InboxTests(TestCase):
     def api(self, chapter, **data):
         return self.client.post(f"/admin/catalog/book/chapter/{chapter.pk}/api/", data, content_type="application/json")
 
+
+
     def test_paste_into_inbox_then_move_in_bulk_to_another_book(self):
         from apps.learning.models import Question, QuizAnswer
 
@@ -1306,6 +1308,66 @@ class FileEditorPreviewTests(_Base):
 
 
 class BookEditorAccessTests(_Base):
+    def test_book_dedicated_inbox_and_teacher_relocate(self):
+        """Each book has a dedicated inbox accessible to its teachers for bulk staging and relocation."""
+        from .inbox import book_inbox_chapter
+        from .exporter import export_chapter
+        from apps.learning.models import Question
+
+        block = """
+:::تست {#%s}
+منبع: تألیفی
+سطح: آسان
+صورت:
+یک به‌علاوه‌ی یک؟
+- [ ] سه
+- [x] دو
+توضیح: ساده.
+:::
+"""
+
+        # Teacher of self.book
+        teacher = self.clerk(self.book)
+        self.client.force_login(teacher)
+
+        # 1. Opening book inbox redirects teacher to chapter manager of book inbox chapter
+        inbox_url = reverse("admin:catalog_book_inbox", args=[self.book.pk])
+        inbox_ch = book_inbox_chapter(self.book)
+        resp = self.client.get(inbox_url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertRedirects(resp, reverse("admin:catalog_chapter_manager", args=[inbox_ch.pk]))
+        self.assertTrue(inbox_ch.is_inbox)
+        self.assertEqual(inbox_ch.book().pk, self.book.pk)
+
+        # 2. Teacher pastes tests into book inbox via file.apply
+        inbox_api = reverse("admin:catalog_chapter_api", args=[inbox_ch.pk])
+        staging_text = export_chapter(inbox_ch) + block % "stage-q1" + block % "stage-q2"
+        r = self.client.post(inbox_api, json.dumps({"op": "file.apply", "text": staging_text}), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content.decode())
+
+        # 3. Check tests are in book inbox section
+        waiting = list(Question.objects.filter(node__path__startswith=inbox_ch.path, is_archived=False).order_by("order"))
+        self.assertEqual([q.slug for q in waiting], ["stage-q1", "stage-q2"])
+
+        # 4. Relocate stage-q1 to section 'two' of the same book
+        self.make_draft(self.chapter)
+        target_sec = self.chapter.get_children().first()
+        relocate_res = self.client.post(
+            inbox_api,
+            json.dumps({"op": "question.relocate", "slugs": ["stage-q1"], "to": target_sec.pk}),
+            content_type="application/json",
+        ).json()
+        self.assertTrue(relocate_res.get("ok"), relocate_res)
+
+        # stage-q1 is now in target section
+        q1 = Question.objects.get(pk=waiting[0].pk)
+        self.assertEqual(q1.node_id, target_sec.pk)
+
+        # 5. Non-editor cannot access this book's inbox
+        other_user = User.objects.create_user("09120000003", is_staff=True)
+        self.client.force_login(other_user)
+        self.assertEqual(self.client.get(inbox_url).status_code, 403)
+
     """«استاد کتاب»: a manager-approved group member writes only assigned draft books."""
 
     def clerk(self, *books, can_publish=False):

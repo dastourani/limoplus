@@ -2,6 +2,7 @@
 {% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
 {% block object-tools-items %}
   {% if original %}
+    <li><a href="{% url 'admin:catalog_book_inbox' original.pk %}" style="background:#f59e0b;color:#1e293b;font-weight:800;" title="میز کار موقت و صندوق تست‌های اختصاصی همین کتاب برای بارگذاری دسته‌ای تست‌ها بدون تأثیر بر فصول کتاب">📥 صندوق تست کتاب</a></li>
     {% if can_view_study %}
       <li><a href="{% url 'admin:catalog_book_study_analytics' original.pk %}" style="background:#0284c7;color:#fff;font-weight:700;">📊 آمار مطالعه کلاس</a></li>
     {% endif %}

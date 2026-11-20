@@ -34,6 +34,43 @@ def inbox_chapter() -> ContentNode:
     return chapter
 
 
+
+
+def book_inbox_chapter(book: ContentNode) -> ContentNode:
+    """The book's dedicated inbox chapter («صندوق تست و آماده‌سازی کتاب»), made on first use.
+
+    Belongs to the book itself (is_inbox=True), has position=0 (or None) and is hidden from app learners.
+    Teachers of the book can paste and edit tests here, then relocate them into destination sections of this book.
+    """
+    if book.kind != ContentNode.Kind.BOOK or book.depth != 1:
+        raise ValueError("صندوق اختصاصی فقط برای کتاب تعریف می‌شود.")
+    chapter = book.get_children().filter(kind=ContentNode.Kind.CHAPTER, is_inbox=True).first()
+    if chapter is None:
+        slug = f"{book.slug}-inbox"
+        while ContentNode.objects.filter(path__startswith=book.path, slug=slug).exists():
+            slug += "-x"
+        chapter = book.add_child(
+            kind=ContentNode.Kind.CHAPTER,
+            slug=slug,
+            title="صندوق تست و آماده‌سازی کتاب",
+            is_published=False,
+            is_inbox=True,
+            position=0,
+        )
+    if not chapter.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False).exists():
+        sec_slug = f"{chapter.slug}-s1"
+        while ContentNode.objects.filter(path__startswith=book.path, slug=sec_slug).exists():
+            sec_slug += "-x"
+        chapter.add_child(
+            kind=ContentNode.Kind.SECTION,
+            slug=sec_slug,
+            title="منتظر انتقال به فصل‌ها",
+            is_published=False,
+            is_inbox=True,
+        )
+    return chapter
+
+
 def is_inbox(node: ContentNode) -> bool:
     book = node.book()
     return bool(book and book.is_inbox)
@@ -55,7 +92,7 @@ def destinations(user=None) -> list[dict]:
             if user is not None and not access.can_edit_chapter(user, c):
                 continue
             sections = [{"id": s.pk, "title": s.title} for s in c.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False)]
-            chapters.append({"id": c.pk, "title": c.title, "number": c.position, "sections": sections})
+            chapters.append({"id": c.pk, "title": c.title, "number": c.position, "inbox": c.is_inbox, "sections": sections})
         out.append({"id": book.pk, "title": book.title, "inbox": book.is_inbox, "chapters": chapters})
     return out
 

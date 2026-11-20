@@ -1225,13 +1225,19 @@
     var base = this.api.replace(/api\/$/, '');
     if (st.inbox) {
       // «صندوق تست»: no publishing, no chapter details; tests wait here until they are moved.
+      var isBookInbox = st.book && !st.book.inbox;
+      var backUrl = isBookInbox ? ('../../' + st.book.id + '/change/#chapters') : '../../';
+      var backTitle = isBookInbox ? ('کتاب «' + st.book.title + '»') : 'کتاب‌ها';
+      var headingText = isBookInbox ? ('📥 صندوق تست کتاب «' + st.book.title + '»') : '📥 صندوق تست';
+      var hintText = isBookInbox
+        ? 'میز کار موقت و اختصاصی همین کتاب. تست‌ها در اپلیکیشن دیده نمی‌شوند. سوالات را یکجا بارگذاری کنید و سپس با گزینه «انتقال به…» به هر بخش و فصل دلخواه این کتاب منتقل نمایید.'
+        : 'اینجا در اپ دیده نمی‌شود. تست‌ها را یکجا وارد کنید، بعد تیک بزنید و به هر بخشِ هر کتاب منتقل کنید. جواب‌ها و آمار هر تست همراهش می‌رود.';
       return h('div', null, h('div', { class: 'cm-head' },
-        h('h2', null, '📥 صندوق تست'),
+        h('h2', null, headingText),
         h('a', { class: 'btn primary', href: base + 'file/', title: 'تست‌ها را با قالب :::تست … ::: پشت سر هم بچسبانید' }, 'افزودن یکجای تست‌ها (ویرایش کل فایل)'),
         h('a', { class: 'btn', href: base + 'history/' }, 'نسخه‌ها (' + fa(st.revisions) + ')'),
-        h('a', { class: 'btn', href: '../../' }, 'کتاب‌ها')),
-        h('p', { class: 'hint' }, 'اینجا در اپ دیده نمی‌شود. تست‌ها را یکجا وارد کنید، بعد تیک بزنید و به هر بخشِ هر کتاب منتقل کنید. ' +
-          'جواب‌ها و آمار هر تست همراهش می‌رود.'));
+        h('a', { class: 'btn', href: backUrl }, backTitle)),
+        h('p', { class: 'hint' }, hintText));
     }
     return h('div', { class: 'cm-head' },
       h('h2', null, (c.number ? 'فصل ' + fa(c.number) + ': ' : '') + c.title),
@@ -1295,8 +1301,8 @@
     this.dest.forEach(function (b) {
       var g = h('optgroup', { label: b.inbox ? '📥 صندوق تست' : '📘 ' + b.title });
       b.chapters.forEach(function (c) {
-        var ch = (b.inbox ? '' : (c.number ? 'فصل ' + fa(c.number) + ': ' : '') + c.title);
-        if (!b.inbox) g.appendChild(h('option', { value: c.id, disabled: c.id === current }, ch + ' › مقدمه‌ی فصل'));
+        var ch = (c.inbox ? '📥 ' : (b.inbox ? '' : (c.number ? 'فصل ' + fa(c.number) + ': ' : ''))) + c.title;
+        if (!b.inbox && !c.inbox) g.appendChild(h('option', { value: c.id, disabled: c.id === current }, ch + ' › مقدمه‌ی فصل'));
         c.sections.forEach(function (s) {
           g.appendChild(h('option', { value: s.id, disabled: s.id === current }, (ch ? ch + ' › ' : '') + s.title));
         });
