@@ -278,6 +278,58 @@
       </div>
     </div>
 
+    {% if teacher_kpis %}
+    <div class="admin-kpi-grid" style="margin-bottom: 20px;">
+      <!-- کارت دانشجویان من -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">🎓</span> دانشجویان من</span>
+          <a href="{% url 'admin:website_classroom_changelist' %}" class="admin-kpi-link">کلاس‌ها ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ teacher_kpis.students_total }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">دانشجو</span></div>
+        <div class="admin-kpi-sub">
+          <span>ورودی این هفته: <b>{{ teacher_kpis.students_week }}</b></span>
+          <span>•</span>
+          <span>کلاس‌ها: <b>{{ teacher_kpis.classes_count }}</b></span>
+        </div>
+      </div>
+
+      <!-- کارت فعالیت و مطالعه کلاسی -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">⚡</span> مطالعه کلاس در ۳۰ روز</span>
+        </div>
+        <div class="admin-kpi-main-val">{{ teacher_kpis.study_hours }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">ساعت مطالعه</span></div>
+        <div class="admin-kpi-sub">
+          <span>دانشجویان فعال در ۳۰ روز اخیر: <b>{{ teacher_kpis.active_students }} نفر</b></span>
+        </div>
+      </div>
+
+      <!-- کارت وضعیت تألیف و فصول -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">📚</span> تألیف و سرفصل‌ها</span>
+        </div>
+        <div class="admin-kpi-main-val">{{ teacher_kpis.chapters_count }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">فصل در کتاب‌های من</span></div>
+        <div class="admin-kpi-sub">
+          <span>وظایف و یادداشت‌های تیمی باز: <b>{{ teacher_kpis.pending_tasks }}</b></span>
+        </div>
+      </div>
+
+      <!-- کارت اشکالات و بازخورد دانشجویان -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">⚠️</span> اشکالات و بازخوردها</span>
+          <a href="{% url 'admin:learning_report_changelist' %}" class="admin-kpi-link">گزارش‌ها ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ teacher_kpis.pending_reports }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">اشکال نیازمند بررسی</span></div>
+        <div class="admin-kpi-sub">
+          <span>گزارش‌های علمی و نگارشی ارسالی توسط دانشجویان</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="teacher-grid">
       <!-- کتاب‌های من -->
       <div class="teacher-card">
