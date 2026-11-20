@@ -356,11 +356,11 @@
   {% endif %}
   {% if user.is_superuser %}
     {% if teacher_view_mode %}
-      <a href="?view=admin" class="lp-header-btn" style="border-color:#f87171; color:#fca5a5; margin-inline-end:6px;" title="خروج از نمای آزمایشی استاد و بازگشت به نمای کامل مدیر کل">
+      <a href="{% url 'admin:index' %}?view=admin" class="lp-header-btn" style="border-color:#f87171; color:#fca5a5; margin-inline-end:6px;" title="خروج از نمای آزمایشی استاد و بازگشت به نمای کامل مدیر کل">
         ✕ خروج از نمای استاد
       </a>
     {% else %}
-      <a href="?view=teacher" class="lp-header-btn" style="margin-inline-end:6px;" title="مشاهده پیش‌نمایش صفحه و امکانات اختصاصی اساتید">
+      <a href="{% url 'admin:index' %}?view=teacher" class="lp-header-btn" style="margin-inline-end:6px;" title="مشاهده پیش‌نمایش صفحه و امکانات اختصاصی اساتید">
         🎓 پنل اساتید
       </a>
     {% endif %}

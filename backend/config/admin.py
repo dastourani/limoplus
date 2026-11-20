@@ -198,9 +198,11 @@ class LimoAdminSite(AdminSite):
         teacher_view_mode = False
         if request and hasattr(request, "session"):
             if "view" in request.GET:
-                teacher_view_mode = (request.GET.get("view") == "teacher")
-            else:
-                teacher_view_mode = (request.session.get("admin_view_mode") == "teacher")
+                if request.GET.get("view") == "teacher":
+                    request.session["admin_view_mode"] = "teacher"
+                elif request.GET.get("view") == "admin":
+                    request.session.pop("admin_view_mode", None)
+            teacher_view_mode = (request.session.get("admin_view_mode") == "teacher")
 
         from apps.catalog.access import is_book_teacher
 
