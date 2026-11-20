@@ -278,6 +278,10 @@ class BookAdmin(admin.ModelAdmin):
                     "is_self": is_self,
                 })
             extra["assistants"] = assistants
+            has_real_assistants = any(not a["is_self"] for a in assistants)
+            extra["has_real_assistants"] = has_real_assistants
+            from .models import BookTeamTask
+            extra["team_tasks"] = list(BookTeamTask.objects.filter(book=book).select_related("author"))
             can_view_study = bool(
                 request.user.is_superuser
                 or (access.is_book_teacher(request.user) and BookEditor.objects.filter(book=book, user=request.user, can_view_aggregate_study=True).exists())
@@ -309,6 +313,7 @@ class BookAdmin(admin.ModelAdmin):
             path("orphan/<int:node_id>/archive/", site(panel.archive_orphan), name="catalog_archive_orphan"),
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
             path("<int:book_id>/assistants/", site(self.book_assistants_action), name="catalog_book_assistants_action"),
+            path("<int:book_id>/team-tasks/", site(self.book_team_tasks_action), name="catalog_book_team_tasks_action"),
             path("<int:book_id>/study-analytics/", site(self.book_study_analytics_view), name="catalog_book_study_analytics"),
             path("<int:book_id>/request-publication/", site(self.book_request_publication_view), name="catalog_book_request_publication"),
             path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
@@ -539,6 +544,21 @@ class BookAdmin(admin.ModelAdmin):
                 "answer_count": fa_number(q.answer_count),
             })
 
+        if request.GET.get("format") == "csv":
+            import csv
+            from django.http import HttpResponse
+            response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
+            response["Content-Disposition"] = f'attachment; filename="study-{book.slug}.csv"'
+            writer = csv.writer(response)
+            writer.writerow(["عنوان کتاب", book.title])
+            writer.writerow(["تعداد کل خوانندگان", total_readers])
+            writer.writerow(["تکمیل‌کنندگان", completed_readers])
+            writer.writerow([])
+            writer.writerow(["عنوان فصل", "تعداد بخش", "تعداد خوانندگان", "تکمیل‌کنندگان", "درصد پیشرفت", "کل زمان مطالعه", "میانگین زمان مطالعه هر دانشجو"])
+            for ch in chapter_stats:
+                writer.writerow([ch["title"], ch["sections_count"], ch["readers"], ch["done"], f"{ch['rate']}٪", ch["total_time"], ch["avg_time"]])
+            return response
+
         context = {
             **self.admin_site.each_context(request),
             "title": f"آمار و پیشرفت مطالعه کلاس: {book.title}",
@@ -610,6 +630,47 @@ class BookAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
         }
         return render(request, "admin/catalog/book/book_request_publication.html", context)
+
+    def book_team_tasks_action(self, request, book_id):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import get_object_or_404, redirect
+        from .models import BookTeamTask, BookEditor
+
+        book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK)
+        is_editor = (
+            request.user.is_superuser
+            or (access.is_book_teacher(request.user) and BookEditor.objects.filter(book=book, user=request.user).exists())
+        )
+        if not is_editor:
+            raise PermissionDenied("دسترسی به یادداشت‌های هماهنگی این کتاب را ندارید.")
+
+        if request.method != "POST":
+            return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#team-notes")
+
+        action = request.POST.get("action")
+        if action == "add":
+            text = request.POST.get("text", "").strip()
+            if text:
+                BookTeamTask.objects.create(book=book, author=request.user, text=text[:300])
+                messages.success(request, "یادداشت هماهنگی با موفقیت اضافه شد.")
+            else:
+                messages.error(request, "متن یادداشت نمی‌تواند خالی باشد.")
+        elif action == "toggle":
+            task_id = request.POST.get("task_id")
+            task = BookTeamTask.objects.filter(pk=task_id, book=book).first()
+            if task:
+                task.is_done = not task.is_done
+                task.save(update_fields=["is_done"])
+                messages.success(request, "وضعیت یادداشت به‌روزرسانی شد.")
+        elif action == "delete":
+            task_id = request.POST.get("task_id")
+            task = BookTeamTask.objects.filter(pk=task_id, book=book).first()
+            if task and (request.user.is_superuser or task.author_id == request.user.id or access.can_edit_book(request.user, book)):
+                task.delete()
+                messages.success(request, "یادداشت حذف شد.")
+
+        return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#team-notes")
 
 
 

@@ -2372,5 +2372,58 @@ class TeacherAssistantTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, "فعالیت‌های تألیف و تدریس من")
 
+    def test_book_study_analytics_csv_export(self):
+        # Teacher with permission can download CSV
+        res = self.client.get(f"/admin/catalog/book/{self.book.pk}/study-analytics/?format=csv")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("text/csv", res["Content-Type"])
+        self.assertIn("attachment; filename=", res["Content-Disposition"])
+        content = res.content.decode("utf-8-sig")
+        self.assertIn("عنوان فصل,تعداد بخش", content)
+
+    def test_book_team_tasks_action_and_visibility(self):
+        from apps.catalog.models import BookTeamTask
+
+        # Initially, without assistants, team tasks section is not displayed in change form
+        res_change = self.client.get(f"/admin/catalog/book/{self.book.pk}/change/")
+        self.assertEqual(res_change.status_code, 200)
+        self.assertNotContains(res_change, "تخته یادداشت و هماهنگی با دستیاران")
+
+        # Add a TA assistant
+        ta_user = User.objects.create_user("09121110022", is_staff=True)
+        BookEditor.objects.create(book=self.book, user=ta_user, can_edit_content=True)
+
+        # Now team tasks section is visible
+        res_change = self.client.get(f"/admin/catalog/book/{self.book.pk}/change/")
+        self.assertContains(res_change, "تخته یادداشت و هماهنگی با دستیاران")
+
+        # Add a task
+        res_add = self.client.post(f"/admin/catalog/book/{self.book.pk}/team-tasks/", {
+            "action": "add",
+            "text": "بررسی تمرین‌های فصل ۲",
+        })
+        self.assertEqual(res_add.status_code, 302)
+        task = BookTeamTask.objects.get(book=self.book, text="بررسی تمرین‌های فصل ۲")
+        self.assertEqual(task.author, self.teacher)
+        self.assertFalse(task.is_done)
+
+        # Toggle task
+        res_toggle = self.client.post(f"/admin/catalog/book/{self.book.pk}/team-tasks/", {
+            "action": "toggle",
+            "task_id": task.pk,
+        })
+        self.assertEqual(res_toggle.status_code, 302)
+        task.refresh_from_db()
+        self.assertTrue(task.is_done)
+
+        # Delete task
+        res_del = self.client.post(f"/admin/catalog/book/{self.book.pk}/team-tasks/", {
+            "action": "delete",
+            "task_id": task.pk,
+        })
+        self.assertEqual(res_del.status_code, 302)
+        self.assertFalse(BookTeamTask.objects.filter(pk=task.pk).exists())
+
+
 
 
