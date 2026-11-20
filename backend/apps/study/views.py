@@ -304,6 +304,18 @@ def _report(request, **target):
         try:
             with transaction.atomic():
                 report = Report.objects.create(user=request.user, reason=reason, note=note, quote=quote, mode=mode, box=box, **target)
+            try:
+                from apps.catalog.backups import notify_bale
+                u = request.user
+                user_desc = f"{u.phone}" + (f" ({u.full_name})" if getattr(u, 'full_name', None) else "")
+                notify_bale(
+                    f"⚠️ گزارش جدید اشکال محتوایی\n"
+                    f"کاربر: {user_desc}\n"
+                    f"علت: {report.get_reason_display()}\n"
+                    f"توضیحات: {note or 'بدون توضیح'}"
+                )
+            except Exception:
+                pass
         except IntegrityError:  # the same test or card sent twice at once
             report = mine.first()
     return Response({"reported": True, "status": report.get_status_display()})

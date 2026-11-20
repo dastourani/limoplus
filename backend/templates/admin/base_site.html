@@ -194,6 +194,7 @@
 
 {% block userlinks %}
 {% if user.is_active and user.is_staff %}
+  {% if is_teacher %}
   <span style="display:inline-flex; align-items:center; gap:6px; margin-inline-end:8px; font-size:12px;">
     {% if user.email %}
       {% if user.is_email_verified %}
@@ -203,9 +204,10 @@
         <a href="{% url 'admin:accounts_user_send_verification' %}" style="font-size:11px; text-decoration:underline;">ارسال مجدد</a>
       {% endif %}
     {% else %}
-      <a href="{% url 'admin:accounts_user_change_email' %}" class="lp-header-btn" title="ثبت ایمیل برای دریافت خروجی‌های کتاب">+ ثبت ایمیل کاری</a>
+      <a href="{% url 'admin:accounts_user_change_email' %}" class="lp-header-btn" title="ثبت ایمیل کاری استاد برای دریافت خروجی‌های کتاب">+ ثبت ایمیل کاری</a>
     {% endif %}
   </span>
+  {% endif %}
   {% if user.is_superuser %}
     {% if teacher_view_mode %}
       <a href="?view=admin" class="lp-header-btn" style="border-color:#f87171; color:#fca5a5; margin-inline-end:6px;" title="خروج از نمای آزمایشی استاد و بازگشت به نمای کامل مدیر کل">
