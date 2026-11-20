@@ -1087,38 +1087,78 @@ def _assets_each_context_with_version(request):
     context = _assets_each_context(request)
     context["assets_v"] = _assets_version()
     user = getattr(request, "user", None)
-    if user and user.is_authenticated and access.is_book_teacher(user):
+    # Allow superusers to preview the teacher portal via ?view=teacher or session
+    teacher_view_mode = False
+    if request:
+        if "view" in request.GET:
+            if request.GET.get("view") == "teacher":
+                request.session["admin_view_mode"] = "teacher"
+            elif request.GET.get("view") == "admin":
+                request.session.pop("admin_view_mode", None)
+        teacher_view_mode = (request.session.get("admin_view_mode") == "teacher")
+
+    context["teacher_view_mode"] = teacher_view_mode
+    is_teacher = bool(user and user.is_authenticated and (access.is_book_teacher(user) or (user.is_superuser and teacher_view_mode)))
+    if is_teacher:
         context["is_teacher"] = True
         from django.conf import settings
         from apps.website.models import Classroom
         from .models import BookEditor
 
-        book_ids = list(BookEditor.objects.filter(user=user).values_list("book_id", flat=True))
-        teacher_books = []
-        for b in ContentNode.objects.filter(pk__in=book_ids, kind=ContentNode.Kind.BOOK):
-            ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
-            teacher_books.append({
-                "pk": b.pk,
-                "title": b.title,
-                "author": b.author,
-                "chapters_count": ch_count,
-            })
-        context["teacher_books"] = teacher_books
+        if user.is_superuser:
+            # For superuser previewing teacher portal: show recently edited draft books or all books
+            teacher_books = []
+            for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, is_published=False)[:6]:
+                ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
+                teacher_books.append({
+                    "pk": b.pk,
+                    "title": b.title,
+                    "author": b.author,
+                    "chapters_count": ch_count,
+                })
+            context["teacher_books"] = teacher_books
 
-        classrooms = []
-        site_url = getattr(settings, "SITE_URL", "").rstrip("/")
-        for c in Classroom.objects.filter(teacher=user, is_active=True).select_related("book").order_by("-created_at")[:6]:
-            m_count = c.members.filter(status="active").count()
-            classrooms.append({
-                "pk": c.pk,
-                "title": c.title,
-                "book": c.book,
-                "code": c.code,
-                "capacity": c.capacity,
-                "members_count": m_count,
-            })
-        context["teacher_classrooms"] = classrooms
-        context["site_url"] = site_url
+            classrooms = []
+            site_url = getattr(settings, "SITE_URL", "").rstrip("/")
+            for c in Classroom.objects.filter(is_active=True).select_related("book").order_by("-created_at")[:6]:
+                m_count = c.members.filter(status="active").count()
+                classrooms.append({
+                    "pk": c.pk,
+                    "title": c.title,
+                    "book": c.book,
+                    "code": c.code,
+                    "capacity": c.capacity,
+                    "members_count": m_count,
+                })
+            context["teacher_classrooms"] = classrooms
+            context["site_url"] = site_url
+        else:
+            book_ids = list(BookEditor.objects.filter(user=user).values_list("book_id", flat=True))
+            teacher_books = []
+            for b in ContentNode.objects.filter(pk__in=book_ids, kind=ContentNode.Kind.BOOK):
+                ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
+                teacher_books.append({
+                    "pk": b.pk,
+                    "title": b.title,
+                    "author": b.author,
+                    "chapters_count": ch_count,
+                })
+            context["teacher_books"] = teacher_books
+
+            classrooms = []
+            site_url = getattr(settings, "SITE_URL", "").rstrip("/")
+            for c in Classroom.objects.filter(teacher=user, is_active=True).select_related("book").order_by("-created_at")[:6]:
+                m_count = c.members.filter(status="active").count()
+                classrooms.append({
+                    "pk": c.pk,
+                    "title": c.title,
+                    "book": c.book,
+                    "code": c.code,
+                    "capacity": c.capacity,
+                    "members_count": m_count,
+                })
+            context["teacher_classrooms"] = classrooms
+            context["site_url"] = site_url
     return context
 
 
