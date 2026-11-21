@@ -27,6 +27,8 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     ("catalog", "ChapterRevision"),
     ("catalog", "Label"),
     ("catalog", "ShareSettings"),
+    ("catalog", "AIProvider"),
+    ("catalog", "BookAssistantAuditLog"),
     # learning
     ("learning", "Question"),
     ("learning", "Flashcard"),
@@ -48,6 +50,7 @@ class LimoAdminSite(AdminSite):
         authoring_models = []
         teaching_models = []
         assessment_models = []
+        ai_models = []
 
         catalog_app = next((a for a in raw_apps if a["app_label"] == "catalog"), None)
         workflows_app = next((a for a in raw_apps if a["app_label"] == "teacher_workflows"), None)
@@ -95,6 +98,15 @@ class LimoAdminSite(AdminSite):
             if key in all_models:
                 assessment_models.append(all_models[key])
 
+        # 4. دستیار و هوش مصنوعی (AI & Assistant)
+        _AI_KEYS = [
+            ("catalog", "AIProvider"),
+            ("catalog", "BookAssistantAuditLog"),
+        ]
+        for key in _AI_KEYS:
+            if key in all_models:
+                ai_models.append(all_models[key])
+
         teacher_apps = []
         if authoring_models:
             teacher_apps.append({
@@ -103,6 +115,14 @@ class LimoAdminSite(AdminSite):
                 "app_url": authoring_url,
                 "has_module_perms": True,
                 "models": authoring_models,
+            })
+        if ai_models:
+            teacher_apps.append({
+                "name": "دستیار و هوش مصنوعی",
+                "app_label": "catalog_ai",
+                "app_url": authoring_url,
+                "has_module_perms": True,
+                "models": ai_models,
             })
         if teaching_models:
             teacher_apps.append({
