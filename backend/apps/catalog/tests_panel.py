@@ -1738,6 +1738,34 @@ class ImportPreviewBeforeSaveTests(TestCase):
         self.assertIn("قضیه اساسی", html)
         self.assertIn("نگاشت هوشمند کادرهای فایل", html)
 
+    def test_superuser_global_import_with_target_book_id(self):
+        """Superuser uploading raw tex without book_slug can specify target_book_id."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        global_url = reverse("admin:catalog_import")
+        tex = (
+            "\\begin{document}\n"
+            "\\chapter{فصل انتگرال}\n"
+            "\\section{مفهوم انتگرال}\n"
+            "متن درس انتگرال.\n"
+            "\\end{document}\n"
+        ).encode('utf-8')
+
+        # 1. Page displays target book dropdown
+        res_get = self.client.get(global_url)
+        self.assertEqual(res_get.status_code, 200)
+        self.assertContains(res_get, "انتخاب کتاب مقصد")
+
+        # 2. Uploading with target_book_id works without missing book_slug error
+        res_post = self.client.post(global_url, {
+            "file": SimpleUploadedFile("integral.tex", tex, content_type="text/plain"),
+            "target_book_id": self.book.pk,
+        })
+        self.assertEqual(res_post.status_code, 200)
+        content = res_post.content.decode()
+        self.assertNotIn("«شناسه-کتاب» در مشخصات فایل نیامده است", content)
+        self.assertIn("فایل بدون خطاست", content)
+        self.assertIn("تصویربرداری پزشکی", content)
+
     def setUp(self):
         Major.objects.create(name="اقتصاد", slug="economics")
         self.admin = User.objects.create_superuser("09120000001", "pw-123456")

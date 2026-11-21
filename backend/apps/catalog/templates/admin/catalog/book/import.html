@@ -31,6 +31,22 @@
 
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
+    {% if not book and all_books %}
+    <div style="background:var(--darkened-bg); padding:14px 18px; border-radius:10px; margin-bottom:16px; border:1px solid var(--hairline-color); max-width:600px;">
+      <label style="display:block; font-size:13px; font-weight:800; margin-bottom:6px;">
+        📚 انتخاب کتاب مقصد (فصل به کدام کتاب افزوده شود؟):
+      </label>
+      <select name="target_book_id" style="width:100%; padding:8px 12px; border-radius:8px; border:1px solid var(--hairline-color); font:inherit; font-size:13.5px; background:var(--body-bg); color:var(--body-fg);">
+        <option value="">— از مشخصات خود فایل خوانده شود (فایل‌های دارای شناسه-کتاب) —</option>
+        {% for b in all_books %}
+          <option value="{{ b.pk }}">{{ b.title }} ({{ b.slug }})</option>
+        {% endfor %}
+      </select>
+      <div style="font-size:11.5px; color:var(--body-quiet-color); margin-top:4px;">
+        💡 برای فایل‌های خام LaTeX (.tex) که شناسه-کتاب ندارند، کتاب مقصد را از این لیست انتخاب کنید تا فایل بدون خطا پردازش و پیش‌نمایش شود.
+      </div>
+    </div>
+    {% endif %}
     <div class="row"><input type="file" name="file" accept=".md,.tex,.pptx,.zip" required> <button class="btn primary" type="submit">بررسی فایل</button></div>
   </form>
   {% endif %}
@@ -179,6 +195,7 @@
         {% csrf_token %}
         <input type="hidden" name="token" value="{{ report.token }}">
         <input type="hidden" name="filename" value="{{ report.filename }}">
+        {% if book %}<input type="hidden" name="target_book_id" value="{{ book.pk }}">{% endif %}
         <input type="hidden" name="custom_boxes" id="id_custom_boxes" value="{{ report.custom_boxes_json|escape }}">
         <script>
           document.addEventListener('DOMContentLoaded', function () {
