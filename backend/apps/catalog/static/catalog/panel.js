@@ -2314,9 +2314,10 @@
       out.style.width = px ? px + 'px' : '100%';
       out.style.maxWidth = 'none';
     }
-    if (ctl) ctl.appendChild(previewControls(function () { applyWidth(); draw(); }).el);
+    if (ctl && !ctl.hasChildNodes()) ctl.appendChild(previewControls(function () { applyWidth(); draw(); }).el);
     applyWidth();
     draw();
+    window.LimoRedrawImportPreview = draw;
   }
   // The chapter's text arrives in a <script id="import-md"> that the template writes BELOW the frame, so the file
   // is not in the DOM yet when this code runs. Waiting for DOMContentLoaded is what makes it findable — without it

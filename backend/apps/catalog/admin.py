@@ -308,6 +308,7 @@ class BookAdmin(admin.ModelAdmin):
     def get_urls(self):
         site = self.admin_site.admin_view
         custom = [
+            path("label-quick-create/", site(self.label_quick_create_api), name="catalog_label_quick_create"),
             path("new-draft/", site(self.teacher_create_book_view), name="catalog_book_teacher_new"),
             path("import/", site(lambda r: panel.import_view(self.admin_site, r)), name="catalog_import"),
             path("<int:book_id>/import/", site(lambda r, book_id: panel.import_view(self.admin_site, r, book_id)), name="catalog_book_import"),
@@ -412,6 +413,62 @@ class BookAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
         }
         return render(request, "admin/catalog/book/teacher_create_book.html", context)
+
+    def label_quick_create_api(self, request):
+        from django.http import JsonResponse
+        from django.views.decorators.http import require_POST
+        from .labels import forget, normalize
+        from .models import Label
+
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return JsonResponse({"ok": False, "error": "دسترسی غیرمجاز."}, status=403)
+
+        name = normalize((request.POST.get("name") or "").strip())
+        if not name:
+            return JsonResponse({"ok": False, "error": "نام برچسب نمی‌تواند خالی باشد."}, status=400)
+        if len(name) > 40:
+            return JsonResponse({"ok": False, "error": "نام برچسب حداکثر ۴۰ نویسه است."}, status=400)
+
+        style = (request.POST.get("style") or "note").strip().lower()
+        if style not in dict(Label.Style.choices):
+            style = Label.Style.NOTE
+
+        icon = (request.POST.get("icon") or "").strip()
+        group = (request.POST.get("group") or "برچسب‌های اختصاصی").strip()[:40]
+
+        existing = Label.objects.filter(name=name).first()
+        if existing:
+            return JsonResponse({
+                "ok": True,
+                "label": {
+                    "id": existing.id,
+                    "name": existing.name,
+                    "style": existing.style,
+                    "icon": existing.icon,
+                    "group": existing.group,
+                },
+                "is_existing": True,
+            })
+
+        label = Label.objects.create(
+            name=name,
+            style=style,
+            icon=icon,
+            group=group,
+            created_by=request.user if not request.user.is_superuser else None,
+        )
+        forget()
+        return JsonResponse({
+            "ok": True,
+            "label": {
+                "id": label.id,
+                "name": label.name,
+                "style": label.style,
+                "icon": label.icon,
+                "group": label.group,
+            },
+            "is_existing": False,
+        })
 
     def book_assistants_action(self, request, book_id):
         from django.contrib import messages

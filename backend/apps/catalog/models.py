@@ -541,6 +541,31 @@ class FormulaCommand(models.Model):
             raise ValidationError({"definition": "تعداد «{» و «}» برابر نیست."})
 
 
+class BookBoxMapping(models.Model):
+    """Custom LaTeX environment mapping memory for a book: e.g. environment 'test' -> label 'تست'."""
+
+    book = models.ForeignKey("catalog.ContentNode", on_delete=models.CASCADE, related_name="box_mappings", verbose_name="کتاب")
+    environment_name = models.CharField("نام محیط LaTeX", max_length=60)
+    label_name = models.CharField("کادر لیموخوان", max_length=60)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="کاربر")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "حافظه نگاشت کادر کتاب"
+        verbose_name_plural = "حافظه‌های نگاشت کادر کتاب"
+        constraints = [
+            models.UniqueConstraint(fields=["book", "environment_name"], name="unique_book_latex_env_mapping"),
+        ]
+
+    def __str__(self):
+        return f"{self.book.title}: {self.environment_name} -> {self.label_name}"
+
+    def clean(self):
+        self.environment_name = (self.environment_name or "").strip().lower()
+        self.label_name = (self.label_name or "").strip()
+
+
 class BookEditor(models.Model):
     """«استادِ کتاب»: a manager-approved editor for one book, in addition to the required group and staff status.
 

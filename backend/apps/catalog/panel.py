@@ -1018,6 +1018,18 @@ def import_view(admin_site, request, book_id=None):
             existing = _existing_chapter(parsed)
             if existing and not access.can_edit_chapter(request.user, existing):
                 raise PermissionDenied("استاد فقط می‌تواند پیش‌نویس بسازد و تغییر دهد؛ محتوای زنده را مدیر کل بازبینی می‌کند.")
+            target_book = book or (existing.book() if existing else _book_by_slug(parsed.meta.get("book_slug")))
+            if target_book and custom_boxes:
+                from .models import BookBoxMapping
+                for env_k, lbl_v in custom_boxes.items():
+                    clean_env = (env_k or "").strip().lower()
+                    clean_lbl = (lbl_v or "").strip()
+                    if clean_env and clean_lbl:
+                        BookBoxMapping.objects.update_or_create(
+                            book=target_book,
+                            environment_name=clean_env,
+                            defaults={"label_name": clean_lbl, "created_by": request.user},
+                        )
             _lock_teacher_distribution_fields(parsed, book or (existing.book() if existing else None), existing, request.user)
             if existing:
                 editing.ensure_baseline(existing, request.user)
@@ -1033,19 +1045,44 @@ def import_view(admin_site, request, book_id=None):
         else:
             data = upload.read()
             from .labels import all_labels
-            from .latex import extract_tex_sources, discover_custom_environments, infer_label_for_title
+            from .latex import extract_tex_sources, discover_all_environments, infer_label_for_title
+            from .models import BookBoxMapping
+
             avail_labels = [l["name"] for l in all_labels(user=request.user) if not l.get("hidden")]
-            discovered_envs = discover_custom_environments(*extract_tex_sources(upload.name, data))
+            sources = extract_tex_sources(upload.name, data)
+            discovered_envs = discover_all_environments(*sources)
+
+            # Check book memory for previously saved mappings
+            memory_mappings: dict[str, str] = {}
+            if book:
+                memory_mappings = dict(BookBoxMapping.objects.filter(book=book).values_list("environment_name", "label_name"))
+
             custom_boxes = {}
             mapping_candidates = []
-            for env_name, env_title in discovered_envs.items():
-                inferred = infer_label_for_title(env_title, avail_labels)
-                if inferred:
-                    custom_boxes[env_name] = inferred
+            for env_name, env_info in discovered_envs.items():
+                env_title = env_info["title"]
+                count = env_info["count"]
+                snippets = env_info["snippets"]
+                is_from_memory = False
+
+                # 1. First priority: Saved memory from this book
+                if env_name in memory_mappings:
+                    mapped = memory_mappings[env_name]
+                    is_from_memory = True
+                else:
+                    # 2. Second priority: Auto-inference from title
+                    mapped = infer_label_for_title(env_title, avail_labels) or ""
+
+                if mapped:
+                    custom_boxes[env_name] = mapped
+
                 mapping_candidates.append({
                     "env": env_name,
                     "title": env_title,
-                    "mapped": inferred or "",
+                    "count": count,
+                    "snippets": snippets,
+                    "mapped": mapped,
+                    "is_from_memory": is_from_memory,
                 })
             parsed = read_upload(upload.name, data, book, custom_boxes=custom_boxes)
             check_against_db(parsed)
