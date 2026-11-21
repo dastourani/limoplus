@@ -289,6 +289,58 @@
     {% endif %}
 
     {% if report.markdown %}
+    <!-- بخش هوشمند قطعات فصل و دستیار هوش مصنوعی (AI Chunks Assistant) -->
+    {% if report.ai_chunks %}
+    <div class="card" style="background:var(--darkened-bg); border:1px solid var(--hairline-color); border-radius:12px; padding:18px 22px; margin:20px 0; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px; border-bottom:1px dashed var(--hairline-color); padding-bottom:12px;">
+        <div>
+          <h3 style="margin:0 0 4px; font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px;">
+            🤖 قطعه‌بندی هوشمند و دستیار هوش مصنوعی
+          </h3>
+          <p style="margin:0; font-size:12px; color:var(--body-quiet-color); line-height:1.5;">
+            فایل شما به <b>{{ report.ai_chunks|length }}</b> قطعهٔ مستقل تقسیم شده است. می‌توانید هر قطعه را با هوش مصنوعی تمیزکاری و استانداردسازی کنید.
+          </p>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <label for="ai-provider-select" style="font-size:12px; font-weight:700;">مدل هوش مصنوعی:</label>
+          <select id="ai-provider-select" style="padding:6px 12px; border-radius:8px; border:1px solid var(--hairline-color); font:inherit; font-size:12.5px; background:var(--body-bg); color:var(--body-fg); cursor:pointer;">
+            {% for prov in report.active_ai_providers %}
+              <option value="{{ prov.id }}" {% if prov.is_default %}selected{% endif %}>{{ prov.title }} ({{ prov.model_name }})</option>
+            {% empty %}
+              <option value="">(هیچ مدلی فعال نیست - در تنظیمات ثبت کنید)</option>
+            {% endfor %}
+          </select>
+          <a href="{% url 'admin:catalog_aiprovider_changelist' %}" target="_blank" class="btn small" style="font-size:11.5px; border-radius:8px; text-decoration:none;" title="مدیریت کلیدها و ارائه‌دهندگان هوش مصنوعی در تب جدید">
+            ⚙️ تنظیم APIها
+          </a>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        {% for chunk in report.ai_chunks %}
+        <div class="ai-chunk-card" data-index="{{ chunk.index }}" style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:10px; padding:12px 16px; transition:border-color .15s ease;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:12px; font-weight:800; background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:6px;">
+                قطعه {{ chunk.index }}
+              </span>
+              <span style="font-weight:700; font-size:13.5px;">{{ chunk.title }}</span>
+              <span style="font-size:11.5px; color:var(--body-quiet-color);">({{ chunk.word_count }} کلمه)</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="chunk-status-badge" style="font-size:11.5px; color:var(--body-quiet-color);"></span>
+              <button type="button" class="btn small btn-clean-chunk" data-index="{{ chunk.index }}" style="background:#F5C518; color:#17201A; font-weight:800; border-color:#E0AE0B; border-radius:8px; display:inline-flex; align-items:center; gap:4px;">
+                ✨ تمیزکاری با هوش مصنوعی
+              </button>
+            </div>
+          </div>
+          <script type="application/json" class="chunk-raw-json">{{ chunk.raw|json_script:"chunk-raw-data" }}</script>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
     {# The chapter as the reader will get it, drawn by the same renderer the app uses. #}
     <details class="import-preview" id="import-preview-box" {% if report.existing %}open{% else %}open{% endif %}>
       <summary style="display:flex; justify-content:space-between; align-items:center;">
@@ -502,6 +554,88 @@
                 });
               });
             }
+
+            // AJAX trigger for cleaning individual AI chunks
+            document.querySelectorAll('.btn-clean-chunk').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                var card = btn.closest('.ai-chunk-card');
+                var statusBadge = card ? card.querySelector('.chunk-status-badge') : null;
+                var rawScript = card ? card.querySelector('#chunk-raw-data') || card.querySelector('script') : null;
+                var providerSelect = document.getElementById('ai-provider-select');
+                var providerId = providerSelect ? providerSelect.value : '';
+
+                var rawText = '';
+                try {
+                  if (rawScript && rawScript.textContent) rawText = JSON.parse(rawScript.textContent);
+                } catch (e) {
+                  rawText = rawScript ? rawScript.textContent : '';
+                }
+
+                if (!rawText) {
+                  alert('متن خام این قطعه پیدا نشد.');
+                  return;
+                }
+
+                btn.disabled = true;
+                btn.innerHTML = '⏳ در حال تمیزکاری با هوش مصنوعی...';
+                if (statusBadge) {
+                  statusBadge.textContent = 'در حال اتصال و پردازش...';
+                  statusBadge.style.color = '#0284c7';
+                }
+
+                var csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+                var formData = new FormData();
+                formData.append('provider_id', providerId);
+                formData.append('raw_text', rawText);
+                formData.append('csrfmiddlewaretoken', csrfToken);
+
+                fetch("{% url 'admin:catalog_ai_clean_chunk' %}", {
+                  method: 'POST',
+                  body: formData,
+                  headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                  btn.disabled = false;
+                  btn.innerHTML = '✨ تمیزکاری مجدد';
+                  if (!data.ok) {
+                    if (statusBadge) {
+                      statusBadge.textContent = '❌ ' + (data.error || 'خطا در پردازش');
+                      statusBadge.style.color = '#dc2626';
+                    }
+                    alert(data.error || 'خطا در ارتباط با هوش مصنوعی.');
+                    return;
+                  }
+
+                  if (statusBadge) {
+                    statusBadge.textContent = '✓ تمیز شد با ' + (data.provider_title || 'هوش مصنوعی');
+                    statusBadge.style.color = '#16a34a';
+                  }
+
+                  // Update markdown and re-render preview
+                  var cleaned = data.cleaned_markdown || '';
+                  var mdEl = document.getElementById('import-md');
+                  if (mdEl && cleaned) {
+                    try {
+                      var curMd = JSON.parse(mdEl.textContent);
+                      // Replace or append
+                      mdEl.textContent = JSON.stringify(curMd + '\n\n' + cleaned);
+                    } catch (e) {}
+                  }
+                  if (typeof window.LimoRedrawImportPreview === 'function') {
+                    window.LimoRedrawImportPreview();
+                  }
+                })
+                .catch(function (err) {
+                  btn.disabled = false;
+                  btn.innerHTML = '✨ تمیزکاری با هوش مصنوعی';
+                  if (statusBadge) {
+                    statusBadge.textContent = '❌ خطای شبکه';
+                    statusBadge.style.color = '#dc2626';
+                  }
+                });
+              });
+            });
           });
         </script>
         {% if request.user.is_superuser %}

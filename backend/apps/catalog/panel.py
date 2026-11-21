@@ -1047,11 +1047,20 @@ def import_view(admin_site, request, book_id=None):
             data = upload.read()
             from .labels import all_labels
             from .latex import extract_tex_sources, discover_all_environments, infer_label_for_title
-            from .models import BookBoxMapping
+            from .models import BookBoxMapping, AIProvider
+            from .chunker import chunk_latex_source
 
             avail_labels = [l["name"] for l in all_labels(user=request.user) if not l.get("hidden")]
             sources = extract_tex_sources(upload.name, data)
             discovered_envs = discover_all_environments(*sources)
+
+            # Natural chunks for step-by-step AI cleanup / editing
+            ai_chunks = []
+            if upload.name.lower().endswith((".tex", ".zip")) and sources:
+                ai_chunks = chunk_latex_source(sources[0])
+
+            # Active AI providers for the professor/admin dropdown
+            active_ai_providers = list(AIProvider.objects.filter(is_active=True).values("id", "title", "model_name", "is_default"))
 
             # Check book memory for previously saved mappings
             memory_mappings: dict[str, str] = {}
@@ -1121,6 +1130,8 @@ def import_view(admin_site, request, book_id=None):
                     mapping_candidates=mapping_candidates,
                     custom_boxes_json=json.dumps(custom_boxes, ensure_ascii=False),
                     available_labels=avail_labels,
+                    ai_chunks=ai_chunks,
+                    active_ai_providers=active_ai_providers,
                 )
     all_books = []
     if request.user.is_superuser:
@@ -1247,3 +1258,49 @@ def _chapter_action(request, book, chapter, action):
                         parsed.meta["chapter_number"] = n
                         editing.save(c, parsed, user=request.user, note=f"شماره‌ی فصل {n}")
             messages.success(request, "ترتیب فصل‌ها عوض شد (شماره‌ی فصل‌ها هم به‌روز شد).")
+
+
+@require_POST
+def ai_clean_chunk_action(request):
+    """Clean a single LaTeX/Markdown chunk using the selected AI provider."""
+    from .models import AIProvider
+    from .ai_service import clean_chunk_with_ai
+    from .latex import Converter
+
+    provider_id = request.POST.get("provider_id")
+    raw_text = request.POST.get("raw_text", "").strip()
+
+    if not raw_text:
+        return JsonResponse({"ok": False, "error": "متنی برای ارسال به هوش مصنوعی وجود ندارد."})
+
+    provider = None
+    if provider_id:
+        provider = AIProvider.objects.filter(pk=provider_id, is_active=True).first()
+    if not provider:
+        provider = AIProvider.objects.filter(is_active=True, is_default=True).first()
+    if not provider:
+        provider = AIProvider.objects.filter(is_active=True).first()
+
+    if not provider:
+        return JsonResponse({
+            "ok": False,
+            "error": "هیچ ارائه‌دهنده هوش مصنوعی فعالی در سامانه ثبت نشده است. لطفاً ابتدا از بخش «ارائه‌دهندگان هوش مصنوعی» یک کلید معتبر ثبت و فعال کنید.",
+        })
+
+    success, result = clean_chunk_with_ai(provider, raw_text)
+    if not success:
+        return JsonResponse({"ok": False, "error": result})
+
+    # Run local Limoo converter as safety net and parser on the cleaned output
+    try:
+        conv = Converter(result)
+        final_markdown = conv.to_markdown().strip()
+    except Exception:
+        final_markdown = result
+
+    return JsonResponse({
+        "ok": True,
+        "cleaned_markdown": final_markdown,
+        "provider_title": provider.title,
+    })
+
