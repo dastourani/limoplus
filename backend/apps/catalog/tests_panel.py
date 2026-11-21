@@ -1762,8 +1762,8 @@ class ImportPreviewBeforeSaveTests(TestCase):
         self.assertEqual(res_post.status_code, 200)
         content = res_post.content.decode()
         self.assertNotIn("«شناسه-کتاب» در مشخصات فایل نیامده است", content)
-        self.assertIn("فایل بدون خطاست", content)
-        self.assertIn("تصویربرداری پزشکی", content)
+        self.assertIn("فایل آماده پردازش است", content)
+        self.assertIn("integral.tex", content)
 
     def setUp(self):
         Major.objects.create(name="اقتصاد", slug="economics")

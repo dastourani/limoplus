@@ -164,18 +164,29 @@
   {% endif %}
 
   {% if report %}
-    <h2 style="margin-top:20px">{{ report.filename }}</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px;">
+      <h2 style="margin:0; font-size:18px; font-weight:800;">{{ report.filename }}</h2>
+      {% if not report.errors %}
+      <span style="font-size:12px; color:#16a34a; font-weight:700; background:rgba(34,197,94,0.1); padding:4px 12px; border-radius:999px;">
+        ✓ فایل آماده پردازش است
+      </span>
+      {% endif %}
+    </div>
+
     {% if report.errors %}
-      <div class="msg err"><b>{{ report.errors|length }} خطا؛ چیزی وارد نشد.</b> خطاها را در فایل درست کنید و دوباره انتخابش کنید.
+      <div class="msg err" style="margin-top:12px;"><b>{{ report.errors|length }} خطا؛ چیزی وارد نشد.</b> خطاها را در فایل درست کنید و دوباره انتخابش کنید.
         <ul>{% for issue in report.errors %}<li>{{ issue }}</li>{% endfor %}</ul></div>
-    {% else %}
-      <div class="msg ok">فایل بدون خطاست:
-        {% if report.existing %}فصل موجود «<b>{{ report.target_chapter }}</b>» در کتاب «{{ report.target_book }}» به‌روز می‌شود.
-        {% else %}فصل تازه‌ی «<b>{{ report.target_chapter }}</b>» در کتاب «{{ report.target_book }}» ساخته می‌شود
-          ({{ report.counts.sections }} بخش، {{ report.counts.questions }} تست، {{ report.counts.flashcards }} فلش‌کارت).{% endif %}</div>
     {% endif %}
+
     {% if report.warnings %}
-      <div class="msg warn"><b>هشدارها ({{ report.warnings|length }})</b><ul>{% for issue in report.warnings %}<li>{{ issue }}</li>{% endfor %}</ul></div>
+    <details class="msg warn" style="margin-top:10px; padding:8px 14px; cursor:pointer;">
+      <summary style="font-size:12px; font-weight:700;">
+        ⚠️ مشاهده هشدارهای تبدیل اولیه فایل ({{ report.warnings|length }} مورد) — پس از تمیزکاری با هوش مصنوعی برطرف می‌شوند
+      </summary>
+      <ul style="margin:8px 0 0; padding-inline-start:20px; font-size:11.5px; line-height:1.6;">
+        {% for issue in report.warnings %}<li>{{ issue }}</li>{% endfor %}
+      </ul>
+    </details>
     {% endif %}
     {% if report.markdown %}
     <!-- بخش هوشمند قطعات فصل و دستیار هوش مصنوعی (AI Chunks Assistant) -->
