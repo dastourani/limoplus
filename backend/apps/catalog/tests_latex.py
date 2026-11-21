@@ -362,6 +362,35 @@ class ZipTests(SimpleTestCase):
         self.assertIn(":::قضیه", md)
         self.assertIn(":::تعریف", md)
 
+    def test_preamble_stripping_and_title_cleaning(self):
+        from .latex import Converter, infer_label_for_title
+
+        tex = (
+            "\\documentclass{article}\n"
+            "\\usepackage{xcolor}\n"
+            "\\def\\red{\\color{red}}\n"
+            "\\def\\IranNastaliq{\\rmfamily}\n"
+            "\\title{\\red\\textbf{انتگرال}}\n"
+            "\\begin{document}\n"
+            "\\section{\\Large\\bfseries\\color{red}مفهوم انتگرال}\n"
+            "متن درس\n"
+            "\\end{document}\n"
+        )
+        c = Converter(tex)
+        chap = c.to_chapter()
+        self.assertIn("عنوان: انتگرال", chap)
+        self.assertIn("## مفهوم انتگرال", chap)
+        self.assertNotIn("IranNastaliq", chap)
+        self.assertNotIn("red", chap)
+
+        avail = ["نکته", "قضیه", "لاتین", "پرسش و پاسخ", "تمرین"]
+        self.assertEqual(infer_label_for_title("tip", avail), "نکته")
+        self.assertEqual(infer_label_for_title("proof", avail), "قضیه")
+        self.assertEqual(infer_label_for_title("latin", avail), "لاتین")
+        self.assertEqual(infer_label_for_title("answer", avail), "پرسش و پاسخ")
+        self.assertEqual(infer_label_for_title("test", avail), "تمرین")
+
+
 
 class UploadTests(TestCase):
     """A .tex file uploaded into a book: the same path as chapter.md, all of the format's checks included."""

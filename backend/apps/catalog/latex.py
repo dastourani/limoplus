@@ -90,6 +90,7 @@ SILENT_WITH_ARGS = {
     "graphicspath", "definecolor", "lstset", "tikzset", "usetikzlibrary", "pgfplotsset", "sisetup", "captionsetup",
     "newenvironment", "renewenvironment", "newtheorem", "DeclareMathOperator", "DeclareGraphicsExtensions",
     "newcommand", "renewcommand", "providecommand", "def", "let", "DeclareRobustCommand", "newcounter",
+    "color", "DeclareFloatingEnvironment",
     # The set-up of a box the author built (our own export writes these too); never part of the text.
     "newsavebox", "savebox", "sbox", "newlength", "setlength", "settowidth", "fcolorbox", "colorbox", "lrbox",
     "pageref", "index", "glossary", "bibliography", "printbibliography", "nocite",
@@ -100,7 +101,7 @@ SILENT_ALONE = {
     "backmatter", "hrule", "vrule", "item", "par", "newline", "linebreak", "bfseries", "itshape", "rmfamily",
     "sffamily", "ttfamily", "normalfont", "tiny", "scriptsize", "footnotesize", "small", "normalsize", "large",
     "Large", "LARGE", "huge", "Huge", "protect", "selectlanguage", "clearpage", "noindent", "centering",
-    "ignorespaces", "medskip", "smallskip", "bigskip",
+    "ignorespaces", "medskip", "smallskip", "bigskip", "RL", "LR", "LTR", "RTL", "YasFafont",
     "raggedright", "raggedleft", "tableofcontents", "listoffigures",
 }
 # Commands dropped together with their environment.
@@ -115,10 +116,11 @@ TEXT_WRAPPERS = {
     "textsubscript", "substack", "title", "author", "date", "thanks", "footnotetext", "fbox", "makebox",
     "framebox", "parbox", "raisebox", "resizebox", "scalebox", "rotatebox", "caption", "captionof",
     "texorpdfstring", "url", "href", "foreignlanguage", "lrbox", "smash", "overline", "underbrace", "overbrace",
+    "textcolor",
 }
 # For these, only the last brace group is text (the earlier ones are settings: colour, width, language).
 LAST_ARG_IS_TEXT = {
-    "textcolor", "colorbox", "fcolorbox", "color", "parbox", "makebox", "framebox", "raisebox", "resizebox",
+    "textcolor", "colorbox", "fcolorbox", "parbox", "makebox", "framebox", "raisebox", "resizebox",
     "scalebox", "rotatebox", "href", "foreignlanguage", "texorpdfstring", "multicolumn", "multirow", "rule",
 }
 
@@ -341,19 +343,28 @@ def discover_all_environments(*sources: str) -> dict[str, dict]:
 
 
 def infer_label_for_title(title: str, available_labels: list[str]) -> str | None:
-    """Match a Persian theorem/box title to an official Limo label."""
+    """Match a Persian theorem/box title or common LaTeX environment name to an official Limo label."""
     t = title.strip()
     if t in available_labels:
         return t
+    tl = t.lower()
     keywords = [
         ("قضیه", "قضیه"), ("تعریف", "تعریف"), ("مثال نقض", "مثال نقض"),
         ("مثال", "مثال"), ("تمرین", "تمرین"), ("نکته", "نکته"),
         ("گزاره", "گزاره"), ("لم", "گزاره"), ("نتیجه", "نتیجه"),
         ("فرمول", "فرمول"), ("قاعده", "قاعده"), ("یادآوری", "یادآوری"),
         ("هشدار", "هشدار"), ("تله", "تله"), ("مهم", "مهم"),
+        # English environment / theorem names
+        ("theorem", "قضیه"), ("definition", "تعریف"), ("example", "مثال"),
+        ("exercise", "تمرین"), ("problem", "تمرین"), ("remark", "نکته"),
+        ("note", "نکته"), ("hint", "نکته"), ("tip", "نکته"),
+        ("proof", "قضیه"), ("اثبات", "قضیه"),
+        ("latin", "لاتین"), ("english", "لاتین"),
+        ("answer", "پرسش و پاسخ"), ("solution", "پرسش و پاسخ"), ("پاسخ", "پرسش و پاسخ"), ("جواب", "پرسش و پاسخ"),
+        ("test", "تمرین"), ("quiz", "تمرین"), ("تست", "تمرین"),
     ]
     for kw, target in keywords:
-        if kw in t and target in available_labels:
+        if kw in tl and target in available_labels:
             return target
     return None
 
@@ -595,6 +606,13 @@ def _strip_preamble(text: str) -> str:
     return text[match.end():]
 
 
+def _clean_title(title: str) -> str:
+    """Clean markdown styling, backslashed commands, and stray braces from a title string."""
+    t = re.sub(r"[*_~`{}]+", "", title)
+    t = re.sub(r"\\[a-zA-Z]+(?=[^a-zA-Z]|$)\s*(\[[^\]]*\])?\s*(\{[^}]*\})?", "", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
 class Converter:
     """One .tex document → the chapter Markdown of docs/content-format.md."""
 
@@ -622,7 +640,7 @@ class Converter:
             # «حد \\ \large ریاضی عمومی ۱»: the book's title is the second line, not part of the chapter's. Take the
             # first line only — the rest is a subtitle whose size command would be read as words.
             with_title = re.split(r"\\\\|\n", with_title)[0]
-            self.title = self._inline(with_title).strip()
+            self.title = _clean_title(self._inline(with_title))
         self.book = None
         # The headings met, in order: (level, title, name). The first is the chapter's title when none was given.
         self.headings: list[tuple[int, str, str | None]] = []
@@ -638,6 +656,7 @@ class Converter:
         """
         body = self.to_markdown()
         title = self.title or (self.headings[0][1] if self.headings else "")
+        title = _clean_title(title)
         slug = self.slug or "ch1"
         header = ["---"]
         # The book lines come from the book the chapter is uploaded into: a .tex file cannot know them.
@@ -668,12 +687,13 @@ class Converter:
         # no part of the text. \\maketitle prints them; it prints nothing in the book.
         text = re.sub(r"\\(title|author|date|thanks)\s*\{[^{}]*\}", "", text)
         text = re.sub(r"\\maketitle\b", "", text)
+        # First strip preamble (everything before \begin{document}), BEFORE removing the \begin{document} tag!
+        text = _strip_preamble(text)
+        text = re.sub(r"\\(begin|end)\s*\{document\}", "", text)
         # The author's definitions are collected for the panel's «دستورهای فرمول»; in the text they are no longer
         # needed (KaTeX knows the name), and rewriting them here would put \mathbb into the prose.
         text = _drop_macro_definitions(text)
         text = SETUP_COMMANDS.sub("", text)
-        text = re.sub(r"\\(begin|end)\s*\{document\}", "", text)
-        text = _strip_preamble(text)
         # \ifxetex … \else … \fi and the other conditionals: keep the branches as written, drop the switches.
         text = re.sub(r"\\(ifxetex|ifluatex|ifpdf|ifPDFTeX|ifXeTeX|ifLuaTeX|ifdefined|ifcsname)\b", "", text)
         text = re.sub(r"\\(else|fi)\b", "", text)
