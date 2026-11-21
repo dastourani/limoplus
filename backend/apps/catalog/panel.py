@@ -975,7 +975,8 @@ def revision_text(request, chapter_id, revision_id):
 
 def import_view(admin_site, request, book_id=None):
     """Upload → check and preview what will change → confirm. The upload waits on the server between the two steps."""
-    book = _book(book_id) if book_id else None
+    target_book_id = book_id or request.POST.get("target_book_id") or request.GET.get("target_book_id")
+    book = _book(int(target_book_id)) if target_book_id and str(target_book_id).isdigit() else None
     if book is None:
         # With no book in the URL the file itself names the book, so it could land in ANY book. Superusers only;
         # everyone else imports through their own book's page, which passes book_id.
@@ -1120,10 +1121,14 @@ def import_view(admin_site, request, book_id=None):
                     custom_boxes_json=json.dumps(custom_boxes, ensure_ascii=False),
                     available_labels=avail_labels,
                 )
+    all_books = []
+    if request.user.is_superuser:
+        all_books = list(ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, is_inbox=False).order_by("title"))
+
     return TemplateResponse(
         request,
         "admin/catalog/book/import.html",
-        _context(admin_site, request, "افزودن یا به‌روزرسانی فصل از فایل", book=book, report=report),
+        _context(admin_site, request, "افزودن یا به‌روزرسانی فصل از فایل", book=book, report=report, all_books=all_books),
     )
 
 
