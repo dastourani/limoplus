@@ -1717,7 +1717,7 @@ class BookEditorAccessTests(_Base):
 
 class ImportPreviewBeforeSaveTests(TestCase):
     def test_import_view_detects_custom_boxes_and_accepts_mapping(self):
-        """LaTeX newtheorem custom environments are discovered and mapped to Limo boxes."""
+        """LaTeX newtheorem custom environments and chunks are prepared for AI assistant and import."""
         from django.core.files.uploadedfile import SimpleUploadedFile
         import json
 
@@ -1734,9 +1734,8 @@ class ImportPreviewBeforeSaveTests(TestCase):
         resp = self.client.post(self.url, {"file": SimpleUploadedFile("theorems.tex", tex, content_type="text/plain")})
         self.assertEqual(resp.status_code, 200)
         html = resp.content.decode()
-        self.assertIn("mythm", html)
-        self.assertIn("قضیه اساسی", html)
-        self.assertIn("نگاشت هوشمند کادرهای فایل", html)
+        self.assertIn("قطعه‌بندی هوشمند و دستیار هوش مصنوعی", html)
+        self.assertIn("استودیوی ویرایش لیموخوان", html)
 
     def test_superuser_global_import_with_target_book_id(self):
         """Superuser uploading raw tex without book_slug can specify target_book_id."""
