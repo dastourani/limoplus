@@ -1416,6 +1416,8 @@ class BookEditorAccessTests(_Base):
             ("catalog", "view_book"), ("catalog", "view_contentnode"), ("catalog", "change_contentnode"),
             ("catalog", "view_section"), ("catalog", "view_chapterrevision"),
             ("catalog", "view_label"), ("catalog", "add_label"), ("catalog", "change_label"), ("catalog", "delete_label"),
+            ("catalog", "view_aiprovider"), ("catalog", "add_aiprovider"), ("catalog", "change_aiprovider"), ("catalog", "delete_aiprovider"),
+            ("catalog", "view_bookassistantauditlog"),
             ("learning", "view_question"), ("learning", "view_flashcard"), ("learning", "view_examsource"),
             ("learning", "view_report"), ("learning", "change_report"),
         }
