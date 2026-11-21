@@ -252,6 +252,12 @@ def discover_custom_environments(*sources: str) -> dict[str, str]:
     return discovered
 
 
+LAYOUT_AND_GRAPHIC_ENVIRONMENTS = {
+    "minipage", "multicols", "multicols*", "pspicture", "pspicture*",
+    "tikzpicture", "pgfpicture", "tikzfigure", "axis", "wrapfigure",
+    "adjustbox", "landscape", "center", "flushleft", "flushright",
+}
+
 STANDARD_IGNORED_ENVIRONMENTS = (
     {"document"}
     | MATH_ENVIRONMENTS
@@ -259,6 +265,7 @@ STANDARD_IGNORED_ENVIRONMENTS = (
     | TABLE_ENVIRONMENTS
     | FIGURE_ENVIRONMENTS
     | TABLE_FLOAT_ENVIRONMENTS
+    | LAYOUT_AND_GRAPHIC_ENVIRONMENTS
     | set(BOX_ENVIRONMENTS.keys())
 )
 
@@ -299,6 +306,7 @@ def extract_environment_snippets(*sources: str, max_snippets_per_env: int = 3) -
                 snippet = re.sub(r"\\label\{[^}]*\}", "", body)
                 snippet = re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?\{([^}]*)\}", r"\1", snippet)
                 snippet = re.sub(r"\\[a-zA-Z]+", " ", snippet)
+                snippet = re.sub(r"[{}\[\]]+", " ", snippet)
                 snippet = re.sub(r"\s+", " ", snippet).strip()
                 if snippet:
                     if len(snippet) > 160:
@@ -846,8 +854,19 @@ class Converter:
     # -- environments --
 
     def _environment(self, env: str, body: str, opening: str) -> str:
-        # The environment's own arguments are settings, not text: the {cc} of a tabular, the [width] of a figure.
-        if env in TABLE_ENVIRONMENTS and env != "array":
+        # Strip balanced leading arguments or options (e.g. \begin{minipage}[t]{0.4\textwidth}, \begin{multicols}{2})
+        if env in (
+            "minipage", "tcolorbox", "mdframed", "mdframed*", "shaded", "framed",
+            "adjustbox", "multicols", "multicols*", "pspicture", "pspicture*",
+        ):
+            idx = _skip_whitespace(body, 0)
+            while idx < len(body) and body[idx] in "[{(":
+                opener = body[idx]
+                closer = "]" if opener == "[" else "}" if opener == "{" else ")"
+                _, idx = _read_group(body, idx, opener, closer)
+                idx = _skip_whitespace(body, idx)
+            body = body[idx:]
+        elif env in TABLE_ENVIRONMENTS and env != "array":
             body = re.sub(r"^\s*\{[^}]*\}\s*", "", body, count=1)
         elif env in FIGURE_ENVIRONMENTS:
             body = re.sub(r"^\s*(\[[^\]]*\]\s*)?(\{[^}]*\}\s*)?", "", body, count=1)
@@ -855,9 +874,6 @@ class Converter:
             # «\begin{table}[H]»: the placement option ([H] [htbp] [t]) is a setting, not the author's words — it used
             # to survive as a bare «[H]» line above the table.
             body = re.sub(r"^\s*\[[^\]]*\]\s*", "", body, count=1)
-        elif env in ("mdframed", "tcolorbox", "mdframed*", "shaded", "framed", "adjustbox", "minipage"):
-            # Framing settings, not text: \begin{mdframed}[backgroundcolor=…,linewidth=1pt]
-            body = re.sub(r"^\s*(\[[^\]]*\]\s*)?(\{[^}]*\}\s*)?", "", body, count=1)
         if env in SILENT_ENVIRONMENTS:
             return ""
         if env in MATH_ENVIRONMENTS:
@@ -873,7 +889,7 @@ class Converter:
         if env in ("subfigure", "subfigure*"):
             return self._blocks(body)
         if env in ("center", "flushleft", "flushright", "minipage", "small", "footnotesize", "large", "quotation",
-                   "quote", "abstract", "titlepage", "adjustbox", "landscape", "mdframed"):
+                   "quote", "abstract", "titlepage", "adjustbox", "landscape", "mdframed", "multicols", "multicols*", "pspicture", "pspicture*"):
             return self._blocks(body)
         if env in ("lstlisting", "verbatim", "verbatim*", "minted", "alltt"):
             return self._code(env, body, opening)
@@ -1094,8 +1110,9 @@ class Converter:
             return plot
         self._warn_once(
             "نمودار TikZ پیدا شد و قابل تبدیل نبود؛ آن را به‌صورت SVG بسازید و با \\includegraphics{image.svg} "
-            "در متن بگذارید.")
-        return "> نمودار TikZ — باید به‌صورت SVG در فایل ZIP باشد."
+            "در متن بگذارید."
+        )
+        return "> [نمودار TikZ]"
 
     def _pgfplots(self, body: str) -> str:
         """\\addplot {sin(x)} or \\addplot coordinates {…} → the «:::نمودار» text of app/src/lib/plot.ts."""
@@ -1317,6 +1334,9 @@ class Converter:
         text = re.sub(r"\\[,;:!]", "", text)
         text = text.replace("---", "—").replace("--", "–")
         text = text.replace("``", "«").replace("''", "»")
+        # Clean stray dimension/geometry parameter leaks (e.g., "0.6cm=", "width=12cm", "height=5in")
+        text = re.sub(r"(?:\b[a-zA-Z_]+\s*=\s*)?[-+]?\d*\.?\d+\s*(?:cm|mm|in|pt|em|ex|bp|pc|dd|cc|sp)\s*=", " ", text)
+        text = re.sub(r"(?:\b[a-zA-Z_]+\s*=\s*)?[-+]?\d*\.?\d+\s*\\{1,2}(?:textwidth|linewidth|textheight|paperwidth|paperheight)\s*=", " ", text)
         text = re.sub(r"[ \t]+\n", "\n", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text
