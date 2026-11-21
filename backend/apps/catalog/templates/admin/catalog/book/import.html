@@ -177,117 +177,6 @@
     {% if report.warnings %}
       <div class="msg warn"><b>هشدارها ({{ report.warnings|length }})</b><ul>{% for issue in report.warnings %}<li>{{ issue }}</li>{% endfor %}</ul></div>
     {% endif %}
-    {% if report.mapping_candidates %}
-    <div class="card" style="background:var(--darkened-bg); border:1px solid var(--hairline-color); border-radius:12px; padding:18px 22px; margin:20px 0; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
-        <h3 style="margin:0; font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px;">
-          🏷️ نگاشت هوشمند کادرهای فایل و پیش‌نمایش زنده
-        </h3>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <a href="#import-preview-box" class="btn small" style="background:var(--body-bg); color:var(--body-fg); font-weight:700; border:1px solid var(--hairline-color); border-radius:999px; padding:4px 14px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
-            👁️ مشاهده پیش‌نمایش فصل ↓
-          </a>
-          <button type="button" class="btn small" id="btn-open-create-label" style="background:#F5C518; color:#17201A; font-weight:800; border:1px solid #E0AE0B; border-radius:999px; padding:4px 14px;">
-            ➕ ساخت کادر تازه در همین لحظه
-          </button>
-        </div>
-      </div>
-      <p style="font-size:13px; color:var(--body-quiet-color); margin-bottom:16px; line-height:1.6;">
-        محیط‌های سفارشی زیر در فایل شما شناسایی شدند. با کلیک روی چیپ‌های رنگی هر کادر، پیش‌نمایش درجا تغییر می‌کند و تمام موارد مشابه در فایل بلافاصله هماهنگ می‌شوند.
-      </p>
-
-      <div class="custom-boxes-grid" style="display:grid; gap:14px;">
-        {% for c in report.mapping_candidates %}
-        <div class="env-mapping-card" data-env="{{ c.env }}" style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:10px; padding:14px 18px; transition:all .15s ease;">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <code style="font-size:13px; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.08); padding:2px 8px; border-radius:6px; direction:ltr;">\begin{<b>{{ c.env }}</b>}</code>
-              {% if c.title and c.title != c.env %}
-                <span style="font-size:13px; font-weight:700;">({{ c.title }})</span>
-              {% endif %}
-              <span style="font-size:11.5px; color:var(--body-quiet-color); background:var(--darkened-bg); padding:1px 8px; border-radius:12px;">
-                {{ c.count }} مورد در فایل
-              </span>
-              {% if c.is_from_memory %}
-                <span style="font-size:11px; font-weight:700; color:#15803d; background:rgba(34,197,94,0.12); padding:1px 8px; border-radius:12px;" title="این نگاشت قبلاً برای این کتاب ذخیره شده است">
-                  ✓ اعمال از حافظه کتاب
-                </span>
-              {% endif %}
-            </div>
-            <div style="font-size:12px; color:var(--body-quiet-color);">
-              کادر فعال: <b class="active-label-badge" style="color:#F5C518;">{% if c.mapped %}{{ c.mapped }}{% else %}(بدون کادر / متن عادی){% endif %}</b>
-            </div>
-          </div>
-
-          {% if c.snippets %}
-          <div class="snippet-preview-box" style="margin-bottom:12px; padding:8px 12px; background:var(--darkened-bg); border-right:3px solid #0284c7; border-radius:6px; font-size:12.5px; line-height:1.6; direction:rtl; text-align:right;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:11px; color:var(--body-quiet-color);">
-              <span>نمونه متن از دل فایل:</span>
-              {% if c.snippets|length > 1 %}
-              <div class="snippet-nav" style="display:flex; gap:4px; align-items:center;">
-                <button type="button" class="btn-snip-prev" style="padding:1px 6px; font-size:11px; cursor:pointer;">‹</button>
-                <span class="snip-counter">۱ از {{ c.snippets|length }}</span>
-                <button type="button" class="btn-snip-next" style="padding:1px 6px; font-size:11px; cursor:pointer;">›</button>
-              </div>
-              {% endif %}
-            </div>
-            <div class="snippet-text" style="word-break:break-word; max-height:80px; overflow-y:auto;">
-              {{ c.snippets.0 }}
-            </div>
-            <script type="application/json" class="snippet-data-json">{{ c.snippets_json|safe }}</script>
-          </div>
-          {% endif %}
-
-          <!-- چیپ‌های انتخاب سریع برچسب -->
-          <div class="quick-pills-row" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-            <span style="font-size:11.5px; color:var(--body-quiet-color); margin-inline-end:4px;">انتخاب کادر:</span>
-            {% for lbl in report.available_labels %}
-              <button type="button" class="pill-btn {% if lbl == c.mapped %}active{% endif %}" data-env="{{ c.env }}" data-label="{{ lbl }}"
-                      style="padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid var(--hairline-color); transition:all .15s ease;">
-                {{ lbl }}
-              </button>
-            {% endfor %}
-            <button type="button" class="pill-btn unmapped-btn {% if not c.mapped %}active{% endif %}" data-env="{{ c.env }}" data-label=""
-                    style="padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid var(--hairline-color); background:transparent; color:var(--body-quiet-color);">
-              ❌ متن عادی (بدون کادر)
-            </button>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-
-    <!-- دیالوگ ساخت آنی کادر تازه -->
-    <div id="modal-create-label" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; align-items:center; justify-content:center; backdrop-filter:blur(2px);">
-      <div style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:14px; width:92%; max-width:440px; padding:22px 24px; box-shadow:0 8px 30px rgba(0,0,0,0.25);">
-        <h4 style="margin:0 0 14px; font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px;">
-          ✨ ساخت کادر تازه برای درسنامه
-        </h4>
-        <div id="modal-label-err" style="display:none; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:8px; padding:8px 12px; font-size:12.5px; margin-bottom:12px;"></div>
-        <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:18px;">
-          <div>
-            <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px;">نام کادر (مثلاً «نکته بالینی» یا «زندگینامه»):</label>
-            <input type="text" id="new-label-name" style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; border:1px solid var(--hairline-color); font:inherit; font-size:13px;" placeholder="نام کادر را بنویسید..." required>
-          </div>
-          <div>
-            <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px;">رنگ و استایل کادر:</label>
-            <select id="new-label-style" style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; border:1px solid var(--hairline-color); font:inherit; font-size:13px;">
-              <option value="formal">رسمی (آبی - مناسب قضیه، تعریف و ساختارهای محکم)</option>
-              <option value="note" selected>یادداشت (سبز/لیمویی - مناسب نکات، تذکرات و راهنماها)</option>
-              <option value="warn">هشدار (نارنجی - مناسب تله‌ها و موارد پرخطا)</option>
-            </select>
-          </div>
-        </div>
-        <div style="display:flex; justify-content:flex-end; gap:8px;">
-          <button type="button" class="btn" id="btn-cancel-create-label">انصراف</button>
-          <button type="button" class="btn primary" id="btn-submit-create-label" style="background:#F5C518; color:#17201A; font-weight:800; border-color:#E0AE0B;">
-            ایجاد و افزودن به چیپ‌ها
-          </button>
-        </div>
-      </div>
-    </div>
-    {% endif %}
-
     {% if report.markdown %}
     <!-- بخش هوشمند قطعات فصل و دستیار هوش مصنوعی (AI Chunks Assistant) -->
     {% if report.ai_chunks %}
@@ -298,10 +187,13 @@
             🤖 قطعه‌بندی هوشمند و دستیار هوش مصنوعی
           </h3>
           <p style="margin:0; font-size:12px; color:var(--body-quiet-color); line-height:1.5;">
-            فایل شما به <b>{{ report.ai_chunks|length }}</b> قطعهٔ مستقل تقسیم شده است. می‌توانید هر قطعه را با هوش مصنوعی تمیزکاری و استانداردسازی کنید.
+            فایل شما به <b>{{ report.ai_chunks|length }}</b> قطعهٔ طبیعی تقسیم شده است. هوش مصنوعی به‌طور اختصاصی هر قطعه را تمیزکاری می‌کند و کادرها و فرمول‌ها در پیش‌نمایش بلادرنگ رندر می‌شوند.
           </p>
         </div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <button type="button" class="btn" id="btn-clean-all-chunks" style="background:#0284c7; color:#fff; font-weight:700; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+            ⚡ تمیزکاری خودکار قطعه‌به‌قطعه
+          </button>
           <label for="ai-provider-select" style="font-size:12px; font-weight:700;">مدل هوش مصنوعی:</label>
           <select id="ai-provider-select" style="padding:6px 12px; border-radius:8px; border:1px solid var(--hairline-color); font:inherit; font-size:12.5px; background:var(--body-bg); color:var(--body-fg); cursor:pointer;">
             {% for prov in report.active_ai_providers %}
@@ -316,24 +208,42 @@
         </div>
       </div>
 
-      <div style="display:flex; flex-direction:column; gap:10px;">
+      <div style="display:flex; flex-direction:column; gap:12px;">
         {% for chunk in report.ai_chunks %}
-        <div class="ai-chunk-card" data-index="{{ chunk.index }}" style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:10px; padding:12px 16px; transition:border-color .15s ease;">
+        <div class="ai-chunk-card" data-index="{{ chunk.index }}" style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:10px; padding:14px 18px; transition:border-color .15s ease;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:12px; font-weight:800; background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:6px;">
                 قطعه {{ chunk.index }}
               </span>
-              <span style="font-weight:700; font-size:13.5px;">{{ chunk.title }}</span>
+              <span style="font-weight:700; font-size:14px;">{{ chunk.title }}</span>
               <span style="font-size:11.5px; color:var(--body-quiet-color);">({{ chunk.word_count }} کلمه)</span>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
               <span class="chunk-status-badge" style="font-size:11.5px; color:var(--body-quiet-color);"></span>
+              <button type="button" class="btn small btn-toggle-chunk" data-index="{{ chunk.index }}" style="font-size:12px; font-weight:700; border-radius:8px; display:inline-flex; align-items:center; gap:4px; display:none;">
+                👁️ ویرایش و پیش‌نمایش
+              </button>
               <button type="button" class="btn small btn-clean-chunk" data-index="{{ chunk.index }}" style="background:#F5C518; color:#17201A; font-weight:800; border-color:#E0AE0B; border-radius:8px; display:inline-flex; align-items:center; gap:4px;">
                 ✨ تمیزکاری با هوش مصنوعی
               </button>
             </div>
           </div>
+
+          <!-- بخش کشویی اختصاصی برای ویرایش متن تمیزشده و پیش‌نمایش زنده قطعه -->
+          <div class="chunk-editor-pane" style="display:none; margin-top:12px; border-top:1px dashed var(--hairline-color); padding-top:12px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px;">
+              <div>
+                <label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:4px; color:var(--body-quiet-color);">متن تمیزشده مارک‌داون (قابل ویرایش دستی):</label>
+                <textarea class="chunk-cleaned-textarea" style="width:100%; box-sizing:border-box; height:180px; padding:8px 10px; border-radius:8px; border:1px solid var(--hairline-color); font-family:monospace; font-size:12.5px; line-height:1.5; direction:ltr; text-align:left;"></textarea>
+              </div>
+              <div>
+                <label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:4px; color:var(--body-quiet-color);">پیش‌نمایش رندر زنده این قطعه:</label>
+                <div class="chunk-preview-box" style="width:100%; box-sizing:border-box; height:180px; padding:10px 14px; border-radius:8px; border:1px solid var(--hairline-color); background:#F6F7F2; overflow-y:auto; direction:rtl; text-align:right; font-size:13px; line-height:1.7;"></div>
+              </div>
+            </div>
+          </div>
+
           <script type="application/json" class="chunk-raw-json">{{ chunk.raw|json_script:"chunk-raw-data" }}</script>
         </div>
         {% endfor %}
@@ -344,8 +254,8 @@
     {# The chapter as the reader will get it, drawn by the same renderer the app uses. #}
     <details class="import-preview" id="import-preview-box" {% if report.existing %}open{% else %}open{% endif %}>
       <summary style="display:flex; justify-content:space-between; align-items:center;">
-        <span>📖 پیش‌نمایش فصل (همان‌طور که دانشجو می‌بیند)</span>
-        <span style="font-size:11.5px; font-weight:normal; color:var(--body-quiet-color);">تغییر چیپ‌های بالا بلافاصله این کادر را به‌روز می‌کند</span>
+        <span>📖 پیش‌نمایش کل فصل (رندر یکپارچه نهایی)</span>
+        <span style="font-size:11.5px; font-weight:normal; color:var(--body-quiet-color);">همگام با تمیزکاری و ویرایش قطعات</span>
       </summary>
       <div class="pv-ctl" id="import-pv-ctl"></div>
       <div class="import-pv-wrap"><iframe class="import-pv" title="پیش‌نمایش فصل" id="import-pv"></iframe></div>
@@ -372,195 +282,59 @@
         <input type="hidden" name="custom_boxes" id="id_custom_boxes" value="{{ report.custom_boxes_json|escape }}">
         <script>
           document.addEventListener('DOMContentLoaded', function () {
-            // Manage custom environment mapping state & live preview sync
-            var initialMapping = {};
-            try {
-              var rawJson = document.getElementById('id_custom_boxes').value;
-              if (rawJson) initialMapping = JSON.parse(rawJson);
-            } catch (e) {}
-
-            var currentMapping = Object.assign({}, initialMapping);
-            var envCards = document.querySelectorAll('.env-mapping-card');
-
-            // Snippet carousel navigation for cards
-            envCards.forEach(function (card) {
-              var snipText = card.querySelector('.snippet-text');
-              var snipCounter = card.querySelector('.snip-counter');
-              var prevBtn = card.querySelector('.btn-snip-prev');
-              var nextBtn = card.querySelector('.btn-snip-next');
-              if (!snipText || !prevBtn || !nextBtn) return;
-
-              var snippets = [];
-              try {
-                var scriptEl = card.querySelector('.snippet-data-json') || card.querySelector('script');
-                if (scriptEl && scriptEl.textContent) {
-                  snippets = JSON.parse(scriptEl.textContent);
-                }
-              } catch (e) {}
-              if (!snippets || !snippets.length) return;
-
-              var curIdx = 0;
-              function updateSnippet() {
-                snipText.textContent = snippets[curIdx];
-                if (snipCounter) snipCounter.textContent = (curIdx + 1) + ' از ' + snippets.length;
-              }
-              prevBtn.addEventListener('click', function () {
-                curIdx = (curIdx - 1 + snippets.length) % snippets.length;
-                updateSnippet();
-              });
-              nextBtn.addEventListener('click', function () {
-                curIdx = (curIdx + 1) % snippets.length;
-                updateSnippet();
-              });
-            });
-
-            // Live re-rendering of import preview
-            function syncMappingAndPreview(env, newLabel, oldLabel) {
-              if (newLabel) {
-                currentMapping[env] = newLabel;
-              } else {
-                delete currentMapping[env];
-              }
-              var input = document.getElementById('id_custom_boxes');
-              if (input) input.value = JSON.stringify(currentMapping);
-
-              // Update badge in card
-              var card = document.querySelector('.env-mapping-card[data-env="' + env + '"]');
-              if (card) {
-                var badge = card.querySelector('.active-label-badge');
-                if (badge) badge.textContent = newLabel || '(بدون کادر / متن عادی)';
-                card.querySelectorAll('.pill-btn').forEach(function (b) {
-                  if (b.getAttribute('data-label') === (newLabel || '')) {
-                    b.classList.add('active');
-                  } else {
-                    b.classList.remove('active');
-                  }
-                });
-              }
-
-              // Update markdown script and trigger draw
-              var mdEl = document.getElementById('import-md');
-              if (mdEl) {
-                try {
-                  var md = JSON.parse(mdEl.textContent);
-                  if (newLabel) {
-                    // If previously had a label, replace it; if was unmapped, replace :::env
-                    var targetSearch = oldLabel ? oldLabel : env;
-                    var reOld = new RegExp('^::: *' + targetSearch + '(?: +\\{#[^}]+\\})? *$', 'mg');
-                    md = md.replace(reOld, function (match) {
-                      var idMatch = match.match(/\{#[^}]+\}/);
-                      return ':::' + newLabel + (idMatch ? ' ' + idMatch[0] : '');
-                    });
-                  } else {
-                    // Unmapping: remove :::label and ::: closing markers, leaving inner text
-                    var targetSearch = oldLabel ? oldLabel : env;
-                    var reBox = new RegExp('^::: *' + targetSearch + '(?: +\\{#[^}]+\\})? *\\n([\\s\\S]*?)\\n^::: *$', 'mg');
-                    md = md.replace(reBox, '$1');
-                  }
-                  mdEl.textContent = JSON.stringify(md);
-                } catch (e) {}
-              }
-              if (typeof window.LimoRedrawImportPreview === 'function') {
-                window.LimoRedrawImportPreview();
-              }
-            }
-
-            // Click listener for quick pills
-            document.querySelectorAll('.pill-btn').forEach(function (btn) {
-              btn.addEventListener('click', function () {
-                var env = btn.getAttribute('data-env');
-                var label = btn.getAttribute('data-label') || '';
-                var old = currentMapping[env] || '';
-                syncMappingAndPreview(env, label, old);
-              });
-            });
-
-            // Modal for creating a new custom label in real-time
-            var modal = document.getElementById('modal-create-label');
-            var btnOpen = document.getElementById('btn-open-create-label');
-            var btnCancel = document.getElementById('btn-cancel-create-label');
-            var btnSubmit = document.getElementById('btn-submit-create-label');
-            var errBox = document.getElementById('modal-label-err');
-            var nameInp = document.getElementById('new-label-name');
-            var styleInp = document.getElementById('new-label-style');
-
-            if (btnOpen && modal) {
-              btnOpen.addEventListener('click', function () {
-                modal.style.display = 'flex';
-                if (errBox) errBox.style.display = 'none';
-                if (nameInp) { nameInp.value = ''; nameInp.focus(); }
-              });
-            }
-            if (btnCancel && modal) {
-              btnCancel.addEventListener('click', function () {
-                modal.style.display = 'none';
-              });
-            }
-            if (btnSubmit && modal) {
-              btnSubmit.addEventListener('click', function () {
-                var val = (nameInp.value || '').trim();
-                if (!val) {
-                  if (errBox) { errBox.textContent = 'نام کادر را وارد کنید.'; errBox.style.display = 'block'; }
-                  return;
-                }
-                btnSubmit.disabled = true;
-                btnSubmit.textContent = 'در حال ساخت...';
-
-                var csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
-                var formData = new FormData();
-                formData.append('name', val);
-                formData.append('style', styleInp ? styleInp.value : 'note');
-                formData.append('csrfmiddlewaretoken', csrfToken);
-
-                fetch("{% url 'admin:catalog_label_quick_create' %}", {
-                  method: 'POST',
-                  body: formData,
-                  headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                  btnSubmit.disabled = false;
-                  btnSubmit.textContent = 'ایجاد و افزودن به چیپ‌ها';
-                  if (!data.ok) {
-                    if (errBox) { errBox.textContent = data.error || 'خطا در ثبت کادر.'; errBox.style.display = 'block'; }
-                    return;
-                  }
-                  var lbl = data.label;
-                  // Add this pill button to all cards dynamically!
-                  document.querySelectorAll('.quick-pills-row').forEach(function (row) {
-                    var card = row.closest('.env-mapping-card');
-                    var env = card ? card.getAttribute('data-env') : '';
-                    var newBtn = document.createElement('button');
-                    newBtn.type = 'button';
-                    newBtn.className = 'pill-btn';
-                    newBtn.setAttribute('data-env', env);
-                    newBtn.setAttribute('data-label', lbl.name);
-                    newBtn.style.cssText = 'padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid #F5C518; background:rgba(245,197,24,0.15); color:var(--body-fg); transition:all .15s ease;';
-                    newBtn.textContent = '✨ ' + lbl.name;
-                    newBtn.addEventListener('click', function () {
-                      var old = currentMapping[env] || '';
-                      syncMappingAndPreview(env, lbl.name, old);
-                    });
-                    var unmappedBtn = row.querySelector('.unmapped-btn');
-                    if (unmappedBtn) row.insertBefore(newBtn, unmappedBtn);
-                    else row.appendChild(newBtn);
+            // Helper to render markdown inside individual chunk preview boxes
+            function renderChunkPreview(boxEl, mdText) {
+              if (!boxEl) return;
+              if (window.marked && typeof window.marked.parse === 'function') {
+                boxEl.innerHTML = window.marked.parse(mdText || '');
+                if (window.renderMathInElement) {
+                  window.renderMathInElement(boxEl, {
+                    delimiters: [
+                      {left: '$$', right: '$$', display: true},
+                      {left: '$', right: '$', display: false}
+                    ],
+                    throwOnError: false
                   });
-                  modal.style.display = 'none';
-                })
-                .catch(function (err) {
-                  btnSubmit.disabled = false;
-                  btnSubmit.textContent = 'ایجاد و افزودن به چیپ‌ها';
-                  if (errBox) { errBox.textContent = 'خطای شبکه در ارتباط با سرور.'; errBox.style.display = 'block'; }
-                });
-              });
+                }
+              } else {
+                boxEl.textContent = mdText || '';
+              }
             }
 
-            // AJAX trigger for cleaning individual AI chunks
-            document.querySelectorAll('.btn-clean-chunk').forEach(function (btn) {
-              btn.addEventListener('click', function () {
-                var card = btn.closest('.ai-chunk-card');
-                var statusBadge = card ? card.querySelector('.chunk-status-badge') : null;
-                var rawScript = card ? card.querySelector('#chunk-raw-data') || card.querySelector('script') : null;
+            // Assemble all chunk clean textareas back into the main markdown & re-render main preview
+            function updateMasterMarkdownFromChunks() {
+              var allChunks = document.querySelectorAll('.ai-chunk-card');
+              var parts = [];
+              allChunks.forEach(function (card) {
+                var ta = card.querySelector('.chunk-cleaned-textarea');
+                if (ta && ta.value.trim()) {
+                  parts.push(ta.value.trim());
+                }
+              });
+
+              if (parts.length > 0) {
+                var fullMd = parts.join('\n\n');
+                var mdEl = document.getElementById('import-md');
+                if (mdEl) {
+                  mdEl.textContent = JSON.stringify(fullMd);
+                }
+                if (typeof window.LimoRedrawImportPreview === 'function') {
+                  window.LimoRedrawImportPreview();
+                }
+              }
+            }
+
+            // Function to process a single AI chunk via Promise (for individual or sequential auto-clean)
+            function cleanChunkAsync(card) {
+              return new Promise(function (resolve, reject) {
+                if (!card) return resolve({ ok: false, error: 'کارت نامعتبر' });
+                var btn = card.querySelector('.btn-clean-chunk');
+                var toggleBtn = card.querySelector('.btn-toggle-chunk');
+                var statusBadge = card.querySelector('.chunk-status-badge');
+                var rawScript = card.querySelector('#chunk-raw-data') || card.querySelector('script');
+                var editorPane = card.querySelector('.chunk-editor-pane');
+                var textarea = card.querySelector('.chunk-cleaned-textarea');
+                var previewBox = card.querySelector('.chunk-preview-box');
                 var providerSelect = document.getElementById('ai-provider-select');
                 var providerId = providerSelect ? providerSelect.value : '';
 
@@ -572,14 +346,16 @@
                 }
 
                 if (!rawText) {
-                  alert('متن خام این قطعه پیدا نشد.');
-                  return;
+                  if (statusBadge) statusBadge.textContent = '❌ متن خام قطعه پیدا نشد';
+                  return resolve({ ok: false, error: 'متن خام قطعه پیدا نشد' });
                 }
 
-                btn.disabled = true;
-                btn.innerHTML = '⏳ در حال تمیزکاری با هوش مصنوعی...';
+                if (btn) {
+                  btn.disabled = true;
+                  btn.innerHTML = '⏳ در حال تمیزکاری...';
+                }
                 if (statusBadge) {
-                  statusBadge.textContent = 'در حال اتصال و پردازش...';
+                  statusBadge.textContent = 'در حال پردازش هوش مصنوعی...';
                   statusBadge.style.color = '#0284c7';
                 }
 
@@ -596,15 +372,16 @@
                 })
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
-                  btn.disabled = false;
-                  btn.innerHTML = '✨ تمیزکاری مجدد';
+                  if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '✨ تمیزکاری مجدد';
+                  }
                   if (!data.ok) {
                     if (statusBadge) {
                       statusBadge.textContent = '❌ ' + (data.error || 'خطا در پردازش');
                       statusBadge.style.color = '#dc2626';
                     }
-                    alert(data.error || 'خطا در ارتباط با هوش مصنوعی.');
-                    return;
+                    return resolve(data);
                   }
 
                   if (statusBadge) {
@@ -612,30 +389,88 @@
                     statusBadge.style.color = '#16a34a';
                   }
 
-                  // Update markdown and re-render preview
                   var cleaned = data.cleaned_markdown || '';
-                  var mdEl = document.getElementById('import-md');
-                  if (mdEl && cleaned) {
-                    try {
-                      var curMd = JSON.parse(mdEl.textContent);
-                      // Replace or append
-                      mdEl.textContent = JSON.stringify(curMd + '\n\n' + cleaned);
-                    } catch (e) {}
-                  }
-                  if (typeof window.LimoRedrawImportPreview === 'function') {
-                    window.LimoRedrawImportPreview();
-                  }
+                  if (textarea) textarea.value = cleaned;
+                  if (previewBox) renderChunkPreview(previewBox, cleaned);
+                  if (editorPane) editorPane.style.display = 'block';
+                  if (toggleBtn) toggleBtn.style.display = 'inline-flex';
+
+                  updateMasterMarkdownFromChunks();
+                  resolve({ ok: true, data: data });
                 })
                 .catch(function (err) {
-                  btn.disabled = false;
-                  btn.innerHTML = '✨ تمیزکاری با هوش مصنوعی';
+                  if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '✨ تمیزکاری با هوش مصنوعی';
+                  }
                   if (statusBadge) {
                     statusBadge.textContent = '❌ خطای شبکه';
                     statusBadge.style.color = '#dc2626';
                   }
+                  resolve({ ok: false, error: err });
                 });
               });
+            }
+
+            // Click listener for cleaning individual AI chunks
+            document.querySelectorAll('.btn-clean-chunk').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                var card = btn.closest('.ai-chunk-card');
+                cleanChunkAsync(card);
+              });
             });
+
+            // Toggle button to view/hide editor & preview pane for each chunk
+            document.querySelectorAll('.btn-toggle-chunk').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                var card = btn.closest('.ai-chunk-card');
+                var pane = card ? card.querySelector('.chunk-editor-pane') : null;
+                if (!pane) return;
+                if (pane.style.display === 'none' || !pane.style.display) {
+                  pane.style.display = 'block';
+                  btn.textContent = '▲ بستن ویرایشگر';
+                } else {
+                  pane.style.display = 'none';
+                  btn.textContent = '👁️ ویرایش و پیش‌نمایش';
+                }
+              });
+            });
+
+            // Live re-render chunk preview when teacher edits textarea manually
+            document.querySelectorAll('.chunk-cleaned-textarea').forEach(function (ta) {
+              ta.addEventListener('input', function () {
+                var card = ta.closest('.ai-chunk-card');
+                var previewBox = card ? card.querySelector('.chunk-preview-box') : null;
+                if (previewBox) renderChunkPreview(previewBox, ta.value);
+                updateMasterMarkdownFromChunks();
+              });
+            });
+
+            // Sequential one-by-one automatic cleaning for all chunks
+            var cleanAllBtn = document.getElementById('btn-clean-all-chunks');
+            if (cleanAllBtn) {
+              cleanAllBtn.addEventListener('click', async function () {
+                var cards = Array.from(document.querySelectorAll('.ai-chunk-card'));
+                if (!cards.length) return;
+
+                cleanAllBtn.disabled = true;
+                cleanAllBtn.innerHTML = '⏳ در حال تمیزکاری قطعه‌به‌قطعه...';
+
+                for (var i = 0; i < cards.length; i++) {
+                  var card = cards[i];
+                  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  card.style.borderColor = '#0284c7';
+                  await cleanChunkAsync(card);
+                  card.style.borderColor = 'var(--hairline-color)';
+                }
+
+                cleanAllBtn.disabled = false;
+                cleanAllBtn.innerHTML = '✓ تمیزکاری تمام قطعات پایان یافت';
+                setTimeout(function () {
+                  cleanAllBtn.innerHTML = '⚡ تمیزکاری خودکار قطعه‌به‌قطعه';
+                }, 4000);
+              });
+            }
           });
         </script>
         {% if request.user.is_superuser %}
