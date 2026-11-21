@@ -50,38 +50,107 @@
       <div class="msg warn"><b>هشدارها ({{ report.warnings|length }})</b><ul>{% for issue in report.warnings %}<li>{{ issue }}</li>{% endfor %}</ul></div>
     {% endif %}
     {% if report.mapping_candidates %}
-    <div class="card" style="background:var(--darkened-bg); border:1px solid var(--hairline-color); border-radius:10px; padding:16px 20px; margin:18px 0;">
-      <h3 style="margin-top:0; font-size:15px; font-weight:800; display:flex; align-items:center; gap:8px;">
-        🏷️ نگاشت کادرهای سفارشی فایل (دستورات <code>\newtheorem</code>)
-      </h3>
-      <p style="font-size:13px; color:var(--body-quiet-color); margin-bottom:14px; line-height:1.6;">
-        محیط‌های سفارشی زیر در فایل شما شناسایی شدند و به کادرهای استاندارد لیموخوان نگاشت شدند. در صورت تمایل می‌توانید کادر مقصد هر یک را تغییر دهید.
+    <div class="card" style="background:var(--darkened-bg); border:1px solid var(--hairline-color); border-radius:12px; padding:18px 22px; margin:20px 0; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+        <h3 style="margin:0; font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px;">
+          🏷️ نگاشت هوشمند کادرهای فایل و پیش‌نمایش زنده
+        </h3>
+        <button type="button" class="btn small" id="btn-open-create-label" style="background:#F5C518; color:#17201A; font-weight:800; border:1px solid #E0AE0B; border-radius:999px; padding:4px 12px;">
+          ➕ ساخت کادر تازه در همین لحظه
+        </button>
+      </div>
+      <p style="font-size:13px; color:var(--body-quiet-color); margin-bottom:16px; line-height:1.6;">
+        محیط‌های سفارشی زیر در فایل شما شناسایی شدند. با کلیک روی چیپ‌های رنگی هر کادر، پیش‌نمایش درجا تغییر می‌کند و تمام موارد مشابه در فایل بلافاصله هماهنگ می‌شوند.
       </p>
-      <table class="lp-table" style="width:100%; max-width:650px; background:var(--body-bg); border-radius:8px; overflow:hidden;">
-        <thead>
-          <tr>
-            <th style="padding:8px 12px; text-align:right;">نام دستور LaTeX</th>
-            <th style="padding:8px 12px; text-align:right;">عنوان در فایل</th>
-            <th style="padding:8px 12px; text-align:right;">کادر مقصد در لیموخوان</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for c in report.mapping_candidates %}
-          <tr>
-            <td style="padding:8px 12px; font-family:monospace; direction:ltr; text-align:left;">\begin{<b>{{ c.env }}</b>}</td>
-            <td style="padding:8px 12px;">{{ c.title }}</td>
-            <td style="padding:8px 12px;">
-              <select class="custom-box-select" data-env="{{ c.env }}" style="padding:4px 8px; border-radius:6px; border:1px solid var(--hairline-color); font-size:13px;">
-                <option value="">(متن بدون کادر)</option>
-                {% for lbl in report.available_labels %}
-                  <option value="{{ lbl }}" {% if lbl == c.mapped %}selected{% endif %}>{{ lbl }}</option>
-                {% endfor %}
-              </select>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+
+      <div class="custom-boxes-grid" style="display:grid; gap:14px;">
+        {% for c in report.mapping_candidates %}
+        <div class="env-mapping-card" data-env="{{ c.env }}" style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:10px; padding:14px 18px; transition:all .15s ease;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <code style="font-size:13px; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.08); padding:2px 8px; border-radius:6px; direction:ltr;">\begin{<b>{{ c.env }}</b>}</code>
+              {% if c.title and c.title != c.env %}
+                <span style="font-size:13px; font-weight:700;">({{ c.title }})</span>
+              {% endif %}
+              <span style="font-size:11.5px; color:var(--body-quiet-color); background:var(--darkened-bg); padding:1px 8px; border-radius:12px;">
+                {{ c.count }} مورد در فایل
+              </span>
+              {% if c.is_from_memory %}
+                <span style="font-size:11px; font-weight:700; color:#15803d; background:rgba(34,197,94,0.12); padding:1px 8px; border-radius:12px;" title="این نگاشت قبلاً برای این کتاب ذخیره شده است">
+                  ✓ اعمال از حافظه کتاب
+                </span>
+              {% endif %}
+            </div>
+            <div style="font-size:12px; color:var(--body-quiet-color);">
+              کادر فعال: <b class="active-label-badge" style="color:#F5C518;">{% if c.mapped %}{{ c.mapped }}{% else %}(بدون کادر / متن عادی){% endif %}</b>
+            </div>
+          </div>
+
+          {% if c.snippets %}
+          <div class="snippet-preview-box" style="margin-bottom:12px; padding:8px 12px; background:var(--darkened-bg); border-right:3px solid #0284c7; border-radius:6px; font-size:12.5px; line-height:1.6;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:11px; color:var(--body-quiet-color);">
+              <span>نمونه متن از دل فایل:</span>
+              {% if c.snippets|length > 1 %}
+              <div class="snippet-nav" style="display:flex; gap:4px; align-items:center;">
+                <button type="button" class="btn-snip-prev" style="padding:1px 6px; font-size:11px; cursor:pointer;">‹</button>
+                <span class="snip-counter">۱ از {{ c.snippets|length }}</span>
+                <button type="button" class="btn-snip-next" style="padding:1px 6px; font-size:11px; cursor:pointer;">›</button>
+              </div>
+              {% endif %}
+            </div>
+            <div class="snippet-text" data-snippets="{{ c.snippets|json_script:''|escape }}">
+              {{ c.snippets.0 }}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- چیپ‌های انتخاب سریع برچسب -->
+          <div class="quick-pills-row" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+            <span style="font-size:11.5px; color:var(--body-quiet-color); margin-inline-end:4px;">انتخاب کادر:</span>
+            {% for lbl in report.available_labels %}
+              <button type="button" class="pill-btn {% if lbl == c.mapped %}active{% endif %}" data-env="{{ c.env }}" data-label="{{ lbl }}"
+                      style="padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid var(--hairline-color); transition:all .15s ease;">
+                {{ lbl }}
+              </button>
+            {% endfor %}
+            <button type="button" class="pill-btn unmapped-btn {% if not c.mapped %}active{% endif %}" data-env="{{ c.env }}" data-label=""
+                    style="padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid var(--hairline-color); background:transparent; color:var(--body-quiet-color);">
+              ❌ متن عادی (بدون کادر)
+            </button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- دیالوگ ساخت آنی کادر تازه -->
+    <div id="modal-create-label" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; align-items:center; justify-content:center; backdrop-filter:blur(2px);">
+      <div style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:14px; width:92%; max-width:440px; padding:22px 24px; box-shadow:0 8px 30px rgba(0,0,0,0.25);">
+        <h4 style="margin:0 0 14px; font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px;">
+          ✨ ساخت کادر تازه برای درسنامه
+        </h4>
+        <div id="modal-label-err" style="display:none; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:8px; padding:8px 12px; font-size:12.5px; margin-bottom:12px;"></div>
+        <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:18px;">
+          <div>
+            <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px;">نام کادر (مثلاً «نکته بالینی» یا «زندگینامه»):</label>
+            <input type="text" id="new-label-name" style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; border:1px solid var(--hairline-color); font:inherit; font-size:13px;" placeholder="نام کادر را بنویسید..." required>
+          </div>
+          <div>
+            <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px;">رنگ و استایل کادر:</label>
+            <select id="new-label-style" style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; border:1px solid var(--hairline-color); font:inherit; font-size:13px;">
+              <option value="formal">رسمی (آبی - مناسب قضیه، تعریف و ساختارهای محکم)</option>
+              <option value="note" selected>یادداشت (سبز/لیمویی - مناسب نکات، تذکرات و راهنماها)</option>
+              <option value="warn">هشدار (نارنجی - مناسب تله‌ها و موارد پرخطا)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button type="button" class="btn" id="btn-cancel-create-label">انصراف</button>
+          <button type="button" class="btn primary" id="btn-submit-create-label" style="background:#F5C518; color:#17201A; font-weight:800; border-color:#E0AE0B;">
+            ایجاد و افزودن به چیپ‌ها
+          </button>
+        </div>
+      </div>
     </div>
     {% endif %}
 
@@ -113,17 +182,177 @@
         <input type="hidden" name="custom_boxes" id="id_custom_boxes" value="{{ report.custom_boxes_json|escape }}">
         <script>
           document.addEventListener('DOMContentLoaded', function () {
-            var form = document.getElementById('import-confirm-form');
-            if (form) {
-              form.addEventListener('submit', function () {
-                var map = {};
-                document.querySelectorAll('.custom-box-select').forEach(function (sel) {
-                  var env = sel.getAttribute('data-env');
-                  var val = sel.value.trim();
-                  if (env && val) { map[env] = val; }
+            // Manage custom environment mapping state & live preview sync
+            var initialMapping = {};
+            try {
+              var rawJson = document.getElementById('id_custom_boxes').value;
+              if (rawJson) initialMapping = JSON.parse(rawJson);
+            } catch (e) {}
+
+            var currentMapping = Object.assign({}, initialMapping);
+            var envCards = document.querySelectorAll('.env-mapping-card');
+
+            // Snippet carousel navigation for cards
+            envCards.forEach(function (card) {
+              var snipText = card.querySelector('.snippet-text');
+              var snipCounter = card.querySelector('.snip-counter');
+              var prevBtn = card.querySelector('.btn-snip-prev');
+              var nextBtn = card.querySelector('.btn-snip-next');
+              if (!snipText || !prevBtn || !nextBtn) return;
+
+              var snippets = [];
+              try {
+                // Find script or data attribute
+                var scriptEl = card.querySelector('script');
+                if (scriptEl && scriptEl.textContent) {
+                  snippets = JSON.parse(scriptEl.textContent);
+                }
+              } catch (e) {}
+              if (!snippets || !snippets.length) return;
+
+              var curIdx = 0;
+              function updateSnippet() {
+                snipText.textContent = snippets[curIdx];
+                if (snipCounter) snipCounter.textContent = (curIdx + 1) + ' از ' + snippets.length;
+              }
+              prevBtn.addEventListener('click', function () {
+                curIdx = (curIdx - 1 + snippets.length) % snippets.length;
+                updateSnippet();
+              });
+              nextBtn.addEventListener('click', function () {
+                curIdx = (curIdx + 1) % snippets.length;
+                updateSnippet();
+              });
+            });
+
+            // Live re-rendering of import preview
+            function syncMappingAndPreview(env, newLabel, oldLabel) {
+              if (newLabel) {
+                currentMapping[env] = newLabel;
+              } else {
+                delete currentMapping[env];
+              }
+              var input = document.getElementById('id_custom_boxes');
+              if (input) input.value = JSON.stringify(currentMapping);
+
+              // Update badge in card
+              var card = document.querySelector('.env-mapping-card[data-env="' + env + '"]');
+              if (card) {
+                var badge = card.querySelector('.active-label-badge');
+                if (badge) badge.textContent = newLabel || '(بدون کادر / متن عادی)';
+                card.querySelectorAll('.pill-btn').forEach(function (b) {
+                  if (b.getAttribute('data-label') === (newLabel || '')) {
+                    b.classList.add('active');
+                  } else {
+                    b.classList.remove('active');
+                  }
                 });
-                var input = document.getElementById('id_custom_boxes');
-                if (input) { input.value = JSON.stringify(map); }
+              }
+
+              // Update markdown script and trigger draw
+              var mdEl = document.getElementById('import-md');
+              if (mdEl) {
+                try {
+                  var md = JSON.parse(mdEl.textContent);
+                  if (oldLabel && newLabel && oldLabel !== newLabel) {
+                    var reOld = new RegExp('^::: *' + oldLabel + ' *$', 'mg');
+                    md = md.replace(reOld, ':::' + newLabel);
+                    mdEl.textContent = JSON.stringify(md);
+                  }
+                } catch (e) {}
+              }
+              if (typeof window.LimoRedrawImportPreview === 'function') {
+                window.LimoRedrawImportPreview();
+              }
+            }
+
+            // Click listener for quick pills
+            document.querySelectorAll('.pill-btn').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                var env = btn.getAttribute('data-env');
+                var label = btn.getAttribute('data-label') || '';
+                var old = currentMapping[env] || '';
+                syncMappingAndPreview(env, label, old);
+              });
+            });
+
+            // Modal for creating a new custom label in real-time
+            var modal = document.getElementById('modal-create-label');
+            var btnOpen = document.getElementById('btn-open-create-label');
+            var btnCancel = document.getElementById('btn-cancel-create-label');
+            var btnSubmit = document.getElementById('btn-submit-create-label');
+            var errBox = document.getElementById('modal-label-err');
+            var nameInp = document.getElementById('new-label-name');
+            var styleInp = document.getElementById('new-label-style');
+
+            if (btnOpen && modal) {
+              btnOpen.addEventListener('click', function () {
+                modal.style.display = 'flex';
+                if (errBox) errBox.style.display = 'none';
+                if (nameInp) { nameInp.value = ''; nameInp.focus(); }
+              });
+            }
+            if (btnCancel && modal) {
+              btnCancel.addEventListener('click', function () {
+                modal.style.display = 'none';
+              });
+            }
+            if (btnSubmit && modal) {
+              btnSubmit.addEventListener('click', function () {
+                var val = (nameInp.value || '').trim();
+                if (!val) {
+                  if (errBox) { errBox.textContent = 'نام کادر را وارد کنید.'; errBox.style.display = 'block'; }
+                  return;
+                }
+                btnSubmit.disabled = true;
+                btnSubmit.textContent = 'در حال ساخت...';
+
+                var csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+                var formData = new FormData();
+                formData.append('name', val);
+                formData.append('style', styleInp ? styleInp.value : 'note');
+                formData.append('csrfmiddlewaretoken', csrfToken);
+
+                fetch("{% url 'admin:catalog_label_quick_create' %}", {
+                  method: 'POST',
+                  body: formData,
+                  headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                  btnSubmit.disabled = false;
+                  btnSubmit.textContent = 'ایجاد و افزودن به چیپ‌ها';
+                  if (!data.ok) {
+                    if (errBox) { errBox.textContent = data.error || 'خطا در ثبت کادر.'; errBox.style.display = 'block'; }
+                    return;
+                  }
+                  var lbl = data.label;
+                  // Add this pill button to all cards dynamically!
+                  document.querySelectorAll('.quick-pills-row').forEach(function (row) {
+                    var card = row.closest('.env-mapping-card');
+                    var env = card ? card.getAttribute('data-env') : '';
+                    var newBtn = document.createElement('button');
+                    newBtn.type = 'button';
+                    newBtn.className = 'pill-btn';
+                    newBtn.setAttribute('data-env', env);
+                    newBtn.setAttribute('data-label', lbl.name);
+                    newBtn.style.cssText = 'padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid #F5C518; background:rgba(245,197,24,0.15); color:var(--body-fg); transition:all .15s ease;';
+                    newBtn.textContent = '✨ ' + lbl.name;
+                    newBtn.addEventListener('click', function () {
+                      var old = currentMapping[env] || '';
+                      syncMappingAndPreview(env, lbl.name, old);
+                    });
+                    var unmappedBtn = row.querySelector('.unmapped-btn');
+                    if (unmappedBtn) row.insertBefore(newBtn, unmappedBtn);
+                    else row.appendChild(newBtn);
+                  });
+                  modal.style.display = 'none';
+                })
+                .catch(function (err) {
+                  btnSubmit.disabled = false;
+                  btnSubmit.textContent = 'ایجاد و افزودن به چیپ‌ها';
+                  if (errBox) { errBox.textContent = 'خطای شبکه در ارتباط با سرور.'; errBox.style.display = 'block'; }
+                });
               });
             }
           });

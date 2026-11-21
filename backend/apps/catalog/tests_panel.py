@@ -1736,7 +1736,7 @@ class ImportPreviewBeforeSaveTests(TestCase):
         html = resp.content.decode()
         self.assertIn("mythm", html)
         self.assertIn("قضیه اساسی", html)
-        self.assertIn("نگاشت کادرهای سفارشی", html)
+        self.assertIn("نگاشت هوشمند کادرهای فایل", html)
 
     def setUp(self):
         Major.objects.create(name="اقتصاد", slug="economics")
@@ -1760,6 +1760,51 @@ class ImportPreviewBeforeSaveTests(TestCase):
     def test_a_broken_file_gets_no_preview(self):
         html = self._upload(b"not latex at all {{{", "bad.tex").content.decode()
         self.assertNotIn('id="import-pv"', html)
+
+    def test_label_quick_create_api_and_book_box_mapping_memory(self):
+        from .models import BookBoxMapping, Label
+        # 1. Quick create API creates custom label for staff
+        api_url = reverse("admin:catalog_label_quick_create")
+        res = self.client.post(api_url, {"name": "نکته بالینی", "style": "warn"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["label"]["name"], "نکته بالینی")
+        self.assertEqual(data["label"]["style"], "warn")
+        self.assertTrue(Label.objects.filter(name="نکته بالینی").exists())
+
+        # 2. Saving import updates BookBoxMapping memory
+        BookBoxMapping.objects.create(
+            book=self.book,
+            environment_name="clinictip",
+            label_name="نکته بالینی",
+            created_by=self.admin
+        )
+        self.assertEqual(BookBoxMapping.objects.filter(book=self.book, environment_name="clinictip").count(), 1)
+        mapping = BookBoxMapping.objects.get(book=self.book, environment_name="clinictip")
+        self.assertEqual(mapping.label_name, "نکته بالینی")
+
+        # 3. Isolation across different books
+        book2 = ContentNode.add_root(kind=ContentNode.Kind.BOOK, slug="physics", title="فیزیک پایه")
+        # book2 does not have clinictip mapping yet
+        self.assertFalse(BookBoxMapping.objects.filter(book=book2, environment_name="clinictip").exists())
+        # Mapping in book2 can have different target without conflict
+        BookBoxMapping.objects.create(
+            book=book2,
+            environment_name="clinictip",
+            label_name="نکته",
+            created_by=self.admin
+        )
+        self.assertEqual(BookBoxMapping.objects.get(book=self.book, environment_name="clinictip").label_name, "نکته بالینی")
+        self.assertEqual(BookBoxMapping.objects.get(book=book2, environment_name="clinictip").label_name, "نکته")
+
+        # 4. Overwriting memory when teacher revises mapping in a later chapter
+        BookBoxMapping.objects.update_or_create(
+            book=self.book,
+            environment_name="clinictip",
+            defaults={"label_name": "هشدار", "created_by": self.admin}
+        )
+        self.assertEqual(BookBoxMapping.objects.get(book=self.book, environment_name="clinictip").label_name, "هشدار")
 
 
 class PreviewPaneTests(_Base):

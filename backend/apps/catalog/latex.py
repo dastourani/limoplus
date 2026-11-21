@@ -250,6 +250,96 @@ def discover_custom_environments(*sources: str) -> dict[str, str]:
     return discovered
 
 
+STANDARD_IGNORED_ENVIRONMENTS = (
+    {"document"}
+    | MATH_ENVIRONMENTS
+    | LIST_ENVIRONMENTS
+    | TABLE_ENVIRONMENTS
+    | FIGURE_ENVIRONMENTS
+    | TABLE_FLOAT_ENVIRONMENTS
+    | set(BOX_ENVIRONMENTS.keys())
+)
+
+
+def extract_environment_snippets(*sources: str, max_snippets_per_env: int = 3) -> dict[str, list[str]]:
+    """Scan LaTeX sources for occurrences of environments and extract clean text snippets."""
+    snippets_by_env: dict[str, list[str]] = {}
+    pattern = re.compile(r"\\begin\{([a-zA-Z0-9_\*]+)\}")
+
+    for source in sources:
+        cleaned = _strip_comments(source)
+        pos = 0
+        while pos < len(cleaned):
+            m = pattern.search(cleaned, pos)
+            if not m:
+                break
+            env = m.group(1).strip()
+            start = m.end()
+            depth = 1
+            curr = start
+            end_pat = re.compile(r"\\(begin|end)\{" + re.escape(env) + r"\}")
+            end_pos = None
+            while depth > 0:
+                em = end_pat.search(cleaned, curr)
+                if not em:
+                    break
+                if em.group(1) == "begin":
+                    depth += 1
+                else:
+                    depth -= 1
+                    if depth == 0:
+                        end_pos = em.start()
+                        break
+                curr = em.end()
+            if end_pos is not None:
+                body = cleaned[start:end_pos].strip()
+                # Clean snippet for human preview
+                snippet = re.sub(r"\\label\{[^}]*\}", "", body)
+                snippet = re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?\{([^}]*)\}", r"\1", snippet)
+                snippet = re.sub(r"\\[a-zA-Z]+", " ", snippet)
+                snippet = re.sub(r"\s+", " ", snippet).strip()
+                if snippet:
+                    if len(snippet) > 160:
+                        snippet = snippet[:157] + "..."
+                    cur_list = snippets_by_env.setdefault(env, [])
+                    if len(cur_list) < max_snippets_per_env and snippet not in cur_list:
+                        cur_list.append(snippet)
+            pos = start
+    return snippets_by_env
+
+
+def discover_all_environments(*sources: str) -> dict[str, dict]:
+    """Find custom environments defined via \newtheorem, plus any unknown \begin{...} blocks with counts and snippets."""
+    explicit_titles = discover_custom_environments(*sources)
+    snippets = extract_environment_snippets(*sources)
+
+    # Count occurrences
+    counts: dict[str, int] = {}
+    pattern = re.compile(r"\\begin\{([a-zA-Z0-9_\*]+)\}")
+    for source in sources:
+        cleaned = _strip_comments(source)
+        for m in pattern.finditer(cleaned):
+            e = m.group(1).strip()
+            counts[e] = counts.get(e, 0) + 1
+
+    all_envs: dict[str, dict] = {}
+    candidate_keys = (set(explicit_titles.keys()) | set(counts.keys())) - STANDARD_IGNORED_ENVIRONMENTS
+
+    for env in candidate_keys:
+        title = explicit_titles.get(env, env)
+        cnt = counts.get(env, 0)
+        snips = snippets.get(env, [])
+        all_envs[env] = {
+            "title": title,
+            "count": cnt,
+            "snippets": snips,
+            "has_explicit_def": env in explicit_titles,
+        }
+
+    # Sort primarily by frequency (descending)
+    return dict(sorted(all_envs.items(), key=lambda item: item[1]["count"], reverse=True))
+
+
 def infer_label_for_title(title: str, available_labels: list[str]) -> str | None:
     """Match a Persian theorem/box title to an official Limo label."""
     t = title.strip()
