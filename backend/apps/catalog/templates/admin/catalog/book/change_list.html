@@ -2,7 +2,7 @@
 {% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
 {% block object-tools-items %}
   {% if can_create_book %}
-    <li><a href="{% url 'admin:catalog_book_teacher_new' %}" style="background:#10b981; color:white; font-weight:bold;">+ ایجاد کتاب پیش‌نویس</a></li>
+    <li><a href="{% url 'admin:catalog_book_teacher_new' %}" class="btn-lemon-action">+ ایجاد کتاب پیش‌نویس</a></li>
   {% endif %}
   {% if can_manage_access %}
     <li><a href="{% url 'admin:catalog_inbox' %}" title="تست‌های تازه را یکجا اینجا بگذارید و بعد به بخش‌هایشان بفرستید">صندوق تست</a></li>
