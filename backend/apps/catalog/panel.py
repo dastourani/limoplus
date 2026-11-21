@@ -1059,8 +1059,36 @@ def import_view(admin_site, request, book_id=None):
             if upload.name.lower().endswith((".tex", ".zip")) and sources:
                 ai_chunks = chunk_latex_source(sources[0])
 
-            # Active AI providers for the professor/admin dropdown
-            active_ai_providers = list(AIProvider.objects.filter(is_active=True).values("id", "title", "model_name", "is_default"))
+            # Active AI providers for the professor/admin dropdown:
+            # Teachers see: (1) Their own active custom models + (2) Global active models configured by superuser
+            # Superusers see all active models
+            if request.user.is_superuser:
+                ai_qs = AIProvider.objects.filter(is_active=True)
+            else:
+                ai_qs = AIProvider.objects.filter(is_active=True).filter(
+                    models.Q(owner=request.user) | models.Q(owner__isnull=True)
+                )
+
+            my_providers = []
+            global_providers = []
+            for p in ai_qs:
+                item = {
+                    "id": p.id,
+                    "title": p.title,
+                    "model_name": p.model_name,
+                    "is_default": p.is_default,
+                    "is_global": p.is_global,
+                }
+                if p.owner_id == request.user.id:
+                    my_providers.append(item)
+                else:
+                    global_providers.append(item)
+
+            active_ai_providers = {
+                "my_providers": my_providers,
+                "global_providers": global_providers,
+                "has_any": bool(my_providers or global_providers),
+            }
 
             # Check book memory for previously saved mappings
             memory_mappings: dict[str, str] = {}
@@ -1273,13 +1301,27 @@ def ai_clean_chunk_action(request):
     if not raw_text:
         return JsonResponse({"ok": False, "error": "متنی برای ارسال به هوش مصنوعی وجود ندارد."})
 
+    # Security check: Teachers can only use:
+    # 1. Their own active models (owner=request.user)
+    # 2. Global active models (owner=None)
+    # They can NEVER use another teacher's private API key.
+    allowed_qs = AIProvider.objects.filter(is_active=True)
+    if not request.user.is_superuser:
+        allowed_qs = allowed_qs.filter(models.Q(owner=request.user) | models.Q(owner__isnull=True))
+
     provider = None
     if provider_id:
-        provider = AIProvider.objects.filter(pk=provider_id, is_active=True).first()
+        provider = allowed_qs.filter(pk=provider_id).first()
+        if not provider:
+            return JsonResponse({"ok": False, "error": "ارائه‌دهنده انتخاب‌شده معتبر نیست یا دسترسی به آن ندارید."})
+
     if not provider:
-        provider = AIProvider.objects.filter(is_active=True, is_default=True).first()
+        # Fallback to user's default, or global default
+        provider = allowed_qs.filter(owner=request.user, is_default=True).first()
     if not provider:
-        provider = AIProvider.objects.filter(is_active=True).first()
+        provider = allowed_qs.filter(is_default=True).first()
+    if not provider:
+        provider = allowed_qs.first()
 
     if not provider:
         return JsonResponse({

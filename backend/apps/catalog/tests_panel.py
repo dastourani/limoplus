@@ -2645,6 +2645,101 @@ class TeacherAssistantTests(TestCase):
             self.assertIn(r"\documentclass[12pt,a4paper]{book}", preamble_content)
 
 
+class TeacherAIProviderAndAuditAccessTests(TestCase):
+    def setUp(self):
+        from apps.catalog.models import BookEditor, AIProvider, BookAssistantAuditLog
+        self.group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        self.superuser = User.objects.create_superuser("09120001111", "pw123")
+        self.teacher_a = User.objects.create_user("09121112222", is_staff=True)
+        self.teacher_a.groups.add(self.group)
+        self.teacher_b = User.objects.create_user("09123334444", is_staff=True)
+        self.teacher_b.groups.add(self.group)
+
+        self.book_a = ContentNode.add_root(kind=ContentNode.Kind.BOOK, slug="book-a", title="کتاب الف")
+        BookEditor.objects.create(book=self.book_a, user=self.teacher_a, can_edit_content=True)
+
+        self.book_b = ContentNode.add_root(kind=ContentNode.Kind.BOOK, slug="book-b", title="کتاب ب")
+        BookEditor.objects.create(book=self.book_b, user=self.teacher_b, can_edit_content=True)
+
+        # Global AI provider by superuser
+        self.global_p = AIProvider.objects.create(
+            title="Gemini عمومی مدیر",
+            provider_type=AIProvider.ProviderType.GEMINI,
+            api_key="sk-admin-secret-key-12345",
+            owner=None,
+            is_active=True,
+        )
+
+        # Teacher A private provider
+        self.prov_a = AIProvider.objects.create(
+            title="Groq اختصاصی استاد الف",
+            provider_type=AIProvider.ProviderType.OPENAI,
+            api_key="sk-teacher-a-private-key",
+            owner=self.teacher_a,
+            is_active=True,
+        )
+
+        # Teacher B private provider
+        self.prov_b = AIProvider.objects.create(
+            title="OpenAI اختصاصی استاد ب",
+            provider_type=AIProvider.ProviderType.OPENAI,
+            api_key="sk-teacher-b-private-key",
+            owner=self.teacher_b,
+            is_active=True,
+        )
+
+        # Audit logs
+        self.log_a = BookAssistantAuditLog.objects.create(
+            book=self.book_a,
+            actor=self.teacher_a,
+            assistant_phone="09129990001",
+            action=BookAssistantAuditLog.Action.ADDED,
+            details="لاگ کتاب الف",
+        )
+        self.log_b = BookAssistantAuditLog.objects.create(
+            book=self.book_b,
+            actor=self.teacher_b,
+            assistant_phone="09129990002",
+            action=BookAssistantAuditLog.Action.ADDED,
+            details="لاگ کتاب ب",
+        )
+
+    def test_teacher_can_only_view_own_ai_providers_in_admin(self):
+        self.client.force_login(self.teacher_a)
+        res = self.client.get("/admin/catalog/aiprovider/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Groq اختصاصی استاد الف")
+        # Cannot see teacher B's provider or admin's global in their private list
+        self.assertNotContains(res, "OpenAI اختصاصی استاد ب")
+        self.assertNotContains(res, "Gemini عمومی مدیر")
+
+        # Cannot edit teacher B's provider
+        res_edit_b = self.client.get(f"/admin/catalog/aiprovider/{self.prov_b.pk}/change/")
+        self.assertEqual(res_edit_b.status_code, 403)
+
+    def test_teacher_can_only_view_own_book_audit_logs(self):
+        self.client.force_login(self.teacher_a)
+        res = self.client.get("/admin/catalog/bookassistantauditlog/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "کتاب الف")
+        self.assertNotContains(res, "کتاب ب")
+
+    def test_teacher_cannot_invoke_other_teacher_private_ai_provider(self):
+        self.client.force_login(self.teacher_a)
+        res = self.client.post("/admin/catalog/ai-clean-chunk/", {
+            "provider_id": self.prov_b.pk,
+            "raw_text": r"\section{تست}",
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertFalse(data["ok"])
+        self.assertIn("دسترسی به آن ندارید", data["error"])
+
+    def test_masked_api_key(self):
+        self.assertEqual(self.prov_a.masked_api_key(), "sk-t••••••••-key")
+
+
+
 
 
 
