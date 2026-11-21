@@ -15,7 +15,7 @@ from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
 from .filters import BookFilter, BookFKFilter, ChapterFilter, YesNoFilter
 from .panel_display import badges
-from .models import (Banner, Book, BookAssistantAuditLog, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
+from .models import (AIProvider, Banner, Book, BookAssistantAuditLog, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
                      ShareSettings, Shelf, ShelfBook)
 
 
@@ -308,6 +308,7 @@ class BookAdmin(admin.ModelAdmin):
     def get_urls(self):
         site = self.admin_site.admin_view
         custom = [
+            path("ai-clean-chunk/", site(panel.ai_clean_chunk_action), name="catalog_ai_clean_chunk"),
             path("label-quick-create/", site(self.label_quick_create_api), name="catalog_label_quick_create"),
             path("new-draft/", site(self.teacher_create_book_view), name="catalog_book_teacher_new"),
             path("import/", site(lambda r: panel.import_view(self.admin_site, r)), name="catalog_import"),
@@ -1919,3 +1920,21 @@ def _assets_version() -> str:
 
 
 admin.site.each_context = _assets_each_context_with_version
+
+
+@admin.register(AIProvider)
+class AIProviderAdmin(admin.ModelAdmin):
+    list_display = ("title", "provider_type", "model_name", "is_active", "is_default", "order")
+    list_editable = ("is_active", "is_default", "order")
+    list_filter = ("provider_type", "is_active", "is_default")
+    search_fields = ("title", "model_name", "base_url")
+    fieldsets = (
+        (None, {
+            "fields": ("title", "provider_type", "api_key", "base_url", "model_name")
+        }),
+        ("تنظیمات دسترسی و نمایش", {
+            "fields": ("is_active", "is_default", "order"),
+            "description": "ارائه‌دهنده‌های فعال در فرم بررسی و تمیزکاری فایل‌ها برای اساتید و مدیران نمایش داده می‌شوند.",
+        }),
+    )
+

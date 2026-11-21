@@ -712,3 +712,70 @@ class BookAssistantAuditLog(models.Model):
     def __str__(self):
         return f"{self.get_action_display()} — {self.assistant_phone} ({self.book.title})"
 
+
+class AIProvider(models.Model):
+    """Configuration for LLM API providers (Gemini, Groq, OpenAI, AvalAI, etc.) managed by superuser."""
+
+    class ProviderType(models.TextChoices):
+        GEMINI = "gemini", "Google Gemini API"
+        OPENAI = "openai", "OpenAI-Compatible (Groq, OpenAI, DeepSeek, AvalAI)"
+
+    title = models.CharField(
+        "عنوان نمایشی",
+        max_length=100,
+        help_text="نامی که در پنل اساتید و مدیریت نمایش داده می‌شود (مثلاً «Gemini 2.0 Flash (گوگل)»)",
+    )
+    provider_type = models.CharField(
+        "نوع ارائه‌دهنده",
+        max_length=20,
+        choices=ProviderType.choices,
+        default=ProviderType.GEMINI,
+    )
+    api_key = models.CharField(
+        "کلید API",
+        max_length=255,
+        help_text="کلید معتبر دریافتی از ارائه‌دهنده هوش مصنوعی",
+    )
+    base_url = models.CharField(
+        "آدرس پایه API (Base URL)",
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="برای Gemini خالی بگذارید؛ برای Groq: https://api.groq.com/openai/v1؛ برای OpenAI: https://api.openai.com/v1",
+    )
+    model_name = models.CharField(
+        "نام مدل",
+        max_length=100,
+        default="gemini-2.0-flash",
+        help_text="نام دقیق مدل (مثلاً gemini-2.0-flash یا qwen-2.5-32b یا llama-3.3-70b-versatile)",
+    )
+    is_active = models.BooleanField(
+        "فعال برای اساتید",
+        default=True,
+        help_text="آیا این ارائه‌دهنده در فرم تمیزکاری فایل‌ها در دسترس باشد؟",
+    )
+    is_default = models.BooleanField(
+        "مدل پیش‌فرض",
+        default=False,
+        help_text="مدلی که به صورت اولیه در دراپ‌داون انتخاب شده است",
+    )
+    order = models.PositiveSmallIntegerField("ترتیب نمایش", default=0)
+    created_at = models.DateTimeField("تاریخ ثبت", auto_now_add=True)
+    updated_at = models.DateTimeField("تاریخ ویرایش", auto_now=True)
+
+    class Meta:
+        verbose_name = "ارائه‌دهنده هوش مصنوعی"
+        verbose_name_plural = "ارائه‌دهندگان هوش مصنوعی"
+        ordering = ["order", "-is_default", "id"]
+
+    def __str__(self):
+        status = " (فعال)" if self.is_active else " (غیرفعال)"
+        default = " [پیش‌فرض]" if self.is_default else ""
+        return f"{self.title} — {self.model_name}{default}{status}"
+
+    def save(self, *args, **kwargs):
+        if self.is_default:
+            AIProvider.objects.exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+

@@ -1334,9 +1334,6 @@ class Converter:
         text = re.sub(r"\\[,;:!]", "", text)
         text = text.replace("---", "—").replace("--", "–")
         text = text.replace("``", "«").replace("''", "»")
-        # Clean stray dimension/geometry parameter leaks (e.g., "0.6cm=", "width=12cm", "height=5in")
-        text = re.sub(r"(?:\b[a-zA-Z_]+\s*=\s*)?[-+]?\d*\.?\d+\s*(?:cm|mm|in|pt|em|ex|bp|pc|dd|cc|sp)\s*=", " ", text)
-        text = re.sub(r"(?:\b[a-zA-Z_]+\s*=\s*)?[-+]?\d*\.?\d+\s*\\{1,2}(?:textwidth|linewidth|textheight|paperwidth|paperheight)\s*=", " ", text)
         text = re.sub(r"[ \t]+\n", "\n", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text
