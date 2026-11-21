@@ -869,8 +869,6 @@ class Converter:
 
     def _math_environment(self, env: str, body: str) -> str:
         name = self._label_in(body)
-        if name and name.endswith("-2") and name[:-2] in self._labels_seen:
-            name = name[:-2]
         body = re.sub(r"\\label\s*\{[^}]*\}", "", body).strip()
         body = re.sub(r"\\(nonumber|notag)\b", "", body)
         # KaTeX reads \\ as a line break inside an aligned environment; a bare math environment is left as it is.

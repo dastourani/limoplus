@@ -415,6 +415,19 @@ class UploadTests(TestCase):
         chapter = read_upload("c.tex", r"\section{یک} \unknowncmd{متن}".encode(), self.book)
         self.assertTrue(any("unknowncmd" in str(w) for w in chapter.warnings))
 
+    def test_duplicate_labels_in_equations_are_disambiguated(self):
+        data = (r"""
+\section{یک}
+\begin{equation}
+E = mc^2 \label{key}
+\end{equation}
+\begin{equation}
+F = ma \label{key}
+\end{equation}
+""").encode()
+        chapter = read_upload("eq.tex", data, self.book)
+        self.assertEqual([str(e) for e in chapter.errors], [])
+
     def _zip(self, files):
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w") as archive:
