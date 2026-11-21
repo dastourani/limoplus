@@ -221,8 +221,8 @@
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
               <span class="chunk-status-badge" style="font-size:11.5px; color:var(--body-quiet-color);"></span>
-              <button type="button" class="btn small btn-toggle-chunk" data-index="{{ chunk.index }}" style="font-size:12px; font-weight:700; border-radius:8px; display:inline-flex; align-items:center; gap:4px; display:none;">
-                👁️ ویرایش و پیش‌نمایش
+              <button type="button" class="btn small btn-open-chunk-studio" data-index="{{ chunk.index }}" style="font-size:12px; font-weight:700; border-radius:8px; display:inline-flex; align-items:center; gap:4px; display:none; background:#0284c7; color:#fff;">
+                ✏️ ویرایش در استودیوی لیموخوان
               </button>
               <button type="button" class="btn small btn-clean-chunk" data-index="{{ chunk.index }}" style="background:#F5C518; color:#17201A; font-weight:800; border-color:#E0AE0B; border-radius:8px; display:inline-flex; align-items:center; gap:4px;">
                 ✨ تمیزکاری با هوش مصنوعی
@@ -230,23 +230,41 @@
             </div>
           </div>
 
-          <!-- بخش کشویی اختصاصی برای ویرایش متن تمیزشده و پیش‌نمایش زنده قطعه -->
-          <div class="chunk-editor-pane" style="display:none; margin-top:12px; border-top:1px dashed var(--hairline-color); padding-top:12px;">
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px;">
-              <div>
-                <label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:4px; color:var(--body-quiet-color);">متن تمیزشده مارک‌داون (قابل ویرایش دستی):</label>
-                <textarea class="chunk-cleaned-textarea" style="width:100%; box-sizing:border-box; height:180px; padding:8px 10px; border-radius:8px; border:1px solid var(--hairline-color); font-family:monospace; font-size:12.5px; line-height:1.5; direction:ltr; text-align:left;"></textarea>
-              </div>
-              <div>
-                <label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:4px; color:var(--body-quiet-color);">پیش‌نمایش رندر زنده این قطعه:</label>
-                <div class="chunk-preview-box" style="width:100%; box-sizing:border-box; height:180px; padding:10px 14px; border-radius:8px; border:1px solid var(--hairline-color); background:#F6F7F2; overflow-y:auto; direction:rtl; text-align:right; font-size:13px; line-height:1.7;"></div>
-              </div>
-            </div>
-          </div>
-
+          <!-- حافظه پنهان متن تمیزشده برای هر قطعه -->
+          <textarea class="chunk-cleaned-textarea" style="display:none;"></textarea>
           <script type="application/json" class="chunk-raw-json">{{ chunk.raw|json_script:"chunk-raw-data" }}</script>
         </div>
         {% endfor %}
+      </div>
+
+      <!-- استودیوی متمرکز ویرایش و پیش‌نمایش لیموخوان (Dedicated Limo Studio) -->
+      <div id="chunk-studio-modal" class="card" style="display:none; margin-top:20px; border:2px solid #0284c7; border-radius:12px; padding:18px 22px; background:var(--body-bg); box-shadow:0 4px 16px rgba(2,132,199,0.12);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px; border-bottom:1px solid var(--hairline-color); padding-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:13px; font-weight:800; background:#0284c7; color:#fff; padding:3px 10px; border-radius:8px;">
+              استودیوی ویرایش لیموخوان
+            </span>
+            <span id="studio-chunk-title" style="font-weight:800; font-size:15px; color:var(--body-fg);">
+              قطعه انتخاب‌شده
+            </span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" class="btn primary small" id="btn-studio-save-chunk" style="background:#16a34a; color:#fff; border-color:#15803d; font-weight:800; border-radius:8px; display:inline-flex; align-items:center; gap:4px;">
+              ✓ ذخیره تغییرات در قطعه
+            </button>
+            <button type="button" class="btn small" id="btn-studio-close" style="font-weight:700; border-radius:8px;">
+              بستن استودیو
+            </button>
+          </div>
+        </div>
+
+        <p style="font-size:12px; color:var(--body-quiet-color); margin:0 0 12px; line-height:1.6;">
+          شما به تمام ابزارهای استاندارد لیموخوان شامل <b>نوار ابزار نمادهای ریاضی</b>، <b>کادرهای رسمی/نکته/تمرین</b> و <b>پیش‌نمایش زنده در سایزهای مختلف</b> دسترسی دارید. پس از بررسی یا ویرایش، دکمه «ذخیره تغییرات» را بزنید.
+        </p>
+
+        <div id="studio-editor-container">
+          <textarea id="studio-main-textarea" rows="12" style="width:100%; box-sizing:border-box;"></textarea>
+        </div>
       </div>
     </div>
     {% endif %}
@@ -282,23 +300,72 @@
         <input type="hidden" name="custom_boxes" id="id_custom_boxes" value="{{ report.custom_boxes_json|escape }}">
         <script>
           document.addEventListener('DOMContentLoaded', function () {
-            // Helper to render markdown inside individual chunk preview boxes
-            function renderChunkPreview(boxEl, mdText) {
-              if (!boxEl) return;
-              if (window.marked && typeof window.marked.parse === 'function') {
-                boxEl.innerHTML = window.marked.parse(mdText || '');
-                if (window.renderMathInElement) {
-                  window.renderMathInElement(boxEl, {
-                    delimiters: [
-                      {left: '$$', right: '$$', display: true},
-                      {left: '$', right: '$', display: false}
-                    ],
-                    throwOnError: false
-                  });
-                }
-              } else {
-                boxEl.textContent = mdText || '';
+            // Setup single dedicated LimoMdEditor instance for the studio
+            var studioModal = document.getElementById('chunk-studio-modal');
+            var studioTitle = document.getElementById('studio-chunk-title');
+            var studioTextarea = document.getElementById('studio-main-textarea');
+            var studioSaveBtn = document.getElementById('btn-studio-save-chunk');
+            var studioCloseBtn = document.getElementById('btn-studio-close');
+
+            var studioEditor = null;
+            var activeChunkCard = null;
+
+            if (studioTextarea && window.LimoMdEditor) {
+              studioEditor = new window.LimoMdEditor(studioTextarea, {
+                variant: 'notes',
+                labels: true,
+                expanded: false,
+                previewKey: 'limo.import.studio.preview'
+              });
+            }
+
+            function openStudioForChunk(card) {
+              if (!card || !studioModal) return;
+              activeChunkCard = card;
+              var index = card.getAttribute('data-index');
+              var title = card.querySelector('span[style*="font-weight:700"]')?.textContent || ('قطعه ' + index);
+              var ta = card.querySelector('.chunk-cleaned-textarea');
+              var chunkText = ta ? ta.value : '';
+
+              if (studioTitle) {
+                studioTitle.textContent = 'ویرایش قطعه ' + index + ': ' + title;
               }
+
+              if (studioTextarea) {
+                studioTextarea.value = chunkText;
+                if (studioEditor) {
+                  studioEditor.refresh();
+                }
+              }
+
+              studioModal.style.display = 'block';
+              studioModal.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            if (studioCloseBtn && studioModal) {
+              studioCloseBtn.addEventListener('click', function () {
+                studioModal.style.display = 'none';
+              });
+            }
+
+            if (studioSaveBtn) {
+              studioSaveBtn.addEventListener('click', function () {
+                if (activeChunkCard && studioTextarea) {
+                  var ta = activeChunkCard.querySelector('.chunk-cleaned-textarea');
+                  if (ta) {
+                    ta.value = studioTextarea.value;
+                  }
+                  updateMasterMarkdownFromChunks();
+                  var badge = activeChunkCard.querySelector('.chunk-status-badge');
+                  if (badge) {
+                    badge.textContent = '✓ ویرایش و ذخیره شد';
+                    badge.style.color = '#16a34a';
+                  }
+                  if (window.LimoToast) {
+                    window.LimoToast('تغییرات این قطعه با موفقیت ذخیره و در کل فصل اعمال شد.', 'ok');
+                  }
+                }
+              });
             }
 
             // Assemble all chunk clean textareas back into the main markdown & re-render main preview
@@ -329,12 +396,10 @@
               return new Promise(function (resolve, reject) {
                 if (!card) return resolve({ ok: false, error: 'کارت نامعتبر' });
                 var btn = card.querySelector('.btn-clean-chunk');
-                var toggleBtn = card.querySelector('.btn-toggle-chunk');
+                var openStudioBtn = card.querySelector('.btn-open-chunk-studio');
                 var statusBadge = card.querySelector('.chunk-status-badge');
                 var rawScript = card.querySelector('#chunk-raw-data') || card.querySelector('script');
-                var editorPane = card.querySelector('.chunk-editor-pane');
                 var textarea = card.querySelector('.chunk-cleaned-textarea');
-                var previewBox = card.querySelector('.chunk-preview-box');
                 var providerSelect = document.getElementById('ai-provider-select');
                 var providerId = providerSelect ? providerSelect.value : '';
 
@@ -391,9 +456,13 @@
 
                   var cleaned = data.cleaned_markdown || '';
                   if (textarea) textarea.value = cleaned;
-                  if (previewBox) renderChunkPreview(previewBox, cleaned);
-                  if (editorPane) editorPane.style.display = 'block';
-                  if (toggleBtn) toggleBtn.style.display = 'inline-flex';
+                  if (openStudioBtn) openStudioBtn.style.display = 'inline-flex';
+
+                  // If this chunk is currently open in studio, update studio as well
+                  if (activeChunkCard === card && studioTextarea) {
+                    studioTextarea.value = cleaned;
+                    if (studioEditor) studioEditor.refresh();
+                  }
 
                   updateMasterMarkdownFromChunks();
                   resolve({ ok: true, data: data });
@@ -420,29 +489,11 @@
               });
             });
 
-            // Toggle button to view/hide editor & preview pane for each chunk
-            document.querySelectorAll('.btn-toggle-chunk').forEach(function (btn) {
+            // Click listener for opening dedicated studio for each chunk
+            document.querySelectorAll('.btn-open-chunk-studio').forEach(function (btn) {
               btn.addEventListener('click', function () {
                 var card = btn.closest('.ai-chunk-card');
-                var pane = card ? card.querySelector('.chunk-editor-pane') : null;
-                if (!pane) return;
-                if (pane.style.display === 'none' || !pane.style.display) {
-                  pane.style.display = 'block';
-                  btn.textContent = '▲ بستن ویرایشگر';
-                } else {
-                  pane.style.display = 'none';
-                  btn.textContent = '👁️ ویرایش و پیش‌نمایش';
-                }
-              });
-            });
-
-            // Live re-render chunk preview when teacher edits textarea manually
-            document.querySelectorAll('.chunk-cleaned-textarea').forEach(function (ta) {
-              ta.addEventListener('input', function () {
-                var card = ta.closest('.ai-chunk-card');
-                var previewBox = card ? card.querySelector('.chunk-preview-box') : null;
-                if (previewBox) renderChunkPreview(previewBox, ta.value);
-                updateMasterMarkdownFromChunks();
+                openStudioForChunk(card);
               });
             });
 
