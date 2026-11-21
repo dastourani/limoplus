@@ -1784,6 +1784,28 @@ class ImportPreviewBeforeSaveTests(TestCase):
         mapping = BookBoxMapping.objects.get(book=self.book, environment_name="clinictip")
         self.assertEqual(mapping.label_name, "نکته بالینی")
 
+        # 3. Isolation across different books
+        book2 = ContentNode.add_root(kind=ContentNode.Kind.BOOK, slug="physics", title="فیزیک پایه")
+        # book2 does not have clinictip mapping yet
+        self.assertFalse(BookBoxMapping.objects.filter(book=book2, environment_name="clinictip").exists())
+        # Mapping in book2 can have different target without conflict
+        BookBoxMapping.objects.create(
+            book=book2,
+            environment_name="clinictip",
+            label_name="نکته",
+            created_by=self.admin
+        )
+        self.assertEqual(BookBoxMapping.objects.get(book=self.book, environment_name="clinictip").label_name, "نکته بالینی")
+        self.assertEqual(BookBoxMapping.objects.get(book=book2, environment_name="clinictip").label_name, "نکته")
+
+        # 4. Overwriting memory when teacher revises mapping in a later chapter
+        BookBoxMapping.objects.update_or_create(
+            book=self.book,
+            environment_name="clinictip",
+            defaults={"label_name": "هشدار", "created_by": self.admin}
+        )
+        self.assertEqual(BookBoxMapping.objects.get(book=self.book, environment_name="clinictip").label_name, "هشدار")
+
 
 class PreviewPaneTests(_Base):
     """The live preview is a docked pane, not a floating window.
