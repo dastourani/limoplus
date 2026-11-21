@@ -106,18 +106,18 @@
   <!-- فرم آپلود و بررسی فایل در یک کارت منظم و یکپارچه -->
   <form method="post" enctype="multipart/form-data" id="import-upload-form">
     {% csrf_token %}
-    <div style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:12px; padding:18px 22px; margin-bottom:24px; box-shadow:0 1px 4px rgba(0,0,0,0.04); display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px;">
+    <div id="upload-card-box" style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:12px; padding:18px 22px; margin-bottom:24px; box-shadow:0 1px 4px rgba(0,0,0,0.04); display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; transition:opacity .15s ease;">
       <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:240px;">
         <label for="id_file_upload" style="font-size:13.5px; font-weight:800; color:var(--body-fg);">
           انتخاب فایل فصل:
         </label>
-        <input type="file" id="id_file_upload" name="file" accept=".md,.tex,.pptx,.zip" required style="font:inherit; font-size:13px;">
+        <input type="file" id="id_file_upload" name="file" accept=".md,.tex,.pptx,.zip" required {% if not book and all_books %}disabled{% endif %} style="font:inherit; font-size:13px; cursor:pointer;">
       </div>
       <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <span id="target-book-hint" style="font-size:11.5px; color:var(--body-quiet-color); display:none;">
-          ⚠️ ابتدا کتاب مقصد را انتخاب کنید یا گزینه مشخصات فایل را تایید کنید.
+        <span id="target-book-hint" style="font-size:11.5px; color:#eab308; font-weight:700; display:none;">
+          ⚠️ برای شروع، ابتدا کتاب مقصد را از کادر بالا انتخاب کنید.
         </span>
-        <button class="btn primary" type="submit" id="btn-submit-upload" style="padding:8px 24px; font-size:14px; border-radius:8px;">
+        <button class="btn primary" type="submit" id="btn-submit-upload" {% if not book and all_books %}disabled{% endif %} style="padding:8px 24px; font-size:14px; border-radius:8px;">
           بررسی فایل
         </button>
       </div>
@@ -127,22 +127,32 @@
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       var selectBook = document.getElementById('id_target_book_id');
+      var fileInput = document.getElementById('id_file_upload');
       var submitBtn = document.getElementById('btn-submit-upload');
       var hintEl = document.getElementById('target-book-hint');
+      var cardBox = document.getElementById('upload-card-box');
 
-      if (selectBook && submitBtn) {
-        // Validation behavior: enable when target book is chosen or confirm file has header
+      if (selectBook && submitBtn && fileInput) {
         function checkState() {
-          var val = selectBook.value;
-          // When not chosen, guide the user: button remains clickable or shows state
+          var val = (selectBook.value || '').trim();
           if (!val) {
-            submitBtn.style.opacity = '0.6';
+            // Lock both file picker and submit button
+            fileInput.disabled = true;
+            submitBtn.disabled = true;
+            fileInput.style.cursor = 'not-allowed';
+            submitBtn.style.cursor = 'not-allowed';
+            if (cardBox) cardBox.style.opacity = '0.55';
             if (hintEl) {
-              hintEl.textContent = '💡 اگر فایل خام LaTeX است، کتاب مقصد را از لیست بالا انتخاب کنید.';
+              hintEl.textContent = '🔒 برای شروع، ابتدا کتاب مقصد را از کادر بالا انتخاب کنید.';
               hintEl.style.display = 'inline';
             }
           } else {
-            submitBtn.style.opacity = '1';
+            // Unlock everything
+            fileInput.disabled = false;
+            submitBtn.disabled = false;
+            fileInput.style.cursor = 'pointer';
+            submitBtn.style.cursor = 'pointer';
+            if (cardBox) cardBox.style.opacity = '1';
             if (hintEl) hintEl.style.display = 'none';
           }
         }
