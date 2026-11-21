@@ -10,6 +10,24 @@
 .lp button, .lp input, .lp select, .lp textarea { font-family: inherit; font-size: 14px; }
 .lp textarea, .lp input[type=text], .lp input[type=number], .lp select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px;
   background: var(--card); color: var(--body-fg, #333); }
+.lp select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 12px center;
+  background-size: 14px 14px;
+  padding: 8px 12px 8px 36px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+[dir="rtl"] .lp select, html[dir="rtl"] .lp select {
+  background-position: left 12px center;
+  padding-left: 36px;
+  padding-right: 12px;
+}
+
 .lp textarea { line-height: 1.9; resize: vertical; }
 /* Each line takes its direction from its first letter (a line of formula reads left to right), and «چپ‌چین»
    (remembered in this browser) shows every line left to right, so $…$ and brackets never look jumbled. */
