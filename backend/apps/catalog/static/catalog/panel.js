@@ -142,12 +142,11 @@
     try { var v = localStorage.getItem('limo.panel.justify'); if (v !== null) return v === '1'; } catch (e) { /* ignore */ }
     return true;
   }
-  function previewDoc(html, extraCss) {
+  function previewDoc(html, extraCss, allowScroll) {
     var lesson = 'lesson' + (readingJustify() ? '' : ' ragged');
+    var overflowCss = allowScroll ? 'html,body{overflow:auto}' : 'html,body{overflow:hidden}';
     return '<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>' + PREVIEW_FONTS +
-      // The frame is sized to its content (see preview-pane.js); it can never scroll, so a wheel over the lesson
-      // reaches the page instead of being swallowed by a 4px of slack in the frame.
-      'html,body{overflow:hidden}' +
+      overflowCss +
       P.CONTENT_CSS + 'body{background:#F6F7F2;padding:14px 0}.lesson{padding:4px 16px 24px}' + (extraCss || '') +
       '</style></head><body><div class="' + lesson + '">' + html + '</div></body></html>';
   }
@@ -2306,7 +2305,7 @@
       var html;
       try { html = render(stripHeadingIds(stripFrontMatter(markdown)), 'notes'); }
       catch (e) { html = '<p style="color:#ba2121">خطا در نمایش: ' + e.message + '</p>'; }
-      out.srcdoc = previewDoc(html, 'body{padding:0}.lesson{padding:14px 18px 24px}');
+      out.srcdoc = previewDoc(html, 'body{padding:0}.lesson{padding:14px 18px 24px}', true);
     }
     var ctl = document.getElementById('import-pv-ctl');
     function applyWidth() {

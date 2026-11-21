@@ -391,11 +391,21 @@
               if (mdEl) {
                 try {
                   var md = JSON.parse(mdEl.textContent);
-                  if (oldLabel && newLabel && oldLabel !== newLabel) {
-                    var reOld = new RegExp('^::: *' + oldLabel + ' *$', 'mg');
-                    md = md.replace(reOld, ':::' + newLabel);
-                    mdEl.textContent = JSON.stringify(md);
+                  if (newLabel) {
+                    // If previously had a label, replace it; if was unmapped, replace :::env
+                    var targetSearch = oldLabel ? oldLabel : env;
+                    var reOld = new RegExp('^::: *' + targetSearch + '(?: +\\{#[^}]+\\})? *$', 'mg');
+                    md = md.replace(reOld, function (match) {
+                      var idMatch = match.match(/\{#[^}]+\}/);
+                      return ':::' + newLabel + (idMatch ? ' ' + idMatch[0] : '');
+                    });
+                  } else {
+                    // Unmapping: remove :::label and ::: closing markers, leaving inner text
+                    var targetSearch = oldLabel ? oldLabel : env;
+                    var reBox = new RegExp('^::: *' + targetSearch + '(?: +\\{#[^}]+\\})? *\\n([\\s\\S]*?)\\n^::: *$', 'mg');
+                    md = md.replace(reBox, '$1');
                   }
+                  mdEl.textContent = JSON.stringify(md);
                 } catch (e) {}
               }
               if (typeof window.LimoRedrawImportPreview === 'function') {
