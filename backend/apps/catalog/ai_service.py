@@ -63,8 +63,15 @@ def clean_chunk_with_ai(provider: AIProvider, raw_text: str, timeout: int = 40) 
 
 
 def _call_gemini(provider: AIProvider, raw_text: str, timeout: int) -> tuple[bool, str]:
-    model = provider.model_name or "gemini-2.0-flash"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={provider.api_key}"
+    model = (provider.model_name or "gemini-2.0-flash").strip()
+    api_key = provider.api_key.strip()
+    
+    # If base_url is specified (for proxy / reverse-proxy), use it; otherwise official Google API
+    if provider.base_url and provider.base_url.strip():
+        base = provider.base_url.strip().rstrip("/")
+        url = f"{base}/v1beta/models/{model}:generateContent"
+    else:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
     payload = {
         "contents": [
@@ -83,7 +90,11 @@ def _call_gemini(provider: AIProvider, raw_text: str, timeout: int) -> tuple[boo
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+            "User-Agent": "LimooKhan/1.0",
+        },
         method="POST",
     )
 
@@ -136,7 +147,8 @@ def _call_openai_compatible(provider: AIProvider, raw_text: str, timeout: int) -
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {provider.api_key}",
+            "Authorization": f"Bearer {provider.api_key.strip()}",
+            "User-Agent": "LimooKhan/1.0",
         },
         method="POST",
     )
