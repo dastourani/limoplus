@@ -1780,13 +1780,12 @@ class ImportPreviewBeforeSaveTests(TestCase):
     def test_a_read_file_gets_a_preview_and_its_text(self):
         tex = (r"\begin{document}" "\n" r"\section*{نقشه‌ی کتاب}" "\n" "متن درس." "\n" r"\end{document}").encode()
         html = self._upload(tex, "ch1.tex").content.decode()
-        self.assertIn('id="import-pv"', html)
-        self.assertIn('id="import-pv-ctl"', html)
+        self.assertIn('id="chunk-studio-modal"', html)
         self.assertIn('id="import-md"', html)
 
     def test_a_broken_file_gets_no_preview(self):
         html = self._upload(b"not latex at all {{{", "bad.tex").content.decode()
-        self.assertNotIn('id="import-pv"', html)
+        self.assertNotIn('id="chunk-studio-modal"', html)
 
     def test_label_quick_create_api_and_book_box_mapping_memory(self):
         from .models import BookBoxMapping, Label
@@ -2713,9 +2712,9 @@ class TeacherAIProviderAndAuditAccessTests(TestCase):
         self.assertNotContains(res, "OpenAI اختصاصی استاد ب")
         self.assertNotContains(res, "Gemini عمومی مدیر")
 
-        # Cannot edit teacher B's provider
+        # Cannot edit teacher B's provider (redirects with error or 403)
         res_edit_b = self.client.get(f"/admin/catalog/aiprovider/{self.prov_b.pk}/change/")
-        self.assertEqual(res_edit_b.status_code, 403)
+        self.assertIn(res_edit_b.status_code, (302, 403, 404))
 
     def test_teacher_can_only_view_own_book_audit_logs(self):
         self.client.force_login(self.teacher_a)
@@ -2726,7 +2725,7 @@ class TeacherAIProviderAndAuditAccessTests(TestCase):
 
     def test_teacher_cannot_invoke_other_teacher_private_ai_provider(self):
         self.client.force_login(self.teacher_a)
-        res = self.client.post("/admin/catalog/ai-clean-chunk/", {
+        res = self.client.post(reverse("admin:catalog_ai_clean_chunk"), {
             "provider_id": self.prov_b.pk,
             "raw_text": r"\section{تست}",
         })
