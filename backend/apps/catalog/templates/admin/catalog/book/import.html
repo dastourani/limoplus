@@ -110,7 +110,7 @@
           </div>
 
           {% if c.snippets %}
-          <div class="snippet-preview-box" style="margin-bottom:12px; padding:8px 12px; background:var(--darkened-bg); border-right:3px solid #0284c7; border-radius:6px; font-size:12.5px; line-height:1.6;">
+          <div class="snippet-preview-box" style="margin-bottom:12px; padding:8px 12px; background:var(--darkened-bg); border-right:3px solid #0284c7; border-radius:6px; font-size:12.5px; line-height:1.6; direction:rtl; text-align:right;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:11px; color:var(--body-quiet-color);">
               <span>نمونه متن از دل فایل:</span>
               {% if c.snippets|length > 1 %}
@@ -121,9 +121,10 @@
               </div>
               {% endif %}
             </div>
-            <div class="snippet-text" data-snippets="{{ c.snippets|json_script:''|escape }}">
+            <div class="snippet-text" style="word-break:break-word; max-height:80px; overflow-y:auto;">
               {{ c.snippets.0 }}
             </div>
+            <script type="application/json" class="snippet-data-json">{{ c.snippets_json|safe }}</script>
           </div>
           {% endif %}
 
@@ -226,8 +227,7 @@
 
               var snippets = [];
               try {
-                // Find script or data attribute
-                var scriptEl = card.querySelector('script');
+                var scriptEl = card.querySelector('.snippet-data-json') || card.querySelector('script');
                 if (scriptEl && scriptEl.textContent) {
                   snippets = JSON.parse(scriptEl.textContent);
                 }

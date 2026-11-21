@@ -1082,6 +1082,7 @@ def import_view(admin_site, request, book_id=None):
                     "title": env_title,
                     "count": count,
                     "snippets": snippets,
+                    "snippets_json": json.dumps(snippets, ensure_ascii=False),
                     "mapped": mapped,
                     "is_from_memory": is_from_memory,
                 })
