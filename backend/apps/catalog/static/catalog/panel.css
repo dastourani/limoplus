@@ -315,11 +315,33 @@ html[data-theme="dark"] .plot-menu button:hover { background: #F5C518; color: #1
 
 /* «فصل از فایل»: the chapter drawn before it is saved. Same frame as the editors' preview, full width by default —
    a professor checking an import wants to read it, not to compare columns. */
-.import-preview { margin: 18px 0; border: 1px solid var(--line, #dde2d8); border-radius: 10px; background: #fff; }
-.import-preview > summary { padding: 10px 14px; cursor: pointer; font-weight: 700; font-size: 13px; }
-.import-preview[open] > summary { border-bottom: 1px solid var(--line, #dde2d8); }
-.import-preview .pv-ctl { padding: 8px 12px; justify-content: flex-start; }
-.import-pv-wrap { display: flex; justify-content: center; overflow: auto; padding: 10px; background: #e9ece4; }
+.import-preview { margin: 20px 0; border: 1px solid var(--hairline-color, #dde2d8); border-radius: 12px; background: var(--body-bg, #fff); box-shadow: 0 1px 4px rgba(0,0,0,0.04); overflow: hidden; }
+.import-preview > summary { padding: 12px 16px; cursor: pointer; font-weight: 800; font-size: 14px; color: var(--body-fg, #111827); background: var(--darkened-bg, #f9fafb); user-select: none; }
+.import-preview > summary:hover { color: #0284c7; }
+.import-preview[open] > summary { border-bottom: 1px solid var(--hairline-color, #dde2d8); }
+.import-preview .pv-ctl { padding: 10px 14px; justify-content: flex-start; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--body-bg, #fff); border-bottom: 1px solid var(--hairline-color, #e5e7eb); }
+.import-preview .pv-ctl button {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--hairline-color, #d1d5db);
+  background: var(--darkened-bg, #f3f4f6);
+  color: var(--body-fg, #374151);
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.import-preview .pv-ctl button:hover {
+  border-color: #0284c7;
+  color: #0284c7;
+}
+.import-preview .pv-ctl button.on {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #0284c7 !important;
+  box-shadow: 0 1px 3px rgba(2,132,199,0.3);
+}
+.import-pv-wrap { display: flex; justify-content: center; overflow: auto; padding: 14px; background: var(--darkened-bg, #e9ece4); }
 .import-pv { width: 100%; height: 70vh; min-height: 320px; border: 0; border-radius: 14px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
 
 .env-mapping-card:hover { border-color: #F5C518 !important; }
@@ -327,4 +349,37 @@ html[data-theme="dark"] .plot-menu button:hover { background: #F5C518; color: #1
 .quick-pills-row .pill-btn:hover { border-color: #0284c7; }
 .quick-pills-row .pill-btn.active { background: #0284c7 !important; color: #fff !important; border-color: #0284c7 !important; }
 .quick-pills-row .unmapped-btn.active { background: rgba(239, 68, 68, 0.15) !important; color: #ef4444 !important; border-color: #ef4444 !important; }
+
+/* Carousel snippet navigation pill buttons */
+.snippet-nav .btn-snip-prev, .snippet-nav .btn-snip-next {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline-color, #d1d5db);
+  background: var(--body-bg, #fff);
+  color: var(--body-fg, #374151);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  transition: all .15s ease;
+}
+.snippet-nav .btn-snip-prev:hover, .snippet-nav .btn-snip-next:hover {
+  background: #0284c7;
+  color: #fff;
+  border-color: #0284c7;
+}
+.snippet-nav .snip-counter {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--body-quiet-color, #6b7280);
+  background: var(--body-bg, #fff);
+  border: 1px solid var(--hairline-color, #e5e7eb);
+  padding: 1px 8px;
+  border-radius: 999px;
+}
 

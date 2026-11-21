@@ -78,9 +78,14 @@
         <h3 style="margin:0; font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px;">
           🏷️ نگاشت هوشمند کادرهای فایل و پیش‌نمایش زنده
         </h3>
-        <button type="button" class="btn small" id="btn-open-create-label" style="background:#F5C518; color:#17201A; font-weight:800; border:1px solid #E0AE0B; border-radius:999px; padding:4px 12px;">
-          ➕ ساخت کادر تازه در همین لحظه
-        </button>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <a href="#import-preview-box" class="btn small" style="background:var(--body-bg); color:var(--body-fg); font-weight:700; border:1px solid var(--hairline-color); border-radius:999px; padding:4px 14px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+            👁️ مشاهده پیش‌نمایش فصل ↓
+          </a>
+          <button type="button" class="btn small" id="btn-open-create-label" style="background:#F5C518; color:#17201A; font-weight:800; border:1px solid #E0AE0B; border-radius:999px; padding:4px 14px;">
+            ➕ ساخت کادر تازه در همین لحظه
+          </button>
+        </div>
       </div>
       <p style="font-size:13px; color:var(--body-quiet-color); margin-bottom:16px; line-height:1.6;">
         محیط‌های سفارشی زیر در فایل شما شناسایی شدند. با کلیک روی چیپ‌های رنگی هر کادر، پیش‌نمایش درجا تغییر می‌کند و تمام موارد مشابه در فایل بلافاصله هماهنگ می‌شوند.
@@ -180,8 +185,11 @@
 
     {% if report.markdown %}
     {# The chapter as the reader will get it, drawn by the same renderer the app uses. #}
-    <details class="import-preview" {% if report.existing %}open{% endif %}>
-      <summary>پیش‌نمایش فصل (همان‌طور که دانشجو می‌بیند)</summary>
+    <details class="import-preview" id="import-preview-box" {% if report.existing %}open{% else %}open{% endif %}>
+      <summary style="display:flex; justify-content:space-between; align-items:center;">
+        <span>📖 پیش‌نمایش فصل (همان‌طور که دانشجو می‌بیند)</span>
+        <span style="font-size:11.5px; font-weight:normal; color:var(--body-quiet-color);">تغییر چیپ‌های بالا بلافاصله این کادر را به‌روز می‌کند</span>
+      </summary>
       <div class="pv-ctl" id="import-pv-ctl"></div>
       <div class="import-pv-wrap"><iframe class="import-pv" title="پیش‌نمایش فصل" id="import-pv"></iframe></div>
     </details>
