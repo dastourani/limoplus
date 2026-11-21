@@ -1062,11 +1062,12 @@ def import_view(admin_site, request, book_id=None):
             # Active AI providers for the professor/admin dropdown:
             # Teachers see: (1) Their own active custom models + (2) Global active models configured by superuser
             # Superusers see all active models
+            from django.db.models import Q
             if request.user.is_superuser:
                 ai_qs = AIProvider.objects.filter(is_active=True)
             else:
                 ai_qs = AIProvider.objects.filter(is_active=True).filter(
-                    models.Q(owner=request.user) | models.Q(owner__isnull=True)
+                    Q(owner=request.user) | Q(owner__isnull=True)
                 )
 
             my_providers = []
@@ -1305,9 +1306,10 @@ def ai_clean_chunk_action(request):
     # 1. Their own active models (owner=request.user)
     # 2. Global active models (owner=None)
     # They can NEVER use another teacher's private API key.
+    from django.db.models import Q
     allowed_qs = AIProvider.objects.filter(is_active=True)
     if not request.user.is_superuser:
-        allowed_qs = allowed_qs.filter(models.Q(owner=request.user) | models.Q(owner__isnull=True))
+        allowed_qs = allowed_qs.filter(Q(owner=request.user) | Q(owner__isnull=True))
 
     provider = None
     if provider_id:

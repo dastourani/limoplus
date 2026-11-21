@@ -1060,7 +1060,7 @@ class BookAssistantAuditLogAdmin(admin.ModelAdmin):
             return qs
         # Teachers only see logs for books they are authorized to edit, or actions they performed
         editor_books = access.scope_to_editor_books(ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1), request.user)
-        return qs.filter(models.Q(book__in=editor_books) | models.Q(actor=request.user)).distinct()
+        return qs.filter(Q(book__in=editor_books) | Q(actor=request.user)).distinct()
 
     @admin.display(description="عملیات")
     def action_badge(self, obj):
@@ -1081,8 +1081,7 @@ class BookAssistantAuditLogAdmin(admin.ModelAdmin):
             return True
         if obj is not None:
             return access.can_edit_book(request.user, obj.book) or obj.actor_id == request.user.id
-        # Teacher has view permission if they edit at least one book
-        return access.is_editor_for_any_book(request.user)
+        return access.is_book_teacher(request.user)
 
     def has_add_permission(self, request):
         return False
@@ -1990,23 +1989,23 @@ class AIProviderAdmin(admin.ModelAdmin):
             return True
         if obj is not None:
             return obj.owner_id == request.user.id
-        return access.is_editor_for_any_book(request.user)
+        return access.is_book_teacher(request.user)
 
     def has_change_permission(self, request, obj=None):
         if request.user.is_superuser:
             return True
         if obj is not None:
             return obj.owner_id == request.user.id
-        return access.is_editor_for_any_book(request.user)
+        return access.is_book_teacher(request.user)
 
     def has_delete_permission(self, request, obj=None):
         if request.user.is_superuser:
             return True
         if obj is not None:
             return obj.owner_id == request.user.id
-        return access.is_editor_for_any_book(request.user)
+        return access.is_book_teacher(request.user)
 
     def has_add_permission(self, request):
-        return bool(request.user.is_superuser or access.is_editor_for_any_book(request.user))
+        return bool(request.user.is_superuser or access.is_book_teacher(request.user))
 
 
