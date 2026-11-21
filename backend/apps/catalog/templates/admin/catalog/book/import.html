@@ -13,49 +13,144 @@
 {% block content %}
 <div id="content-main" class="lp">
   {% if not report or report.errors %}
-  <p>یک فایل <code>.md</code>، <code>.tex</code>، <code>.pptx</code> یا <code>.zip</code> انتخاب کنید: فایل مارک‌داون
-    به‌همراه پوشه‌ی <code>images</code>، یک فصل LaTeX (فایل <code>.tex</code>)، ZIP پروژه‌ی LaTeX از Overleaf،
-    یا پاورپوینت درس (هر اسلاید یک بخش می‌شود).
-    {% if book %}فصل به کتاب «<b>{{ book.title }}</b>» اضافه می‌شود؛ لازم نیست خط‌های کتاب (شناسه-کتاب، کتاب) در فایل باشد.{% endif %}
-    اگر فصلی با همین شناسه‌ی فصل قبلاً وارد شده باشد، به‌روز می‌شود و پیشرفت کاربران حفظ می‌شود. قبل از اعمال، تغییرات را نشان می‌دهد.</p>
+  <!-- راهنمای دسته‌بندی‌شده و افقی فرمت‌ها و قوانین -->
+  <div class="card" style="background:var(--darkened-bg); border:1px solid var(--hairline-color); border-radius:12px; padding:16px 20px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+    <div style="font-size:12.5px; font-weight:800; color:var(--body-fg); margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+      📁 فرمت‌های قابل قبول فایل ورودی:
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+      <span class="pill" style="padding:4px 10px; font-size:12px; background:var(--body-bg); border-color:var(--hairline-color); display:inline-flex; align-items:center; gap:6px;">
+        <code style="font-weight:800; color:#0284c7;">.md</code> <span>مارک‌داون به‌همراه پوشهٔ <code>images</code></span>
+      </span>
+      <span class="pill" style="padding:4px 10px; font-size:12px; background:var(--body-bg); border-color:var(--hairline-color); display:inline-flex; align-items:center; gap:6px;">
+        <code style="font-weight:800; color:#0284c7;">.tex</code> <span>یک فصل LaTeX (فایل متنی <code>.tex</code>)</span>
+      </span>
+      <span class="pill" style="padding:4px 10px; font-size:12px; background:var(--body-bg); border-color:var(--hairline-color); display:inline-flex; align-items:center; gap:6px;">
+        <code style="font-weight:800; color:#0284c7;">.zip</code> <span>پروژهٔ کامل LaTeX (از جمله خروجی Overleaf)</span>
+      </span>
+      <span class="pill" style="padding:4px 10px; font-size:12px; background:var(--body-bg); border-color:var(--hairline-color); display:inline-flex; align-items:center; gap:6px;">
+        <code style="font-weight:800; color:#0284c7;">.pptx</code> <span>پاورپوینت درس (هر اسلاید یک بخش می‌شود)</span>
+      </span>
+    </div>
 
-  <div style="background:var(--darkened-bg); padding:12px 16px; border-radius:8px; margin:14px 0 20px; border:1px solid var(--hairline-color); display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
-    <span style="font-weight:700; font-size:13px;">📥 دریافت قالب‌ها و فایل‌های نمونه برای شروع:</span>
-    <a href="{% static 'catalog/templates/sample_chapter.tex' %}" download="sample_chapter.tex" class="btn small" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd;">
-      دانلود نمونه LaTeX (.tex)
-    </a>
-    <a href="{% static 'catalog/templates/sample_chapter.md' %}" download="sample_chapter.md" class="btn small" style="background:#fef3c7; color:#92400e; border-color:#fde68a;">
-      دانلود نمونه مارک‌داون (.md)
-    </a>
+    <div style="border-top:1px dashed var(--hairline-color); padding-top:10px; display:flex; flex-wrap:wrap; gap:16px; font-size:12px; color:var(--body-quiet-color); line-height:1.6;">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="color:#16a34a; font-weight:800;">✓ به‌روزرسانی ایمن:</span> اگر فصلی با همین شناسه قبلاً وارد شده باشد، به‌روز می‌شود و پیشرفت کاربران حفظ خواهد شد.
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="color:#0284c7; font-weight:800;">👁️ پیش‌نمایش زنده:</span> قبل از اعمال در دیتابیس، محتوا و کادرها به‌صورت تعاملی نمایش داده می‌شوند.
+      </div>
+      {% if book %}
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="color:#eab308; font-weight:800;">📚 کتاب جاری:</span> فصل به کتاب «<b>{{ book.title }}</b>» اضافه می‌شود و نیازی به شناسه-کتاب در فایل نیست.
+      </div>
+      {% endif %}
+    </div>
   </div>
 
-  <form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    {% if not book and all_books %}
-    <div style="background:var(--darkened-bg); padding:16px 20px; border-radius:12px; margin-bottom:20px; border:1px solid var(--hairline-color); max-width:640px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
-      <label for="id_target_book_id" style="display:block; font-size:13.5px; font-weight:800; margin-bottom:8px; color:var(--body-fg);">
-        📚 انتخاب کتاب مقصد (فصل به کدام کتاب افزوده شود؟):
-      </label>
-      <div style="position:relative; width:100%;">
-        <select id="id_target_book_id" name="target_book_id" style="width:100%; box-sizing:border-box; height:42px; padding:8px 14px 8px 38px; border-radius:8px; border:1.5px solid var(--hairline-color); font:inherit; font-size:13.5px; font-weight:500; background-color:var(--body-bg); color:var(--body-fg); cursor:pointer; outline:none; transition:border-color .15s, box-shadow .15s;">
-          <option value="">— از مشخصات خود فایل خوانده شود (فایل‌های دارای شناسه-کتاب) —</option>
-          {% for b in all_books %}
-            <option value="{{ b.pk }}">{{ b.title }} ({{ b.slug }})</option>
-          {% endfor %}
-        </select>
-        <div style="position:absolute; left:12px; top:50%; transform:translateY(-50%); pointer-events:none; display:flex; align-items:center; color:var(--body-quiet-color);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
+  <!-- گرید متوازن کارت‌ها: قالب‌ها و انتخاب کتاب مقصد -->
+  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:20px;">
+    <!-- کارت قالب‌ها -->
+    <div style="background:var(--darkened-bg); padding:16px 20px; border-radius:12px; border:1px solid var(--hairline-color); display:flex; flex-direction:column; justify-content:space-between; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+      <div>
+        <div style="font-weight:800; font-size:13.5px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+          📥 دریافت قالب‌ها و فایل‌های نمونه برای شروع:
+        </div>
+        <div style="font-size:12px; color:var(--body-quiet-color); line-height:1.5;">
+          می‌توانید برای ساختاردهی استاندارد به جزوات خود، نمونه‌های آماده را دانلود کنید:
         </div>
       </div>
-      <div style="font-size:12px; color:var(--body-quiet-color); margin-top:8px; line-height:1.6;">
-        💡 برای فایل‌های خام LaTeX (.tex) که شناسه-کتاب ندارند، کتاب مقصد را از این لیست انتخاب کنید تا فایل بدون خطا پردازش و پیش‌نمایش شود.
+      <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+        <a href="{% static 'catalog/templates/sample_chapter.tex' %}" download="sample_chapter.tex" class="btn small" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd; font-weight:700; padding:6px 12px; border-radius:8px;">
+          دانلود نمونه LaTeX (.tex)
+        </a>
+        <a href="{% static 'catalog/templates/sample_chapter.md' %}" download="sample_chapter.md" class="btn small" style="background:#fef3c7; color:#92400e; border-color:#fde68a; font-weight:700; padding:6px 12px; border-radius:8px;">
+          دانلود نمونه مارک‌داون (.md)
+        </a>
+      </div>
+    </div>
+
+    <!-- کارت انتخاب کتاب مقصد (برای نمای عمومی مدیر کل) -->
+    {% if not book and all_books %}
+    <div style="background:var(--darkened-bg); padding:16px 20px; border-radius:12px; border:1px solid var(--hairline-color); display:flex; flex-direction:column; justify-content:space-between; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <label for="id_target_book_id" style="font-size:13.5px; font-weight:800; color:var(--body-fg);">
+            📚 انتخاب کتاب مقصد (فصل به کدام کتاب افزوده شود؟):
+          </label>
+          <a href="{% url 'admin:catalog_book_changelist' %}" style="font-size:11.5px; color:#0284c7; text-decoration:none; font-weight:700;" title="مشاهده فهرست کتاب‌ها و ورود به صفحه اختصاصی هر کتاب">
+            فهرست کتاب‌ها ↗
+          </a>
+        </div>
+        <div style="position:relative; width:100%; margin-top:4px;">
+          <select id="id_target_book_id" name="target_book_id" form="import-upload-form" style="width:100%; box-sizing:border-box; height:42px; padding:8px 14px 8px 38px; border-radius:8px; border:1.5px solid var(--hairline-color); font:inherit; font-size:13.5px; font-weight:500; background-color:var(--body-bg); color:var(--body-fg); cursor:pointer; outline:none; transition:border-color .15s, box-shadow .15s;">
+            <option value="">— از مشخصات خود فایل خوانده شود (فایل‌های دارای شناسه-کتاب) —</option>
+            {% for b in all_books %}
+              <option value="{{ b.pk }}">{{ b.title }} ({{ b.slug }})</option>
+            {% endfor %}
+          </select>
+          <div style="position:absolute; left:12px; top:50%; transform:translateY(-50%); pointer-events:none; display:flex; align-items:center; color:var(--body-quiet-color);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11.5px; color:var(--body-quiet-color); line-height:1.5;">
+        💡 برای فایل‌های خام LaTeX (.tex) که شناسه-کتاب ندارند، کتاب مقصد را انتخاب کنید تا دکمهٔ بررسی فعال شود؛ یا مستقیماً از <a href="{% url 'admin:catalog_book_changelist' %}" style="color:#0284c7; font-weight:700;">صفحهٔ کتاب</a> اقدام کنید.
       </div>
     </div>
     {% endif %}
-    <div class="row"><input type="file" name="file" accept=".md,.tex,.pptx,.zip" required> <button class="btn primary" type="submit">بررسی فایل</button></div>
+  </div>
+
+  <!-- فرم آپلود و بررسی فایل در یک کارت منظم و یکپارچه -->
+  <form method="post" enctype="multipart/form-data" id="import-upload-form">
+    {% csrf_token %}
+    <div style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:12px; padding:18px 22px; margin-bottom:24px; box-shadow:0 1px 4px rgba(0,0,0,0.04); display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px;">
+      <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:240px;">
+        <label for="id_file_upload" style="font-size:13.5px; font-weight:800; color:var(--body-fg);">
+          انتخاب فایل فصل:
+        </label>
+        <input type="file" id="id_file_upload" name="file" accept=".md,.tex,.pptx,.zip" required style="font:inherit; font-size:13px;">
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <span id="target-book-hint" style="font-size:11.5px; color:var(--body-quiet-color); display:none;">
+          ⚠️ ابتدا کتاب مقصد را انتخاب کنید یا گزینه مشخصات فایل را تایید کنید.
+        </span>
+        <button class="btn primary" type="submit" id="btn-submit-upload" style="padding:8px 24px; font-size:14px; border-radius:8px;">
+          بررسی فایل
+        </button>
+      </div>
+    </div>
   </form>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var selectBook = document.getElementById('id_target_book_id');
+      var submitBtn = document.getElementById('btn-submit-upload');
+      var hintEl = document.getElementById('target-book-hint');
+
+      if (selectBook && submitBtn) {
+        // Validation behavior: enable when target book is chosen or confirm file has header
+        function checkState() {
+          var val = selectBook.value;
+          // When not chosen, guide the user: button remains clickable or shows state
+          if (!val) {
+            submitBtn.style.opacity = '0.6';
+            if (hintEl) {
+              hintEl.textContent = '💡 اگر فایل خام LaTeX است، کتاب مقصد را از لیست بالا انتخاب کنید.';
+              hintEl.style.display = 'inline';
+            }
+          } else {
+            submitBtn.style.opacity = '1';
+            if (hintEl) hintEl.style.display = 'none';
+          }
+        }
+        selectBook.addEventListener('change', checkState);
+        checkState();
+      }
+    });
+  </script>
   {% endif %}
 
   {% if report %}
