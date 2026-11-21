@@ -207,14 +207,26 @@
           </button>
           <label for="ai-provider-select" style="font-size:12px; font-weight:700;">مدل هوش مصنوعی:</label>
           <select id="ai-provider-select" style="padding:6px 12px; border-radius:8px; border:1px solid var(--hairline-color); font:inherit; font-size:12.5px; background:var(--body-bg); color:var(--body-fg); cursor:pointer;">
-            {% for prov in report.active_ai_providers %}
-              <option value="{{ prov.id }}" {% if prov.is_default %}selected{% endif %}>{{ prov.title }} ({{ prov.model_name }})</option>
-            {% empty %}
+            {% if report.active_ai_providers.my_providers %}
+              <optgroup label="👤 مدل‌های اختصاصی من (API اختصاصی شما)">
+                {% for prov in report.active_ai_providers.my_providers %}
+                  <option value="{{ prov.id }}" {% if prov.is_default %}selected{% endif %}>{{ prov.title }} ({{ prov.model_name }})</option>
+                {% endfor %}
+              </optgroup>
+            {% endif %}
+            {% if report.active_ai_providers.global_providers %}
+              <optgroup label="🏢 مدل‌های عمومی مدیر کل (اشتراکی سامانه)">
+                {% for prov in report.active_ai_providers.global_providers %}
+                  <option value="{{ prov.id }}" {% if prov.is_default and not report.active_ai_providers.my_providers %}selected{% endif %}>{{ prov.title }} ({{ prov.model_name }})</option>
+                {% endfor %}
+              </optgroup>
+            {% endif %}
+            {% if not report.active_ai_providers.has_any %}
               <option value="">(هیچ مدلی فعال نیست - در تنظیمات ثبت کنید)</option>
-            {% endfor %}
+            {% endif %}
           </select>
           <a href="{% url 'admin:catalog_aiprovider_changelist' %}" target="_blank" class="btn small" style="font-size:11.5px; border-radius:8px; text-decoration:none;" title="مدیریت کلیدها و ارائه‌دهندگان هوش مصنوعی در تب جدید">
-            ⚙️ تنظیم APIها
+            ⚙️ تنظیم APIهای اختصاصی من
           </a>
         </div>
       </div>

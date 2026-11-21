@@ -714,16 +714,25 @@ class BookAssistantAuditLog(models.Model):
 
 
 class AIProvider(models.Model):
-    """Configuration for LLM API providers (Gemini, Groq, OpenAI, AvalAI, etc.) managed by superuser."""
+    """Configuration for LLM API providers (Gemini, Groq, OpenAI, AvalAI, etc.) managed by superuser or individual teachers."""
 
     class ProviderType(models.TextChoices):
         GEMINI = "gemini", "Google Gemini API"
         OPENAI = "openai", "OpenAI-Compatible (Groq, OpenAI, DeepSeek, AvalAI)"
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="ai_providers",
+        verbose_name="استاد / مالک کلید",
+        help_text="اگر خالی باشد، این مدل سراسری/عمومی بوده و توسط مدیر کل تعریف شده است.",
+    )
     title = models.CharField(
         "عنوان نمایشی",
         max_length=100,
-        help_text="نامی که در پنل اساتید و مدیریت نمایش داده می‌شود (مثلاً «Gemini 2.0 Flash (گوگل)»)",
+        help_text="نامی که در پنل اساتید و مدیریت نمایش داده می‌شود (مثلاً «Gemini 2.0 Flash اختصاصی» یا «مدل اشتراکی مدیر»)",
     )
     provider_type = models.CharField(
         "نوع ارائه‌دهنده",
@@ -734,7 +743,7 @@ class AIProvider(models.Model):
     api_key = models.CharField(
         "کلید API",
         max_length=255,
-        help_text="کلید معتبر دریافتی از ارائه‌دهنده هوش مصنوعی",
+        help_text="کلید معتبر دریافتی از ارائه‌دهنده هوش مصنوعی (کلید به صورت امن ذخیره می‌شود)",
     )
     base_url = models.CharField(
         "آدرس پایه API (Base URL)",
@@ -750,7 +759,7 @@ class AIProvider(models.Model):
         help_text="نام دقیق مدل (مثلاً gemini-2.0-flash یا qwen-2.5-32b یا llama-3.3-70b-versatile)",
     )
     is_active = models.BooleanField(
-        "فعال برای اساتید",
+        "فعال برای استفاده",
         default=True,
         help_text="آیا این ارائه‌دهنده در فرم تمیزکاری فایل‌ها در دسترس باشد؟",
     )
@@ -771,11 +780,23 @@ class AIProvider(models.Model):
     def __str__(self):
         status = " (فعال)" if self.is_active else " (غیرفعال)"
         default = " [پیش‌فرض]" if self.is_default else ""
-        return f"{self.title} — {self.model_name}{default}{status}"
+        owner_label = f" [اختصاصی: {self.owner.phone}]" if self.owner else " [سراسری مدیر]"
+        return f"{self.title} — {self.model_name}{owner_label}{default}{status}"
+
+    @property
+    def is_global(self):
+        return self.owner is None
+
+    def masked_api_key(self):
+        """Show only first 4 and last 4 characters for security."""
+        k = (self.api_key or "").strip()
+        if len(k) <= 8:
+            return "••••••••"
+        return f"{k[:4]}••••••••{k[-4:]}"
 
     def save(self, *args, **kwargs):
         if self.is_default:
-            AIProvider.objects.exclude(pk=self.pk).update(is_default=False)
+            AIProvider.objects.filter(owner=self.owner).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
 
 

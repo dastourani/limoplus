@@ -1054,6 +1054,14 @@ class BookAssistantAuditLogAdmin(admin.ModelAdmin):
     search_fields = ("book__title", "assistant_phone", "assistant_user__phone", "actor__phone", "details")
     readonly_fields = ("book", "actor", "assistant_user", "assistant_phone", "action", "details", "ip", "created_at")
 
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        # Teachers only see logs for books they are authorized to edit, or actions they performed
+        editor_books = access.scope_to_editor_books(ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1), request.user)
+        return qs.filter(models.Q(book__in=editor_books) | models.Q(actor=request.user)).distinct()
+
     @admin.display(description="عملیات")
     def action_badge(self, obj):
         colors = {
@@ -1069,7 +1077,12 @@ class BookAssistantAuditLogAdmin(admin.ModelAdmin):
         )
 
     def has_view_permission(self, request, obj=None):
-        return bool(request.user.is_superuser)
+        if request.user.is_superuser:
+            return True
+        if obj is not None:
+            return access.can_edit_book(request.user, obj.book) or obj.actor_id == request.user.id
+        # Teacher has view permission if they edit at least one book
+        return access.is_editor_for_any_book(request.user)
 
     def has_add_permission(self, request):
         return False
@@ -1924,17 +1937,76 @@ admin.site.each_context = _assets_each_context_with_version
 
 @admin.register(AIProvider)
 class AIProviderAdmin(admin.ModelAdmin):
-    list_display = ("title", "provider_type", "model_name", "is_active", "is_default", "order")
-    list_editable = ("is_active", "is_default", "order")
+    list_display = ("title", "provider_type", "model_name", "owner_display", "masked_key_display", "is_active", "is_default", "order")
     list_filter = ("provider_type", "is_active", "is_default")
     search_fields = ("title", "model_name", "base_url")
-    fieldsets = (
-        (None, {
-            "fields": ("title", "provider_type", "api_key", "base_url", "model_name")
-        }),
-        ("تنظیمات دسترسی و نمایش", {
-            "fields": ("is_active", "is_default", "order"),
-            "description": "ارائه‌دهنده‌های فعال در فرم بررسی و تمیزکاری فایل‌ها برای اساتید و مدیران نمایش داده می‌شوند.",
-        }),
-    )
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        # Teachers only see their own providers (never global or other teachers' keys)
+        return qs.filter(owner=request.user)
+
+    def get_fieldsets(self, request, obj=None):
+        base_fields = ["title", "provider_type", "api_key", "base_url", "model_name"]
+        if request.user.is_superuser:
+            base_fields.insert(1, "owner")
+        return (
+            (None, {
+                "fields": tuple(base_fields)
+            }),
+            ("تنظیمات دسترسی و اولویت", {
+                "fields": ("is_active", "is_default", "order"),
+                "description": "ارائه‌دهنده‌های فعال در فرم بررسی و تمیزکاری فایل‌ها نمایش داده می‌شوند.",
+            }),
+        )
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if "api_key" in form.base_fields:
+            form.base_fields["api_key"].widget = forms.PasswordInput(render_value=True)
+            form.base_fields["api_key"].help_text = "کلید API شما به صورت امن نگهداری می‌شود و فقط به خودتان نمایش داده خواهد شد."
+        return form
+
+    @admin.display(description="مالک / حساب")
+    def owner_display(self, obj):
+        if obj.owner:
+            return format_html('<span style="color:#0369a1; font-weight:700;">👤 {}</span>', obj.owner.phone)
+        return format_html('<span style="color:#15803d; font-weight:700;">🏢 سراسری مدیر کل</span>')
+
+    @admin.display(description="کلید API (محافظت‌شده)")
+    def masked_key_display(self, obj):
+        return format_html('<code style="direction:ltr; unicode-bidi:isolate; font-size:12px;">{}</code>', obj.masked_api_key())
+
+    def save_model(self, request, obj, form, change):
+        if not request.user.is_superuser:
+            # Force current teacher as owner
+            obj.owner = request.user
+        super().save_model(request, obj, form, change)
+
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if obj is not None:
+            return obj.owner_id == request.user.id
+        return access.is_editor_for_any_book(request.user)
+
+    def has_change_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if obj is not None:
+            return obj.owner_id == request.user.id
+        return access.is_editor_for_any_book(request.user)
+
+    def has_delete_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if obj is not None:
+            return obj.owner_id == request.user.id
+        return access.is_editor_for_any_book(request.user)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_superuser or access.is_editor_for_any_book(request.user))
+
 
