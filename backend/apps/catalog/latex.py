@@ -630,6 +630,7 @@ class Converter:
         self.references: dict[str, str] = {}   # label → box kind («مثال»), for the report
         self._labels_seen: set[str] = set()
         self._converted = False
+        self._box_depth = 0
         # Set by the caller (the file name, the book page): the chapter's «شناسه-فصل» and «عنوان».
         self.slug = ""
         self.title = ""
@@ -898,15 +899,28 @@ class Converter:
             f" {{#{name}}}" if name else "")
 
     def _box(self, label: str, body: str, opening: str) -> str:
-        # A name on the \\begin line is the box's own name, whatever the label; inside the body only a numbered box
-        # takes one, because there the \\label usually belongs to a formula or a figure the box holds.
-        name = self._label_in(opening)
-        if name is None and label in NUMBERED_BOXES:
-            name = self._label_in(body)
-        body = re.sub(r"\\(label|index|glossary)\s*\{[^}]*\}", "", body)
-        inner = self._blocks(body).strip()
-        head = f":::{label}" + (f" {{#{name}}}" if name else "")
-        return f"{head}\n{inner}\n:::"
+        # Markdown does not allow nested ::: blocks (blocks cannot be inside each other).
+        # If an environment is nested inside another box in LaTeX, flatten it cleanly to avoid syntax errors.
+        if self._box_depth > 0:
+            self._warn_once(
+                f"کادر «{label}» داخل کادر دیگری قرار داشت؛ برای جلوگیری از تداخل ساختاری، به‌صورت متن درون کادر اصلی آورده شد."
+            )
+            body = re.sub(r"\\(label|index|glossary)\s*\{[^}]*\}", "", body)
+            return self._blocks(body).strip()
+
+        self._box_depth += 1
+        try:
+            # A name on the \\begin line is the box's own name, whatever the label; inside the body only a numbered box
+            # takes one, because there the \\label usually belongs to a formula or a figure the box holds.
+            name = self._label_in(opening)
+            if name is None and label in NUMBERED_BOXES:
+                name = self._label_in(body)
+            body = re.sub(r"\\(label|index|glossary)\s*\{[^}]*\}", "", body)
+            inner = self._blocks(body).strip()
+            head = f":::{label}" + (f" {{#{name}}}" if name else "")
+            return f"{head}\n{inner}\n:::"
+        finally:
+            self._box_depth -= 1
 
     def _list(self, env: str, body: str) -> str:
         items = self._items(body)

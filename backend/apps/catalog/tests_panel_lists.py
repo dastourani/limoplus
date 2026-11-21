@@ -165,7 +165,7 @@ class ListContentTests(Base):
     def test_report_count_in_the_menu_and_snippet(self):
         Report.objects.create(user=self.learner, question=self.question(1), reason=Report.Reason.choices[0][0], note="جواب غلط است")
         _, page = self.queries("/admin/learning/report/")
-        self.assertIn("lp-nav-count", page)
+        self.assertIn("lp-menu-badge", page)
         self.assertIn("جواب غلط است", page)
         self.assertIn(f"/admin/catalog/book/chapter/{self.ch1.pk}/#q=q1", page)
 

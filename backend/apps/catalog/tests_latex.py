@@ -390,6 +390,32 @@ class ZipTests(SimpleTestCase):
         self.assertEqual(infer_label_for_title("answer", avail), "پرسش و پاسخ")
         self.assertEqual(infer_label_for_title("test", avail), "تمرین")
 
+    def test_nested_custom_boxes_are_safely_flattened(self):
+        from .latex import Converter
+
+        tex = (
+            "\\begin{document}\n"
+            "\\section{بخش اول}\n"
+            "\\begin{test}\n"
+            "صورت تست\n"
+            "\\begin{answer}\n"
+            "پاسخ تست\n"
+            "\\end{answer}\n"
+            "ادامه تست\n"
+            "\\end{test}\n"
+            "\\end{document}\n"
+        )
+        c = Converter(tex, custom_boxes={"test": "تمرین", "answer": "پرسش و پاسخ"})
+        md = c.to_markdown()
+        # The outer box should open and close cleanly
+        self.assertEqual(md.count(":::تمرین"), 1)
+        # Inner box should not create an invalid nested ::: block
+        self.assertEqual(md.count(":::پرسش و پاسخ"), 0)
+        self.assertIn("صورت تست", md)
+        self.assertIn("پاسخ تست", md)
+        self.assertIn("کادر «پرسش و پاسخ» داخل کادر دیگری قرار داشت", " ".join(c.warnings))
+
+
 
 
 class UploadTests(TestCase):
