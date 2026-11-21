@@ -280,15 +280,6 @@
     </div>
     {% endif %}
 
-    {# The chapter as the reader will get it, drawn by the same renderer the app uses. #}
-    <details class="import-preview" id="import-preview-box" {% if report.existing %}open{% else %}open{% endif %}>
-      <summary style="display:flex; justify-content:space-between; align-items:center;">
-        <span>📖 پیش‌نمایش کل فصل (رندر یکپارچه نهایی)</span>
-        <span style="font-size:11.5px; font-weight:normal; color:var(--body-quiet-color);">همگام با تمیزکاری و ویرایش قطعات</span>
-      </summary>
-      <div class="pv-ctl" id="import-pv-ctl"></div>
-      <div class="import-pv-wrap"><iframe class="import-pv" title="پیش‌نمایش فصل" id="import-pv"></iframe></div>
-    </details>
     {{ report.markdown|json_script:"import-md" }}
     {% endif %}
     {% if report.token %}
@@ -379,7 +370,7 @@
               });
             }
 
-            // Assemble all chunk clean textareas back into the main markdown & re-render main preview
+            // Assemble all chunk clean textareas back into the main markdown
             function updateMasterMarkdownFromChunks() {
               var allChunks = document.querySelectorAll('.ai-chunk-card');
               var parts = [];
@@ -395,9 +386,6 @@
                 var mdEl = document.getElementById('import-md');
                 if (mdEl) {
                   mdEl.textContent = JSON.stringify(fullMd);
-                }
-                if (typeof window.LimoRedrawImportPreview === 'function') {
-                  window.LimoRedrawImportPreview();
                 }
               }
             }
