@@ -1,0 +1,7 @@
+{% extends "website/base.html" %}
+{% block title %}قیمت‌های لیموخوان{% endblock %}
+{% block main %}
+<section class="sec wrap">{% include "website/_prices.html" %}</section>
+{% if faq %}<section class="sec wrap narrow"><h2>پرسش‌های پرتکرار</h2>{% include "website/_faq.html" %}</section>{% endif %}
+{% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

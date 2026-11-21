@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if paid %}پرداخت موفق{% else %}پرداخت ناموفق{% endif %} — لیموخوان</title>
+<style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#F6F7F2;color:#17201A;
+font-family:Vazirmatn,Tahoma,sans-serif}
+.card{background:#fff;border-radius:24px;padding:32px 24px;max-width:360px;width:calc(100% - 32px);text-align:center;
+box-shadow:0 10px 30px rgba(23,32,26,.12)}
+.icon{font-size:48px}.ok{color:#2F7D4F}.bad{color:#B3261E}
+a.btn{display:block;margin-top:20px;background:#17201A;color:#F5C518;text-decoration:none;padding:14px;border-radius:999px;font-weight:800}
+p{line-height:1.9;color:#56655B}
+</style>
+</head>
+<body>
+<div class="card">
+  {% if paid %}
+    <div class="icon ok">✓</div>
+    <h2 class="ok">پرداخت موفق بود</h2>
+    <p>جزئیات خرید در اپ لیموخوان نشان داده می‌شود.</p>
+  {% else %}
+    <div class="icon bad">✕</div>
+    <h2 class="bad">پرداخت انجام نشد</h2>
+    <p>اگر پرداخت را کامل کرده‌اید، در اپ «بررسی پرداخت» را بزنید. اگر مبلغی کم شده و پرداخت تأیید نشود، تا ۷۲ ساعت به حسابتان برمی‌گردد.</p>
+  {% endif %}
+  <a class="btn" href="{{ return_url }}">بازگشت به لیموخوان</a>
+</div>
+<script>setTimeout(function(){ location.href = "{{ return_url|escapejs }}"; }, 1200);</script>
+</body>
+</html>

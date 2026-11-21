@@ -1,0 +1,52 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div class="card" style="max-width: 680px; margin: 24px auto; padding: 28px; background: var(--body-bg); border-radius: 12px; border: 1px solid var(--hairline-color); box-shadow: 0 2px 8px rgba(0,0,0,0.04);" dir="rtl">
+  <h2 style="margin-top:0; color:var(--body-fg);">{{ title }}</h2>
+  <div style="background: var(--darkened-bg); border: 1px solid var(--hairline-color); border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; font-size: 13.5px; line-height: 1.8; color: var(--body-fg);">
+    <p style="margin: 0 0 8px;">
+      <b>انتشار در ویترین عمومی لیمو:</b> در صورتی که تمایل دارید کتاب برای عموم مخاطبان کشور عرضه و قابل خرید/مطالعه شود، می‌توانید پس از تکمیل محتوا، از طریق این فرم، اثر را برای ارزیابی و تأیید نهایی به شورای بررسی ارسال فرمایید.
+    </p>
+    <p style="margin: 0; font-size: 13px; color: var(--body-quiet-color);">
+      پس از بررسی و تأیید مدیر کل، کتاب در ویترین عمومی، صفحه رشته‌ها و جستجوی سراسری سامانه منتشر خواهد شد.
+    </p>
+  </div>
+
+  {% if latest_req %}
+  <div style="background: var(--darkened-bg); padding: 14px 16px; border-radius: 8px; margin-bottom: 22px; border: 1px solid var(--hairline-color);">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:700;">وضعیت آخرین درخواست:</span>
+      <span class="lp-badge {% if latest_req.status == 'approved' %}lp-b-green{% elif latest_req.status == 'pending' %}lp-b-yellow{% elif latest_req.status == 'needs_info' %}lp-b-blue{% else %}lp-b-red{% endif %}">
+        {{ latest_req.get_status_display }}
+      </span>
+    </div>
+    {% if latest_req.review_note %}
+    <div style="margin-top: 10px; font-size: 13px; color: var(--body-fg);">
+      <b>پاسخ/یادداشت مدیر کل:</b>
+      <p style="margin: 4px 0 0; white-space: pre-line;">{{ latest_req.review_note }}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    <div style="margin-bottom: 20px;">
+      <label for="id_note" style="display:block; font-weight:700; margin-bottom:8px;">
+        یادداشت و توضیحات شما برای مدیر کل:
+      </label>
+      <textarea name="note" id="id_note" rows="5" required placeholder="توضیح دهید کتاب تا چه فصلی کامل شده، آیا تست‌ها وارد شده‌اند، یا نکته خاصی برای بررسی وجود دارد..." style="width:100%; box-sizing:border-box; padding:12px; border:1px solid var(--hairline-color); border-radius:8px; font-family:inherit; font-size:13.5px; background:var(--body-bg); color:var(--body-fg); resize:vertical;">{{ latest_req.request_note|default:"" }}</textarea>
+    </div>
+
+    <div style="display:flex; gap:12px; align-items:center; margin-top:24px;">
+      <button type="submit" class="btn primary" style="padding:10px 22px; font-size:14px; font-weight:700;">
+        📨 ارسال درخواست به مدیر کل
+      </button>
+      <a href="{% url 'admin:catalog_book_change' book.pk %}" class="btn" style="padding:10px 18px; font-size:13.5px;">
+        بازگشت به کتاب
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

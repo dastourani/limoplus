@@ -1,0 +1,25 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block content %}
+<div id="content-main">
+  <h1>{{ title }}</h1>
+  <p class="help">کتاب: <strong>{{ original.book.title }}</strong> · شماره: <span dir="ltr">{{ original.phone }}</span></p>
+  <p class="help">وضعیت فعلی: {{ original.get_status_display }}{% if current_end_fa %} · پایان فعلی: {{ current_end_fa }}{% endif %}</p>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for field in form %}
+      <div class="form-row{% if field.errors %} errors{% endif %}">
+        {{ field.errors }}
+        {{ field.label_tag }}
+        {{ field }}
+        {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+      </div>
+    {% endfor %}
+    <div class="submit-row">
+      <input type="submit" value="{% if action_name == 'renew' %}ثبت تمدید{% else %}تأیید لغو دسترسی{% endif %}" class="default">
+      <a href="{{ change_url }}" class="closelink">بازگشت بدون تغییر</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

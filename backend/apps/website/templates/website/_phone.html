@@ -1,0 +1,24 @@
+<div class="phone" aria-hidden="true"><div class="screen">
+  <div class="ph-row">{% include "website/_lemon.html" with size=22 %}<b>سلام!</b></div>
+  <b class="ph-h">ادامه‌ی خواندن</b>
+  <div class="ph-read"><div class="ph-cv"></div><div><b>ریاضی عمومی ۱</b><div class="ph-mut">فصل ۱، حد و پیوستگی</div><span class="ph-go">ادامه بده</span></div></div>
+  <b class="ph-h">برنامه‌ی امروز</b>
+  <div class="ph-card">
+    <div class="ph-task">{% include "website/_lemon.html" with size=22 %}<b>مرور فصل ۱</b><span class="ph-pill">ادامه</span></div>
+    <div class="ph-task">{% include "website/_lemon.html" with size=22 %}<b>مرور کارت‌ها</b><span class="ph-pill">شروع</span></div>
+    <div class="ph-task">{% include "website/_lemon.html" with size=22 %}<b>اشتباهات من</b><span class="ph-pill">شروع</span></div>
+  </div>
+  <b class="ph-h">کتاب‌ها</b>
+  <div class="ph-shelf">
+    {% for c in books|slice:":3" %}
+    <div class="ph-bk-item">
+      <div class="ph-bk" style="--c:#F5C518"><span>{{ c.book.title|truncatechars:18 }}</span></div>
+      <small>{{ c.book.title|truncatechars:14 }}</small>
+    </div>
+    {% empty %}
+    <div class="ph-bk-item"><div class="ph-bk" style="--c:#3B44B8"><span>ریاضی عمومی ۱</span></div><small>ریاضی عمومی ۱</small></div>
+    <div class="ph-bk-item"><div class="ph-bk" style="--c:#C93F8E"><span>فیزیک تصویر</span></div><small>فیزیک تصویر</small></div>
+    <div class="ph-bk-item"><div class="ph-bk" style="--c:#23945A"><span>زبان ارشد</span></div><small>زبان ارشد</small></div>
+    {% endfor %}
+  </div>
+</div></div>

@@ -1,0 +1,54 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div class="card" style="max-width: 650px; margin: 20px auto; padding: 28px; background: var(--body-bg, #fff); color: var(--body-fg, #111827); border-radius: 12px; border: 1px solid var(--hairline-color, #e5e7eb); box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
+  <h2 style="margin-top:0; color: var(--body-fg, #111827); font-size:20px; font-weight:800;">{{ title }}</h2>
+  <div style="background: var(--darkened-bg, #f8fafc); border: 1px solid var(--hairline-color, #e2e8f0); border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; font-size: 13.5px; line-height: 1.8; color: var(--body-fg, #1e293b);">
+    <p style="margin: 0;">
+      با تکمیل این فرم، ساختار کتاب در وضعیت <b>«پیش‌نویس اختصاصی (غیرعمومی)»</b> ایجاد شده و جنابعالی به عنوان مؤلف و مدیر محتوایی آن تعیین می‌شوید. در این وضعیت، دسترسی کامل برای تدوین سرفصل‌ها، نگارش درسنامه‌ها و بارگذاری بانک تست در اختیار شما خواهد بود.
+    </p>
+  </div>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <div style="margin-bottom: 18px;">
+      <label for="id_title" style="display:block; font-weight:700; margin-bottom:6px; color:var(--body-fg);">عنوان فارسی کتاب: <span style="color:#ef4444;">*</span></label>
+      <input type="text" name="title" id="id_title" required placeholder="مثلاً: ریاضی عمومی ۱ یا شیمی آلی پیشرفته" style="width:100%; box-sizing:border-box; padding:10px 12px; background:var(--darkened-bg, #f9fafb); color:var(--body-fg, #111); border:1px solid var(--hairline-color, #d1d5db); border-radius:8px; font-size:14px;">
+    </div>
+
+    <div style="margin-bottom: 18px;">
+      <label for="id_title_en" style="display:block; font-weight:700; margin-bottom:6px; color:var(--body-fg);">عنوان لاتین کتاب (اختیاری):</label>
+      <input type="text" name="title_en" id="id_title_en" dir="ltr" placeholder="Calculus I" style="width:100%; box-sizing:border-box; padding:10px 12px; background:var(--darkened-bg, #f9fafb); color:var(--body-fg, #111); border:1px solid var(--hairline-color, #d1d5db); border-radius:8px; font-size:14px;">
+    </div>
+
+    <div style="margin-bottom: 18px;">
+      <label for="id_author" style="display:block; font-weight:700; margin-bottom:6px; color:var(--body-fg);">نام مؤلف / استاد:</label>
+      <input type="text" name="author" id="id_author" placeholder="مثلاً: دکتر محمدی" style="width:100%; box-sizing:border-box; padding:10px 12px; background:var(--darkened-bg, #f9fafb); color:var(--body-fg, #111); border:1px solid var(--hairline-color, #d1d5db); border-radius:8px; font-size:14px;">
+    </div>
+
+    <div style="margin-bottom: 18px;">
+      <label for="id_about" style="display:block; font-weight:700; margin-bottom:6px; color:var(--body-fg);">معرفی و توضیح کوتاه کتاب:</label>
+      <textarea name="about" id="id_about" rows="3" placeholder="توضیح مختصر درباره محتوای درس و جامعه هدف..." style="width:100%; box-sizing:border-box; padding:10px 12px; background:var(--darkened-bg, #f9fafb); color:var(--body-fg, #111); border:1px solid var(--hairline-color, #d1d5db); border-radius:8px; font-size:14px;"></textarea>
+    </div>
+
+    <div style="margin-bottom: 22px; background: var(--darkened-bg, #f8fafc); padding: 16px 18px; border-radius: 10px; border: 1px dashed var(--hairline-color, #cbd5e1);">
+      <label for="id_initial_file" style="display:block; font-weight:700; margin-bottom:6px; color:var(--body-fg);">
+        بارگذاری مستقیم اولین فصل یا سرفصل (اختیاری):
+      </label>
+      <input type="file" name="initial_file" id="id_initial_file" accept=".md,.tex,.pptx,.zip" style="font-size:13px; color:var(--body-quiet-color); width:100%;">
+      <p style="margin: 8px 0 0; font-size: 12px; color: var(--body-quiet-color); line-height: 1.6;">
+        می‌توانید فایل سرفصل یا جزوه اول خود (با پسوند <code>.tex</code>، <code>.pptx</code>، <code>.md</code> یا <code>.zip</code>) را همین‌جا بارگذاری کنید تا خودکار ایجاد و تبدیل شود، یا بعداً در صفحه کتاب فایل‌ها را اضافه کنید.
+      </p>
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-top: 24px;">
+      <button type="submit" class="button" style="background: #10b981; color: white; padding: 10px 24px; border-radius: 8px; border: none; font-size:14.5px; font-weight: 800; cursor: pointer;">
+        ✓ ایجاد پیش‌نویس کتاب
+      </button>
+      <a href="{% url 'admin:catalog_book_changelist' %}" class="button" style="background: var(--darkened-bg, #f3f4f6); color: var(--body-fg, #374151); border: 1px solid var(--hairline-color); padding: 10px 18px; border-radius: 8px; text-decoration: none; font-size:14px; font-weight: 700;">
+        انصراف
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

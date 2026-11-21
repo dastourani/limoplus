@@ -1,0 +1,155 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+  .study-container { max-width: 1040px; margin: 0 auto; padding: 10px 0 30px; }
+  .study-hero { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; border-radius: 14px; padding: 22px 26px; margin-bottom: 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+  .study-hero h1 { margin: 0 0 6px; font-size: 21px; color: #38bdf8; }
+  .study-hero p { margin: 0; color: #94a3b8; font-size: 13.5px; }
+  .study-hero-actions { display: flex; gap: 10px; margin-top: 14px; }
+  .study-back-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #fff; text-decoration: none; font-size: 12.5px; font-weight: 700; border: 1px solid rgba(255,255,255,0.2); }
+  .study-back-btn:hover { background: rgba(255,255,255,0.22); color: #fff; }
+
+  .study-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .study-kpi { background: var(--darkened-bg); border-radius: 12px; padding: 14px 18px; border: 1px solid var(--hairline-color); }
+  .study-kpi span { font-size: 12px; color: var(--body-quiet-color); font-weight: 700; }
+  .study-kpi b { display: block; font-size: 24px; color: var(--body-fg); margin-top: 4px; font-weight: 800; }
+
+  .study-box { background: var(--body-bg); border: 1px solid var(--hairline-color); border-radius: 12px; padding: 18px 20px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
+  .study-box h2 { margin: 0 0 12px; font-size: 16px; font-weight: 800; color: var(--body-fg); }
+  .study-box p.desc { margin: 0 0 14px; font-size: 12.5px; color: var(--body-quiet-color); }
+
+  .study-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .study-table th { text-align: right; padding: 10px 12px; background: var(--darkened-bg); color: var(--body-quiet-color); font-weight: 700; border-bottom: 2px solid var(--hairline-color); }
+  .study-table td { padding: 11px 12px; border-bottom: 1px solid var(--hairline-color); vertical-align: middle; }
+  .study-table tr:last-child td { border-bottom: 0; }
+
+  .prog-bar-bg { background: var(--darkened-bg); border-radius: 999px; height: 8px; width: 100px; display: inline-block; overflow: hidden; vertical-align: middle; margin-inline-end: 8px; }
+  .prog-bar-fill { background: #10b981; height: 100%; border-radius: 999px; }
+
+  .badge-warn { display: inline-block; padding: 2px 8px; border-radius: 6px; background: #fef2f2; color: #dc2626; border: 1px solid #fee2e2; font-size: 11.5px; font-weight: 700; }
+  .badge-ok { display: inline-block; padding: 2px 8px; border-radius: 6px; background: #ecfdf5; color: #059669; border: 1px solid #d1fae5; font-size: 11.5px; font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="study-container" dir="rtl">
+  <div class="study-hero">
+    <h1>📊 آمار و گزارش پیشرفت مطالعه کتاب: {{ book.title }}</h1>
+    <p>دید تحلیلی و تجمیعی از وضعیت مطالعه، مدت زمان صرف‌شده و بازدهی یادگیری دانشجویان بر روی فصول کتاب</p>
+    <div class="study-hero-actions">
+      <a href="{% url 'admin:catalog_book_change' book.pk %}" class="study-back-btn">
+        ← بازگشت به صفحه مدیریت کتاب
+      </a>
+      <a href="?format=csv" class="study-back-btn" style="background:#0284c7; border-color:#38bdf8;">
+        📥 دریافت خروجی اکسل / CSV
+      </a>
+    </div>
+  </div>
+
+  <div class="study-kpis">
+    <div class="study-kpi">
+      <span>تعداد کل خوانندگان</span>
+      <b>{{ total_readers }} نفر</b>
+    </div>
+    <div class="study-kpi">
+      <span>تکمیل‌کنندگان کتاب</span>
+      <b>{{ completed_readers }} نفر</b>
+    </div>
+    <div class="study-kpi">
+      <span>مجموع ساعت مطالعه ثبت‌شده</span>
+      <b>{{ total_time }}</b>
+    </div>
+  </div>
+
+  <!-- جدول پیشرفت به تفکیک فصول -->
+  <div class="study-box">
+    <h2>📖 وضعیت مطالعه و پیشرفت به تفکیک فصول</h2>
+    <p class="desc">این جدول نشان می‌دهد چند نفر هر فصل را مطالعه کرده‌اند و میانگین زمانی که برای فهم مطالب اختصاص داده‌اند چقدر است.</p>
+
+    {% if chapter_stats %}
+    <table class="study-table">
+      <thead>
+        <tr>
+          <th>عنوان فصل</th>
+          <th>تعداد بخش‌ها</th>
+          <th>تعداد خوانندگان</th>
+          <th>خوانندگان کامل‌کرده</th>
+          <th>درصد پیشرفت کلاس</th>
+          <th>کل زمان صرف‌شده</th>
+          <th>میانگین مطالعه هر دانشجو</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ch in chapter_stats %}
+        <tr>
+          <td><b>{{ ch.title }}</b></td>
+          <td>{{ ch.sections_count }} بخش</td>
+          <td>{{ ch.readers }} نفر</td>
+          <td>{{ ch.done }} نفر</td>
+          <td>
+            <div class="prog-bar-bg">
+              <div class="prog-bar-fill" style="width: {{ ch.rate }}%;"></div>
+            </div>
+            <b>{{ ch.rate }}٪</b>
+          </td>
+          <td>{{ ch.total_time }}</td>
+          <td>{{ ch.avg_time }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="text-align:center; color:var(--body-quiet-color); margin:20px 0;">هنوز فصلی برای این کتاب ایجاد نشده است.</p>
+    {% endif %}
+  </div>
+
+  <!-- چالش‌برانگیزترین تست‌ها -->
+  <div class="study-box">
+    <h2>🎯 سؤالات و تست‌های چالش‌برانگیز (بیشترین نرخ اشتباه)</h2>
+    <p class="desc">تست‌هایی که درصد بالایی از دانشجویان به آن‌ها پاسخ اشتباه داده‌اند؛ مناسب برای ارائه توضیح مجدد در کلاس یا حل تمرین توسط TA.</p>
+
+    {% if hardest_questions %}
+    <table class="study-table">
+      <thead>
+        <tr>
+          <th>صورت تست / سوال</th>
+          <th>مبحث / بخش</th>
+          <th>تعداد پاسخ‌ها</th>
+          <th>درصد پاسخ درست</th>
+          <th>میزان خطا و دشواری</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for q in hardest_questions %}
+        <tr>
+          <td style="max-width:420px; line-height:1.6;"><b>#{{ q.id }}</b>: {{ q.stem }}</td>
+          <td><span style="font-size:12px; color:var(--body-quiet-color);">{{ q.chapter_or_section }}</span></td>
+          <td>{{ q.answer_count }} پاسخ</td>
+          <td><b style="color:{% if q.error_rate_num > 50 %}#ef4444{% else %}#eab308{% endif %};">{{ q.rate }}٪</b></td>
+          <td>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div class="prog-bar-bg" style="width:90px; background:rgba(239,68,68,0.15);">
+                <div class="prog-bar-fill" style="width: {{ q.error_rate_num }}%; background:#ef4444;"></div>
+              </div>
+              <span class="badge-warn" style="font-size:11px;">{{ q.error_rate }}٪ خطا</span>
+            </div>
+          </td>
+          <td>
+            <a href="{% url 'admin:learning_question_change' q.id %}" target="_blank" class="study-back-btn" style="background:var(--darkened-bg); color:var(--body-fg); border-color:var(--hairline-color); padding:4px 10px; font-size:11.5px;">
+              ویرایش تست ↗
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="text-align:center; color:var(--body-quiet-color); margin:20px 0;">داده‌های آماری کافی برای تست‌های این کتاب ثبت نشده است (حداقل ۳ پاسخ برای هر سوال).</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

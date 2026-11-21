@@ -1,0 +1,78 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .lp-login { max-width: 480px; margin: 24px auto; }
+  .lp-login h1 { margin-bottom: 8px; }
+  .lp-login .lp-login-card { background: var(--body-bg); border: 1px solid var(--hairline-color); border-radius: 12px; padding: 18px; margin: 14px 0; }
+  .lp-login .lp-login-card p { margin: 0 0 12px; }
+  .lp-login label { display: block; font-weight: 700; margin: 10px 0 4px; }
+  .lp-login input[type=text], .lp-login input[type=password], .lp-login input[type=tel] {
+    box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px;
+    border: 1px solid var(--border-color); border-radius: 8px; background: var(--body-bg); color: var(--body-fg);
+    font: inherit;
+  }
+  .lp-login button { margin-top: 12px; min-height: 40px; padding: 7px 14px; border: 0; border-radius: 8px;
+    background: #17201A; color: #F5C518; font: inherit; font-weight: 700; cursor: pointer; }
+  .lp-login button:hover { background: #29372e; }
+  .lp-login .lp-login-notice, .lp-login .lp-login-error { border-radius: 8px; padding: 10px 12px; margin: 12px 0; }
+  .lp-login .lp-login-notice { background: #e3f3e9; color: #1f6848; }
+  .lp-login .lp-login-error { background: #fdecea; color: #a31f1f; }
+  .lp-login details { margin-top: 14px; }
+  .lp-login summary { cursor: pointer; font-weight: 700; }
+  .lp-login .lp-login-help { color: var(--body-quiet-color); font-size: 12px; }
+  @media (max-width: 600px) { .lp-login { margin: 12px auto; } .lp-login .lp-login-card { padding: 14px; } }
+</style>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} login{% endblock %}
+
+{% block content %}
+<div id="content-main" class="lp-login" dir="rtl">
+  <h1>ورود به پنل اساتید و مدیریت</h1>
+  <p class="lp-login-help">ورود اساتید و همکاران با کد تأیید پیامکی انجام می‌شود.</p>
+
+  {% if notice %}<div class="lp-login-notice" role="status">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="lp-login-error" role="alert">{{ error }}</div>{% endif %}
+
+  <section class="lp-login-card" aria-labelledby="otp-login-heading">
+    <h2 id="otp-login-heading">ورود با پیامک</h2>
+    <form method="post" action="{{ login_url }}">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="send_otp">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label for="id_phone">شماره‌ی موبایل</label>
+      <input id="id_phone" type="tel" name="phone" value="{{ otp_phone }}" inputmode="tel" autocomplete="tel" dir="ltr" required>
+      <button type="submit">ارسال کد ورود</button>
+    </form>
+
+    {% if otp_phone %}
+      <form method="post" action="{{ login_url }}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="verify_otp">
+        <input type="hidden" name="phone" value="{{ otp_phone }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        <label for="id_code">کد پیامکی</label>
+        <input id="id_code" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" dir="ltr" maxlength="6" required>
+        <button type="submit">ورود به پنل</button>
+      </form>
+    {% endif %}
+  </section>
+
+  <details class="lp-login-card">
+    <summary>ورود اضطراری با گذرواژه (فقط مدیر کل)</summary>
+    <p class="lp-login-help">این مسیر برای بازیابی اضطراری مدیر کل است؛ گذرواژه‌ی کارکنان دیگر پذیرفته نمی‌شود.</p>
+    <form method="post" action="{{ login_url }}">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="password">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label for="id_username">شماره‌ی موبایل مدیر کل</label>
+      <input id="id_username" type="tel" name="username" inputmode="tel" autocomplete="username" dir="ltr" required>
+      <label for="id_password">گذرواژه</label>
+      <input id="id_password" type="password" name="password" autocomplete="current-password" dir="ltr" required>
+      <button type="submit">ورود اضطراری</button>
+    </form>
+  </details>
+</div>
+{% endblock %}

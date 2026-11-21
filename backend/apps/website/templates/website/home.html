@@ -1,0 +1,174 @@
+{% extends "website/base.html" %}{% load static site_icons %}
+{% block title %}لیموخوان، {{ s.tagline }}{% endblock %}
+{% block main %}
+<section class="hero">
+  <div class="wrap heroin">
+    <div class="herotext">
+      <span class="kicker">{{ s.audience }}</span>
+      <h1>{{ s.tagline }}</h1>
+      <p class="lead">{{ s.intro }}</p>
+      <div class="cta">
+        <a class="btn lemon" href="{% url 'website:download' %}">{% icon "download" 18 %}دانلود برای اندروید</a>
+        <a class="btn ghost" href="{{ app_url }}">{% icon "book-open" 18 %}خواندن در مرورگر (آیفون و کامپیوتر)</a>
+      </div>
+      {% if s.bazaar_url or s.myket_url %}<div class="cta stores-row">
+        {% if s.bazaar_url %}<a class="btn ghost" href="{{ s.bazaar_url }}">{% icon "download" 18 %}کافه‌بازار</a>{% endif %}
+        {% if s.myket_url %}<a class="btn ghost" href="{{ s.myket_url }}">{% icon "download" 18 %}مایکت</a>{% endif %}
+      </div>{% endif %}
+      <div class="ticks"><span>{% icon "circle-check" 16 %}فصل اول هر کتاب رایگان</span><span>{% icon "circle-check" 16 %}بدون اینترنت هم کار می‌کند</span></div>
+    </div>
+    {% include "website/_phone.html" %}
+  </div>
+</section>
+
+<section class="sec wrap first">
+  <h2>{{ s.features_title }}</h2>
+  <p class="sub">{{ s.features_sub }}</p>
+  <div class="grid4">
+    <div class="feat"><div class="ic">{% icon "book-open" 26 %}</div><b>{{ s.feat1_title }}</b><p>{{ s.feat1_body }}</p></div>
+    <div class="feat"><div class="ic">{% icon "list-checks" 26 %}</div><b>{{ s.feat2_title }}</b><p>{{ s.feat2_body }}</p></div>
+    <div class="feat"><div class="ic">{% icon "layers" 26 %}</div><b>{{ s.feat3_title }}</b><p>{{ s.feat3_body }}</p></div>
+    <div class="feat"><div class="ic">{% icon "chart-column" 26 %}</div><b>{{ s.feat4_title }}</b><p>{{ s.feat4_body }}</p></div>
+  </div>
+</section>
+
+{% if offers %}
+<section class="sec wrap offer-section" id="special-offers">
+  <div class="sechead">
+    <div>
+      <span class="offer-kicker">فرصت‌های فعال</span>
+      <h2>پیشنهادهای ویژه</h2>
+      <p class="sub">قیمت نهایی از کمپین فعال گرفته می‌شود؛ پیشنهادهای خرید در کارت‌های جداگانه و هم‌قد.</p>
+    </div>
+  </div>
+  <div class="offers-grid">
+    {% for offer in offers %}
+    <a class="offer-card" href="{{ offer.url }}">
+      <div class="offer-media">
+        {% if offer.image %}
+          <img src="{{ offer.image }}" alt="" width="1200" height="600" loading="lazy" decoding="async">
+        {% else %}
+          <div class="offer-art" aria-hidden="true">{% icon "tag" 30 %}<span>پیشنهاد لیموخوان</span></div>
+        {% endif %}
+        <span class="offer-badge">{{ offer.discount.percent }}٪ تخفیف</span>
+      </div>
+      <div class="offer-body">
+        <div class="offer-copy">
+          <h3 class="offer-title">{{ offer.title }}</h3>
+          {% if offer.subtitle %}<p class="offer-summary">{{ offer.subtitle }}</p>{% endif %}
+        </div>
+        <div class="offer-deal">
+          <span class="offer-product">{{ offer.discount.product_title }}</span>
+          <div class="offer-price-row">
+            <span>قیمت ویژه</span>
+            <strong>{{ offer.discount.price }}</strong>
+          </div>
+          <div class="offer-regular-row"><span>قیمت عادی</span><del>{{ offer.discount.regular_price }}</del></div>
+          <div class="offer-saving-row"><span class="offer-saving-badge">{{ offer.discount.percent }}٪ تخفیف</span><small>صرفه‌جویی {{ offer.discount.saving }}</small></div>
+        </div>
+        {% if offer.discount.end_date %}<p class="offer-expiry">{% icon "timer" 15 %} تا پایان {{ offer.discount.end_date }}</p>{% endif %}
+        <span class="btn dark wide offer-action">{{ offer.button }}</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if books %}
+<section class="sec wrap">
+  <div class="sechead"><div><h2>کتاب‌ها</h2><p class="sub">بر اساس رشته، فصل اول همه‌ی کتاب‌ها رایگان</p></div>
+    {% if majors|length > 1 %}<div class="chips" data-filter><button class="chip on" data-major="">همه</button>{% for m in majors %}<button class="chip" data-major="{{ m.slug }}">{{ m.name }}</button>{% endfor %}</div>{% endif %}
+  </div>
+  <div class="shelf">{% for c in books %}{% include "website/_book.html" %}{% endfor %}</div>
+  {% if more %}<p class="center"><a class="btn dark" href="{% url 'website:books' %}">همه‌ی کتاب‌ها</a></p>{% endif %}
+</section>
+{% endif %}
+
+<section class="band">
+  <div class="wrap bandin">
+    <div class="bandtext"><h2>{{ s.band_title }}</h2><p class="sub">{{ s.band_sub }}</p>
+      <ul class="checks"><li>{% icon "circle-check" 22 %}مرور زمان‌بندی‌شده‌ی فصل‌ها و کارت‌ها: فردا، یک هفته بعد، یک ماه بعد</li><li>{% icon "circle-check" 22 %}دفترچه‌ی اشتباهات: تست‌هایی که غلط زده‌ای تا تثبیت کامل برمی‌گردند</li><li>{% icon "circle-check" 22 %}حالت «فقط ۵ دقیقه وقت دارم»: مرور سریع در مترو، دانشگاه یا استراحت</li></ul>
+      {% if site_stats %}
+      <div class="home-stats">
+        {% for val, label in site_stats %}<div><b>{{ val }}</b><span>{{ label }}</span></div>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="bigl">
+      <div class="lemon-anim">{% include "website/_lemon.html" with size=170 %}<span class="lemon-shadow"></span></div>
+      <div><b>برش‌به‌برش</b><span>هر برش لیمو نشان‌دهنده‌ی پیشرفت واقعی تو در یک بخش از کتاب است</span></div>
+    </div>
+  </div>
+</section>
+
+{% if s.show_sample_test and home_sample %}
+{{ home_samples|json_script:'limo-home-samples' }}
+<section class="sec wrap narrow">
+  <div class="sechead">
+    <div><h2>یک تست واقعی را همین الان امتحان کن</h2><p class="sub">رشته‌ات را انتخاب کن تا تست‌های همان رشته را ببینی؛ گزینه را بزن تا پاسخ تشریحی باز شود</p></div>
+    <div class="cta">
+      {% if home_samples|length > 1 %}<button type="button" class="btn ghost-dark small" data-next-sample>{% icon "repeat" 15 %}تست تصادفی بعدی</button>{% endif %}
+      {% if home_sample.book_url %}<a class="btn dark small" data-sample-book-link href="{{ home_sample.book_url }}">از کتاب «{{ home_sample.book_title }}» ←</a>{% endif %}
+    </div>
+  </div>
+  {% if majors|length > 1 %}
+  <div class="chips" data-sample-filter style="margin-bottom: 14px">
+    <button type="button" class="chip on" data-major="">همه‌ی رشته‌ها</button>
+    {% for m in majors %}<button type="button" class="chip" data-major="{{ m.slug }}">{{ m.name }}</button>{% endfor %}
+  </div>
+  {% endif %}
+  <div class="feat sample" id="home-sample-box" data-id="{{ home_sample.id }}">
+    <div class="sample-head">
+      <span class="q-badge">تست تصادفی</span>
+      <span class="mut" data-sample-place>{% if home_sample.book_title %}{{ home_sample.book_title }}{% if home_sample.section %}، {{ home_sample.section }}{% endif %}{% endif %}</span>
+      <span class="src-chip" data-sample-src{% if not home_sample.source %} hidden{% endif %}>{{ home_sample.source }}</span>
+    </div>
+    <div class="stem" data-md="{{ home_sample.stem }}">{{ home_sample.stem }}</div>
+    <div class="choices">{% for c in home_sample.choices %}<button class="choice" data-choice="{{ c.id }}"><span class="cnum">{{ c.num }}</span><span class="ctext" data-md="{{ c.text }}">{{ c.text }}</span></button>{% endfor %}</div>
+    <div class="explain" hidden></div>
+  </div>
+</section>
+{% endif %}
+
+{% if editorial_banners or s.show_updates and updates %}
+<section class="sec wrap" id="latest-updates">
+  <div class="sechead"><div><h2>تازه‌های لیموخوان</h2><p class="sub">اطلاعیه‌ها و به‌روزرسانی‌های محتوای درسی</p></div></div>
+  {% if editorial_banners %}
+  <div class="grid2 editorial-grid">
+    {% for bn in editorial_banners %}
+    <a class="feat row banner-card" href="{{ bn.url }}">
+      <div class="ic" aria-hidden="true" style="margin:0">{% icon "bell" 24 %}</div>
+      <div class="grow"><b>{{ bn.title }}</b>{% if bn.subtitle %}<p>{{ bn.subtitle }}</p>{% endif %}</div>
+      <span class="btn lemon small">{{ bn.button }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if updates %}
+  <div class="grid2 update-grid">
+    {% for u in updates %}
+    <a class="feat row update-card" href="{{ u.book_url }}">
+      <div class="num" aria-hidden="true">{% icon "repeat" 18 %}</div>
+      <div class="grow">
+        <b>{{ u.book_title }}{% if u.place %}، {{ u.place }}{% endif %}</b>
+        <p>{{ u.text }}</p>
+      </div>
+      <span class="mut">{{ u.date }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="sec wrap">{% include "website/_prices.html" %}</section>
+
+{% if s.show_home_faq and faq %}
+<section class="sec wrap narrow">
+  <div class="sechead"><div><h2>پرسش‌های پرتکرار</h2><p class="sub">پاسخ کوتاه به پرسش‌های رایج داوطلبان</p></div><a class="btn dark small" href="{% url 'website:faq' %}">همه‌ی پرسش‌ها</a></div>
+  {% include "website/_faq.html" %}
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "website/base.html" %}
+{% load site_icons %}
+{% block title %}کتاب‌های لیموخوان{% endblock %}
+{% block description %}فهرست کتاب‌های لیموخوان بر اساس رشته: خلاصه، درسنامه، تست و فلش‌کارت.{% endblock %}
+{% block main %}
+<section class="sec wrap">
+  <div class="sechead"><div><h1 class="h2">کتاب‌ها</h1><p class="sub">فصل اول هر کتاب رایگان است</p></div>
+    {% if majors|length > 1 %}
+    <nav class="chips book-filters" aria-label="فیلتر کتاب‌ها بر اساس رشته">
+      <a class="chip{% if not selected_major %} on{% endif %}" href="{% url 'website:books' %}"{% if not selected_major %} aria-current="true"{% endif %}>همه</a>
+      {% for m in majors %}<a class="chip{% if selected_major == m.slug %} on{% endif %}" href="?major={{ m.slug }}"{% if selected_major == m.slug %} aria-current="true"{% endif %}>{{ m.name }}</a>{% endfor %}
+    </nav>
+    {% endif %}
+  </div>
+  <div class="book-index">
+    <div class="book-index-viewport">
+      <button class="book-index-scroll" type="button" data-shelf-scroll hidden aria-label="پیمایش به سمت کتاب‌های پنهان">
+        {% icon "chevron-left" 20 %}
+      </button>
+      <div class="shelf book-index-track" role="region" aria-label="ردیف کتاب‌های این صفحه" tabindex="0">
+        {% for c in books %}{% include "website/_book.html" %}{% empty %}<p class="sub">هنوز کتابی منتشر نشده است.</p>{% endfor %}
+      </div>
+    </div>
+    <div class="book-index-footer">
+      {% if page_summary %}<span class="book-index-count" aria-live="polite">{{ page_summary }}</span>{% endif %}
+      {% if page_obj.has_previous or page_obj.has_next %}
+      <nav class="book-index-pagination" aria-label="صفحه‌های فهرست کتاب‌ها">
+        {% if page_obj.has_previous %}<a class="btn small ghost-dark" href="?{% if selected_major %}major={{ selected_major }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">صفحه‌ی قبل</a>{% endif %}
+        {% if page_obj.has_next %}<a class="btn small lemon" href="?{% if selected_major %}major={{ selected_major }}&amp;{% endif %}page={{ page_obj.next_page_number }}">نمایش کتاب‌های بیشتر</a>{% endif %}
+      </nav>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

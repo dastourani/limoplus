@@ -1,0 +1,159 @@
+{% extends "website/base.html" %}{% load site_icons %}
+{% block title %}{{ b.title }}، لیموخوان{% endblock %}
+{% block description %}{% if b.about %}{{ b.about|striptags|truncatechars:160 }}{% else %}{{ b.title }} در لیموخوان: خلاصه، درسنامه، تست با پاسخ تشریحی و فلش‌کارت؛ فصل اول رایگان.{% endif %}{% endblock %}
+{% block og_title %}{{ b.title }}{% endblock %}
+{% block main %}
+<section class="hero small">
+  <div class="wrap bookhero">
+    <div class="cover" data-cover="{{ cover }}" data-w="200" style="width:200px"><div class="cover-ph"><b>{{ b.title }}</b></div></div>
+    <div class="herotext">
+      {% if majors %}<span class="kicker">{% for m in majors %}{{ m.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</span>{% endif %}
+      <h1>{{ b.title }}</h1>
+      {% if b.title_en %}<div class="en" dir="ltr">{{ b.title_en }}</div>{% endif %}
+      {% if b.author %}<p class="lead">{{ b.author }}{% if b.edition %}، {{ b.edition }}{% endif %}</p>{% endif %}
+      <div class="stats">
+        {% for n, l in stats %}<div><b>{{ n }}</b><span>{{ l }}</span></div>{% endfor %}
+        {% if updated_on %}<div><b>{{ updated_on }}</b><span>آخرین به‌روزرسانی</span></div>{% endif %}
+        {% if is_preparing and release_estimate %}<div><b>{{ release_estimate }}</b><span>زمان حدودی انتشار</span></div>{% endif %}
+      </div>
+      <div class="cta">
+        {% if is_preparing %}
+          <div class="tip-wrap">
+            <a class="btn lemon" href="{{ open_url }}">{% icon "bell" 18 %}به‌زودی؛ در اپ «خبرم کن» را بزن</a>
+            <div class="tip-bubble">
+              <b>زمان حدودی انتشار: {{ release_estimate|default:"به‌زودی" }}</b>
+              <span>با ثبت «خبرم کن» در اپلیکیشن یا وب‌اپ لیموخوان، به محض انتشار فصل اول رایگان با پیامک به شما اطلاع می‌دهیم.</span>
+            </div>
+          </div>
+        {% else %}
+          {% if first_free %}<a class="btn lemon" href="{{ open_url }}">شروع رایگان از فصل {{ first_free.number }}</a>{% endif %}
+          {% if product_status.state == 'paid' %}
+            {% if discount %}
+            <div class="book-deal">
+              <div><span>قیمت عادی</span><s>{{ regular_price }}</s></div>
+              <div class="deal-final">
+                <span>قیمت ویژه</span>
+                <span class="deal-final-value"><strong>{{ price }}</strong><span class="deal-chip">{{ discount.percent }}٪ تخفیف</span></span>
+              </div>
+              <small>صرفه‌جویی {{ discount.saving }}{% if discount.end_date %} · تا {{ discount.end_date }}{% endif %}</small>
+            </div>
+            <a class="btn lemon" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب با قیمت ویژه</a>
+            {% else %}<a class="btn ghost" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب، {{ price }}</a>{% endif %}
+            {% if sample_label %}<span class="book-sample-note">{{ sample_label }}</span>{% endif %}
+          {% elif product_status.state == 'unpriced' %}
+            <span class="book-sample-note">قیمت نسخه‌ی کامل هنوز تعیین نشده است.</span>
+          {% elif product_status.state == 'free' and not first_free %}
+            <a class="btn lemon" href="{{ open_url }}">شروع رایگان</a>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+<section class="sec wrap twocol">
+  <div>
+    {% if about %}
+    <div class="about-card" data-fold>
+      <div class="card-head">{% icon "book-open" 20 %}<h2>درباره‌ی کتاب</h2></div>
+      <div class="about about-body" data-md="{{ about }}"><p>{{ about|linebreaksbr }}</p></div>
+      <button type="button" class="fold-btn" hidden>نمایش کامل معرفی کتاب ▾</button>
+    </div>
+    {% endif %}
+    {% if chapters %}
+    <div class="sechead"><div><h2>سرفصل‌ها و ساختار درس</h2>{% if first_free %}<p class="sub">روی هر فصل بزن تا بخش‌ها، درسنامه‌ها و تست‌هایش را ببینی</p>{% endif %}</div></div>
+    <div class="ch-list">
+    {% for ch in chapters %}
+      <details class="ch-box"{% if forloop.first %} open{% endif %}>
+        <summary class="feat row ch-sum">
+          <div class="num">{{ ch.number }}</div>
+          <div class="grow">
+            <b>فصل {{ ch.number }}: {{ ch.title }}</b>
+            <span class="mut">{{ ch.sections }} بخش{% if ch.tests %}، {{ ch.tests }} تست{% endif %}{% if ch.cards %}، {{ ch.cards }} فلش‌کارت{% endif %}</span>
+          </div>
+          {% if ch.free %}<span class="tagbtn free">رایگان</span>{% else %}<span class="mut">{% icon "lock" 18 %}</span>{% endif %}
+        </summary>
+        {% if ch.section_list or ch.has_overview %}
+        <div class="sec-list">
+          {% if ch.has_overview %}
+          <a class="sec-row" href="{{ ch.overview_url }}">
+            <span class="sec-num">مقدمه</span>
+            <span class="sec-title">مقدمه‌ی فصل {{ ch.number }}</span>
+            {% if ch.free %}<span class="sec-go">مطالعه ←</span>{% endif %}
+          </a>
+          {% endif %}
+          {% for s in ch.section_list %}
+          <a class="sec-row" href="{{ s.url }}">
+            <span class="sec-num">{{ ch.number }}&rlm;-&rlm;{{ s.number }}</span>
+            <span class="sec-title">{{ s.title }}</span>
+            <span class="sec-badges">
+              {% if s.has_summary %}<span class="pill">درسنامه + چکیده</span>{% else %}<span class="pill">درسنامه</span>{% endif %}
+              {% if s.tests %}<span class="pill">{{ s.tests }} تست</span>{% endif %}
+              {% if s.cards %}<span class="pill">{{ s.cards }} کارت</span>{% endif %}
+            </span>
+            {% if s.free %}<span class="sec-go">مطالعه ←</span>{% else %}<span class="mut">{% icon "lock" 14 %}</span>{% endif %}
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </details>
+    {% endfor %}
+    </div>
+    {% elif is_preparing %}
+    <div class="about-card">
+      <div class="card-head">
+        {% icon "bell" 20 %}<h2>این کتاب در حال تدوین و آماده‌سازی است</h2>
+        {% if release_estimate %}<span class="src-chip">انتشار: {{ release_estimate }}</span>{% endif %}
+      </div>
+      <p class="about">محتوای درسنامه، چکیده، تست‌های طبقه‌بندی‌شده و فلش‌کارت‌های کتاب «{{ b.title }}» در حال نگارش و بازبینی نهایی است.{% if release_estimate %} زمان پیش‌بینی‌شده برای انتشار این کتاب <b>{{ release_estimate }}</b> است.{% endif %} با زدن دکمه‌ی <b>«خبرم کن»</b> در اپلیکیشن لیموخوان، به محض انتشار کتاب با پیامک به شما اطلاع می‌دهیم.</p>
+      <div class="grid2" style="margin-top: 18px; gap: 14px">
+        <div class="feat" style="padding: 16px"><b>{% icon "book-open" 18 %} درسنامه و چکیده‌ی دوحالته</b><p>کادرهای تعریف، فرمول، مثال‌های شماره‌دار و چکیده‌ی مرور سریع هر بخش.</p></div>
+        <div class="feat" style="padding: 16px"><b>{% icon "list-checks" 18 %} بانک تست با پاسخ تشریحی</b><p>تست‌های کنکورهای سال‌های گذشته با پاسخ تشریحی گام‌به‌گام و دفترچه‌ی اشتباهات.</p></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div>
+    {% if samples %}
+    <h2>تست‌های نمونه با پاسخ تشریحی</h2><p class="sub">یک گزینه را انتخاب کن تا تصحیح شود و درسنامه‌ی پاسخ باز شود</p>
+    <div id="samples">
+      {% for q in samples %}
+      <div class="feat sample" data-id="{{ q.id }}">
+        <div class="sample-head">
+          <span class="q-badge">تست {{ q.number }}</span>
+          {% if q.section %}<span class="mut">{{ q.section }}</span>{% endif %}
+          {% if q.source %}<span class="src-chip">{{ q.source }}</span>{% endif %}
+        </div>
+        <div class="stem" data-md="{{ q.stem }}">{{ q.stem }}</div>
+        <div class="choices">{% for c in q.choices %}<button class="choice" data-choice="{{ c.id }}"><span class="cnum">{{ c.num }}</span><span class="ctext" data-md="{{ c.text }}">{{ c.text }}</span></button>{% endfor %}</div>
+        <div class="explain" hidden></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% elif is_preparing %}
+    <div class="feat big">
+      <div class="ic">{% icon "bell" 26 %}</div>
+      <b>وقتی منتشر شد باخبر شو</b>
+      {% if release_estimate %}<p style="margin-bottom: 8px"><span class="q-badge">زمان حدودی انتشار: {{ release_estimate }}</span></p>{% endif %}
+      <p style="margin-bottom: 16px">در اپلیکیشن یا نسخه‌ی وب لیموخوان وارد صفحه‌ی این کتاب شو و دکمه‌ی «خبرم کن» را بزن تا به محض باز شدن فصل اول رایگان، پیامک دریافت کنی.</p>
+      <div class="tip-wrap" style="width:100%">
+        <a class="btn lemon wide" style="margin-top: 0" href="{{ open_url }}">{% icon "bell" 18 %}ثبت «خبرم کن» در لیموخوان</a>
+        <div class="tip-bubble">
+          <b>زمان حدودی انتشار: {{ release_estimate|default:"به‌زودی" }}</b>
+          <span>پیامک اطلاع‌رسانی فقط یک بار و دقیقاً در لحظه‌ی انتشار کتاب برای شما ارسال می‌شود.</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    {% if not is_preparing %}
+    <a class="btn dark wide" href="{{ open_url }}">{% icon "book-open" 18 %}باز کردن کتاب در لیموخوان</a>
+    {% endif %}
+  </div>
+</section>
+{% if related_books %}
+<section class="sec wrap">
+  <div class="sechead"><div><h2>کتاب‌های آماده‌ی مطالعه</h2><p class="sub">فصل اول همه‌ی این کتاب‌ها همین الان رایگان باز است</p></div></div>
+  <div class="shelf">{% for c in related_books %}{% include "website/_book.html" %}{% endfor %}</div>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

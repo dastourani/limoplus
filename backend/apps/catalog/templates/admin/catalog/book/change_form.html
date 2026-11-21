@@ -1,0 +1,385 @@
+{% extends "admin/change_form.html" %}
+{% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
+{% block object-tools-items %}
+  {% if original %}
+    <li><a href="{% url 'admin:catalog_book_inbox' original.pk %}" style="background:#f59e0b;color:#1e293b;font-weight:800;" title="میز کار موقت و صندوق تست‌های اختصاصی همین کتاب برای بارگذاری دسته‌ای تست‌ها بدون تأثیر بر فصول کتاب">📥 صندوق تست کتاب</a></li>
+    {% if can_view_study %}
+      <li><a href="{% url 'admin:catalog_book_study_analytics' original.pk %}" style="background:#0284c7;color:#fff;font-weight:700;">📊 آمار مطالعه کلاس</a></li>
+    {% endif %}
+    <li><a href="{% url 'admin:catalog_book_export' original.pk %}">دریافت کل کتاب (Markdown ZIP)</a></li>
+    <li><a href="{% url 'admin:catalog_book_tex_export' original.pk %}" style="font-weight:700;" title="پروژه چندفصلی کامل LaTeX به همراه تصاویر و فایل تنظیمات">📥 خروجی کامل LaTeX کتاب</a></li>
+    {% if request.user.email and request.user.is_email_verified %}
+      <li><a href="{% url 'admin:catalog_book_email_export' original.pk %}" title="ارسال فایل زیپ کامل کتاب به ایمیل شما">📧 ارسال کل کتاب به ایمیل</a></li>
+    {% endif %}
+    {% if can_request_publication %}<li><a href="{% url 'admin:website_publicationrequest_add' %}?book={{ original.pk }}">درخواست بازبینی انتشار عمومی</a></li>{% endif %}
+    {% if can_request_group_access %}<li><a href="{% url 'admin:website_bookaccessrequest_add' %}?book={{ original.pk }}">پیشنهاد دسترسی گروهی</a></li>{% endif %}
+    {% if can_manage_access and original.waitlist.exists %}<li><a href="{% url 'admin:catalog_book_waitlist_notify' original.pk %}">خبر دادن به منتظران «خبرم کن»</a></li>{% endif %}
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
+{% block content %}
+{{ block.super }}
+{{ majors_json|json_script:"lp-majors" }}
+{{ drawing_json|json_script:"lp-drawing" }}
+{% if original %}
+<div class="lp chapters-box" id="publish">
+  <h2>انتشار</h2>
+  {% if publish.can_publish %}
+    <p class="hint">انتشار یعنی کتاب در اپ دیده شود. با انتشار، همه‌ی فصل‌های کتاب هم منتشر می‌شوند
+      (کتاب منتشرشده با فصل‌های پیش‌نویس، در اپ فهرستی خالی نشان می‌دهد).</p>
+    {% if book.is_published %}
+      <p class="lp-ok">✓ این کتاب الآن در اپ دیده می‌شود.</p>
+      <form method="post" action="{% url 'admin:catalog_book_publish' original.pk %}">{% csrf_token %}
+        <input type="hidden" name="value" value="0">
+        <button class="btn small danger" type="submit">از انتشار خارج کن</button>
+        <span class="hint">متن پاک نمی‌شود؛ فقط از اپ پنهان می‌شود.</span>
+      </form>
+    {% else %}
+      <p class="hint">این کتاب پیش‌نویس است و در اپ دیده نمی‌شود.</p>
+      <form method="post" action="{% url 'admin:catalog_book_publish' original.pk %}">{% csrf_token %}
+        <input type="hidden" name="value" value="1">
+        <button class="btn primary" type="submit">انتشار کتاب</button>
+      </form>
+    {% endif %}
+  {% else %}
+    <p class="hint">{{ publish.why }}</p>
+    <div style="margin-top:14px; padding:14px 16px; background:var(--darkened-bg); border-radius:10px; border:1px solid var(--hairline-color); font-size:13px; line-height:1.75;">
+      <div style="margin-bottom:10px; color:var(--body-fg);">
+        <b>دسترسی دانشجویان دوره:</b> شما می‌توانید در هر مرحله از نگارش، دسترسی به این اثر را صرفاً برای دانشجویان کلاس خود فعال فرمایید. دانشجویان منتخب (چه پیش‌تر در سامانه لیموخوان عضویت داشته باشند و چه کاربر جدید باشند) بلافاصله پس از ورود به وب‌اپلیکیشن یا نرم‌افزار، کتاب را در کتابخانه شخصی خود مشاهده خواهند کرد، در حالی که این اثر در ویترین و جستجوی عمومی سامانه برای سایر کاربران نمایش داده نخواهد شد.
+        {% if can_request_group_access %}
+          <div style="margin-top:6px;">
+            <a href="{% url 'admin:website_bookaccessrequest_add' %}?book={{ original.pk }}" class="btn small" style="font-weight:700;">👥 ثبت شماره‌های دانشجویان دوره</a>
+          </div>
+        {% endif %}
+      </div>
+      <div style="border-top:1px solid var(--hairline-color); padding-top:10px; color:var(--body-fg);">
+        <b>انتشار در ویترین عمومی لیمو:</b> در صورتی که تمایل دارید کتاب برای عموم مخاطبان کشور عرضه و قابل خرید/مطالعه شود، می‌توانید پس از تکمیل محتوا، از طریق دکمه «درخواست بازبینی انتشار عمومی»، اثر را برای ارزیابی و تأیید نهایی به شورای بررسی ارسال فرمایید.
+      </div>
+    </div>
+    {% if can_request_publication %}
+      <div style="margin-top:14px; padding:12px 14px; background:var(--darkened-bg); border-radius:8px; border:1px solid var(--hairline-color);">
+        {% if publication_request %}
+          <div style="margin-bottom:8px;">
+            <b>وضعیت آخرین درخواست بازبینی:</b>
+            <span class="lp-badge {% if publication_request.status == 'approved' %}lp-b-green{% elif publication_request.status == 'pending' %}lp-b-yellow{% elif publication_request.status == 'needs_info' %}lp-b-blue{% else %}lp-b-red{% endif %}">
+              {{ publication_request.get_status_display }}
+            </span>
+            {% if publication_request.review_note %}
+              <div style="margin-top:6px; font-size:12.5px; color:var(--body-fg);">
+                <b>توضیح مدیر کل:</b> {{ publication_request.review_note }}
+              </div>
+            {% endif %}
+          </div>
+        {% endif %}
+        <a href="{% url 'admin:catalog_book_request_publication' original.pk %}" class="btn primary" style="display:inline-block;">
+          📨 ارسال / به‌روزرسانی درخواست بازبینی و انتشار عمومی برای مدیر کل
+        </a>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+<div class="lp chapters-box" id="check">
+  <h2>بررسی کتاب</h2>
+  {% if health %}
+    <p class="hint">این‌ها باعث می‌شوند چیزی از کتاب در اپ دیده نشود:</p>
+    <ul class="lp-health">
+    {% for h in health %}
+      <li class="{{ h.level }}"><span>{{ h.text }}</span>
+        {% if can_manage_access and h.fix %}<form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+          <input type="hidden" name="chapter" value="{{ h.fix.chapter }}"><input type="hidden" name="action" value="publish"><input type="hidden" name="value" value="1">
+          <button class="btn small primary" type="submit">درست کن (منتشر شود)</button></form>{% endif %}
+      </li>
+    {% endfor %}
+    </ul>
+  {% else %}
+    <p class="lp-ok">✓ مشکلی پیدا نشد؛ همه‌ی فصل‌ها و بخش‌های منتشرشده در اپ دیده می‌شوند. (این بررسی درباره‌ی رایگان یا پولی بودن نیست.)</p>
+  {% endif %}
+</div>
+<div class="lp chapters-box" id="chapters">
+  <h2>فصل‌های کتاب</h2>
+  <p class="hint">ترتیب این فهرست، ترتیب فصل‌ها در اپ است. «رایگان» یعنی کاربر بدون خرید هم این فصل را می‌خواند.
+    فصل منتشرنشده در اپ دیده نمی‌شود. بایگانی یعنی پنهان شدن، نه پاک شدن.</p>
+  <table class="lp-table">
+    <thead><tr><th>#</th><th>فصل</th><th>بخش</th><th>تست</th><th>فلش‌کارت</th><th>رایگان</th><th>منتشر</th><th></th></tr></thead>
+    <tbody>
+    {% for c in chapters %}
+      <tr{% if c.node.is_archived %} style="opacity:.5"{% endif %}>
+        <td>{{ c.node.position|default:"" }}</td>
+        <td>
+          {% if can_manage_access or not c.node.is_published and not c.node.is_archived %}<a href="{% url 'admin:catalog_chapter_manager' c.node.pk %}"><b>{{ c.node.title }}</b></a>{% else %}<b>{{ c.node.title }}</b>{% endif %}
+          <span class="hint">{{ c.node.slug }}</span>
+          {% if c.node.is_archived %}<span class="pill warn">بایگانی</span>{% endif %}
+          {% if not can_manage_access and c.node.is_published %}<span class="pill warn">برای تغییر منتشرشده، مدیر کل</span>{% endif %}
+        </td>
+        <td>{{ c.sections }}{% if c.drafts and not c.node.is_archived %}<br><span class="pill warn" title="این بخش‌ها در اپ دیده نمی‌شوند">{{ c.drafts }} پیش‌نویس</span>{% endif %}</td><td>{{ c.questions }}</td><td>{{ c.flashcards }}</td>
+        <td>
+          {% if can_manage_access %}
+            <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+              <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="free">
+              <input type="hidden" name="value" value="{% if c.node.is_free %}0{% else %}1{% endif %}">
+              <button class="btn small" type="submit" title="عوض کردن">{% if c.node.is_free %}✓ رایگان{% else %}پولی{% endif %}</button></form>
+          {% else %}{% if c.node.is_free %}رایگان{% else %}پولی{% endif %}{% endif %}
+        </td>
+        <td>
+          {% if can_manage_access %}
+            <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+              <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="publish">
+              <input type="hidden" name="value" value="{% if c.node.is_published %}0{% else %}1{% endif %}">
+              <button class="btn small" type="submit" title="عوض کردن">{% if c.node.is_published %}✓ منتشر{% else %}پیش‌نویس{% endif %}</button></form>
+          {% else %}{% if c.node.is_published %}منتشر{% else %}پیش‌نویس{% endif %}{% endif %}
+        </td>
+        <td class="row" style="gap:4px">
+          {% if can_manage_access or not c.node.is_published and not c.node.is_archived %}<a class="btn small primary" href="{% url 'admin:catalog_chapter_manager' c.node.pk %}">مدیریت فصل</a>{% endif %}
+          {% if can_manage_access %}
+            <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+              <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="up">
+              <button class="btn small icon" type="submit" title="بالا">▲</button></form>
+            <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+              <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="down">
+              <button class="btn small icon" type="submit" title="پایین">▼</button></form>
+          {% endif %}
+          <a class="btn small" href="{% url 'admin:catalog_chapter_export' c.node.pk %}">دریافت فایل</a>
+          <a class="btn small" href="{% url 'admin:catalog_chapter_tex' c.node.pk %}"
+             title="همین فصل برای Overleaf: فایل .tex و تصویرها">📥 .tex</a>
+          {% if request.user.email and request.user.is_email_verified %}
+            <a class="btn small" href="{% url 'admin:catalog_chapter_email_tex' c.node.pk %}"
+               title="ارسال فایل .tex این فصل به ایمیل شما">📧 ایمیل TeX</a>
+          {% endif %}
+          {% if can_manage_access %}
+            <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}
+              <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="archive">
+              <input type="hidden" name="value" value="{% if c.node.is_archived %}0{% else %}1{% endif %}">
+              <button class="btn small {% if not c.node.is_archived %}danger{% endif %}" type="submit">{% if c.node.is_archived %}بازگرداندن{% else %}بایگانی{% endif %}</button></form>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8">هنوز فصلی ندارد.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="row" style="margin-top:16px;align-items:flex-start;gap:20px">
+    <form class="cm-card" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}" style="flex:1;min-width:300px">{% csrf_token %}
+      <input type="hidden" name="action" value="new">
+      <b>فصل تازه (خالی)</b>
+      <div class="row" style="margin-top:8px">
+        <div class="grow"><label class="f">عنوان</label><input type="text" name="title" required></div>
+        <div style="width:90px"><label class="f">شماره</label><input type="text" name="number" placeholder="بعدی"></div>
+        <div style="width:160px"><label class="f">شناسه (لاتین)</label><input type="text" name="slug" dir="ltr" required placeholder="bb-ch3"></div>
+      </div>
+      <button class="btn primary" type="submit" style="margin-top:10px">ساختن و باز کردن</button>
+    </form>
+    <div class="cm-card" style="flex:1;min-width:300px">
+      <b>فصل از فایل</b>
+      <p class="hint">فصل تازه یا به‌روزرسانی یک فصل با فایل <code>chapter.md</code> یا ZIP. قبل از اعمال، تغییرات را نشان می‌دهد.</p>
+      <a class="btn primary" href="{% url 'admin:catalog_book_import' original.pk %}">انتخاب فایل</a>
+    </div>
+  </div>
+</div>
+
+<div class="lp chapters-box" id="assistants" style="margin-top:24px;">
+  <h2>👥 دستیاران و همکاران آموزشی (TA)</h2>
+  <p class="hint">دستیاران آموزشی می‌توانند در تایپ درسنامه‌ها، مدیریت تست‌ها یا بررسی گزارش‌های دانشجویان به شما کمک کنند. برای امنیت کتاب، مجوزهای حساس (مانند انتشار یا فروش) فقط در اختیار استاد و مدیر کل است.</p>
+
+  <form class="cm-card" method="post" action="{% url 'admin:catalog_book_assistants_action' original.pk %}" style="margin-top:12px; padding:16px;">{% csrf_token %}
+    <input type="hidden" name="action" value="add">
+    <b>+ افزودن یا به‌روزرسانی دسترسی دستیار (TA)</b>
+    <div class="row" style="margin-top:10px; gap:16px; align-items:flex-start; flex-wrap:wrap;">
+      <div style="width:180px;">
+        <label class="f">شماره موبایل دستیار</label>
+        <input type="text" name="phone" dir="ltr" required placeholder="09121234567" style="width:100%;">
+      </div>
+      <div class="grow" style="min-width:220px;">
+        <label class="f">یادداشت استاد (اختیاری)</label>
+        <input type="text" name="note" maxlength="200" placeholder="مثلاً حل تمرین فصل ۱ و ۲" style="width:100%;">
+      </div>
+    </div>
+
+    <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:18px; background:var(--darkened-bg); padding:10px 14px; border-radius:8px;">
+      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:700;">
+        <input type="checkbox" name="can_edit_content" value="1" checked>
+        <span>✏️ ویرایش محتوا و درسنامه‌ها</span>
+      </label>
+      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:700;">
+        <input type="checkbox" name="can_view_reports" value="1" checked>
+        <span>🚩 مشاهده گزارش اشکالات دانشجویان</span>
+      </label>
+      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:700;">
+        <input type="checkbox" name="can_view_aggregate_study" value="1">
+        <span>📊 مشاهده آمار تجمیعی مطالعه کلاس</span>
+      </label>
+    </div>
+
+    <button class="btn primary" type="submit" style="margin-top:12px;">ثبت دستیار آموزشی</button>
+  </form>
+
+  {% if assistants %}
+  <table class="lp-table" style="margin-top:14px; width:100%;">
+    <thead>
+      <tr>
+        <th>همکار / دستیار</th>
+        <th>شماره موبایل</th>
+        <th>دسترسی‌های فعال</th>
+        <th>یادداشت</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in assistants %}
+      <tr>
+        <td>
+          <b>{{ a.name }}</b>
+          {% if a.is_self %}<span class="lp-badge lp-b-blue" style="margin-inline-start:4px;">شما (استاد)</span>{% endif %}
+        </td>
+        <td dir="ltr" style="text-align:right;">{{ a.phone }}</td>
+        <td>
+          <div class="lp-badges">
+            {% if a.can_edit_content %}<span class="lp-badge lp-b-green">ویرایش محتوا</span>{% endif %}
+            {% if a.can_view_reports %}<span class="lp-badge lp-b-yellow">گزارش اشکالات</span>{% endif %}
+            {% if a.can_view_aggregate_study %}<span class="lp-badge lp-b-blue">آمار مطالعه</span>{% endif %}
+            {% if a.can_publish %}<span class="lp-badge lp-b-green">ناشر</span>{% endif %}
+          </div>
+        </td>
+        <td style="color:var(--body-quiet-color); font-size:12px;">{{ a.note|default:"—" }}</td>
+        <td>
+          {% if not a.is_self %}
+          <form class="inline" method="post" action="{% url 'admin:catalog_book_assistants_action' original.pk %}" onsubmit="return confirm('آیا از حذف دسترسی این دستیار به این کتاب اطمینان دارید؟');">{% csrf_token %}
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="editor_id" value="{{ a.pk }}">
+            <button class="btn small danger" type="submit">حذف دسترسی</button>
+          </form>
+          {% else %}
+          <span style="color:var(--body-quiet-color); font-size:11px;">مالک اصلی</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if has_real_assistants %}
+  <div id="team-notes" style="margin-top:24px; padding-top:18px; border-top:1px dashed var(--hairline-color);">
+    <h3 style="margin:0 0 6px; font-size:15px; font-weight:800; color:var(--body-fg);">
+      📝 تخته یادداشت و هماهنگی با دستیاران
+    </h3>
+    <p class="hint" style="margin:0 0 12px;">
+      این یادداشت‌ها فقط برای شما و دستیاران این کتاب قابل مشاهده است (جهت تعیین وظایف، پیگیری تایپ تست‌ها یا حل تمرین).
+    </p>
+
+    <form class="cm-card row" method="post" action="{% url 'admin:catalog_book_team_tasks_action' original.pk %}" style="align-items:flex-end; gap:10px; flex-wrap:wrap; padding:12px 14px;">{% csrf_token %}
+      <input type="hidden" name="action" value="add">
+      <div class="grow" style="min-width:260px;">
+        <label class="f" style="font-weight:700;">+ افزودن یادداشت / وظیفه جدید برای تیم:</label>
+        <input type="text" name="text" maxlength="300" required placeholder="مثلاً: آقای احمدی لطفاً پاسخ تست‌های فصل ۲ را تا فردا بررسی کنید" style="width:100%; margin-top:4px;">
+      </div>
+      <button class="btn primary" type="submit" style="white-space:nowrap;">ثبت یادداشت</button>
+    </form>
+
+    {% if team_tasks %}
+    <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
+      {% for task in team_tasks %}
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--darkened-bg); border-radius:8px; border:1px solid var(--hairline-color); {% if task.is_done %}opacity:0.65; text-decoration:line-through;{% endif %}">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <form class="inline" method="post" action="{% url 'admin:catalog_book_team_tasks_action' original.pk %}">{% csrf_token %}
+            <input type="hidden" name="action" value="toggle">
+            <input type="hidden" name="task_id" value="{{ task.pk }}">
+            <input type="checkbox" onchange="this.form.submit();" {% if task.is_done %}checked{% endif %} title="تغییر وضعیت انجام">
+          </form>
+          <div>
+            <span style="font-size:13.5px; font-weight:700; color:var(--body-fg);">{{ task.text }}</span>
+            <div style="font-size:11px; color:var(--body-quiet-color); margin-top:2px;">
+              توسط: {{ task.author.full_name|default:task.author.phone }} · {{ task.created_at|date:"Y-m-d H:i" }}
+            </div>
+          </div>
+        </div>
+        <form class="inline" method="post" action="{% url 'admin:catalog_book_team_tasks_action' original.pk %}" onsubmit="return confirm('آیا از حذف این یادداشت اطمینان دارید؟');">{% csrf_token %}
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="task_id" value="{{ task.pk }}">
+          <button class="btn small" type="submit" style="color:#ef4444; background:none; border:none; padding:2px 6px; cursor:pointer;" title="حذف یادداشت">✕</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p style="margin:10px 0 0; font-size:12px; color:var(--body-quiet-color); font-style:italic;">هنوز یادداشتی ثبت نشده است.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if assistant_audit_logs %}
+  <div id="assistants-audit" style="margin-top:24px; padding-top:18px; border-top:1px dashed var(--hairline-color);">
+    <h3 style="margin:0 0 6px; font-size:15px; font-weight:800; color:var(--body-fg);">
+      📜 تاریخچه و لاگ تغییرات دستیاران (Audit Trail)
+    </h3>
+    <p class="hint" style="margin:0 0 12px;">
+      ثبت خودکار کلیه عملیات‌های افزودن، ویرایش دسترسی‌ها یا حذف دستیاران این کتاب جهت ممیزی و نظارت.
+    </p>
+    <table class="lp-table" style="width:100%; font-size:12px;">
+      <thead>
+        <tr>
+          <th>زمان</th>
+          <th>عملیات</th>
+          <th>دستیار</th>
+          <th>اقدام‌کننده</th>
+          <th>شرح تغییرات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in assistant_audit_logs %}
+        <tr>
+          <td style="white-space:nowrap; color:var(--body-quiet-color);">{{ log.created_at|date:"Y-m-d H:i" }}</td>
+          <td>
+            {% if log.action == 'added' %}
+            <span class="lp-badge lp-b-green">افزودن دستیار</span>
+            {% elif log.action == 'updated' %}
+            <span class="lp-badge lp-b-blue">ویرایش دسترسی‌ها</span>
+            {% else %}
+            <span class="lp-badge" style="background:#fee2e2; color:#b91c1c;">حذف دستیار</span>
+            {% endif %}
+          </td>
+          <td dir="ltr" style="text-align:right; font-weight:600;">{{ log.assistant_phone }}</td>
+          <td>{{ log.actor.full_name|default:log.actor.phone|default:"سیستم" }}</td>
+          <td style="color:var(--body-quiet-color);">{{ log.details }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% if can_manage_access %}
+<div class="lp chapters-box" id="gifts">
+  <h2>هدیه به کاربر</h2>
+  <p class="hint">این کتاب را بدون خرید به یک نفر بدهید (مثلاً جایزه یا همکار). در اپ برچسب «هدیه» می‌بیند و در فروش حساب نمی‌شود.
+    پس گرفتن هدیه آن را بایگانی می‌کند، نه پاک.</p>
+  <form class="cm-card row" method="post" action="{% url 'admin:catalog_book_gift' original.pk %}" style="align-items:flex-end;gap:12px;flex-wrap:wrap">{% csrf_token %}
+    <div style="width:170px"><label class="f">شماره موبایل</label><input type="text" name="phone" dir="ltr" required placeholder="09121234567"></div>
+    <div style="width:130px"><label class="f">مدت</label><select name="days">{% for v, label in gift_days %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select></div>
+    <div class="grow" style="min-width:180px"><label class="f">یادداشت برای خودتان</label><input type="text" name="note" maxlength="200" placeholder="مثلاً جایزه‌ی مسابقه"></div>
+    <button class="btn primary" type="submit">هدیه بده</button>
+  </form>
+  {% if gifts %}
+  <table class="lp-table" style="margin-top:12px">
+    <thead><tr><th>کاربر</th><th>تا</th><th>یادداشت</th><th>دهنده</th><th>وضعیت</th><th></th></tr></thead>
+    <tbody>
+    {% for r in gifts %}
+      <tr{% if not r.active %} style="opacity:.55"{% endif %}>
+        <td dir="ltr" style="text-align:right">{{ r.g.user.phone }}</td>
+        <td>{% if r.g.ends_at %}{{ r.g.ends_at|date:"Y-m-d" }}{% else %}همیشگی{% endif %}</td>
+        <td>{{ r.g.note }}</td><td dir="ltr" style="text-align:right">{{ r.g.granted_by.phone }}</td>
+        <td>{% if r.g.is_archived %}پس گرفته شد{% elif r.expired %}تمام شده{% else %}فعال{% endif %}</td>
+        <td>{% if r.active %}<form class="inline" method="post" action="{% url 'admin:catalog_book_gift' original.pk %}">{% csrf_token %}
+          <input type="hidden" name="action" value="revoke"><input type="hidden" name="gift" value="{{ r.g.pk }}">
+          <button class="btn small danger" type="submit">پس گرفتن</button></form>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

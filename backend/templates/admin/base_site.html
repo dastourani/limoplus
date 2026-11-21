@@ -1,0 +1,419 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrahead %}{{ block.super }}{% load static %}
+<link rel="stylesheet" href="{% static 'catalog/jalali-admin.css' %}?v={{ assets_v }}">
+<script src="{% static 'catalog/jalali-admin.js' %}?v={{ assets_v }}" defer></script>
+<style>
+  /* Vazirmatn (with the clearer hollow zero) everywhere in the panel, and one size scale for Persian. */
+  @font-face { font-family: Vazirmatn; font-weight: 400; font-display: swap; src: url("{% static 'catalog/fonts/Vazirmatn_400Regular.ttf' %}") format("truetype"); }
+  @font-face { font-family: Vazirmatn; font-weight: 700 900; font-display: swap; src: url("{% static 'catalog/fonts/Vazirmatn_700Bold.ttf' %}") format("truetype"); }
+  :root, html[data-theme="light"], html[data-theme="dark"] { --font-family-primary: Vazirmatn, Tahoma, "Segoe UI", sans-serif; }
+  body, input, textarea, select, button { font-family: var(--font-family-primary); }
+  body { font-size: 14px; line-height: 1.7; }
+  #content h1 { font-size: 22px; font-weight: 700; line-height: 1.5; margin-bottom: 14px; }
+  #content h2 { font-size: 16px; font-weight: 700; }
+  #content h3 { font-size: 14px; font-weight: 700; }
+  .module caption, .module h2, #nav-sidebar caption { font-size: 13px; font-weight: 700; }
+  #nav-sidebar th, #nav-sidebar td { font-size: 13.5px; }
+  #result_list thead th { font-size: 12px; font-weight: 700; }
+  #result_list td, #result_list th { font-size: 13.5px; line-height: 1.75; }
+  .help, .helptext, p.help, div.help, .lp-quiet, .small, .quiet { font-size: 12px; }
+  #site-name { font-size: 20px; font-weight: 700; }
+  .breadcrumbs { font-size: 13px; }
+  #changelist-filter h2 { font-size: 14px; } #changelist-filter summary, #changelist-filter li { font-size: 13px; }
+  .button, input[type=submit], input[type=button], .submit-row input, a.button { font-weight: 700; }
+  html { overflow-anchor: none; }
+  /* Uniform header action pill buttons */
+  .lp-header-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-decoration: none;
+    line-height: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.10);
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .15s ease;
+    vertical-align: middle;
+  }
+  .lp-header-btn:hover {
+    background: rgba(255, 255, 255, 0.20);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.35);
+  }
+  .lp-header-btn.lemon {
+    background: #F5C518;
+    color: #17201A;
+    border-color: #F5C518;
+  }
+  .lp-header-btn.lemon:hover {
+    background: #FFD84A;
+    border-color: #FFD84A;
+    color: #17201A;
+  }
+  .lp-open-app { display: inline; margin: 0; }
+  /* One «وضعیت» cell (panel_display.badges) instead of rows of ✓/✗. */
+  .lp-badges { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+  .lp-badge { padding: 1px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; line-height: 20px; }
+  .lp-b-green { background: rgba(46, 158, 91, .16); color: #23864B; }
+  .lp-b-yellow { background: rgba(245, 197, 24, .25); color: #8A6A00; }
+  .lp-b-grey { background: rgba(120, 120, 120, .16); color: #6B6B6B; }
+  .lp-b-blue { background: rgba(70, 110, 220, .15); color: #3B5FC4; }
+  .lp-b-red { background: rgba(214, 69, 69, .15); color: #B33A3A; }
+  @media (prefers-color-scheme: dark) {
+    .lp-b-green { color: #6FD39A; } .lp-b-yellow { color: #F5C518; } .lp-b-grey { color: #B5B5B5; }
+    .lp-b-blue { color: #9DB4FF; } .lp-b-red { color: #FF9A9A; }
+  }
+  html[data-theme="dark"] .lp-b-green { color: #6FD39A; } html[data-theme="dark"] .lp-b-yellow { color: #F5C518; }
+  html[data-theme="dark"] .lp-b-grey { color: #B5B5B5; } html[data-theme="dark"] .lp-b-blue { color: #9DB4FF; }
+  html[data-theme="dark"] .lp-b-red { color: #FF9A9A; }
+  html[data-theme="light"] .lp-b-green { color: #23864B; } html[data-theme="light"] .lp-b-yellow { color: #8A6A00; }
+  html[data-theme="light"] .lp-b-grey { color: #6B6B6B; } html[data-theme="light"] .lp-b-blue { color: #3B5FC4; }
+  html[data-theme="light"] .lp-b-red { color: #B33A3A; }
+  /* Lists: formulas drawn inside Persian text (lists.js), the place of an item on one line. */
+  .lp-tex .lp-f { unicode-bidi: isolate; display: inline-block; direction: ltr; }
+  .lp-tex math { font-size: 1.05em; }
+  .lp-place { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px;
+    margin-bottom: 2px; }
+  #changelist-filter .lp-filter-row { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 15px 8px; margin: 0; }
+  #changelist-filter .lp-filter-row li { list-style: none; margin: 0; padding: 0; border: 0; }
+  #changelist-filter .lp-filter-row a { display: block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--hairline-color); }
+  #changelist-filter .lp-filter-row li.selected a { background: var(--selected-row); border-color: var(--link-fg); }
+  /* «خلاصه» on a user's page (accounts/overview.py). */
+  .lp-ov { margin: 4px 0 8px; }
+  .lp-ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; }
+  .lp-ov-card { border: 1px solid var(--hairline-color); border-radius: 12px; padding: 10px 14px; background: var(--body-bg); }
+  .lp-ov-card h3 { margin: 0 0 8px; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; color: var(--body-fg); background: none; padding: 0; }
+  .lp-ov-more { font-size: 12px; font-weight: 400; }
+  .lp-ov-table { width: 100%; border: 0; }
+  .lp-ov-table td { padding: 5px 4px; border-bottom: 1px solid var(--hairline-color); vertical-align: top; }
+  .lp-ov-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .lp-ov-stat { background: var(--darkened-bg); border-radius: 10px; padding: 8px 10px; }
+  .lp-ov-stat b { display: block; font-size: 15px; }
+  .lp-ov-stat span { color: var(--body-quiet-color); font-size: 11px; }
+  .lp-ov-links { margin: 0 0 12px; }
+  .field-overview > div > label, .field-overview .flex-container > label { display: none; }
+  .field-overview .readonly { margin: 0; padding: 0; width: 100%; }
+  .lp-nav-count { margin-inline-start: 6px; font-size: 10px; line-height: 16px; padding: 0 7px; }
+  .lp-menu-badge { margin-inline-start: 6px; font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 999px; vertical-align: middle; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; }
+  .lp-quiet { color: var(--body-quiet-color); }
+  .lp-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-width: 260px; }
+  .lp-progress-title { display: block; width: clamp(120px, 18vw, 260px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Light highlight/quote boxes keep dark ink text in both light and dark admin themes. */
+  .lp-quote, .lp-quote * { color: #17201A !important; }
+
+  /* Sticky Header */
+  #header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  }
+  #nav-sidebar {
+    position: sticky;
+    top: 55px;
+    max-height: calc(100vh - 55px);
+  }
+  /* Welcome badge in user-tools */
+  .lp-user-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #fff;
+    margin-inline-end: 8px;
+    letter-spacing: 0.2px;
+  }
+  .lp-user-badge strong {
+    color: #F5C518;
+    font-weight: 800;
+  }
+
+  /* Teacher Panel Brand Theme (Lemon Forest Green) */
+  {% if is_teacher %}
+  :root, html[data-theme="light"], html[data-theme="dark"] {
+    --header-bg: #133a28;
+    --header-color: #fff;
+    --header-link-color: #f0fdf4;
+    --header-branding-color: #F5C518;
+    --primary: #15803d;
+    --secondary: #166534;
+    --link-fg: #15803d;
+    --link-hover-color: #166534;
+    --link-selected-fg: #15803d;
+    --button-bg: #15803d;
+    --button-hover-bg: #166534;
+    --default-button-bg: #15803d;
+    --default-button-hover-bg: #166534;
+    --breadcrumbs-bg: #0d281c;
+    --breadcrumbs-link-fg: #bbf7d0;
+  }
+
+  /* Dark mode overrides for teacher theme */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --header-bg: #0f291e;
+      --breadcrumbs-bg: #091a13;
+      --link-fg: #4ade80;
+      --link-hover-color: #86efac;
+      --link-selected-fg: #22c55e;
+      --button-bg: #166534;
+      --button-hover-bg: #15803d;
+      --default-button-bg: #15803d;
+      --default-button-hover-bg: #22c55e;
+    }
+  }
+  html[data-theme="dark"] {
+    --header-bg: #0f291e;
+    --breadcrumbs-bg: #091a13;
+    --link-fg: #4ade80;
+    --link-hover-color: #86efac;
+    --link-selected-fg: #22c55e;
+    --button-bg: #166534;
+    --button-hover-bg: #15803d;
+    --default-button-bg: #15803d;
+    --default-button-hover-bg: #22c55e;
+  }
+  html[data-theme="light"] {
+    --header-bg: #133a28;
+    --breadcrumbs-bg: #0d281c;
+    --link-fg: #15803d;
+    --link-hover-color: #166534;
+    --link-selected-fg: #15803d;
+    --button-bg: #15803d;
+    --button-hover-bg: #166534;
+    --default-button-bg: #15803d;
+    --default-button-hover-bg: #166534;
+  }
+
+  #header {
+    background: var(--header-bg) !important;
+    border-bottom: 2px solid #F5C518 !important;
+  }
+  .breadcrumbs {
+    background: var(--breadcrumbs-bg) !important;
+  }
+  #header #site-name a {
+    color: #F5C518 !important;
+    font-weight: 800;
+  }
+  /* Active models in sidebar navigation */
+  #nav-sidebar .current-model {
+    background: rgba(34, 197, 94, 0.15) !important;
+  }
+  #nav-sidebar .current-model a {
+    color: var(--link-fg) !important;
+    font-weight: 700 !important;
+  }
+  {% endif %}
+
+  /* Refined Typography & Contrast for Dark Mode (Golden-Lemon Accents) */
+  html[data-theme="dark"] #content h1,
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #content h1 {
+      color: #F5C518;
+      letter-spacing: -0.3px;
+    }
+  }
+  html[data-theme="dark"] #content h1 {
+    color: #F5C518;
+  }
+  html[data-theme="dark"] #changelist-filter h2,
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #changelist-filter h2 {
+      color: #F5C518;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+    }
+  }
+  html[data-theme="dark"] #changelist-filter h2 {
+    color: #F5C518;
+    font-weight: 800;
+  }
+
+  /* Filter sidebar header background styling in both themes */
+  #changelist-filter h2 {
+    background: linear-gradient(135deg, #133a28 0%, #166534 100%) !important;
+    color: #F5C518 !important;
+    border-radius: 8px 8px 0 0;
+    margin: -1px -1px 12px -1px;
+    padding: 10px 14px !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
+  }
+  html[data-theme="dark"] #changelist-filter h2 {
+    background: linear-gradient(135deg, #222216 0%, #302a0a 100%) !important;
+    color: #F5C518 !important;
+    border-bottom: 1px solid rgba(245, 197, 24, 0.3) !important;
+  }
+  #changelist-filter {
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  html[data-theme="dark"] #changelist-filter {
+    border: 1px solid rgba(245, 197, 24, 0.25) !important;
+  }
+
+  /* Harmonized filter pill badges in light and dark mode */
+  #changelist-filter .lp-filter-row a {
+    border-color: var(--hairline-color);
+    transition: all .15s ease;
+  }
+  #changelist-filter .lp-filter-row li.selected a {
+    background: #15803d !important;
+    color: #fff !important;
+    border-color: #15803d !important;
+    font-weight: 700;
+  }
+  html[data-theme="dark"] #changelist-filter .lp-filter-row li.selected a {
+    background: rgba(245, 197, 24, 0.22) !important;
+    color: #F5C518 !important;
+    border-color: #F5C518 !important;
+    box-shadow: 0 0 8px rgba(245, 197, 24, 0.3);
+    font-weight: 800 !important;
+  }
+
+  /* Table active row / item styling in dark mode */
+  html[data-theme="dark"] #nav-sidebar .current-model a {
+    color: #F5C518 !important;
+    font-weight: 800 !important;
+  }
+  html[data-theme="dark"] #nav-sidebar caption a,
+  html[data-theme="dark"] #nav-sidebar caption th,
+  html[data-theme="dark"] #nav-sidebar th[scope="row"] a {
+    color: #F5C518 !important;
+    font-weight: 800;
+  }
+  html[data-theme="dark"] #nav-sidebar .module caption {
+    color: #F5C518 !important;
+  }
+
+  /* Distinctive Golden-Lemon Action Button in Dark Mode */
+  .btn-lemon-action {
+    background: #10b981;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    border-radius: 8px;
+    transition: all .15s ease;
+  }
+  .btn-lemon-action:hover {
+    background: #059669;
+    color: #ffffff !important;
+  }
+  html[data-theme="dark"] .btn-lemon-action {
+    background: #F5C518 !important;
+    color: #17201A !important;
+    border: 1px solid #FFD84A !important;
+    box-shadow: 0 2px 10px rgba(245, 197, 24, 0.35);
+  }
+  html[data-theme="dark"] .btn-lemon-action:hover {
+    background: #facc15 !important;
+    color: #000000 !important;
+    box-shadow: 0 4px 14px rgba(245, 197, 24, 0.5);
+  }
+</style>
+<script>
+  // The side menu keeps its place: where it was scrolled to is remembered for this tab and put back on the next
+  // page; if the page's own item would then be out of sight, the menu scrolls just enough to show it.
+  (function () {
+    var KEY = "lp.nav.scroll";
+    function nav() { return document.getElementById("nav-sidebar"); }
+    function save() { var n = nav(); if (n) try { sessionStorage.setItem(KEY, String(n.scrollTop)); } catch (e) {} }
+    document.addEventListener("DOMContentLoaded", function () {
+      var n = nav();
+      if (!n) return;
+      var pageY = window.scrollY;  // moving the menu must not move the page
+      try { var y = parseInt(sessionStorage.getItem(KEY) || "", 10); if (!isNaN(y)) n.scrollTop = y; } catch (e) {}
+      var here = n.querySelector(".current-model, tr.current-model, .current-app .current-model");
+      if (here) {
+        var a = here.getBoundingClientRect(), b = n.getBoundingClientRect();
+        // Only the menu moves (scrollIntoView would also scroll the page itself).
+        if (a.top < b.top || a.bottom > b.bottom) n.scrollTop += a.top - b.top - (n.clientHeight - a.height) / 2;
+      }
+      if (window.scrollY !== pageY) window.scrollTo(0, pageY);
+      requestAnimationFrame(function () { if (window.scrollY !== pageY) window.scrollTo(0, pageY); });
+      {% if lp_open_reports %}
+      var rep = n.querySelector('a[href$="/learning/report/"]');
+      if (rep) {
+        var b = document.createElement("span");
+        b.className = "lp-badge lp-b-red lp-nav-count";
+        b.textContent = "{{ lp_open_reports }}".replace(/[0-9]/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹"[d]; });
+        b.title = "گزارش‌های باز";
+        rep.appendChild(b);
+      }
+      {% endif %}
+      n.addEventListener("scroll", save, { passive: true });
+      n.addEventListener("click", save, true);
+    });
+    window.addEventListener("pagehide", save);
+  })();
+</script>
+{% endblock %}
+
+{% block welcome-msg %}
+  <span class="lp-user-badge">
+    خوش آمدید، <strong>{% firstof user.get_short_name user.get_username %}</strong>
+  </span>
+{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></div>
+{% if user.is_anonymous %}
+  {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block userlinks %}
+{% if user.is_active and user.is_staff %}
+  {% if is_teacher %}
+  <span style="display:inline-flex; align-items:center; gap:6px; margin-inline-end:8px; font-size:12px;">
+    {% if user.email %}
+      {% if user.is_email_verified %}
+        <span class="lp-header-btn" title="ایمیل تأییدشده: {{ user.email }}" style="cursor:default;">✓ {{ user.email }}</span>
+      {% else %}
+        <span class="lp-header-btn" title="ایمیل در انتظار تأیید: {{ user.email }}" style="cursor:default; border-color:#eab308; color:#fef08a;">⚠️ تأیید نشده: {{ user.email }}</span>
+        <a href="{% url 'admin:accounts_user_send_verification' %}" style="font-size:11px; text-decoration:underline;">ارسال مجدد</a>
+      {% endif %}
+    {% else %}
+      <a href="{% url 'admin:accounts_user_change_email' %}" class="lp-header-btn" title="ثبت ایمیل کاری استاد برای دریافت خروجی‌های کتاب">+ ثبت ایمیل کاری</a>
+    {% endif %}
+  </span>
+  {% endif %}
+  {% if user.is_superuser %}
+    {% if teacher_view_mode %}
+      <a href="{% url 'admin:index' %}?view=admin" class="lp-header-btn" style="border-color:#f87171; color:#fca5a5; margin-inline-end:6px;" title="خروج از نمای آزمایشی استاد و بازگشت به نمای کامل مدیر کل">
+        ✕ خروج از نمای استاد
+      </a>
+    {% else %}
+      <a href="{% url 'admin:index' %}?view=teacher" class="lp-header-btn" style="margin-inline-end:6px;" title="مشاهده پیش‌نمایش صفحه و امکانات اختصاصی اساتید">
+        🎓 پنل اساتید
+      </a>
+    {% endif %}
+  {% endif %}
+  {% if is_teacher %}
+  <button type="button" class="lp-header-btn" id="lp-guide-toggle" title="روشن/خاموش کردن حباب‌های راهنمای منو" style="margin-inline-end:6px;">
+    <span id="lp-guide-icon">💡</span>
+    <span id="lp-guide-text">راهنما: روشن</span>
+  </button>
+  {% endif %}
+  <form class="lp-open-app" method="post" action="{% url 'panel-open-app' %}" target="_blank" rel="noopener">{% csrf_token %}
+    <button type="submit" class="lp-header-btn" title="وب اپ در زبانه‌ی تازه، با همین حساب و بدون پیامک باز می‌شود">وب‌اپ</button>
+  </form> /
+{% endif %}
+{{ block.super }}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

@@ -1,0 +1,6 @@
+<div class="lp-split-datetime">
+  <label class="lp-split-label" for="{{ widget.subwidgets.0.attrs.id }}">{{ date_label }}</label>
+  <span class="lp-split-control">{% with widget=widget.subwidgets.0 %}{% include widget.template_name %}{% endwith %}</span>
+  <label class="lp-split-label" for="{{ widget.subwidgets.1.attrs.id }}">{{ time_label }}</label>
+  <span class="lp-split-control">{% with widget=widget.subwidgets.1 %}{% include widget.template_name %}{% endwith %}</span>
+</div>
