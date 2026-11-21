@@ -345,16 +345,6 @@
       }
       if (window.scrollY !== pageY) window.scrollTo(0, pageY);
       requestAnimationFrame(function () { if (window.scrollY !== pageY) window.scrollTo(0, pageY); });
-      {% if lp_open_reports %}
-      var rep = n.querySelector('a[href$="/learning/report/"]');
-      if (rep) {
-        var b = document.createElement("span");
-        b.className = "lp-badge lp-b-red lp-nav-count";
-        b.textContent = "{{ lp_open_reports }}".replace(/[0-9]/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹"[d]; });
-        b.title = "گزارش‌های باز";
-        rep.appendChild(b);
-      }
-      {% endif %}
       n.addEventListener("scroll", save, { passive: true });
       n.addEventListener("click", save, true);
     });
