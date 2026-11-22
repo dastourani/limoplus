@@ -602,7 +602,8 @@ class OrderRevenueSnapshotAdmin(admin.ModelAdmin):
 @admin.register(OrderAuthorRevenue)
 class OrderAuthorRevenueAdmin(admin.ModelAdmin):
     list_display = ("order_number", "book_name", "author_user", "share_pct", "amount_toman", "status_chip", "available_date", "created_time")
-    list_filter = ("release_status", "is_settled")
+    list_filter = ("release_status", "is_settled", "created_at")
+    date_hierarchy = "created_at" 
     search_fields = ("snapshot__order__id", "snapshot__book__title", "author__phone")
     readonly_fields = [f.name for f in OrderAuthorRevenue._meta.fields]
 
@@ -707,6 +708,66 @@ class TeacherWalletAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+    def changelist_view(self, request, extra_context=None):
+        # برای اساتید، در صورت عدم وجود رکورد کیف پول، به صورت خودکار ایجاد شود
+        if not request.user.is_superuser:
+            TeacherWallet.objects.get_or_create(teacher=request.user)
+
+        # ساخت کارت‌های آماری KPI
+        extra_context = extra_context or {}
+        if not request.user.is_superuser:
+            w = TeacherWallet.objects.filter(teacher=request.user).first()
+            if w:
+                from .models import PayoutRequest, OrderAuthorRevenue
+                next_release = OrderAuthorRevenue.objects.filter(
+                    author=request.user,
+                    release_status=OrderAuthorRevenue.ReleaseStatus.PENDING,
+                    available_at__isnull=False
+                ).order_by("available_at").first()
+
+                next_release_txt = jalali_date(next_release.available_at) if next_release else "—"
+
+                kpi_html = format_html(
+                    '<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-bottom:20px; font-family:inherit;">'
+                    '<div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">'
+                    '  <div style="font-size:12px; color:#166534; margin-bottom:5px;">💳 موجودی خالص آماده برداشت</div>'
+                    '  <div style="font-size:20px; font-weight:bold; color:#15803d;">{}</div>'
+                    '  <div style="font-size:11px; color:#4ade80; margin-top:4px;">حداقل درخواست: ۲۰۰,۰۰۰ تومان</div>'
+                    '</div>'
+                    '<div style="background:#fefce8; border:1px solid #fef08a; border-radius:10px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">'
+                    '  <div style="font-size:12px; color:#854d0e; margin-bottom:5px;">⏳ در انتظار گارانتی استرداد</div>'
+                    '  <div style="font-size:20px; font-weight:bold; color:#a16207;">{}</div>'
+                    '  <div style="font-size:11px; color:#ca8a04; margin-top:4px;">نزدیک‌ترین آزادسازی: {}</div>'
+                    '</div>'
+                    '<div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">'
+                    '  <div style="font-size:12px; color:#1e40af; margin-bottom:5px;">🔒 در صف واریز بانکی (پایا)</div>'
+                    '  <div style="font-size:20px; font-weight:bold; color:#2563eb;">{}</div>'
+                    '  <div style="font-size:11px; color:#60a5fa; margin-top:4px;">در حال پردازش بانکی</div>'
+                    '</div>'
+                    '<div style="background:#faf5ff; border:1px solid #e9d5ff; border-radius:10px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">'
+                    '  <div style="font-size:12px; color:#6b21a8; margin-bottom:5px;">📈 مجموع کل عایدی کسب‌شده</div>'
+                    '  <div style="font-size:20px; font-weight:bold; color:#7e22ce;">{}</div>'
+                    '  <div style="font-size:11px; color:#a855f7; margin-top:4px;">کل مبالغ واریزشده: {}</div>'
+                    '</div>'
+                    '</div>',
+                    toman(w.net_withdrawable_amount),
+                    toman(w.pending_balance),
+                    next_release_txt,
+                    toman(w.locked_balance),
+                    toman(w.total_earned),
+                    toman(w.total_withdrawn),
+                )
+                if w.debt_balance > 0:
+                    kpi_html += format_html(
+                        '<div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 15px; margin-bottom:15px; color:#991b1b; font-size:13px;">'
+                        '⚠️ <strong>توجه به بدهی معوق:</strong> شما مبلغ <strong>{}</strong> بدهی ناشی از استرداد سفارش‌های گذشته دارید که به‌طور خودکار از عایدی‌ها و فروش‌های بعدی کسر خواهد شد.'
+                        '</div>',
+                        toman(w.debt_balance),
+                    )
+                extra_context["kpi_summary_html"] = kpi_html
+
+        return super().changelist_view(request, extra_context=extra_context)
+
     def get_queryset(self, request):
         qs = super().get_queryset(request).select_related("teacher")
         if request.user.is_superuser:
@@ -752,8 +813,9 @@ class TeacherWalletAdmin(admin.ModelAdmin):
 
 @admin.register(WalletTransaction)
 class WalletTransactionAdmin(admin.ModelAdmin):
-    list_display = ("teacher_cell", "event_title", "amount_toman", "available_after", "pending_after", "order_ref", "created_display")
-    list_filter = ("event_type",)
+    list_display = ("teacher_cell", "event_title", "amount_toman", "available_after", "pending_after", "order_ref", "description", "created_display")
+    list_filter = ("event_type", "created_at")
+    date_hierarchy = "created_at" 
     search_fields = ("wallet__teacher__phone", "description", "idempotency_key")
     readonly_fields = [f.name for f in WalletTransaction._meta.fields]
 
@@ -822,9 +884,22 @@ class WalletTransactionAdmin(admin.ModelAdmin):
 
 @admin.register(TeacherBankAccount)
 class TeacherBankAccountAdmin(admin.ModelAdmin):
-    list_display = ("teacher_cell", "account_holder_name", "iban", "bank_name", "verification_badge", "updated_display")
+    list_display = ("teacher_cell", "account_holder_name", "iban", "bank_name", "verification_badge", "admin_note_display", "updated_display")
     list_filter = ("is_verified",)
     search_fields = ("teacher__phone", "account_holder_name", "iban", "bank_name")
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["title"] = "حساب‌های بانکی و شبای اساتید"
+        return super().changelist_view(request, extra_context=extra_context)
+
+    @admin.display(description="پیام یا یادداشت مدیریت")
+    def admin_note_display(self, obj):
+        if obj.notes:
+            return format_html('<span style="color:#d97706; font-size:12px;">{}</span>', obj.notes)
+        if obj.is_verified:
+            return format_html('<span style="color:#16a34a; font-size:12px;">آماده تسویه خودکار</span>')
+        return format_html('<span style="color:#6b7280; font-size:12px;">در نوبت استعلام بانکی</span>')
 
     def has_module_permission(self, request):
         from apps.catalog.access import is_book_teacher
@@ -886,8 +961,9 @@ class TeacherBankAccountAdmin(admin.ModelAdmin):
 
 @admin.register(PayoutRequest)
 class PayoutRequestAdmin(admin.ModelAdmin):
-    list_display = ("payout_id", "teacher_cell", "amount_toman", "account_holder_snapshot", "iban_snapshot", "status_chip", "tracking_code", "created_time")
-    list_filter = ("status",)
+    list_display = ("payout_id", "teacher_cell", "amount_toman", "account_holder_snapshot", "iban_snapshot", "status_chip", "tracking_code", "rejection_reason_display", "created_time")
+    list_filter = ("status", "created_at")
+    date_hierarchy = "created_at" 
     search_fields = ("teacher__phone", "account_holder_snapshot", "iban_snapshot", "tracking_code")
     actions = ["export_paya_csv", "mark_as_processing_action"]
 
@@ -971,6 +1047,14 @@ class PayoutRequestAdmin(admin.ModelAdmin):
             PayoutRequest.Status.REJECTED: "red",
         }
         return badges((obj.get_status_display(), color_map.get(obj.status, "grey")))
+
+    @admin.display(description="علت رد / یادداشت")
+    def rejection_reason_display(self, obj):
+        if obj.status == PayoutRequest.Status.REJECTED:
+            return format_html('<span style="color:#dc2626; font-size:12px;">⚠️ {}</span>', obj.rejection_reason or "بدون توضیح")
+        if obj.tracking_code:
+            return format_html('<span style="color:#16a34a; font-size:12px; font-family:monospace;">کد: {}</span>', obj.tracking_code)
+        return "—"
 
     @admin.display(description="زمان ثبت")
     def created_time(self, obj):
@@ -1085,3 +1169,135 @@ class SubscriptionPoolPeriodAdmin(admin.ModelAdmin):
 
 
 
+
+
+@admin.register(PoolBookShare)
+class PoolBookShareAdmin(admin.ModelAdmin):
+    list_display = ("period_title", "book_title", "valid_reading_hours", "valid_quizzes_count", "active_users_count", "share_pct_display", "total_amount_toman", "finalized_date")
+    list_filter = ("period", "created_at")
+    search_fields = ("book__title", "period__title")
+    date_hierarchy = "created_at"
+    readonly_fields = [f.name for f in PoolBookShare._meta.fields]
+
+    def has_module_permission(self, request):
+        from apps.catalog.access import is_book_teacher
+        return bool(request.user.is_superuser or is_book_teacher(request.user))
+
+    def has_view_permission(self, request, obj=None):
+        from apps.catalog.access import is_book_teacher
+        if request.user.is_superuser:
+            return True
+        if not is_book_teacher(request.user):
+            return False
+        if obj is None:
+            return True
+        from apps.catalog.access import is_book_editor
+        return is_book_editor(request.user, obj.book)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("period", "book")
+        if request.user.is_superuser:
+            return qs
+        from apps.catalog.models import BookEditor
+        teacher_books = BookEditor.objects.filter(user=request.user).values_list("book_id", flat=True)
+        return qs.filter(book_id__in=teacher_books)
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        # تولید کارت‌های وضعیت آمادگی کتاب‌های استاد برای استخر آینده
+        if not request.user.is_superuser:
+            from apps.catalog.models import BookEditor, ContentNode
+            from apps.learning.models import Question
+            from .models import SubscriptionPoolPeriod
+
+            latest_period = SubscriptionPoolPeriod.objects.order_by("-starts_at").first()
+            min_ch = latest_period.min_published_chapters if latest_period else 2
+            min_q = latest_period.min_active_questions if latest_period else 20
+
+            teacher_books = ContentNode.objects.filter(
+                id__in=BookEditor.objects.filter(user=request.user).values_list("book_id", flat=True),
+                kind=ContentNode.Kind.BOOK,
+                depth=1,
+                is_published=True,
+                is_archived=False,
+            )
+
+            cards = []
+            for b in teacher_books:
+                ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_published=True).count()
+                q_count = Question.objects.filter(node__path__startswith=b.path).count()
+
+                is_ready = (ch_count >= min_ch and q_count >= min_q)
+                status_color = "#15803d" if is_ready else "#d97706"
+                bg_color = "#f0fdf4" if is_ready else "#fffbeb"
+                border_color = "#bbf7d0" if is_ready else "#fde68a"
+                badge_text = "آماده برای استخر ماهانه بعدی" if is_ready else "در انتظار تکمیل حداقل محتوا"
+
+                cards.append(format_html(
+                    '<div style="background:{}; border:1px solid {}; border-radius:8px; padding:12px; margin-bottom:10px;">'
+                    '  <div style="display:flex; justify-content:space-between; align-items:center;">'
+                    '    <strong style="font-size:14px; color:#1e293b;">📖 {}</strong>'
+                    '    <span style="font-size:12px; font-weight:bold; color:{};">{}</span>'
+                    '  </div>'
+                    '  <div style="font-size:12px; color:#475569; margin-top:6px; display:flex; gap:20px;">'
+                    '    <span>فصول منتشرشده: <strong>{}</strong> (حداقل شرط: {})</span>'
+                    '    <span>تست‌های فعال: <strong>{}</strong> (حداقل شرط: {})</span>'
+                    '  </div>'
+                    '</div>',
+                    bg_color, border_color, b.title, status_color, badge_text,
+                    fa_number(ch_count), fa_number(min_ch),
+                    fa_number(q_count), fa_number(min_q),
+                ))
+
+            if cards:
+                extra_context["pool_readiness_html"] = format_html(
+                    '<div style="margin-bottom:20px;">'
+                    '  <h3 style="margin-bottom:10px; font-size:14px; color:#334155;">📊 وضعیت آمادگی کتاب‌های شما برای ورود به استخر ماهانه:</h3>'
+                    '  {}'
+                    '</div>',
+                    format_html("".join(cards))
+                )
+
+        return super().changelist_view(request, extra_context=extra_context)
+
+    @admin.display(description="دوره استخر")
+    def period_title(self, obj):
+        return obj.period.title
+
+    @admin.display(description="کتاب")
+    def book_title(self, obj):
+        return obj.book.title
+
+    @admin.display(description="ساعات مطالعه موثر")
+    def valid_reading_hours(self, obj):
+        hours = round(obj.valid_seconds / 3600.0, 1)
+        return f"{hours} ساعت"
+
+    @admin.display(description="تست‌های پاسخ‌داده‌شده")
+    def valid_quizzes_count(self, obj):
+        return fa_number(obj.valid_quizzes)
+
+    @admin.display(description="دانشجویان فعال")
+    def active_users_count(self, obj):
+        return f"{fa_number(obj.unique_active_users)} نفر"
+
+    @admin.display(description="درصد سهم کتاب")
+    def share_pct_display(self, obj):
+        return f"{obj.share_percent}٪"
+
+    @admin.display(description="مبلغ سهم کتاب")
+    def total_amount_toman(self, obj):
+        return toman(obj.total_amount)
+
+    @admin.display(description="تاریخ نهایی‌سازی")
+    def finalized_date(self, obj):
+        return jalali_date(obj.period.finalized_at or obj.created_at)
