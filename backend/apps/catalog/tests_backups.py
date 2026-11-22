@@ -112,6 +112,12 @@ class BackupTests(TestCase):
             self.assertEqual(backups.run_due(), [])
         self.assertEqual((db.call_count, media.call_count), (1, 1))
 
+    def test_run_due_releases_pending_royalty_balances(self):
+        with mock.patch("apps.commerce.wallet.release_pending_balances", return_value=3) as mock_release:
+            done = backups.run_due()
+            self.assertIn("royalty-release(3)", done)
+            mock_release.assert_called_once()
+
 
 class TokenTests(TestCase):
     @override_settings(BALE_BOT_TOKEN="123:SECRET")
