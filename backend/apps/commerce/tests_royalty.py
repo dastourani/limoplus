@@ -337,4 +337,172 @@ class BookRoyaltyAndSplitTests(TestCase):
         res_tx = self.client.get(f"/admin/commerce/wallettransaction/{tx2.pk}/change/")
         self.assertIn(res_tx.status_code, (302, 403, 404))
 
+    def test_payout_workflow_lifecycle_hold_pay_and_audit(self):
+        from django.core.exceptions import ValidationError
+        from apps.commerce.models import PayoutRequest, TeacherBankAccount, TeacherWallet, WalletTransaction
+        from apps.commerce.wallet import (
+            audit_teacher_wallet,
+            finalize_payout_paid,
+            mark_payout_as_processing,
+            reject_payout_request,
+            request_teacher_payout,
+        )
+
+        wallet = TeacherWallet.objects.create(
+            teacher=self.teacher1,
+            available_balance=0,
+            pending_balance=0,
+            total_earned=0,
+        )
+
+        # Simulate natural earnings: 500k earned + released, and 100k earned pending
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            event_type=WalletTransaction.EventType.EARN_PENDING,
+            amount=500_000,
+            available_balance_after=0,
+            pending_balance_after=500_000,
+            idempotency_key="seed-earn-500",
+            description="سهم فروش اول",
+        )
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            event_type=WalletTransaction.EventType.RELEASE_AVAILABLE,
+            amount=500_000,
+            available_balance_after=500_000,
+            pending_balance_after=0,
+            idempotency_key="seed-release-500",
+            description="آزادسازی سهم فروش اول",
+        )
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            event_type=WalletTransaction.EventType.EARN_PENDING,
+            amount=100_000,
+            available_balance_after=500_000,
+            pending_balance_after=100_000,
+            idempotency_key="seed-pending-100",
+            description="سهم فروش دوم (در انتظار)",
+        )
+        wallet.available_balance = 500_000
+        wallet.pending_balance = 100_000
+        wallet.total_earned = 600_000
+        wallet.save()
+
+        # 1. Requesting payout without verified bank account fails
+        with self.assertRaises(ValidationError):
+            request_teacher_payout(self.teacher1, 250_000)
+
+        # Register and verify bank account
+        bank = TeacherBankAccount.objects.create(
+            teacher=self.teacher1,
+            account_holder_name="استاد یک",
+            iban="IR120120000000001234567890",
+            bank_name="بانک ملت",
+            is_verified=True,
+        )
+
+        # 2. Requesting below minimum amount (200,000) fails
+        with self.assertRaises(ValidationError):
+            request_teacher_payout(self.teacher1, 150_000)
+
+        # 3. Requesting above available balance fails
+        with self.assertRaises(ValidationError):
+            request_teacher_payout(self.teacher1, 550_000)
+
+        # 4. Valid payout request: 300,000 -> moves from available to locked
+        payout = request_teacher_payout(self.teacher1, 300_000)
+        self.assertEqual(payout.status, PayoutRequest.Status.PENDING)
+        self.assertEqual(payout.iban_snapshot, bank.iban)
+
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.available_balance, 200_000)
+        self.assertEqual(wallet.locked_balance, 300_000)
+        self.assertEqual(wallet.total_withdrawn, 0)
+
+        # Check 6-level audit holds true during locked state
+        audit = audit_teacher_wallet(wallet)
+        if not audit["is_healthy"]:
+            print("AUDIT FAILED:", audit)
+        self.assertTrue(audit["is_healthy"])
+
+        # 5. Cannot create a second open request while one is pending
+        with self.assertRaises(ValidationError):
+            request_teacher_payout(self.teacher1, 200_000)
+
+        # 6. Admin marks processing
+        mark_payout_as_processing(payout)
+        self.assertEqual(payout.status, PayoutRequest.Status.PROCESSING)
+
+        # 7. Admin finalizes paid with tracking code
+        finalize_payout_paid(payout, tracking_code="PAYA-987654321")
+        payout.refresh_from_db()
+        self.assertEqual(payout.status, PayoutRequest.Status.PAID)
+        self.assertEqual(payout.tracking_code, "PAYA-987654321")
+
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.available_balance, 200_000)
+        self.assertEqual(wallet.locked_balance, 0)
+        self.assertEqual(wallet.total_withdrawn, 300_000)
+
+        # Check 6-level audit holds true after paid
+        audit_paid = audit_teacher_wallet(wallet)
+        self.assertTrue(audit_paid["is_healthy"])
+
+    def test_payout_rejection_restores_locked_balance(self):
+        from apps.commerce.models import PayoutRequest, TeacherBankAccount, TeacherWallet, WalletTransaction
+        from apps.commerce.wallet import audit_teacher_wallet, reject_payout_request, request_teacher_payout
+
+        wallet = TeacherWallet.objects.create(
+            teacher=self.teacher1,
+            available_balance=0,
+            total_earned=0,
+        )
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            event_type=WalletTransaction.EventType.EARN_PENDING,
+            amount=400_000,
+            available_balance_after=0,
+            pending_balance_after=400_000,
+            idempotency_key="seed-reject-earn",
+            description="فروش اولیه",
+        )
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            event_type=WalletTransaction.EventType.RELEASE_AVAILABLE,
+            amount=400_000,
+            available_balance_after=400_000,
+            pending_balance_after=0,
+            idempotency_key="seed-reject-release",
+            description="آزادسازی سهم",
+        )
+        wallet.available_balance = 400_000
+        wallet.total_earned = 400_000
+        wallet.save()
+
+        TeacherBankAccount.objects.create(
+            teacher=self.teacher1,
+            account_holder_name="استاد یک",
+            iban="IR120120000000001234567890",
+            is_verified=True,
+        )
+
+        payout = request_teacher_payout(self.teacher1, 250_000)
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.available_balance, 150_000)
+        self.assertEqual(wallet.locked_balance, 250_000)
+
+        # Reject payout: funds must return to available_balance
+        reject_payout_request(payout, reason="مغایرت نام صاحب حساب با کدملی")
+        payout.refresh_from_db()
+        self.assertEqual(payout.status, PayoutRequest.Status.REJECTED)
+
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.available_balance, 400_000)
+        self.assertEqual(wallet.locked_balance, 0)
+        self.assertEqual(wallet.total_withdrawn, 0)
+
+        audit = audit_teacher_wallet(wallet)
+        self.assertTrue(audit["is_healthy"])
+
+
 

@@ -444,7 +444,7 @@ class OrderAuthorRevenue(models.Model):
 
 
 class TeacherWallet(models.Model):
-    """کیف پول و خلاصه حسابداری هر استاد با تفکیک موجودی در انتظار، قابل برداشت و بدهی معوق."""
+    """کیف پول و خلاصه حسابداری هر استاد با تفکیک موجودی در انتظار، قابل برداشت، مسدود جهت تسویه و بدهی معوق."""
 
     teacher = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -454,6 +454,7 @@ class TeacherWallet(models.Model):
     )
     pending_balance = models.PositiveIntegerField("موجودی در انتظار (تومان)", default=0, help_text="مبالغ فروش‌های اخیر در دوره گارانتی")
     available_balance = models.PositiveIntegerField("موجودی قابل برداشت (تومان)", default=0, help_text="مبالغ قطعی آزادشده و آماده تسویه")
+    locked_balance = models.PositiveIntegerField("موجودی مسدود جهت تسویه (تومان)", default=0, help_text="مبالغی که درخواست تسویه آن‌ها ثبت شده و در صف پرداخت بانکی است")
     debt_balance = models.PositiveIntegerField("بدهی معوق / استرداد بعد از تسویه (تومان)", default=0, help_text="کسری ناشی از استرداد پس از آزادسازی که از درآمدهای بعدی کسر می‌شود")
     total_earned = models.PositiveIntegerField("کل درآمد کسب‌شده (تومان)", default=0)
     total_withdrawn = models.PositiveIntegerField("کل مبالغ تسویه‌شده (تومان)", default=0)
@@ -466,7 +467,7 @@ class TeacherWallet(models.Model):
         ordering = ["-available_balance", "-pending_balance"]
 
     def __str__(self):
-        return f"کیف پول {self.teacher.phone}: موجودی قابل برداشت {self.available_balance:,} ت (در انتظار {self.pending_balance:,} ت)"
+        return f"کیف پول {self.teacher.phone}: موجودی قابل برداشت {self.available_balance:,} ت (مسدود {self.locked_balance:,} ت / در انتظار {self.pending_balance:,} ت)"
 
     @property
     def net_withdrawable_amount(self) -> int:
@@ -496,6 +497,7 @@ class WalletTransaction(models.Model):
     amount = models.PositiveIntegerField("مبلغ تراکنش (تومان)")
     available_balance_after = models.PositiveIntegerField("مانده قابل برداشت پس از تراکنش (تومان)")
     pending_balance_after = models.PositiveIntegerField("مانده در انتظار پس از تراکنش (تومان)")
+    locked_balance_after = models.PositiveIntegerField("مانده مسدود پس از تراکنش (تومان)", default=0)
     debt_balance_after = models.PositiveIntegerField("مانده بدهی معوق پس از تراکنش (تومان)", default=0)
     reference_order = models.ForeignKey(
         Order,
@@ -533,5 +535,95 @@ class WalletTransaction(models.Model):
 
     def __str__(self):
         return f"{self.wallet.teacher.phone} | {self.get_event_type_display()} | {self.amount:,} ت"
+
+
+class TeacherBankAccount(models.Model):
+    """اطلاعات و شماره شبای بانکی استاد جهت واریز تسویه حساب."""
+
+    teacher = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="bank_account",
+        verbose_name="استاد",
+    )
+    account_holder_name = models.CharField("نام و نام خانوادگی صاحب حساب", max_length=120)
+    iban = models.CharField(
+        "شماره شبا (با IR)",
+        max_length=26,
+        help_text="شماره شبا به صورت ۲۴ رقم بعد از IR (مثال: IR120120000000001234567890)",
+    )
+    bank_name = models.CharField("نام بانک", max_length=60, blank=True)
+    is_verified = models.BooleanField(
+        "تایید شده توسط مدیریت",
+        default=False,
+        help_text="تسویه حساب فقط به شبای تاییدشده انجام می‌شود.",
+    )
+    notes = models.CharField("یادداشت مدیر", max_length=200, blank=True)
+    created_at = models.DateTimeField("تاریخ ثبت", auto_now_add=True)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "حساب بانکی استاد"
+        verbose_name_plural = "حساب‌های بانکی اساتید"
+
+    def __str__(self):
+        status = "تاییدشده" if self.is_verified else "در انتظار تایید"
+        return f"{self.account_holder_name} ({self.iban}) - {status}"
+
+    def clean(self):
+        clean_iban = (self.iban or "").strip().upper().replace(" ", "")
+        if not clean_iban.startswith("IR"):
+            clean_iban = "IR" + clean_iban
+        if len(clean_iban) != 26 or not clean_iban[2:].isdigit():
+            raise ValidationError({"iban": "شماره شبا باید شامل پیشوند IR و دقیقاً ۲۴ رقم عددی باشد."})
+        self.iban = clean_iban
+
+
+class PayoutRequest(models.Model):
+    """درخواست تسویه حساب و واریز بانکی استاد."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "در انتظار بررسی"
+        PROCESSING = "processing", "در حال واریز بانکی"
+        PAID = "paid", "پرداخت‌شده قطعی"
+        REJECTED = "rejected", "رد شده"
+
+    teacher = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="payout_requests",
+        verbose_name="استاد",
+    )
+    amount = models.PositiveIntegerField("مبلغ درخواستی (تومان)")
+    status = models.CharField("وضعیت", max_length=15, choices=Status.choices, default=Status.PENDING)
+    account_holder_snapshot = models.CharField("نام صاحب حساب زمان درخواست", max_length=120)
+    iban_snapshot = models.CharField("شماره شبا زمان درخواست", max_length=26)
+    bank_name_snapshot = models.CharField("نام بانک زمان درخواست", max_length=60, blank=True)
+    tracking_code = models.CharField("کد رهگیری بانکی (پایا/ساتنا)", max_length=100, blank=True, help_text="کد پیگیری ارائه شده توسط بانک پس از واریز")
+    receipt_note = models.CharField("توضیحات واریز یا فیش", max_length=255, blank=True)
+    rejection_reason = models.CharField("دلیل رد درخواست", max_length=255, blank=True, help_text="در صورت رد درخواست، ذکر دلیل برای استاد الزامی است")
+    processed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="بررسی‌کننده (مدیر)",
+    )
+    created_at = models.DateTimeField("زمان ثبت درخواست", auto_now_add=True)
+    paid_at = models.DateTimeField("زمان پرداخت قطعی", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "درخواست تسویه حساب"
+        verbose_name_plural = "درخواست‌های تسویه حساب"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["teacher", "status"], name="payout_teacher_status_idx"),
+            models.Index(fields=["status", "created_at"], name="payout_status_created_idx"),
+        ]
+
+    def __str__(self):
+        return f"تسویه #{self.id}: {self.teacher.phone} - {self.amount:,} تومان ({self.get_status_display()})"
+
 
 

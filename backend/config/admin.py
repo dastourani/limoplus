@@ -29,8 +29,10 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     ("catalog", "ShareSettings"),
     ("catalog", "AIProvider"),
     ("catalog", "BookAssistantAuditLog"),
-    # commerce (royalty & wallet)
+    # commerce (royalty, wallet & payout)
     ("commerce", "TeacherWallet"),
+    ("commerce", "PayoutRequest"),
+    ("commerce", "TeacherBankAccount"),
     ("commerce", "OrderAuthorRevenue"),
     ("commerce", "WalletTransaction"),
     # learning
@@ -111,10 +113,12 @@ class LimoAdminSite(AdminSite):
             if key in all_models:
                 ai_models.append(all_models[key])
 
-        # 5. درآمد، کیف پول و تسهیم فروش (Revenue & Wallet)
+        # 5. درآمد، کیف پول و تسویه حساب (Revenue & Payout)
         royalty_models = []
         _ROYALTY_KEYS = [
             ("commerce", "TeacherWallet"),
+            ("commerce", "PayoutRequest"),
+            ("commerce", "TeacherBankAccount"),
             ("commerce", "OrderAuthorRevenue"),
             ("commerce", "WalletTransaction"),
         ]
@@ -135,7 +139,7 @@ class LimoAdminSite(AdminSite):
             commerce_app = next((a for a in raw_apps if a["app_label"] == "commerce"), None)
             commerce_url = commerce_app["app_url"] if commerce_app else reverse("admin:index")
             teacher_apps.append({
-                "name": "درآمد و کیف پول اساتید",
+                "name": "درآمد و تسویه حساب اساتید",
                 "app_label": "commerce_teacher",
                 "app_url": commerce_url,
                 "has_module_perms": True,

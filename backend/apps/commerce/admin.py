@@ -17,9 +17,11 @@ from .models import (
     Order,
     OrderAuthorRevenue,
     OrderRevenueSnapshot,
+    PayoutRequest,
     Plan,
     RevenuePlan,
     SaleCampaign,
+    TeacherBankAccount,
     TeacherWallet,
     WalletTransaction,
 )
@@ -673,10 +675,10 @@ class WalletTransactionInline(admin.TabularInline):
 
 @admin.register(TeacherWallet)
 class TeacherWalletAdmin(admin.ModelAdmin):
-    list_display = ("teacher_cell", "available_toman", "pending_toman", "debt_toman", "net_toman", "total_earned_toman", "health_badge")
+    list_display = ("teacher_cell", "available_toman", "locked_toman", "pending_toman", "debt_toman", "net_toman", "total_earned_toman", "health_badge")
     search_fields = ("teacher__phone", "teacher__first_name", "teacher__last_name")
     inlines = [WalletTransactionInline]
-    readonly_fields = ("teacher", "pending_balance", "available_balance", "debt_balance", "total_earned", "total_withdrawn", "created_at", "updated_at")
+    readonly_fields = ("teacher", "pending_balance", "available_balance", "locked_balance", "debt_balance", "total_earned", "total_withdrawn", "created_at", "updated_at")
 
     def has_module_permission(self, request):
         from apps.catalog.access import is_book_teacher
@@ -712,6 +714,10 @@ class TeacherWalletAdmin(admin.ModelAdmin):
     @admin.display(description="موجودی قابل برداشت")
     def available_toman(self, obj):
         return toman(obj.available_balance)
+
+    @admin.display(description="مسدود جهت تسویه")
+    def locked_toman(self, obj):
+        return toman(obj.locked_balance) if obj.locked_balance > 0 else "۰ تومان"
 
     @admin.display(description="در انتظار گارانتی")
     def pending_toman(self, obj):
@@ -806,5 +812,194 @@ class WalletTransactionAdmin(admin.ModelAdmin):
     @admin.display(description="زمان")
     def created_display(self, obj):
         return jalali_datetime(obj.created_at)
+
+
+@admin.register(TeacherBankAccount)
+class TeacherBankAccountAdmin(admin.ModelAdmin):
+    list_display = ("teacher_cell", "account_holder_name", "iban", "bank_name", "verification_badge", "updated_display")
+    list_filter = ("is_verified",)
+    search_fields = ("teacher__phone", "account_holder_name", "iban", "bank_name")
+
+    def has_module_permission(self, request):
+        from apps.catalog.access import is_book_teacher
+        return bool(request.user.is_superuser or is_book_teacher(request.user))
+
+    def has_view_permission(self, request, obj=None):
+        from apps.catalog.access import is_book_teacher
+        if request.user.is_superuser:
+            return True
+        if not is_book_teacher(request.user):
+            return False
+        return obj is None or obj.teacher_id == request.user.id
+
+    def has_change_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        from apps.catalog.access import is_book_teacher
+        if not is_book_teacher(request.user):
+            return False
+        return obj is None or obj.teacher_id == request.user.id
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("teacher")
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(teacher=request.user)
+
+    def get_readonly_fields(self, request, obj=None):
+        if request.user.is_superuser:
+            return ("created_at", "updated_at")
+        # استاد نمی‌تواند خودش شبای خود را تایید کند
+        return ("teacher", "is_verified", "notes", "created_at", "updated_at")
+
+    def save_model(self, request, obj, form, change):
+        if not request.user.is_superuser:
+            obj.teacher = request.user
+            # هر تغییری توسط استاد، نیازمند تایید مجدد است
+            if change and ("iban" in form.changed_data or "account_holder_name" in form.changed_data):
+                obj.is_verified = False
+        super().save_model(request, obj, form, change)
+
+    @admin.display(description="استاد")
+    def teacher_cell(self, obj):
+        return user_cell(obj.teacher)
+
+    @admin.display(description="وضعیت تایید شبا")
+    def verification_badge(self, obj):
+        if obj.is_verified:
+            return badges(("تایید شده", "green"))
+        return badges(("در انتظار تایید مدیر", "yellow"))
+
+    @admin.display(description="آخرین بروزرسانی")
+    def updated_display(self, obj):
+        return jalali_date(obj.updated_at)
+
+
+@admin.register(PayoutRequest)
+class PayoutRequestAdmin(admin.ModelAdmin):
+    list_display = ("payout_id", "teacher_cell", "amount_toman", "account_holder_snapshot", "iban_snapshot", "status_chip", "tracking_code", "created_time")
+    list_filter = ("status",)
+    search_fields = ("teacher__phone", "account_holder_snapshot", "iban_snapshot", "tracking_code")
+    actions = ["export_paya_csv", "mark_as_processing_action"]
+
+    def has_module_permission(self, request):
+        from apps.catalog.access import is_book_teacher
+        return bool(request.user.is_superuser or is_book_teacher(request.user))
+
+    def has_view_permission(self, request, obj=None):
+        from apps.catalog.access import is_book_teacher
+        if request.user.is_superuser:
+            return True
+        if not is_book_teacher(request.user):
+            return False
+        return obj is None or obj.teacher_id == request.user.id
+
+    def has_add_permission(self, request):
+        # فقط استاد یا مدیر می‌توانند درخواست اضافه کنند
+        from apps.catalog.access import is_book_teacher
+        return bool(request.user.is_superuser or is_book_teacher(request.user))
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("teacher", "processed_by")
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(teacher=request.user)
+
+    def get_readonly_fields(self, request, obj=None):
+        if not request.user.is_superuser:
+            return ("status", "account_holder_snapshot", "iban_snapshot", "bank_name_snapshot", "tracking_code", "receipt_note", "rejection_reason", "processed_by", "created_at", "paid_at")
+        if obj and obj.status in (PayoutRequest.Status.PAID, PayoutRequest.Status.REJECTED):
+            return [f.name for f in PayoutRequest._meta.fields]
+        return ("teacher", "amount", "account_holder_snapshot", "iban_snapshot", "bank_name_snapshot", "processed_by", "created_at", "paid_at")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            from .wallet import request_teacher_payout
+            teacher = request.user if not request.user.is_superuser else (obj.teacher or request.user)
+            payout = request_teacher_payout(teacher=teacher, amount=obj.amount)
+            obj.pk = payout.pk
+            return
+
+        # تغییر وضعیت توسط مدیر
+        if request.user.is_superuser and change:
+            orig = PayoutRequest.objects.get(pk=obj.pk)
+            if orig.status != obj.status:
+                if obj.status == PayoutRequest.Status.PAID:
+                    from .wallet import finalize_payout_paid
+                    finalize_payout_paid(orig, tracking_code=obj.tracking_code, receipt_note=obj.receipt_note, manager_user=request.user)
+                    return
+                elif obj.status == PayoutRequest.Status.REJECTED:
+                    from .wallet import reject_payout_request
+                    reject_payout_request(orig, reason=obj.rejection_reason or "رد درخواست توسط مدیریت", manager_user=request.user)
+                    return
+
+        super().save_model(request, obj, form, change)
+
+    @admin.display(description="شناسه")
+    def payout_id(self, obj):
+        return f"تسویه #{obj.id}"
+
+    @admin.display(description="استاد")
+    def teacher_cell(self, obj):
+        return user_cell(obj.teacher)
+
+    @admin.display(description="مبلغ درخواستی")
+    def amount_toman(self, obj):
+        return toman(obj.amount)
+
+    @admin.display(description="وضعیت")
+    def status_chip(self, obj):
+        color_map = {
+            PayoutRequest.Status.PAID: "green",
+            PayoutRequest.Status.PENDING: "yellow",
+            PayoutRequest.Status.PROCESSING: "blue",
+            PayoutRequest.Status.REJECTED: "red",
+        }
+        return badges((obj.get_status_display(), color_map.get(obj.status, "grey")))
+
+    @admin.display(description="زمان ثبت")
+    def created_time(self, obj):
+        return jalali_datetime(obj.created_at)
+
+    @admin.action(description="دانلود فایل استاندارد پایا (اکسل/CSV بانک)")
+    def export_paya_csv(self, request, queryset):
+        import csv
+        from django.http import HttpResponse
+
+        response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
+        response["Content-Disposition"] = 'attachment; filename="paya_batch_transfer.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow(["شناسه تسویه", "نام صاحب حساب", "شماره شبا (IBAN)", "مبلغ (ریال)", "مبلغ (تومان)", "شرح"])
+
+        for p in queryset:
+            writer.writerow([
+                p.id,
+                p.account_holder_snapshot,
+                p.iban_snapshot,
+                p.amount * 10,
+                p.amount,
+                f"تسویه حساب حق‌التألیف شماره {p.id}",
+            ])
+        return response
+
+    @admin.action(description="تغییر وضعیت به در حال واریز بانکی")
+    def mark_as_processing_action(self, request, queryset):
+        from .wallet import mark_payout_as_processing
+        count = 0
+        for p in queryset.filter(status=PayoutRequest.Status.PENDING):
+            mark_payout_as_processing(p, manager_user=request.user)
+            count += 1
+        self.message_user(request, f"{count} درخواست تسویه به وضعیت «در حال واریز بانکی» منتقل شدند.")
+
 
 

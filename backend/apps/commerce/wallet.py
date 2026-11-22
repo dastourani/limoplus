@@ -6,6 +6,8 @@ from django.utils import timezone
 from .models import (
     Order,
     OrderAuthorRevenue,
+    PayoutRequest,
+    TeacherBankAccount,
     TeacherWallet,
     WalletTransaction,
 )
@@ -221,15 +223,16 @@ def process_order_refund(order: Order, reason: str = "استرداد وجه سف
 def audit_teacher_wallet(wallet: TeacherWallet) -> dict:
     """
     چک‌لیست سلامت حسابداری برای مدیر کل:
-    مقایسه ریز تراکنش‌های دفترکل با موجودی‌های اسمی کیف پول جهت کشف هرگونه مغایرت.
+    مقایسه ریز تراکنش‌های دفترکل با موجودی‌های اسمی کیف پول جهت کشف هرگونه مغایرت ۶ سطحی:
+    (total_earned, total_withdrawn, available_balance, pending_balance, locked_balance, debt_balance)
     """
     txs = list(wallet.transactions.all().order_by("created_at", "id"))
 
-    # محاسبه تراز نظری از روی تراکنش‌ها
     calc_earned = 0
     calc_withdrawn = 0
     calc_pending = 0
     calc_available = 0
+    calc_locked = 0
     calc_debt = 0
 
     for tx in txs:
@@ -245,9 +248,15 @@ def audit_teacher_wallet(wallet: TeacherWallet) -> dict:
                 calc_available += (tx.amount - debt_pay)
             else:
                 calc_available += tx.amount
-        elif tx.event_type == WalletTransaction.EventType.WITHDRAW_PAID:
-            calc_withdrawn += tx.amount
+        elif tx.event_type == WalletTransaction.EventType.WITHDRAW_HOLD:
             calc_available = max(0, calc_available - tx.amount)
+            calc_locked += tx.amount
+        elif tx.event_type == WalletTransaction.EventType.WITHDRAW_PAID:
+            calc_locked = max(0, calc_locked - tx.amount)
+            calc_withdrawn += tx.amount
+        elif tx.event_type == WalletTransaction.EventType.WITHDRAW_REJECTED:
+            calc_locked = max(0, calc_locked - tx.amount)
+            calc_available += tx.amount
         elif tx.event_type == WalletTransaction.EventType.REFUND_ADJUSTMENT:
             calc_earned = max(0, calc_earned - tx.amount)
             if tx.author_revenue and tx.author_revenue.release_status == OrderAuthorRevenue.ReleaseStatus.PENDING:
@@ -264,9 +273,11 @@ def audit_teacher_wallet(wallet: TeacherWallet) -> dict:
         wallet.total_withdrawn == calc_withdrawn and
         wallet.available_balance == calc_available and
         wallet.pending_balance == calc_pending and
+        wallet.locked_balance == calc_locked and
         wallet.debt_balance == calc_debt and
         wallet.available_balance >= 0 and
         wallet.pending_balance >= 0 and
+        wallet.locked_balance >= 0 and
         wallet.debt_balance >= 0
     )
 
@@ -278,6 +289,8 @@ def audit_teacher_wallet(wallet: TeacherWallet) -> dict:
         "calculated_available": calc_available,
         "pending_balance": wallet.pending_balance,
         "calculated_pending": calc_pending,
+        "locked_balance": wallet.locked_balance,
+        "calculated_locked": calc_locked,
         "debt_balance": wallet.debt_balance,
         "calculated_debt": calc_debt,
         "net_withdrawable": wallet.net_withdrawable_amount,
@@ -287,3 +300,195 @@ def audit_teacher_wallet(wallet: TeacherWallet) -> dict:
         "calculated_withdrawn": calc_withdrawn,
         "transactions_count": len(txs),
     }
+
+
+MIN_WITHDRAWAL_AMOUNT = 200_000  # حداقل سقف برداشت به تومان
+
+
+def request_teacher_payout(teacher, amount: int) -> PayoutRequest:
+    """
+    ثبت درخواست تسویه حساب توسط استاد با مسدودسازی اتمیک مبلغ و ثبت در دفترکل.
+    """
+    from django.core.exceptions import ValidationError
+
+    if amount < MIN_WITHDRAWAL_AMOUNT:
+        raise ValidationError(f"حداقل مبلغ قابل درخواست تسویه {MIN_WITHDRAWAL_AMOUNT:,} تومان است.")
+
+    bank_account = getattr(teacher, "bank_account", None)
+    if not bank_account or not bank_account.is_verified:
+        raise ValidationError("شماره شبای بانکی شما هنوز ثبت یا توسط مدیریت تایید نشده است.")
+
+    with transaction.atomic():
+        # بررسی عدم وجود درخواست تسویه باز
+        has_open_request = PayoutRequest.objects.filter(
+            teacher=teacher,
+            status__in=[PayoutRequest.Status.PENDING, PayoutRequest.Status.PROCESSING],
+        ).exists()
+        if has_open_request:
+            raise ValidationError("شما در حال حاضر یک درخواست تسویه حساب در جریان دارید. پس از تعیین تکلیف آن درخواست جدید ثبت کنید.")
+
+        wallet = TeacherWallet.objects.select_for_update().get_or_create(teacher=teacher)[0]
+        net_available = wallet.net_withdrawable_amount
+
+        if amount > net_available:
+            raise ValidationError(f"مبلغ درخواستی ({amount:,} تومان) از موجودی قابل برداشت خالص شما ({net_available:,} تومان) بیشتر است.")
+
+        # مسدودسازی مبلغ: انتقال از available به locked
+        wallet.available_balance -= amount
+        wallet.locked_balance += amount
+        wallet.save()
+
+        payout = PayoutRequest.objects.create(
+            teacher=teacher,
+            amount=amount,
+            status=PayoutRequest.Status.PENDING,
+            account_holder_snapshot=bank_account.account_holder_name,
+            iban_snapshot=bank_account.iban,
+            bank_name_snapshot=bank_account.bank_name,
+        )
+
+        idempotency_key = f"payout-{payout.id}-hold"
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            event_type=WalletTransaction.EventType.WITHDRAW_HOLD,
+            amount=amount,
+            available_balance_after=wallet.available_balance,
+            pending_balance_after=wallet.pending_balance,
+            locked_balance_after=wallet.locked_balance,
+            debt_balance_after=wallet.debt_balance,
+            idempotency_key=idempotency_key,
+            description=f"مسدودسازی جهت تسویه حساب #{payout.id} (شبا: {bank_account.iban})",
+        )
+
+        try:
+            from apps.catalog.backups import notify_bale
+            from apps.catalog.panel_display import fa_number
+            msg = (
+                f"🏦 درخواست تسویه حساب جدید\n"
+                f"استاد: {teacher.phone} ({teacher.full_name or ''})\n"
+                f"مبلغ: {fa_number(amount)} تومان\n"
+                f"شبا: {bank_account.iban}\n"
+                f"صاحب حساب: {bank_account.account_holder_name}"
+            )
+            notify_bale(msg)
+        except Exception:
+            pass
+
+    return payout
+
+
+def mark_payout_as_processing(payout: PayoutRequest, manager_user=None) -> PayoutRequest:
+    """انتقال وضعیت درخواست تسویه به در حال پرداخت بانکی."""
+    from django.core.exceptions import ValidationError
+    if payout.status != PayoutRequest.Status.PENDING:
+        raise ValidationError("فقط درخواست‌های در انتظار قابل انتقال به وضعیت در حال پرداخت هستند.")
+
+    payout.status = PayoutRequest.Status.PROCESSING
+    if manager_user:
+        payout.processed_by = manager_user
+    payout.save(update_fields=["status", "processed_by"])
+    return payout
+
+
+def finalize_payout_paid(payout: PayoutRequest, tracking_code: str, receipt_note: str = "", manager_user=None) -> PayoutRequest:
+    """
+    نهایی‌سازی پرداخت قطعی بانکی با ثبت کد رهگیری پایا/ساتنا و بروزرسانی کیف پول و دفترکل.
+    """
+    from django.core.exceptions import ValidationError
+    if not tracking_code:
+        raise ValidationError("ثبت کد رهگیری بانکی (پایا/ساتنا) برای تسویه قطعی الزامی است.")
+    if payout.status not in (PayoutRequest.Status.PENDING, PayoutRequest.Status.PROCESSING):
+        raise ValidationError("این درخواست قبلاً تعیین تکلیف شده است.")
+
+    with transaction.atomic():
+        payout_locked = PayoutRequest.objects.select_for_update().get(pk=payout.pk)
+        if payout_locked.status == PayoutRequest.Status.PAID:
+            return payout_locked
+
+        wallet = TeacherWallet.objects.select_for_update().get(teacher=payout_locked.teacher)
+
+        # کسر از locked_balance و افزایش total_withdrawn
+        wallet.locked_balance = max(0, wallet.locked_balance - payout_locked.amount)
+        wallet.total_withdrawn += payout_locked.amount
+        wallet.save()
+
+        payout_locked.status = PayoutRequest.Status.PAID
+        payout_locked.tracking_code = tracking_code
+        payout_locked.receipt_note = receipt_note
+        payout_locked.paid_at = timezone.now()
+        if manager_user:
+            payout_locked.processed_by = manager_user
+        payout_locked.save()
+
+        idempotency_key = f"payout-{payout_locked.id}-paid"
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            event_type=WalletTransaction.EventType.WITHDRAW_PAID,
+            amount=payout_locked.amount,
+            available_balance_after=wallet.available_balance,
+            pending_balance_after=wallet.pending_balance,
+            locked_balance_after=wallet.locked_balance,
+            debt_balance_after=wallet.debt_balance,
+            idempotency_key=idempotency_key,
+            description=f"واریز قطعی تسویه حساب #{payout_locked.id} (کد رهگیری: {tracking_code})",
+        )
+
+        try:
+            from apps.catalog.backups import notify_bale
+            from apps.catalog.panel_display import fa_number
+            msg = (
+                f"✅ واریز تسویه حساب استاد انجام شد\n"
+                f"استاد: {payout_locked.teacher.phone}\n"
+                f"مبلغ: {fa_number(payout_locked.amount)} تومان\n"
+                f"کد رهگیری: {tracking_code}"
+            )
+            notify_bale(msg)
+        except Exception:
+            pass
+
+    return payout_locked
+
+
+def reject_payout_request(payout: PayoutRequest, reason: str, manager_user=None) -> PayoutRequest:
+    """
+    رد درخواست تسویه توسط مدیر و بازگشت خودکار مبلغ از locked به available_balance در یک ترنزکشن اتمیک.
+    """
+    from django.core.exceptions import ValidationError
+    if not reason:
+        raise ValidationError("ذکر دلیل رد درخواست الزامی است.")
+    if payout.status not in (PayoutRequest.Status.PENDING, PayoutRequest.Status.PROCESSING):
+        raise ValidationError("این درخواست قبلاً تعیین تکلیف شده است.")
+
+    with transaction.atomic():
+        payout_locked = PayoutRequest.objects.select_for_update().get(pk=payout.pk)
+        if payout_locked.status == PayoutRequest.Status.REJECTED:
+            return payout_locked
+
+        wallet = TeacherWallet.objects.select_for_update().get(teacher=payout_locked.teacher)
+
+        # بازگشت مبلغ مسدودشده به موجودی در دسترس
+        wallet.locked_balance = max(0, wallet.locked_balance - payout_locked.amount)
+        wallet.available_balance += payout_locked.amount
+        wallet.save()
+
+        payout_locked.status = PayoutRequest.Status.REJECTED
+        payout_locked.rejection_reason = reason
+        if manager_user:
+            payout_locked.processed_by = manager_user
+        payout_locked.save()
+
+        idempotency_key = f"payout-{payout_locked.id}-rejected"
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            event_type=WalletTransaction.EventType.WITHDRAW_REJECTED,
+            amount=payout_locked.amount,
+            available_balance_after=wallet.available_balance,
+            pending_balance_after=wallet.pending_balance,
+            locked_balance_after=wallet.locked_balance,
+            debt_balance_after=wallet.debt_balance,
+            idempotency_key=idempotency_key,
+            description=f"رد تسویه حساب #{payout_locked.id}: {reason}",
+        )
+
+    return payout_locked
+
