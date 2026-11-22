@@ -684,6 +684,7 @@ class BookAdmin(admin.ModelAdmin):
         return render(request, "admin/catalog/book/book_study_analytics.html", context)
 
     def book_trace_view(self, request, book_id):
+        from django.core.cache import cache
         from django.core.exceptions import PermissionDenied
         from django.shortcuts import get_object_or_404, render
         from apps.catalog.jalali import jalali_datetime
@@ -697,47 +698,61 @@ class BookAdmin(admin.ModelAdmin):
         found = None
         pasted = ""
         searched = False
+        rate_limit_exceeded = False
+
+        # سقف استعلام ساعتی برای کاربران غیر مدیر کل (حداکثر ۱۰ استعلام در ساعت)
+        RATE_LIMIT = 10
+        TIMEOUT = 3600
+        cache_key = f"trace_rate:{request.user.id}:{book.id}"
 
         if request.method == "POST":
+            if not request.user.is_superuser:
+                current_hits = cache.get(cache_key, 0)
+                if current_hits >= RATE_LIMIT:
+                    rate_limit_exceeded = True
+                else:
+                    cache.set(cache_key, current_hits + 1, timeout=TIMEOUT)
+
             searched = True
             pasted = request.POST.get("text", "")[:20000]
-            result = core.trace(pasted)
+            if not rate_limit_exceeded:
+                result = core.trace(pasted)
 
-            # ایزولاسیون سخت‌گیرانه سمت سرور: فیلتر انحصاری روی فصل‌ها و بخش‌های همین کتاب
-            def _belongs_to_this_book(event):
-                if not event.node:
-                    return False
-                return event.node.path.startswith(book.path)
+                # ایزولاسیون سخت‌گیرانه سمت سرور: فیلتر انحصاری روی فصل‌ها و بخش‌های همین کتاب
+                def _belongs_to_this_book(event):
+                    if not event.node:
+                        return False
+                    return event.node.path.startswith(book.path)
 
-            marked_events = [e for e in result["marked"] if _belongs_to_this_book(e)]
-            similar_events = [e for e in result["similar"] if _belongs_to_this_book(e)]
+                marked_events = [e for e in result["marked"] if _belongs_to_this_book(e)]
+                similar_events = [e for e in result["similar"] if _belongs_to_this_book(e)]
 
-            # ثبت لاگ استعلام موفق در TraceHit
-            for e in marked_events:
-                TraceHit.objects.get_or_create(event=e, found_by=request.user)
+                # ثبت لاگ استعلام موفق در TraceHit
+                for e in marked_events:
+                    TraceHit.objects.get_or_create(event=e, found_by=request.user)
 
-            def _fmt_row(event):
-                # ماسک کردن هویت دانشجو برای حفظ حریم خصوصی
-                phone = event.user.phone if event.user else ""
-                masked_phone = (phone[:4] + "***" + phone[-4:]) if len(phone) >= 7 else "دانشجو"
-                full_name = f"{event.user.first_name} {event.user.last_name}".strip() if event.user else ""
-                display_user = f"{full_name} ({masked_phone})" if full_name else masked_phone
+                def _fmt_row(event):
+                    # ماسک کردن هویت دانشجو برای حفظ حریم خصوصی
+                    phone = event.user.phone if event.user else ""
+                    masked_phone = (phone[:4] + "***" + phone[-4:]) if len(phone) >= 7 else "دانشجو"
+                    full_name = f"{event.user.first_name} {event.user.last_name}".strip() if event.user else ""
+                    display_user = f"{full_name} ({masked_phone})" if full_name else masked_phone
 
-                exact = core.is_exact(event) if not event.packed else None
-                state = "متن ذخیره‌شده" if event.packed else ("نشانی دقیق" if exact else "نسخه تغییریافته")
+                    exact = core.is_exact(event) if not event.packed else None
+                    state = "متن ذخیره‌شده" if event.packed else ("نشانی دقیق" if exact else "نسخه تغییریافته")
 
-                return {
-                    "display_user": display_user,
-                    "when": jalali_datetime(event.created_at),
-                    "node_title": event.node.title if event.node else "—",
-                    "text": core.text_of(event),
-                    "state": state,
+                    return {
+                        "display_user": display_user,
+                        "when": jalali_datetime(event.created_at),
+                        "node_title": event.node.title if event.node else "—",
+                        "text": core.text_of(event),
+                        "state": state,
+                    }
+
+                found = {
+                    "marked": [_fmt_row(e) for e in marked_events],
+                    "similar": [_fmt_row(e) for e in similar_events],
                 }
-
-            found = {
-                "marked": [_fmt_row(e) for e in marked_events],
-                "similar": [_fmt_row(e) for e in similar_events],
-            }
 
         context = {
             **self.admin_site.each_context(request),
@@ -746,6 +761,7 @@ class BookAdmin(admin.ModelAdmin):
             "found": found,
             "pasted": pasted,
             "searched": searched,
+            "rate_limit_exceeded": rate_limit_exceeded,
             "opts": self.model._meta,
         }
         return render(request, "admin/catalog/book/book_trace.html", context)
