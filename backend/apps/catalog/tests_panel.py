@@ -1358,6 +1358,16 @@ class BookEditorAccessTests(_Base):
         res_forbidden = self.client.get(url)
         self.assertEqual(res_forbidden.status_code, 403)
 
+        # 5. Hourly Rate Limiting (max 10 queries per hour for teacher)
+        self.client.force_login(teacher)
+        for _ in range(9):  # already did 1 post above -> total reaches 10
+            r = self.client.post(url, {"text": "متن تستی کوتاه دیگر"})
+            self.assertNotContains(r, "محدودیت تعداد استعلام")
+        # 11th request hits the rate limit
+        r_blocked = self.client.post(url, {"text": "تست بیش از حد مجاز"})
+        self.assertContains(r_blocked, "محدودیت تعداد استعلام")
+        self.assertContains(r_blocked, "۱۰ استعلام در ساعت")
+
     def test_book_dedicated_inbox_and_teacher_relocate(self):
         """Each book has a dedicated inbox accessible to its teachers for bulk staging and relocation."""
         from .inbox import book_inbox_chapter
