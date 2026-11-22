@@ -165,3 +165,90 @@ class BookRoyaltyAndSplitTests(TestCase):
 
         author_rev = OrderAuthorRevenue.objects.get(snapshot=snap, author=self.teacher1)
         self.assertEqual(author_rev.amount, 80_000)
+
+    def test_teacher_wallet_pending_credit_and_release(self):
+        from apps.commerce.models import TeacherWallet, WalletTransaction
+        from apps.commerce.wallet import release_pending_balances, audit_teacher_wallet
+        from datetime import timedelta
+
+        BookEditor.objects.create(book=self.book, user=self.teacher1)
+
+        # Purchase with default plan (7-day hold)
+        order = Order.objects.create(
+            user=self.buyer,
+            book=self.book,
+            title=f"خرید {self.book.title}",
+            amount=100_000,
+            status=Order.Status.PAID,
+            paid_at=timezone.now(),
+        )
+
+        snap = calculate_and_save_order_royalty(order)
+        author_rev = OrderAuthorRevenue.objects.get(snapshot=snap, author=self.teacher1)
+
+        # Check wallet immediately after sale: 70,000 in pending, 0 in available
+        wallet = TeacherWallet.objects.get(teacher=self.teacher1)
+        self.assertEqual(wallet.pending_balance, 70_000)
+        self.assertEqual(wallet.available_balance, 0)
+        self.assertEqual(wallet.total_earned, 70_000)
+        self.assertEqual(wallet.debt_balance, 0)
+
+        tx_earn = WalletTransaction.objects.get(wallet=wallet, event_type=WalletTransaction.EventType.EARN_PENDING)
+        self.assertEqual(tx_earn.amount, 70_000)
+
+        # Before 7 days: release does nothing
+        released = release_pending_balances(now=timezone.now() + timedelta(days=3))
+        self.assertEqual(released, 0)
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.available_balance, 0)
+
+        # After 7 days: release moves funds from pending to available
+        released = release_pending_balances(now=timezone.now() + timedelta(days=8))
+        self.assertEqual(released, 1)
+
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.pending_balance, 0)
+        self.assertEqual(wallet.available_balance, 70_000)
+
+        # Audit check verifies zero discrepancy
+        audit = audit_teacher_wallet(wallet)
+        self.assertTrue(audit["is_healthy"])
+
+    def test_order_refund_after_available_creates_debt_balance(self):
+        from apps.commerce.models import TeacherWallet
+        from apps.commerce.wallet import release_pending_balances, process_order_refund
+        from datetime import timedelta
+
+        BookEditor.objects.create(book=self.book, user=self.teacher1)
+
+        order = Order.objects.create(
+            user=self.buyer,
+            book=self.book,
+            title=f"خرید {self.book.title}",
+            amount=100_000,
+            status=Order.Status.PAID,
+            paid_at=timezone.now(),
+        )
+
+        calculate_and_save_order_royalty(order)
+        # Release funds to available
+        release_pending_balances(now=timezone.now() + timedelta(days=8))
+
+        wallet = TeacherWallet.objects.get(teacher=self.teacher1)
+        self.assertEqual(wallet.available_balance, 70_000)
+
+        # Simulate withdrawal of 50,000 (remaining available: 20,000)
+        wallet.available_balance = 20_000
+        wallet.total_withdrawn = 50_000
+        wallet.save()
+
+        # Now full refund of the 70,000 order occurs:
+        # Available is only 20,000 -> 20,000 deducted, remaining 50,000 recorded as debt_balance
+        adjusted = process_order_refund(order, reason="استرداد پس از تسویه")
+        self.assertEqual(adjusted, 1)
+
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.available_balance, 0)
+        self.assertEqual(wallet.debt_balance, 50_000)
+        self.assertEqual(wallet.net_withdrawable_amount, 0)
+

@@ -151,6 +151,7 @@ class Order(models.Model):
         PENDING = "pending", "در انتظار پرداخت"
         PAID = "paid", "پرداخت شده"
         FAILED = "failed", "ناموفق"
+        REFUNDED = "refunded", "مسترد شده"
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="orders", verbose_name="کاربر")
     book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, null=True, blank=True, related_name="orders", verbose_name="کتاب")
@@ -244,6 +245,7 @@ class RevenuePlan(models.Model):
     code = models.SlugField("کد یکتا", max_length=50, unique=True, help_text="شناسه انگلیسی یکتا برای ارجاع سیستم، مثلا early-teachers یا standard")
     author_share_percent = models.PositiveSmallIntegerField("درصد پیش‌فرض مؤلفان", default=70, help_text="درصدی از مبلغ خالص فروش که به مؤلفان می‌رسد (بین ۰ تا ۱۰۰)")
     platform_share_percent = models.PositiveSmallIntegerField("درصد سهم پلتفرم", default=30, help_text="درصدی از مبلغ خالص فروش که به لیموخوان می‌رسد (بین ۰ تا ۱۰۰)")
+    pending_hold_days = models.PositiveSmallIntegerField("دوره انتظار گارانتی (روز)", default=7, help_text="مدت زمان ماندن سهم در حالت انتظار پیش از انتقال به موجودی قابل برداشت (۰ یعنی تسویه فوری)")
     max_sales_count = models.PositiveIntegerField("سقف تعداد فروش (برای هر کتاب)", null=True, blank=True, help_text="خالی یعنی نامحدود؛ در صورت پر شدن، این طرح روی کتاب منقضی و به طرح پایه برمی‌گردد")
     starts_at = models.DateTimeField("تاریخ شروع طرح", null=True, blank=True, help_text="خالی یعنی از همین لحظه فعال")
     ends_at = models.DateTimeField("تاریخ پایان طرح", null=True, blank=True, help_text="خالی یعنی نامحدود زمانی")
@@ -402,6 +404,11 @@ class OrderRevenueSnapshot(models.Model):
 class OrderAuthorRevenue(models.Model):
     """سهم ریالی هر استاد از یک سفارش مشخص."""
 
+    class ReleaseStatus(models.TextChoices):
+        PENDING = "pending", "در دوره انتظار (گارانتی)"
+        AVAILABLE = "available", "آزادشده (قابل برداشت)"
+        REFUNDED = "refunded", "لغو شده / مسترد شده"
+
     snapshot = models.ForeignKey(
         OrderRevenueSnapshot,
         on_delete=models.CASCADE,
@@ -416,6 +423,10 @@ class OrderAuthorRevenue(models.Model):
     )
     share_percent = models.DecimalField("درصد سهم از سفارش", max_digits=5, decimal_places=2)
     amount = models.PositiveIntegerField("مبلغ سهم استاد (تومان)")
+    hold_days = models.PositiveSmallIntegerField("دوره انتظار اعمال‌شده (روز)", default=7)
+    available_at = models.DateTimeField("زمان پیش‌بینی آزادسازی", null=True, blank=True)
+    release_status = models.CharField("وضعیت دسترسی", max_length=15, choices=ReleaseStatus.choices, default=ReleaseStatus.PENDING)
+    released_at = models.DateTimeField("زمان آزادسازی واقعی", null=True, blank=True)
     is_settled = models.BooleanField("تسویه‌شده", default=False, help_text="آیا این مبلغ در تسویه حساب نهایی پرداخت شده است؟")
     settled_at = models.DateTimeField("زمان تسویه", null=True, blank=True)
     created_at = models.DateTimeField("زمان ایجاد", auto_now_add=True)
@@ -424,7 +435,103 @@ class OrderAuthorRevenue(models.Model):
         verbose_name = "سهم ریالی مؤلف از سفارش"
         verbose_name_plural = "سهم‌های ریالی مؤلفان از سفارش‌ها"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["release_status", "available_at"], name="author_rev_release_idx"),
+        ]
 
     def __str__(self):
         return f"{self.author.phone}: {self.amount:,} تومان (سفارش #{self.snapshot.order_id})"
+
+
+class TeacherWallet(models.Model):
+    """کیف پول و خلاصه حسابداری هر استاد با تفکیک موجودی در انتظار، قابل برداشت و بدهی معوق."""
+
+    teacher = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="teacher_wallet",
+        verbose_name="استاد",
+    )
+    pending_balance = models.PositiveIntegerField("موجودی در انتظار (تومان)", default=0, help_text="مبالغ فروش‌های اخیر در دوره گارانتی")
+    available_balance = models.PositiveIntegerField("موجودی قابل برداشت (تومان)", default=0, help_text="مبالغ قطعی آزادشده و آماده تسویه")
+    debt_balance = models.PositiveIntegerField("بدهی معوق / استرداد بعد از تسویه (تومان)", default=0, help_text="کسری ناشی از استرداد پس از آزادسازی که از درآمدهای بعدی کسر می‌شود")
+    total_earned = models.PositiveIntegerField("کل درآمد کسب‌شده (تومان)", default=0)
+    total_withdrawn = models.PositiveIntegerField("کل مبالغ تسویه‌شده (تومان)", default=0)
+    created_at = models.DateTimeField("تاریخ افتتاح حساب", auto_now_add=True)
+    updated_at = models.DateTimeField("آخرین به‌روزرسانی", auto_now=True)
+
+    class Meta:
+        verbose_name = "کیف پول استاد"
+        verbose_name_plural = "کیف پول‌های اساتید"
+        ordering = ["-available_balance", "-pending_balance"]
+
+    def __str__(self):
+        return f"کیف پول {self.teacher.phone}: موجودی قابل برداشت {self.available_balance:,} ت (در انتظار {self.pending_balance:,} ت)"
+
+    @property
+    def net_withdrawable_amount(self) -> int:
+        """مبلغ خالص قابل برداشت پس از کسر هرگونه بدهی معوق."""
+        return max(0, self.available_balance - self.debt_balance)
+
+
+class WalletTransaction(models.Model):
+    """دفترکل رویدادهای مالی کیف پول استاد با تراز لحظه‌ای و تضمین عدم دوباره‌شماری."""
+
+    class EventType(models.TextChoices):
+        EARN_PENDING = "earn_pending", "ثبت سهم فروش (در انتظار گارانتی)"
+        RELEASE_AVAILABLE = "release_available", "آزادسازی سهم به موجودی قابل برداشت"
+        WITHDRAW_HOLD = "withdraw_hold", "مسدودسازی جهت تسویه حساب"
+        WITHDRAW_PAID = "withdraw_paid", "تسویه حساب قطعی بانکی"
+        WITHDRAW_REJECTED = "withdraw_rejected", "رد درخواست تسویه و بازگشت به موجودی"
+        REFUND_ADJUSTMENT = "refund_adjustment", "استرداد و اصلاح مالی سفارش"
+        SUBSCRIPTION_POOL = "subscription_pool", "سهم از استخر اشتراک ماهانه"
+
+    wallet = models.ForeignKey(
+        TeacherWallet,
+        on_delete=models.CASCADE,
+        related_name="transactions",
+        verbose_name="کیف پول",
+    )
+    event_type = models.CharField("نوع رویداد", max_length=25, choices=EventType.choices)
+    amount = models.PositiveIntegerField("مبلغ تراکنش (تومان)")
+    available_balance_after = models.PositiveIntegerField("مانده قابل برداشت پس از تراکنش (تومان)")
+    pending_balance_after = models.PositiveIntegerField("مانده در انتظار پس از تراکنش (تومان)")
+    debt_balance_after = models.PositiveIntegerField("مانده بدهی معوق پس از تراکنش (تومان)", default=0)
+    reference_order = models.ForeignKey(
+        Order,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="wallet_transactions",
+        verbose_name="سفارش مرجع",
+    )
+    author_revenue = models.ForeignKey(
+        OrderAuthorRevenue,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="wallet_transactions",
+        verbose_name="سهم مرجع",
+    )
+    idempotency_key = models.CharField(
+        "کلید یکتایی تراکنش",
+        max_length=120,
+        unique=True,
+        help_text="جلوگیری از دوباره‌شماری در اجرای مکرر، مثلا rev-15-release یا ord-42-earn",
+    )
+    description = models.CharField("شرح تراکنش", max_length=255)
+    created_at = models.DateTimeField("زمان ثبت تراکنش", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "تراکنش کیف پول"
+        verbose_name_plural = "تراکنش‌های کیف پول"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["wallet", "created_at"], name="wallet_tx_created_idx"),
+            models.Index(fields=["event_type", "created_at"], name="wallet_tx_event_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.wallet.teacher.phone} | {self.get_event_type_display()} | {self.amount:,} ت"
+
 
