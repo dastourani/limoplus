@@ -223,23 +223,48 @@ def audit_teacher_wallet(wallet: TeacherWallet) -> dict:
     چک‌لیست سلامت حسابداری برای مدیر کل:
     مقایسه ریز تراکنش‌های دفترکل با موجودی‌های اسمی کیف پول جهت کشف هرگونه مغایرت.
     """
-    txs = wallet.transactions.all()
+    txs = list(wallet.transactions.all().order_by("created_at", "id"))
 
     # محاسبه تراز نظری از روی تراکنش‌ها
     calc_earned = 0
     calc_withdrawn = 0
+    calc_pending = 0
+    calc_available = 0
+    calc_debt = 0
 
     for tx in txs:
         if tx.event_type in (WalletTransaction.EventType.EARN_PENDING, WalletTransaction.EventType.SUBSCRIPTION_POOL):
             calc_earned += tx.amount
+            calc_pending += tx.amount
+        elif tx.event_type == WalletTransaction.EventType.RELEASE_AVAILABLE:
+            calc_pending = max(0, calc_pending - tx.amount)
+            # اگر بدهی وجود دارد، ابتدا بدهی صاف می‌شود
+            if calc_debt > 0:
+                debt_pay = min(calc_debt, tx.amount)
+                calc_debt -= debt_pay
+                calc_available += (tx.amount - debt_pay)
+            else:
+                calc_available += tx.amount
         elif tx.event_type == WalletTransaction.EventType.WITHDRAW_PAID:
             calc_withdrawn += tx.amount
+            calc_available = max(0, calc_available - tx.amount)
         elif tx.event_type == WalletTransaction.EventType.REFUND_ADJUSTMENT:
             calc_earned = max(0, calc_earned - tx.amount)
+            if tx.author_revenue and tx.author_revenue.release_status == OrderAuthorRevenue.ReleaseStatus.PENDING:
+                calc_pending = max(0, calc_pending - tx.amount)
+            else:
+                if calc_available >= tx.amount:
+                    calc_available -= tx.amount
+                else:
+                    calc_debt += (tx.amount - calc_available)
+                    calc_available = 0
 
     is_healthy = (
         wallet.total_earned == calc_earned and
         wallet.total_withdrawn == calc_withdrawn and
+        wallet.available_balance == calc_available and
+        wallet.pending_balance == calc_pending and
+        wallet.debt_balance == calc_debt and
         wallet.available_balance >= 0 and
         wallet.pending_balance >= 0 and
         wallet.debt_balance >= 0
@@ -250,12 +275,15 @@ def audit_teacher_wallet(wallet: TeacherWallet) -> dict:
         "teacher_phone": wallet.teacher.phone,
         "is_healthy": is_healthy,
         "available_balance": wallet.available_balance,
+        "calculated_available": calc_available,
         "pending_balance": wallet.pending_balance,
+        "calculated_pending": calc_pending,
         "debt_balance": wallet.debt_balance,
+        "calculated_debt": calc_debt,
         "net_withdrawable": wallet.net_withdrawable_amount,
         "total_earned": wallet.total_earned,
         "calculated_earned": calc_earned,
         "total_withdrawn": wallet.total_withdrawn,
         "calculated_withdrawn": calc_withdrawn,
-        "transactions_count": txs.count(),
+        "transactions_count": len(txs),
     }
