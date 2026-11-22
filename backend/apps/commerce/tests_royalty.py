@@ -619,6 +619,20 @@ class BookRoyaltyAndSplitTests(TestCase):
         period.refresh_from_db()
         self.assertEqual(period.status, SubscriptionPoolPeriod.Status.FINALIZED)
 
+        # Audit check: wallet is 100% healthy
+        from apps.commerce.wallet import audit_teacher_wallet
+        audit = audit_teacher_wallet(wallet)
+        self.assertTrue(audit["is_healthy"])
+        self.assertEqual(len(audit["discrepancies"]), 0)
+
+        # Calling finalize again should be idempotent or raise validation error, never double credit
+        with self.assertRaises(Exception):
+            finalize_subscription_pool(period)
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.available_balance, 300_000)
+        self.assertEqual(wallet.total_earned, 300_000)
+
+
 
 
 
