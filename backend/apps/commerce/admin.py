@@ -603,7 +603,13 @@ class OrderRevenueSnapshotAdmin(admin.ModelAdmin):
 class OrderAuthorRevenueAdmin(admin.ModelAdmin):
     list_display = ("order_number", "book_name", "author_user", "share_pct", "amount_toman", "status_chip", "available_date", "created_time")
     list_filter = ("release_status", "is_settled", "created_at")
-    date_hierarchy = "created_at" 
+    date_hierarchy = "created_at"
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        if not request.user.is_superuser:
+            extra_context["title"] = "درآمد از فروش کتاب‌ها"
+        return super().changelist_view(request, extra_context=extra_context)
     search_fields = ("snapshot__order__id", "snapshot__book__title", "author__phone")
     readonly_fields = [f.name for f in OrderAuthorRevenue._meta.fields]
 
@@ -716,6 +722,7 @@ class TeacherWalletAdmin(admin.ModelAdmin):
         # ساخت کارت‌های آماری KPI
         extra_context = extra_context or {}
         if not request.user.is_superuser:
+            extra_context["title"] = "کیف پول من" 
             w = TeacherWallet.objects.filter(teacher=request.user).first()
             if w:
                 from .models import PayoutRequest, OrderAuthorRevenue
@@ -815,7 +822,13 @@ class TeacherWalletAdmin(admin.ModelAdmin):
 class WalletTransactionAdmin(admin.ModelAdmin):
     list_display = ("teacher_cell", "event_title", "amount_toman", "available_after", "pending_after", "order_ref", "description", "created_display")
     list_filter = ("event_type", "created_at")
-    date_hierarchy = "created_at" 
+    date_hierarchy = "created_at"
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        if not request.user.is_superuser:
+            extra_context["title"] = "گردش حساب کیف پول"
+        return super().changelist_view(request, extra_context=extra_context)
     search_fields = ("wallet__teacher__phone", "description", "idempotency_key")
     readonly_fields = [f.name for f in WalletTransaction._meta.fields]
 
@@ -890,7 +903,10 @@ class TeacherBankAccountAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
-        extra_context["title"] = "حساب‌های بانکی و شبای اساتید"
+        if not request.user.is_superuser:
+            extra_context["title"] = "حساب بانکی (شبا)"
+        else:
+            extra_context["title"] = "حساب‌های بانکی و شبای اساتید"
         return super().changelist_view(request, extra_context=extra_context)
 
     @admin.display(description="پیام یا یادداشت مدیریت")
@@ -963,7 +979,13 @@ class TeacherBankAccountAdmin(admin.ModelAdmin):
 class PayoutRequestAdmin(admin.ModelAdmin):
     list_display = ("payout_id", "teacher_cell", "amount_toman", "account_holder_snapshot", "iban_snapshot", "status_chip", "tracking_code", "rejection_reason_display", "created_time")
     list_filter = ("status", "created_at")
-    date_hierarchy = "created_at" 
+    date_hierarchy = "created_at"
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        if not request.user.is_superuser:
+            extra_context["title"] = "درخواست‌های تسویه من"
+        return super().changelist_view(request, extra_context=extra_context)
     search_fields = ("teacher__phone", "account_holder_snapshot", "iban_snapshot", "tracking_code")
     actions = ["export_paya_csv", "mark_as_processing_action"]
 
@@ -1215,6 +1237,7 @@ class PoolBookShareAdmin(admin.ModelAdmin):
         extra_context = extra_context or {}
         # تولید کارت‌های وضعیت آمادگی کتاب‌های استاد برای استخر آینده
         if not request.user.is_superuser:
+            extra_context["title"] = "سهم استخر اشتراک" 
             from apps.catalog.models import BookEditor, ContentNode
             from apps.learning.models import Question
             from .models import SubscriptionPoolPeriod
