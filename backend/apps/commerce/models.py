@@ -235,3 +235,196 @@ class Entitlement(models.Model):
     @classmethod
     def active_for(cls, user, now=None):
         return cls.active_for_any(now).filter(user=user)
+
+
+class RevenuePlan(models.Model):
+    """طرح درآمدی تشویقی یا عمومی برای تسهیم فروش کتاب‌ها (مانند ۳۰ استاد اول، ۲۰ کتاب اول یا طرح پایه)."""
+
+    title = models.CharField("عنوان طرح", max_length=120)
+    code = models.SlugField("کد یکتا", max_length=50, unique=True, help_text="شناسه انگلیسی یکتا برای ارجاع سیستم، مثلا early-teachers یا standard")
+    author_share_percent = models.PositiveSmallIntegerField("درصد پیش‌فرض مؤلفان", default=70, help_text="درصدی از مبلغ خالص فروش که به مؤلفان می‌رسد (بین ۰ تا ۱۰۰)")
+    platform_share_percent = models.PositiveSmallIntegerField("درصد سهم پلتفرم", default=30, help_text="درصدی از مبلغ خالص فروش که به لیموخوان می‌رسد (بین ۰ تا ۱۰۰)")
+    max_sales_count = models.PositiveIntegerField("سقف تعداد فروش (برای هر کتاب)", null=True, blank=True, help_text="خالی یعنی نامحدود؛ در صورت پر شدن، این طرح روی کتاب منقضی و به طرح پایه برمی‌گردد")
+    starts_at = models.DateTimeField("تاریخ شروع طرح", null=True, blank=True, help_text="خالی یعنی از همین لحظه فعال")
+    ends_at = models.DateTimeField("تاریخ پایان طرح", null=True, blank=True, help_text="خالی یعنی نامحدود زمانی")
+    is_active = models.BooleanField("فعال", default=True)
+    is_default = models.BooleanField("طرح پیش‌فرض سامانه", default=False, help_text="طرح پایه‌ای که در صورت عدم تطابق با سایر طرح‌ها یا اتمام سقف، اعمال می‌شود")
+    description = models.TextField("توضیحات و شرایط طرح", blank=True)
+    created_at = models.DateTimeField("ایجاد", auto_now_add=True)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "طرح درآمدی و تشویقی"
+        verbose_name_plural = "طرح‌های درآمدی و تشویقی"
+        ordering = ["-is_default", "title"]
+
+    def __str__(self):
+        return f"{self.title} (مؤلف: {self.author_share_percent}٪ / پلتفرم: {self.platform_share_percent}٪)"
+
+    def clean(self):
+        if self.author_share_percent + self.platform_share_percent != 100:
+            raise ValidationError("مجموع درصد سهم مؤلفان و سهم پلتفرم باید دقیقاً ۱۰۰٪ باشد.")
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            raise ValidationError({"ends_at": "تاریخ پایان باید بعد از تاریخ شروع باشد."})
+
+    def is_valid_now(self, now=None) -> bool:
+        if not self.is_active:
+            return False
+        now = now or timezone.now()
+        if self.starts_at and self.starts_at > now:
+            return False
+        if self.ends_at and self.ends_at < now:
+            return False
+        return True
+
+
+class BookRoyaltyRule(models.Model):
+    """تنظیمات قرارداد و تسهیم سود یک کتاب خاص (پشتیبانی از چندمؤلفی و طرح اختصاصی)."""
+
+    book = models.OneToOneField(
+        ContentNode,
+        on_delete=models.CASCADE,
+        related_name="royalty_rule",
+        verbose_name="کتاب",
+        limit_choices_to={"kind": ContentNode.Kind.BOOK, "depth": 1},
+    )
+    revenue_plan = models.ForeignKey(
+        RevenuePlan,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="book_rules",
+        verbose_name="طرح درآمدی اعمال‌شده",
+        help_text="خالی یعنی استفاده از طرح پیش‌فرض سامانه، مگر آنکه درصدها در زیر مستقیماً override شده باشند",
+    )
+    custom_platform_share_percent = models.PositiveSmallIntegerField(
+        "درصد اختصاصی پلتفرم",
+        null=True,
+        blank=True,
+        help_text="در صورت نیاز به درصد سفارشی خارج از طرح برای این کتاب (بین ۰ تا ۱۰۰)",
+    )
+    is_custom_split = models.BooleanField("استفاده از درصد سفارشی به جای طرح", default=False)
+    notes = models.TextField("یادداشت قرارداد و شرایط مالی", blank=True)
+    created_at = models.DateTimeField("ایجاد", auto_now_add=True)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "قرارداد تسهیم کتاب"
+        verbose_name_plural = "قراردادهای تسهیم کتاب‌ها"
+
+    def __str__(self):
+        return f"تسهیم کتاب: {self.book.title}"
+
+    def clean(self):
+        if self.is_custom_split and self.custom_platform_share_percent is not None:
+            if not (0 <= self.custom_platform_share_percent <= 100):
+                raise ValidationError({"custom_platform_share_percent": "درصد سهم پلتفرم باید بین ۰ تا ۱۰۰ باشد."})
+
+
+class BookAuthorShare(models.Model):
+    """سهم هر مؤلف/استاد از یک کتاب در حالت چندمؤلفی یا تک‌مؤلفی."""
+
+    royalty_rule = models.ForeignKey(
+        BookRoyaltyRule,
+        on_delete=models.CASCADE,
+        related_name="author_shares",
+        verbose_name="قرارداد تسهیم کتاب",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="book_author_shares",
+        verbose_name="مؤلف / استاد",
+    )
+    share_percent = models.DecimalField(
+        "درصد سهم از کل فروش (٪)",
+        max_digits=5,
+        decimal_places=2,
+        help_text="درصدی از کل مبلغ فروش کتاب که به این استاد می‌رسد (مثلاً ۷۰.۰۰ یا در حالت چندمؤلفی ۳۵.۰۰)",
+    )
+    role_title = models.CharField("نقش در کتاب", max_length=60, default="مؤلف اصلی", blank=True, help_text="مثلاً مؤلف اصلی، همکار تألیف، ویراستار علمی")
+    is_active = models.BooleanField("فعال", default=True)
+    created_at = models.DateTimeField("ایجاد", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "سهم مؤلف از کتاب"
+        verbose_name_plural = "سهم‌های مؤلفان از کتاب"
+        constraints = [
+            models.UniqueConstraint(fields=["royalty_rule", "author"], name="uniq_author_per_book_royalty"),
+        ]
+
+    def __str__(self):
+        return f"{self.author.phone} ({self.share_percent}٪) → {self.royalty_rule.book.title}"
+
+
+class OrderRevenueSnapshot(models.Model):
+    """اسنپ‌شات قطعی تسهیم و درآمدهای تحقق‌یافته از یک سفارش پرداخت‌شده."""
+
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.PROTECT,
+        related_name="revenue_snapshot",
+        verbose_name="سفارش",
+    )
+    book = models.ForeignKey(
+        ContentNode,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="order_revenue_snapshots",
+        verbose_name="کتاب",
+    )
+    plan_name = models.CharField("طرح درآمدی در لحظه خرید", max_length=120, blank=True)
+    revenue_plan = models.ForeignKey(
+        RevenuePlan,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="order_snapshots",
+        verbose_name="طرح درآمدی",
+    )
+    total_amount = models.PositiveIntegerField("مبلغ کل پرداخت‌شده (تومان)")
+    platform_share_percent = models.DecimalField("درصد سهم پلتفرم", max_digits=5, decimal_places=2)
+    platform_share_amount = models.PositiveIntegerField("سهم پلتفرم (تومان)")
+    total_authors_amount = models.PositiveIntegerField("جمع سهم مؤلفان (تومان)")
+    details = models.JSONField("ریز سهم مؤلفان و ضرایب در زمان خرید", default=dict, blank=True)
+    created_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "اسنپ‌شات مالی سفارش"
+        verbose_name_plural = "اسنپ‌شات‌های مالی سفارش‌ها"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"تسهیم سفارش #{self.order_id}: پلتفرم {self.platform_share_amount:,} ت / مؤلفان {self.total_authors_amount:,} ت"
+
+
+class OrderAuthorRevenue(models.Model):
+    """سهم ریالی هر استاد از یک سفارش مشخص."""
+
+    snapshot = models.ForeignKey(
+        OrderRevenueSnapshot,
+        on_delete=models.CASCADE,
+        related_name="author_revenues",
+        verbose_name="اسنپ‌شات سفارش",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="earned_order_revenues",
+        verbose_name="مؤلف / استاد",
+    )
+    share_percent = models.DecimalField("درصد سهم از سفارش", max_digits=5, decimal_places=2)
+    amount = models.PositiveIntegerField("مبلغ سهم استاد (تومان)")
+    is_settled = models.BooleanField("تسویه‌شده", default=False, help_text="آیا این مبلغ در تسویه حساب نهایی پرداخت شده است؟")
+    settled_at = models.DateTimeField("زمان تسویه", null=True, blank=True)
+    created_at = models.DateTimeField("زمان ایجاد", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "سهم ریالی مؤلف از سفارش"
+        verbose_name_plural = "سهم‌های ریالی مؤلفان از سفارش‌ها"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.author.phone}: {self.amount:,} تومان (سفارش #{self.snapshot.order_id})"
+

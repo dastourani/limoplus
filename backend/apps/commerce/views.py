@@ -215,6 +215,11 @@ def settle(track_id: str) -> Order | None:
             order.save()
             _grant(order)
             try:
+                from .royalty import calculate_and_save_order_royalty
+                calculate_and_save_order_royalty(order)
+            except Exception:
+                log.exception("Failed to calculate royalty snapshot for order %s", order.id)
+            try:
                 from apps.catalog.backups import notify_bale
                 from apps.catalog.panel_display import fa_number
                 item_title = order.book.title if order.book else (order.plan.title if order.plan else order.title)
