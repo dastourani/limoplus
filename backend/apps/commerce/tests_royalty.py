@@ -623,7 +623,8 @@ class BookRoyaltyAndSplitTests(TestCase):
         from apps.commerce.wallet import audit_teacher_wallet
         audit = audit_teacher_wallet(wallet)
         self.assertTrue(audit["is_healthy"])
-        self.assertEqual(len(audit["discrepancies"]), 0)
+        self.assertEqual(audit["available_balance"], audit["calculated_available"])
+        self.assertEqual(audit["total_earned"], audit["calculated_earned"])
 
         # Calling finalize again should be idempotent or raise validation error, never double credit
         with self.assertRaises(Exception):
