@@ -29,7 +29,6 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     ("catalog", "ShareSettings"),
     ("catalog", "AIProvider"),
     ("catalog", "BookAssistantAuditLog"),
-    ("guard", "Tracker"),
     # commerce (royalty, wallet & payout)
     ("commerce", "TeacherWallet"),
     ("commerce", "PayoutRequest"),
@@ -81,8 +80,7 @@ class LimoAdminSite(AdminSite):
             ("catalog", "Label"),
             ("catalog", "ChapterRevision"),
             ("teacher_workflows", "PublicationRequest"),
-            ("guard", "Tracker"),
-        ]
+                ]
         for key in _AUTHORING_KEYS:
             if key in all_models:
                 m_item = dict(all_models[key])

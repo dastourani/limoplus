@@ -1308,6 +1308,56 @@ class FileEditorPreviewTests(_Base):
 
 
 class BookEditorAccessTests(_Base):
+    def test_book_trace_view_isolation_and_masking(self):
+        from apps.guard.models import CopyEvent, TraceHit
+        from apps.guard import fingerprint, core
+        from django.urls import reverse
+
+        from apps.accounts.models import User
+        learner = User.objects.create_user("09123334455")
+        teacher = self.clerk(self.book)
+        self.client.force_login(teacher)
+
+        section = self.chapter.get_children().first()
+        quote = "این یک متن آزمایشی استخراج شده از کتاب استاد است"
+        code = fingerprint.new_code()
+        event = CopyEvent.objects.create(
+            user=learner,
+            node=section,
+            code=code,
+            length=len(quote),
+            packed=None,
+        )
+        marked_text = fingerprint.mark(quote, code)
+
+        # 1. Teacher can open book trace view
+        url = reverse("admin:catalog_book_trace", args=[self.book.pk])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "ردیاب هوشمند کپی و اصالت متن")
+        self.assertContains(resp, "اثرانگشت نامرئی Zero-Width")
+
+        # 2. Teacher posts marked text -> trace detects learner masked
+        res_post = self.client.post(url, {"text": f"در تلگرام منتشر شده: {marked_text}"})
+        self.assertEqual(res_post.status_code, 200)
+        self.assertContains(res_post, "نتیجه: اثرانگشت نامرئی با موفقیت شناسایی شد")
+        phone = learner.phone
+        masked = phone[:4] + "***" + phone[-4:]
+        self.assertContains(res_post, masked)
+        self.assertNotContains(res_post, phone)
+
+        # 3. TraceHit is logged
+        self.assertTrue(TraceHit.objects.filter(event=event, found_by=teacher).exists())
+
+        # 4. Strict isolation: unassigned teacher cannot access this book's trace
+        other_teacher = User.objects.create_user("09127778899", is_staff=True)
+        from django.contrib.auth.models import Group
+        from . import access
+        other_teacher.groups.add(Group.objects.get(name=access.BOOK_EDITOR_GROUP))
+        self.client.force_login(other_teacher)
+        res_forbidden = self.client.get(url)
+        self.assertEqual(res_forbidden.status_code, 403)
+
     def test_book_dedicated_inbox_and_teacher_relocate(self):
         """Each book has a dedicated inbox accessible to its teachers for bulk staging and relocation."""
         from .inbox import book_inbox_chapter
