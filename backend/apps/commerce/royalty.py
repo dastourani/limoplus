@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 import logging
 from django.db import transaction
@@ -115,6 +116,10 @@ def calculate_and_save_order_royalty(order: Order) -> OrderRevenueSnapshot | Non
         total_authors_amount = int(round(float(total_amount) * float(authors_theoretical_pct) / 100.0))
         platform_amount = max(0, total_amount - total_authors_amount)
 
+    # دوره گارانتی اعمال‌شده از روی طرح یا پیش‌فرض ۷ روز
+    hold_days = plan.pending_hold_days if plan else 7
+    available_at = now + timedelta(days=hold_days) if hold_days > 0 else now
+
     with transaction.atomic():
         snapshot = OrderRevenueSnapshot.objects.create(
             order=order,
@@ -128,17 +133,29 @@ def calculate_and_save_order_royalty(order: Order) -> OrderRevenueSnapshot | Non
             details={
                 "plan_code": plan.code if plan else "custom",
                 "authors_count": len(author_revenues_data),
+                "hold_days": hold_days,
                 "recorded_at": now.isoformat(),
             },
         )
 
         for rev in author_revenues_data:
-            OrderAuthorRevenue.objects.create(
+            order_author_rev = OrderAuthorRevenue.objects.create(
                 snapshot=snapshot,
                 author=rev["author"],
                 share_percent=rev["share_percent"],
                 amount=rev["amount"],
+                hold_days=hold_days,
+                available_at=available_at,
+                release_status=OrderAuthorRevenue.ReleaseStatus.PENDING if hold_days > 0 else OrderAuthorRevenue.ReleaseStatus.AVAILABLE,
+                released_at=now if hold_days == 0 else None,
             )
+
+            # شارژ خودکار کیف پول استاد در دفترکل
+            try:
+                from .wallet import credit_teacher_pending_royalty
+                credit_teacher_pending_royalty(order_author_rev)
+            except Exception:
+                log.exception("Failed to credit wallet for OrderAuthorRevenue %s", order_author_rev.id)
 
     log.info(
         "Order #%s revenue split recorded: Platform %s T, Authors %s T across %s authors",

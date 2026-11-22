@@ -20,6 +20,8 @@ from .models import (
     Plan,
     RevenuePlan,
     SaleCampaign,
+    TeacherWallet,
+    WalletTransaction,
 )
 
 
@@ -591,8 +593,8 @@ class OrderRevenueSnapshotAdmin(admin.ModelAdmin):
 
 @admin.register(OrderAuthorRevenue)
 class OrderAuthorRevenueAdmin(admin.ModelAdmin):
-    list_display = ("order_number", "book_name", "author_user", "share_pct", "amount_toman", "settlement_status", "created_time")
-    list_filter = ("is_settled",)
+    list_display = ("order_number", "book_name", "author_user", "share_pct", "amount_toman", "status_chip", "available_date", "created_time")
+    list_filter = ("release_status", "is_settled")
     search_fields = ("snapshot__order__id", "snapshot__book__title", "author__phone")
     readonly_fields = [f.name for f in OrderAuthorRevenue._meta.fields]
 
@@ -636,13 +638,157 @@ class OrderAuthorRevenueAdmin(admin.ModelAdmin):
     def amount_toman(self, obj):
         return toman(obj.amount)
 
-    @admin.display(description="وضعیت تسویه")
-    def settlement_status(self, obj):
-        if obj.is_settled:
-            return badges(("تسویه‌شده", "green"))
-        return badges(("در انتظار تسویه", "yellow"))
+    @admin.display(description="وضعیت دسترسی")
+    def status_chip(self, obj):
+        if obj.release_status == OrderAuthorRevenue.ReleaseStatus.AVAILABLE:
+            color = "green"
+        elif obj.release_status == OrderAuthorRevenue.ReleaseStatus.PENDING:
+            color = "yellow"
+        else:
+            color = "red"
+        return badges((obj.get_release_status_display(), color))
+
+    @admin.display(description="تاریخ آزادسازی")
+    def available_date(self, obj):
+        if obj.release_status == OrderAuthorRevenue.ReleaseStatus.AVAILABLE:
+            return badges(("آزادشده", "green"))
+        if not obj.available_at:
+            return "—"
+        return jalali_date(obj.available_at)
 
     @admin.display(description="تاریخ خرید")
     def created_time(self, obj):
         return jalali_datetime(obj.created_at)
+
+
+class WalletTransactionInline(admin.TabularInline):
+    model = WalletTransaction
+    extra = 0
+    can_delete = False
+    readonly_fields = ("event_type", "amount", "available_balance_after", "pending_balance_after", "debt_balance_after", "description", "created_at")
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(TeacherWallet)
+class TeacherWalletAdmin(admin.ModelAdmin):
+    list_display = ("teacher_cell", "available_toman", "pending_toman", "debt_toman", "net_toman", "total_earned_toman", "health_badge")
+    search_fields = ("teacher__phone", "teacher__first_name", "teacher__last_name")
+    inlines = [WalletTransactionInline]
+    readonly_fields = ("teacher", "pending_balance", "available_balance", "debt_balance", "total_earned", "total_withdrawn", "created_at", "updated_at")
+
+    def has_module_permission(self, request):
+        from apps.catalog.access import is_book_teacher
+        return bool(request.user.is_superuser or is_book_teacher(request.user))
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("teacher")
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(teacher=request.user)
+
+    @admin.display(description="استاد")
+    def teacher_cell(self, obj):
+        return user_cell(obj.teacher)
+
+    @admin.display(description="موجودی قابل برداشت")
+    def available_toman(self, obj):
+        return toman(obj.available_balance)
+
+    @admin.display(description="در انتظار گارانتی")
+    def pending_toman(self, obj):
+        return toman(obj.pending_balance)
+
+    @admin.display(description="بدهی معوق (استرداد)")
+    def debt_toman(self, obj):
+        return toman(obj.debt_balance) if obj.debt_balance > 0 else "۰ تومان"
+
+    @admin.display(description="خالص قابل تسویه")
+    def net_toman(self, obj):
+        return toman(obj.net_withdrawable_amount)
+
+    @admin.display(description="کل درآمد")
+    def total_earned_toman(self, obj):
+        return toman(obj.total_earned)
+
+    @admin.display(description="سلامت تراز")
+    def health_badge(self, obj):
+        from .wallet import audit_teacher_wallet
+        res = audit_teacher_wallet(obj)
+        if res["is_healthy"]:
+            return badges(("تراز سالم و منطبق", "green"))
+        return badges(("دارای مغایرت", "red"))
+
+
+@admin.register(WalletTransaction)
+class WalletTransactionAdmin(admin.ModelAdmin):
+    list_display = ("teacher_cell", "event_title", "amount_toman", "available_after", "pending_after", "order_ref", "created_display")
+    list_filter = ("event_type",)
+    search_fields = ("wallet__teacher__phone", "description", "idempotency_key")
+    readonly_fields = [f.name for f in WalletTransaction._meta.fields]
+
+    def has_module_permission(self, request):
+        from apps.catalog.access import is_book_teacher
+        return bool(request.user.is_superuser or is_book_teacher(request.user))
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("wallet__teacher", "reference_order")
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(wallet__teacher=request.user)
+
+    @admin.display(description="استاد")
+    def teacher_cell(self, obj):
+        return user_cell(obj.wallet.teacher)
+
+    @admin.display(description="نوع رویداد")
+    def event_title(self, obj):
+        color_map = {
+            WalletTransaction.EventType.RELEASE_AVAILABLE: "green",
+            WalletTransaction.EventType.EARN_PENDING: "yellow",
+            WalletTransaction.EventType.REFUND_ADJUSTMENT: "red",
+            WalletTransaction.EventType.WITHDRAW_PAID: "blue",
+            WalletTransaction.EventType.WITHDRAW_HOLD: "grey",
+        }
+        return badges((obj.get_event_type_display(), color_map.get(obj.event_type, "grey")))
+
+    @admin.display(description="مبلغ")
+    def amount_toman(self, obj):
+        return toman(obj.amount)
+
+    @admin.display(description="مانده قابل برداشت")
+    def available_after(self, obj):
+        return toman(obj.available_balance_after)
+
+    @admin.display(description="مانده در انتظار")
+    def pending_after(self, obj):
+        return toman(obj.pending_balance_after)
+
+    @admin.display(description="سفارش")
+    def order_ref(self, obj):
+        return f"سفارش #{obj.reference_order_id}" if obj.reference_order_id else "—"
+
+    @admin.display(description="زمان")
+    def created_display(self, obj):
+        return jalali_datetime(obj.created_at)
+
 
