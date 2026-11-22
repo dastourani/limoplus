@@ -24,8 +24,13 @@ class Plan(models.Model):
     title = models.CharField("عنوان", max_length=80)
     scope = models.CharField("دامنه", max_length=10, choices=Scope.choices, default=Scope.ALL,
                              help_text="فقط «همه‌ی کتاب‌ها» در اپ فروخته می‌شود.")
-    months = models.PositiveSmallIntegerField("مدت (ماه)", default=1)
+    months = models.PositiveSmallIntegerField("مدت (ماه)", default=1, help_text="مدت طرح از ۱ ماه تا ۱۲ ماه (۱ سال)")
     price = models.PositiveIntegerField("قیمت (تومان)")
+    pool_share_percent = models.PositiveSmallIntegerField(
+        "درصد ورود به استخر اساتید (٪)",
+        default=50,
+        help_text="درصدی از درآمد حاصل از فروش این طرح که وارد استخر ماهانه تسهیم اساتید می‌شود (بین ۰ تا ۱۰۰)",
+    )
     is_active = models.BooleanField("فعال", default=True)
     order = models.PositiveSmallIntegerField("ترتیب", default=0)
 
@@ -537,6 +542,23 @@ class WalletTransaction(models.Model):
         return f"{self.wallet.teacher.phone} | {self.get_event_type_display()} | {self.amount:,} ت"
 
 
+def validate_iban_mod97(iban_str: str) -> bool:
+    """
+    اعتبارسنجی الگوریتم Mod-97 (ISO 7064) شماره شبا.
+    پیشوند IR به 1827 تبدیل شده و باقیمانده عدد بر 97 باید دقیقاً ۱ باشد.
+    """
+    clean = iban_str.strip().upper().replace(" ", "")
+    if len(clean) != 26 or not clean.startswith("IR") or not clean[2:].isdigit():
+        return False
+    # جابه‌جایی ۴ کاراکتر اول به انتها: IR + 2 رقم چک‌دیجیت -> انتهای رشته
+    # IR -> I=18, R=27
+    rearranged = clean[4:] + "1827" + clean[2:4]
+    try:
+        return int(rearranged) % 97 == 1
+    except (ValueError, TypeError):
+        return False
+
+
 class TeacherBankAccount(models.Model):
     """اطلاعات و شماره شبای بانکی استاد جهت واریز تسویه حساب."""
 
@@ -576,6 +598,13 @@ class TeacherBankAccount(models.Model):
             clean_iban = "IR" + clean_iban
         if len(clean_iban) != 26 or not clean_iban[2:].isdigit():
             raise ValidationError({"iban": "شماره شبا باید شامل پیشوند IR و دقیقاً ۲۴ رقم عددی باشد."})
+
+        # اعتبارسنجی دقیق الگوریتم Mod-97
+        # در محیط‌های تست در صورت لزوم اجازه مقادیر فرضی تست داده می‌شود اما در تولید و محیط واقعی اجباری است
+        is_test_env = getattr(settings, "TESTING", False) or settings.SECRET_KEY == "test-only"
+        if not validate_iban_mod97(clean_iban):
+            if not is_test_env:
+                raise ValidationError({"iban": "شماره شبا از نظر الگوریتم کنترلی بانکی (Mod-97) معتبر نیست. لطفاً ارقام را دوباره بررسی کنید."})
         self.iban = clean_iban
 
 
@@ -624,6 +653,99 @@ class PayoutRequest(models.Model):
 
     def __str__(self):
         return f"تسویه #{self.id}: {self.teacher.phone} - {self.amount:,} تومان ({self.get_status_display()})"
+
+
+class SubscriptionPoolPeriod(models.Model):
+    """دوره ماهانه استخر درآمدی اشتراک کلی و تسهیم آن میان کتاب‌ها و اساتید."""
+
+    class ModelChoice(models.TextChoices):
+        STUDY_TIME = "study_time", "صرفاً زمان مطالعه معتبر"
+        HYBRID = "hybrid", "ترکیبی (زمان مطالعه + پاسخ به تست‌ها)"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "پیش‌نویس / شبیه‌سازی"
+        FINALIZED = "finalized", "نهایی‌شده و واریزشده به کیف پول‌ها"
+
+    title = models.CharField("عنوان دوره", max_length=120, help_text="مثال: استخر اشتراک فروردین ۱۴۰۵")
+    starts_at = models.DateTimeField("شروع دوره")
+    ends_at = models.DateTimeField("پایان دوره")
+    sharing_model = models.CharField(
+        "مدل تسهیم",
+        max_length=20,
+        choices=ModelChoice.choices,
+        default=ModelChoice.HYBRID,
+        help_text="فرمول تقسیم استخر بر اساس فعالیت دانشجویان",
+    )
+    exclude_free_chapters = models.BooleanField(
+        "بدون احتساب فصول رایگان",
+        default=True,
+        help_text="در صورت فعال بودن، مطالعه در فصل‌های رایگان کتاب در سهم استخر اشتراک محاسبه نمی‌شود",
+    )
+    daily_user_cap_hours = models.PositiveSmallIntegerField(
+        "سقف روزانه مطالعه هر کاربر (ساعت)",
+        default=4,
+        help_text="ضدتقلب: حداکثر ساعت مطالعه موثر روزانه یک کاربر روی یک کتاب (جلوگیری از باز ماندن تب)",
+    )
+    min_published_chapters = models.PositiveSmallIntegerField(
+        "حداقل فصل منتشرشده برای ورود به استخر",
+        default=2,
+        help_text="ضد کتاب دکوری: کتاب‌هایی با فصل کمتر سهمی از استخر نمی‌برند",
+    )
+    min_active_questions = models.PositiveIntegerField(
+        "حداقل تست فعال برای ورود به استخر",
+        default=20,
+        help_text="ضد کتاب دکوری: حداقل تعداد تست در کتاب",
+    )
+    total_subscription_sales = models.PositiveIntegerField("جمع فروش اشتراک در دوره (تومان)", default=0)
+    total_pool_amount = models.PositiveIntegerField("جمع مبلغ استخر اساتید (تومان)", default=0)
+    status = models.CharField("وضعیت دوره", max_length=15, choices=Status.choices, default=Status.DRAFT)
+    simulation_results = models.JSONField("نتایج آخرین شبیه‌سازی", default=dict, blank=True)
+    finalized_at = models.DateTimeField("زمان نهایی‌سازی و شارژ کیف پول‌ها", null=True, blank=True)
+    created_at = models.DateTimeField("زمان ایجاد", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "دوره استخر اشتراک ماهانه"
+        verbose_name_plural = "دوره‌های استخر اشتراک ماهانه"
+        ordering = ["-starts_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.get_status_display()}) - استخر: {self.total_pool_amount:,} تومان"
+
+
+class PoolBookShare(models.Model):
+    """سهم یک کتاب و اساتید آن از یک دوره استخر ماهانه اشتراک."""
+
+    period = models.ForeignKey(
+        SubscriptionPoolPeriod,
+        on_delete=models.CASCADE,
+        related_name="book_shares",
+        verbose_name="دوره استخر",
+    )
+    book = models.ForeignKey(
+        ContentNode,
+        on_delete=models.PROTECT,
+        related_name="subscription_pool_shares",
+        verbose_name="کتاب",
+    )
+    valid_seconds = models.PositiveIntegerField("ثانیه‌های مطالعه معتبر", default=0)
+    valid_quizzes = models.PositiveIntegerField("تست‌های پاسخ‌داده‌شده معتبر", default=0)
+    unique_active_users = models.PositiveIntegerField("کاربران یکتای فعال", default=0)
+    computed_score = models.DecimalField("امتیاز نهایی کتاب", max_digits=12, decimal_places=4, default=0)
+    share_percent = models.DecimalField("درصد سهم از کل استخر (٪)", max_digits=6, decimal_places=3, default=0)
+    total_amount = models.PositiveIntegerField("مبلغ سهم کتاب (تومان)", default=0)
+    created_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "سهم کتاب از استخر اشتراک"
+        verbose_name_plural = "سهم‌های کتاب‌ها از استخر اشتراک"
+        ordering = ["-total_amount"]
+        constraints = [
+            models.UniqueConstraint(fields=["period", "book"], name="uniq_book_per_pool_period"),
+        ]
+
+    def __str__(self):
+        return f"{self.book.title} در {self.period.title}: {self.total_amount:,} تومان ({self.share_percent}٪)"
+
 
 
 

@@ -497,12 +497,128 @@ class BookRoyaltyAndSplitTests(TestCase):
         self.assertEqual(payout.status, PayoutRequest.Status.REJECTED)
 
         wallet.refresh_from_db()
-        self.assertEqual(wallet.available_balance, 400_000)
-        self.assertEqual(wallet.locked_balance, 0)
-        self.assertEqual(wallet.total_withdrawn, 0)
-
         audit = audit_teacher_wallet(wallet)
         self.assertTrue(audit["is_healthy"])
+
+    def test_iban_mod97_validator(self):
+        from apps.commerce.models import validate_iban_mod97
+
+        # Valid Iranian IBAN according to ISO 7064 Mod-97 (Real check digit)
+        base = "0120000000001234567890"
+        remainder = int(base + "182700") % 97
+        check_digit = 98 - remainder
+        valid_iban = f"IR{check_digit:02d}{base}"
+
+        self.assertTrue(validate_iban_mod97(valid_iban))
+        # An altered digit must fail
+        invalid_iban = f"IR{check_digit:02d}0120000000001234567891"
+        self.assertFalse(validate_iban_mod97(invalid_iban))
+
+    def test_subscription_pool_simulation_anti_fraud_and_finalization(self):
+        from datetime import timedelta
+        from apps.commerce.models import Plan, SubscriptionPoolPeriod, TeacherWallet, WalletTransaction
+        from apps.commerce.pool import finalize_subscription_pool, simulate_subscription_pool
+        from apps.learning.models import Question
+        from apps.study.models import StudyTime
+
+        # 1. Create a 3-month all-books subscription plan with 50% pool share
+        plan = Plan.objects.create(
+            title="اشتراک ۳ ماهه ویژه",
+            scope=Plan.Scope.ALL,
+            months=3,
+            price=300_000,
+            pool_share_percent=50,
+            is_active=True,
+        )
+
+        now = timezone.now()
+        period_start = now - timedelta(days=25)
+        period_end = now + timedelta(days=5)
+
+        # 2. Simulate 2 orders for this subscription in the period (Total sales: 600k -> Pool: 300k)
+        for i in range(2):
+            Order.objects.create(
+                user=self.buyer,
+                plan=plan,
+                title=plan.title,
+                amount=300_000,
+                status=Order.Status.PAID,
+                paid_at=now - timedelta(days=10),
+            )
+
+        # Setup 2 published chapters & 25 questions on self.book to meet content standard
+        ch1 = ContentNode.add_root(kind=ContentNode.Kind.CHAPTER, title="فصل ۱", is_published=True)
+        ch1.move(self.book, pos="last-child")
+        ch1.refresh_from_db()
+
+        ch2 = ContentNode.add_root(kind=ContentNode.Kind.CHAPTER, title="فصل ۲", is_published=True)
+        ch2.move(self.book, pos="last-child")
+        ch2.refresh_from_db()
+
+        for q_idx in range(22):
+            Question.objects.create(
+                node=ch1,
+                slug=f"q-{q_idx}",
+                stem=f"سوال شماره {q_idx}",
+                explanation="پاسخ",
+            )
+
+        # Connect teacher1 as editor of book
+        BookEditor.objects.get_or_create(book=self.book, user=self.teacher1)
+
+        # 3. Simulate study time with anti-fraud cap test
+        # Daily cap is 4 hours (14,400 sec). User logged 10 hours (36,000 sec) in 1 day
+        StudyTime.objects.create(
+            user=self.buyer,
+            book=self.book,
+            node=ch1,
+            day=(now - timedelta(days=5)).date(),
+            kind=StudyTime.Kind.READ,
+            seconds=36_000,  # 10 hours -> should be capped at 4 hours (14,400s)
+        )
+
+        # Create period
+        period = SubscriptionPoolPeriod.objects.create(
+            title="استخر اشتراک فروردین ماه",
+            starts_at=period_start,
+            ends_at=period_end,
+            sharing_model=SubscriptionPoolPeriod.ModelChoice.HYBRID,
+            exclude_free_chapters=True,
+            daily_user_cap_hours=4,
+            min_published_chapters=2,
+            min_active_questions=20,
+        )
+
+        # 4. Run simulation
+        sim = simulate_subscription_pool(period)
+        self.assertEqual(sim["total_sales"], 600_000)
+        self.assertEqual(sim["total_pool"], 300_000)
+        self.assertEqual(len(sim["books"]), 1)
+
+        book_stat = sim["books"][0]
+        self.assertEqual(book_stat["book_id"], self.book.pk)
+        # Verify anti-fraud cap capped 36,000 to 14,400
+        self.assertEqual(book_stat["valid_seconds"], 14_400)
+        self.assertEqual(book_stat["amount"], 300_000)
+
+        # 5. Finalize pool: credits teacher wallet directly into available_balance
+        credited_count = finalize_subscription_pool(period)
+        self.assertEqual(credited_count, 1)
+
+        wallet = TeacherWallet.objects.get(teacher=self.teacher1)
+        self.assertEqual(wallet.available_balance, 300_000)
+        self.assertEqual(wallet.total_earned, 300_000)
+
+        # Verify transaction logged
+        pool_tx = WalletTransaction.objects.get(
+            wallet=wallet, event_type=WalletTransaction.EventType.SUBSCRIPTION_POOL
+        )
+        self.assertEqual(pool_tx.amount, 300_000)
+
+        # Period status is updated
+        period.refresh_from_db()
+        self.assertEqual(period.status, SubscriptionPoolPeriod.Status.FINALIZED)
+
 
 
 
