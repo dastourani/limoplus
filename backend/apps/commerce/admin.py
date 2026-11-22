@@ -10,7 +10,17 @@ from apps.catalog.jalali import jalali_date, jalali_datetime
 from apps.catalog.models import Banner, ContentNode
 from apps.catalog.panel_display import badges, fa_number
 
-from .models import Entitlement, Order, Plan, SaleCampaign
+from .models import (
+    BookAuthorShare,
+    BookRoyaltyRule,
+    Entitlement,
+    Order,
+    OrderAuthorRevenue,
+    OrderRevenueSnapshot,
+    Plan,
+    RevenuePlan,
+    SaleCampaign,
+)
 
 
 def user_cell(user):
@@ -423,3 +433,216 @@ class EntitlementAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(RevenuePlan)
+class RevenuePlanAdmin(admin.ModelAdmin):
+    list_display = ("title", "code", "author_share_display", "platform_share_display", "sales_cap_display", "date_window", "is_default", "is_active")
+    list_filter = ("is_default", "is_active")
+    search_fields = ("title", "code", "description")
+    fieldsets = (
+        ("مشخصات طرح", {"fields": ("title", "code", "description", "is_active", "is_default")}),
+        ("درصد تسهیم", {"fields": ("author_share_percent", "platform_share_percent")}),
+        ("محدودیت‌ها و سقف‌ها", {"fields": ("max_sales_count", "starts_at", "ends_at")}),
+    )
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    @admin.display(description="سهم مؤلفان")
+    def author_share_display(self, obj):
+        return f"{obj.author_share_percent}٪"
+
+    @admin.display(description="سهم پلتفرم")
+    def platform_share_display(self, obj):
+        return f"{obj.platform_share_percent}٪"
+
+    @admin.display(description="سقف فروش")
+    def sales_cap_display(self, obj):
+        return f"{fa_number(obj.max_sales_count)} نسخه" if obj.max_sales_count else "نامحدود"
+
+    @admin.display(description="بازه زمانی")
+    def date_window(self, obj):
+        if not obj.starts_at and not obj.ends_at:
+            return "دائمی"
+        s = jalali_date(obj.starts_at) if obj.starts_at else "شروع"
+        e = jalali_date(obj.ends_at) if obj.ends_at else "پایان نامحدود"
+        return f"{s} تا {e}"
+
+
+class BookAuthorShareInline(admin.TabularInline):
+    model = BookAuthorShare
+    extra = 1
+    raw_id_fields = ["author"]
+    fields = ("author", "share_percent", "role_title", "is_active")
+
+
+@admin.register(BookRoyaltyRule)
+class BookRoyaltyRuleAdmin(admin.ModelAdmin):
+    list_display = ("book_title", "plan_applied", "split_summary", "authors_count", "updated_at_display")
+    list_filter = ("revenue_plan", "is_custom_split")
+    search_fields = ("book__title", "notes")
+    raw_id_fields = ["book"]
+    inlines = [BookAuthorShareInline]
+    fieldsets = (
+        ("کتاب و طرح", {"fields": ("book", "revenue_plan", "notes")}),
+        ("تنظیمات سفارشی (Override)", {
+            "fields": ("is_custom_split", "custom_platform_share_percent"),
+            "description": "اگر مایلید بدون استفاده از طرح‌ها، مستقیماً درصد پلتفرم برای این کتاب مشخص شود.",
+        }),
+    )
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    @admin.display(description="کتاب")
+    def book_title(self, obj):
+        return obj.book.title
+
+    @admin.display(description="طرح اعمال‌شده")
+    def plan_applied(self, obj):
+        if obj.is_custom_split:
+            return badges(("درصد سفارشی", "yellow"))
+        if obj.revenue_plan:
+            return obj.revenue_plan.title
+        return badges(("طرح پیش‌فرض سامانه", "blue"))
+
+    @admin.display(description="خلاصه تسهیم")
+    def split_summary(self, obj):
+        if obj.is_custom_split and obj.custom_platform_share_percent is not None:
+            p = obj.custom_platform_share_percent
+            return f"پلتفرم {p}٪ / مؤلفان {100 - p}٪"
+        if obj.revenue_plan:
+            return f"پلتفرم {obj.revenue_plan.platform_share_percent}٪ / مؤلفان {obj.revenue_plan.author_share_percent}٪"
+        return "طرح عمومی"
+
+    @admin.display(description="تعداد مؤلفان")
+    def authors_count(self, obj):
+        c = obj.author_shares.count()
+        return fa_number(c) if c else "پیش‌فرض استادان کتاب"
+
+    @admin.display(description="آخرین تغییر")
+    def updated_at_display(self, obj):
+        return jalali_date(obj.updated_at)
+
+
+class OrderAuthorRevenueInline(admin.TabularInline):
+    model = OrderAuthorRevenue
+    extra = 0
+    can_delete = False
+    readonly_fields = ("author", "share_percent", "amount", "is_settled", "settled_at", "created_at")
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(OrderRevenueSnapshot)
+class OrderRevenueSnapshotAdmin(admin.ModelAdmin):
+    list_display = ("order_link", "book_link", "total_toman", "platform_toman", "authors_toman", "plan_name", "created_display")
+    list_filter = ("revenue_plan",)
+    search_fields = ("order__id", "book__title", "order__user__phone")
+    inlines = [OrderAuthorRevenueInline]
+    readonly_fields = [f.name for f in OrderRevenueSnapshot._meta.fields]
+
+    def has_module_permission(self, request):
+        from apps.catalog.access import is_book_teacher
+        return bool(request.user.is_superuser or is_book_teacher(request.user))
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("order", "book", "revenue_plan")
+        if request.user.is_superuser:
+            return qs
+        # استاد فقط اسنپ‌شات سفارشاتی را می‌بیند که در آن سهم دارد
+        return qs.filter(author_revenues__author=request.user).distinct()
+
+    @admin.display(description="سفارش")
+    def order_link(self, obj):
+        return f"سفارش #{obj.order_id}"
+
+    @admin.display(description="کتاب")
+    def book_link(self, obj):
+        return obj.book.title if obj.book else "—"
+
+    @admin.display(description="مبلغ کل")
+    def total_toman(self, obj):
+        return toman(obj.total_amount)
+
+    @admin.display(description="سهم پلتفرم")
+    def platform_toman(self, obj):
+        return toman(obj.platform_share_amount)
+
+    @admin.display(description="جمع سهم مؤلفان")
+    def authors_toman(self, obj):
+        return toman(obj.total_authors_amount)
+
+    @admin.display(description="زمان ثبت")
+    def created_display(self, obj):
+        return jalali_datetime(obj.created_at)
+
+
+@admin.register(OrderAuthorRevenue)
+class OrderAuthorRevenueAdmin(admin.ModelAdmin):
+    list_display = ("order_number", "book_name", "author_user", "share_pct", "amount_toman", "settlement_status", "created_time")
+    list_filter = ("is_settled",)
+    search_fields = ("snapshot__order__id", "snapshot__book__title", "author__phone")
+    readonly_fields = [f.name for f in OrderAuthorRevenue._meta.fields]
+
+    def has_module_permission(self, request):
+        from apps.catalog.access import is_book_teacher
+        return bool(request.user.is_superuser or is_book_teacher(request.user))
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("snapshot__order", "snapshot__book", "author")
+        if request.user.is_superuser:
+            return qs
+        # استاد فقط رکوردهای سهم خودش را می‌بیند
+        return qs.filter(author=request.user)
+
+    @admin.display(description="سفارش")
+    def order_number(self, obj):
+        return f"سفارش #{obj.snapshot.order_id}"
+
+    @admin.display(description="کتاب")
+    def book_name(self, obj):
+        return obj.snapshot.book.title if obj.snapshot.book else "—"
+
+    @admin.display(description="مؤلف")
+    def author_user(self, obj):
+        return user_cell(obj.author)
+
+    @admin.display(description="درصد سهم")
+    def share_pct(self, obj):
+        return f"{obj.share_percent}٪"
+
+    @admin.display(description="مبلغ سهم استاد")
+    def amount_toman(self, obj):
+        return toman(obj.amount)
+
+    @admin.display(description="وضعیت تسویه")
+    def settlement_status(self, obj):
+        if obj.is_settled:
+            return badges(("تسویه‌شده", "green"))
+        return badges(("در انتظار تسویه", "yellow"))
+
+    @admin.display(description="تاریخ خرید")
+    def created_time(self, obj):
+        return jalali_datetime(obj.created_at)
+
