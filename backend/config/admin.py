@@ -29,6 +29,7 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     ("catalog", "ShareSettings"),
     ("catalog", "AIProvider"),
     ("catalog", "BookAssistantAuditLog"),
+    ("guard", "Tracker"),
     # commerce (royalty, wallet & payout)
     ("commerce", "TeacherWallet"),
     ("commerce", "PayoutRequest"),
@@ -80,10 +81,14 @@ class LimoAdminSite(AdminSite):
             ("catalog", "Label"),
             ("catalog", "ChapterRevision"),
             ("teacher_workflows", "PublicationRequest"),
+            ("guard", "Tracker"),
         ]
         for key in _AUTHORING_KEYS:
             if key in all_models:
-                authoring_models.append(all_models[key])
+                m_item = dict(all_models[key])
+                if key == ("guard", "Tracker"):
+                    m_item["name"] = "ردیاب محتوای من (حفاظت اثر)"
+                authoring_models.append(m_item)
 
         # 2. مدیریت کلاس‌ها و دوره‌ها (Classrooms & Students)
         _TEACHING_KEYS = [

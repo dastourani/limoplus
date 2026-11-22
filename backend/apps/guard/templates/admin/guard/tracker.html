@@ -14,6 +14,7 @@ table.tr td.quote{white-space:pre-wrap;max-width:520px}
 {% endblock %}
 
 {% block content %}
+{% if is_admin %}
 <form method="post" class="tr-switch">{% csrf_token %}
   <b>هشدارهای بله:</b>
   {% if alerts_on %}<span class="tr-on">روشن</span>
@@ -24,6 +25,12 @@ table.tr td.quote{white-space:pre-wrap;max-width:520px}
   <small>فوری (تمام شدن سهم کپی روزانه، امتیاز خطر ۶۰ به بالا، تعویض زیاد دستگاه) و یک خلاصه‌ی شبانه.
   {% if not bale_ready %}<br>توکن و شناسه‌ی گفت‌وگوی بله روی سرور تنظیم نشده؛ تا آن موقع پیامی فرستاده نمی‌شود.{% endif %}</small>
 </form>
+{% else %}
+<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px 16px; margin-bottom:18px; color:#334155; font-size:13px; line-height:1.7;">
+  🛡️ <strong>ردیاب هوشمند حق تألیف لیموخوان:</strong>
+  اگر بخشی از جزوه، درسنامه یا تست‌های کتاب‌های خود را در شبکه‌های اجتماعی، وبلاگ‌ها یا گروه‌های درسی مشاهده کردید، متن را در کادر زیر قرار دهید. سیستم از طریق اثرانگشت نامرئی، منشأ کپی و زمان انتشار را صرفاً برای آثار متعلق به شما جستجو می‌کند.
+</div>
+{% endif %}
 
 <h2>متن را اینجا بچسبانید</h2>
 <form method="post" class="tr-box">{% csrf_token %}
@@ -37,14 +44,14 @@ table.tr td.quote{white-space:pre-wrap;max-width:520px}
     <h2>پیدا شد: نشانه‌ی نامرئی</h2>
     <table class="tr"><tr><th>کاربر</th><th>زمان</th><th>بخش</th><th>متن ثبت‌شده</th><th>وضعیت</th></tr>
     {% for r in found.marked %}<tr>
-      <td><a href="{% url 'admin:accounts_user_change' r.event.user_id %}">{{ r.event.user }}</a></td>
+      <td>{% if r.is_teacher_view %}<strong>{{ r.display_user }}</strong>{% else %}<a href="{% url 'admin:accounts_user_change' r.event.user_id %}">{{ r.event.user }}</a>{% endif %}</td>
       <td>{{ r.when }}</td><td>{{ r.event.node.title }}</td><td class="quote">{{ r.text }}</td><td>{{ r.state }}</td></tr>{% endfor %}
     </table>
   {% elif found.similar %}
     <h2>نشانه‌ای در متن نبود؛ کپی‌های هم‌متن</h2>
     <table class="tr"><tr><th>کاربر</th><th>زمان</th><th>بخش</th><th>متن ثبت‌شده</th></tr>
     {% for r in found.similar %}<tr>
-      <td><a href="{% url 'admin:accounts_user_change' r.event.user_id %}">{{ r.event.user }}</a></td>
+      <td>{% if r.is_teacher_view %}<strong>{{ r.display_user }}</strong>{% else %}<a href="{% url 'admin:accounts_user_change' r.event.user_id %}">{{ r.event.user }}</a>{% endif %}</td>
       <td>{{ r.when }}</td><td>{{ r.event.node.title }}</td><td class="quote">{{ r.text }}</td></tr>{% endfor %}
     </table>
   {% else %}
@@ -52,6 +59,7 @@ table.tr td.quote{white-space:pre-wrap;max-width:520px}
   {% endif %}
 {% endif %}
 
+{% if is_admin %}
 <h2>امتیاز خطر حساب‌ها</h2>
 <p class="tr-note">از ۱۰۰: کپی‌های ۷ روز (تا ۳۰)، روزهایی که هر {{ limit }} کپی مصرف شد (۱۰ برای هر روز در ۳۰ روز، تا ۳۰)، کپی از بیش از ۱۰ بخش در ۷ روز (۱۰)،
 نشانه‌هایی که ردیاب پیدا کرده (۲۵ برای هر کدام، تا ۵۰)، ورود با دستگاه تازه بیش از ۲ بار در ۷ روز (۵ برای هر بار، تا ۲۰).</p>
@@ -63,4 +71,5 @@ table.tr td.quote{white-space:pre-wrap;max-width:520px}
 </table>
 {% else %}<p>هنوز کپی یا تعویض دستگاهی ثبت نشده.</p>{% endif %}
 <p><a href="{% url 'admin:guard_copyevent_changelist' %}">همه‌ی کپی‌ها ›</a></p>
+{% endif %}
 {% endblock %}
