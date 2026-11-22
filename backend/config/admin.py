@@ -35,6 +35,7 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     ("commerce", "TeacherBankAccount"),
     ("commerce", "OrderAuthorRevenue"),
     ("commerce", "WalletTransaction"),
+    ("commerce", "PoolBookShare"),
     # learning
     ("learning", "Question"),
     ("learning", "Flashcard"),
@@ -121,6 +122,7 @@ class LimoAdminSite(AdminSite):
             ("commerce", "TeacherBankAccount"),
             ("commerce", "OrderAuthorRevenue"),
             ("commerce", "WalletTransaction"),
+            ("commerce", "PoolBookShare"),
         ]
         for key in _ROYALTY_KEYS:
             if key in all_models:
