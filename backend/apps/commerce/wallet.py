@@ -236,9 +236,17 @@ def audit_teacher_wallet(wallet: TeacherWallet) -> dict:
     calc_debt = 0
 
     for tx in txs:
-        if tx.event_type in (WalletTransaction.EventType.EARN_PENDING, WalletTransaction.EventType.SUBSCRIPTION_POOL):
+        if tx.event_type == WalletTransaction.EventType.EARN_PENDING:
             calc_earned += tx.amount
             calc_pending += tx.amount
+        elif tx.event_type == WalletTransaction.EventType.SUBSCRIPTION_POOL:
+            calc_earned += tx.amount
+            if calc_debt > 0:
+                debt_pay = min(calc_debt, tx.amount)
+                calc_debt -= debt_pay
+                calc_available += (tx.amount - debt_pay)
+            else:
+                calc_available += tx.amount
         elif tx.event_type == WalletTransaction.EventType.RELEASE_AVAILABLE:
             calc_pending = max(0, calc_pending - tx.amount)
             # اگر بدهی وجود دارد، ابتدا بدهی صاف می‌شود
