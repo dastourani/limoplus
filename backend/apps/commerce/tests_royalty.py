@@ -252,3 +252,89 @@ class BookRoyaltyAndSplitTests(TestCase):
         self.assertEqual(wallet.debt_balance, 50_000)
         self.assertEqual(wallet.net_withdrawable_amount, 0)
 
+    def test_release_pending_balances_idempotency_on_repeated_runs(self):
+        from apps.commerce.models import TeacherWallet, WalletTransaction
+        from apps.commerce.wallet import release_pending_balances
+        from datetime import timedelta
+
+        BookEditor.objects.create(book=self.book, user=self.teacher1)
+
+        order = Order.objects.create(
+            user=self.buyer,
+            book=self.book,
+            title=f"خرید {self.book.title}",
+            amount=100_000,
+            status=Order.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        calculate_and_save_order_royalty(order)
+
+        # 1st run of release after hold period: releases 1 record
+        future = timezone.now() + timedelta(days=10)
+        released_1 = release_pending_balances(now=future)
+        self.assertEqual(released_1, 1)
+
+        wallet = TeacherWallet.objects.get(teacher=self.teacher1)
+        self.assertEqual(wallet.available_balance, 70_000)
+        self.assertEqual(wallet.pending_balance, 0)
+
+        # 2nd run immediately after: MUST release 0 records and NOT duplicate funds
+        released_2 = release_pending_balances(now=future)
+        self.assertEqual(released_2, 0)
+
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.available_balance, 70_000)
+        self.assertEqual(wallet.pending_balance, 0)
+
+        # Verify only 1 release transaction was created
+        release_txs = WalletTransaction.objects.filter(
+            wallet=wallet, event_type=WalletTransaction.EventType.RELEASE_AVAILABLE
+        )
+        self.assertEqual(release_txs.count(), 1)
+
+    def test_teacher_isolation_cannot_access_other_teacher_wallet_or_transactions(self):
+        from django.contrib.auth.models import Group
+        from apps.catalog.access import BOOK_EDITOR_GROUP
+        from apps.commerce.models import TeacherWallet, WalletTransaction
+
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        self.teacher1.is_staff = True
+        self.teacher1.groups.add(group)
+        self.teacher1.save()
+
+        self.teacher2.is_staff = True
+        self.teacher2.groups.add(group)
+        self.teacher2.save()
+
+        wallet1 = TeacherWallet.objects.create(teacher=self.teacher1, available_balance=50_000)
+        wallet2 = TeacherWallet.objects.create(teacher=self.teacher2, available_balance=90_000)
+
+        tx2 = WalletTransaction.objects.create(
+            wallet=wallet2,
+            event_type=WalletTransaction.EventType.EARN_PENDING,
+            amount=90_000,
+            available_balance_after=0,
+            pending_balance_after=90_000,
+            debt_balance_after=0,
+            idempotency_key="tx2-test",
+            description="سهم استاد دو",
+        )
+
+        # Teacher 1 logs in
+        self.client.force_login(self.teacher1)
+
+        # 1. In wallet changelist, Teacher 1 should only see their own wallet
+        res_list = self.client.get("/admin/commerce/teacherwallet/")
+        self.assertEqual(res_list.status_code, 200)
+        self.assertContains(res_list, self.teacher1.phone)
+        self.assertNotContains(res_list, self.teacher2.phone)
+
+        # 2. Directly accessing Teacher 2's wallet ID in URL MUST return 302/403/404 (isolated queryset)
+        res_detail = self.client.get(f"/admin/commerce/teacherwallet/{wallet2.pk}/change/")
+        self.assertIn(res_detail.status_code, (302, 403, 404))
+
+        # 3. Directly accessing Teacher 2's transaction ID in URL MUST return 302/403/404
+        res_tx = self.client.get(f"/admin/commerce/wallettransaction/{tx2.pk}/change/")
+        self.assertIn(res_tx.status_code, (302, 403, 404))
+
+

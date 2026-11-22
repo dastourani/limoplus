@@ -682,6 +682,14 @@ class TeacherWalletAdmin(admin.ModelAdmin):
         from apps.catalog.access import is_book_teacher
         return bool(request.user.is_superuser or is_book_teacher(request.user))
 
+    def has_view_permission(self, request, obj=None):
+        from apps.catalog.access import is_book_teacher
+        if request.user.is_superuser:
+            return True
+        if not is_book_teacher(request.user):
+            return False
+        return obj is None or obj.teacher_id == request.user.id
+
     def has_add_permission(self, request):
         return False
 
@@ -740,6 +748,14 @@ class WalletTransactionAdmin(admin.ModelAdmin):
     def has_module_permission(self, request):
         from apps.catalog.access import is_book_teacher
         return bool(request.user.is_superuser or is_book_teacher(request.user))
+
+    def has_view_permission(self, request, obj=None):
+        from apps.catalog.access import is_book_teacher
+        if request.user.is_superuser:
+            return True
+        if not is_book_teacher(request.user):
+            return False
+        return obj is None or obj.wallet.teacher_id == request.user.id
 
     def has_add_permission(self, request):
         return False
