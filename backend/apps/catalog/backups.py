@@ -369,6 +369,14 @@ def run_due(now=None, force=False) -> list[str]:
             done.append("expiring-entitlements")
     except Exception as exc:  # noqa: BLE001
         log.error("expiring entitlements check failed: %s", _safe(exc))
+    try:
+        from apps.commerce.wallet import release_pending_balances
+
+        released_count = release_pending_balances(now=now)
+        if released_count > 0:
+            done.append(f"royalty-release({released_count})")
+    except Exception as exc:  # noqa: BLE001
+        log.error("royalty holds release failed: %s", _safe(exc))
     return done
 
 
