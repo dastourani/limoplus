@@ -166,3 +166,45 @@ class CopyTests(TestCase):
             self.assertTrue(alerts.nightly(night))
             self.assertFalse(alerts.nightly(night))  # once a night
             self.assertIn("خلاصه‌ی شبانه", send.call_args_list[-1].args[0])
+
+
+    def test_tracker_teacher_isolation(self):
+        from apps.catalog.models import BookEditor
+        from django.contrib.auth.models import Group
+
+        # Create teacher
+        teacher = User.objects.create_user("09121112233", is_staff=True)
+        teacher_group, _ = Group.objects.get_or_create(name="استاد کتاب")
+        teacher.groups.add(teacher_group)
+
+        # Grant teacher contentnode change perm
+        from django.contrib.auth.models import Permission
+        p = Permission.objects.get(codename="change_contentnode")
+        teacher.user_permissions.add(p)
+
+        self.client.force_login(teacher)
+        page = self.client.get("/admin/guard/tracker/")
+        self.assertEqual(page.status_code, 200)
+        # Teacher does NOT see Bale alert switch or full risk table
+        self.assertNotContains(page, "هشدارهای بله:")
+        self.assertNotContains(page, "امتیاز خطر حساب‌ها")
+        self.assertContains(page, "ردیاب هوشمند حق تألیف لیموخوان")
+
+        # Copy event from book assigned vs unassigned
+        book = self.chapter.book()
+        marked = APIClient()
+        _, token = DeviceSession.start(self.user, "t_iso")
+        marked.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        text = marked.post(f"/api/v1/nodes/{self.section.id}/copy/", {"text": self.phrase}, format="json").data["text"]
+
+        # Teacher does NOT own this book yet -> Trace returns empty for teacher
+        res_empty = self.client.post("/admin/guard/tracker/", {"text": text})
+        self.assertNotContains(res_empty, "0912***0001")
+
+        # Now assign book to teacher
+        BookEditor.objects.create(book=book, user=teacher, can_edit_content=True)
+
+        # Trace again -> now teacher sees it masked!
+        res_found = self.client.post("/admin/guard/tracker/", {"text": text})
+        self.assertContains(res_found, "0912***0001")
+        self.assertNotContains(res_found, "09120000001")  # Full phone is masked!
