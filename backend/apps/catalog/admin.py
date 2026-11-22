@@ -321,6 +321,7 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/assistants/", site(self.book_assistants_action), name="catalog_book_assistants_action"),
             path("<int:book_id>/team-tasks/", site(self.book_team_tasks_action), name="catalog_book_team_tasks_action"),
             path("<int:book_id>/study-analytics/", site(self.book_study_analytics_view), name="catalog_book_study_analytics"),
+            path("<int:book_id>/trace/", site(self.book_trace_view), name="catalog_book_trace"),
             path("<int:book_id>/request-publication/", site(self.book_request_publication_view), name="catalog_book_request_publication"),
             path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
                  name="catalog_book_publish"),
@@ -681,6 +682,73 @@ class BookAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
         }
         return render(request, "admin/catalog/book/book_study_analytics.html", context)
+
+    def book_trace_view(self, request, book_id):
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import get_object_or_404, render
+        from apps.catalog.jalali import jalali_datetime
+        from apps.guard import core
+        from apps.guard.models import TraceHit
+
+        book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK)
+        if not access.can_edit_book(request.user, book):
+            raise PermissionDenied("شما مجوز ردیابی و مدیریت محتوای این کتاب را ندارید.")
+
+        found = None
+        pasted = ""
+        searched = False
+
+        if request.method == "POST":
+            searched = True
+            pasted = request.POST.get("text", "")[:20000]
+            result = core.trace(pasted)
+
+            # ایزولاسیون سخت‌گیرانه سمت سرور: فیلتر انحصاری روی فصل‌ها و بخش‌های همین کتاب
+            def _belongs_to_this_book(event):
+                if not event.node:
+                    return False
+                return event.node.path.startswith(book.path)
+
+            marked_events = [e for e in result["marked"] if _belongs_to_this_book(e)]
+            similar_events = [e for e in result["similar"] if _belongs_to_this_book(e)]
+
+            # ثبت لاگ استعلام موفق در TraceHit
+            for e in marked_events:
+                TraceHit.objects.get_or_create(event=e, found_by=request.user)
+
+            def _fmt_row(event):
+                # ماسک کردن هویت دانشجو برای حفظ حریم خصوصی
+                phone = event.user.phone if event.user else ""
+                masked_phone = (phone[:4] + "***" + phone[-4:]) if len(phone) >= 7 else "دانشجو"
+                full_name = f"{event.user.first_name} {event.user.last_name}".strip() if event.user else ""
+                display_user = f"{full_name} ({masked_phone})" if full_name else masked_phone
+
+                exact = core.is_exact(event) if not event.packed else None
+                state = "متن ذخیره‌شده" if event.packed else ("نشانی دقیق" if exact else "نسخه تغییریافته")
+
+                return {
+                    "display_user": display_user,
+                    "when": jalali_datetime(event.created_at),
+                    "node_title": event.node.title if event.node else "—",
+                    "text": core.text_of(event),
+                    "state": state,
+                }
+
+            found = {
+                "marked": [_fmt_row(e) for e in marked_events],
+                "similar": [_fmt_row(e) for e in similar_events],
+            }
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": f"ردیاب کپی و اصالت اثر: {book.title}",
+            "book": book,
+            "found": found,
+            "pasted": pasted,
+            "searched": searched,
+            "opts": self.model._meta,
+        }
+        return render(request, "admin/catalog/book/book_trace.html", context)
 
     def book_request_publication_view(self, request, book_id):
         from django.contrib import messages

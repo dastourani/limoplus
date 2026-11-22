@@ -48,11 +48,11 @@ class TrackerAdmin(admin.ModelAdmin):
 
     def has_module_permission(self, request):
         from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_active and (request.user.is_superuser or is_book_teacher(request.user)))
+        return bool(request.user.is_active and request.user.is_superuser)
 
     def has_view_permission(self, request, obj=None):
         from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_active and (request.user.is_superuser or is_book_teacher(request.user)))
+        return bool(request.user.is_active and request.user.is_superuser)
 
     def has_add_permission(self, request):
         return False
@@ -62,7 +62,7 @@ class TrackerAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_active and (request.user.is_superuser or is_book_teacher(request.user)))
+        return bool(request.user.is_active and request.user.is_superuser)
 
     def changelist_view(self, request, extra_context=None):
         if not self.has_view_or_change_permission(request):

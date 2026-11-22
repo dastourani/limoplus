@@ -1,0 +1,181 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+.lp-tracker-box {
+  background: var(--darkened-bg);
+  border: 1px solid var(--hairline-color);
+  border-radius: 12px;
+  padding: 18px 22px;
+  margin-bottom: 24px;
+}
+.lp-guide-card {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 22px;
+  color: #166534;
+  font-size: 13.5px;
+  line-height: 1.85;
+}
+.lp-guide-card h4 {
+  margin: 0 0 10px 0;
+  font-size: 15px;
+  color: #14532d;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lp-guide-card ul {
+  margin: 0;
+  padding-right: 22px;
+}
+.lp-guide-card li {
+  margin-bottom: 6px;
+}
+.lp-trace-form textarea {
+  width: 100%;
+  min-height: 140px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid var(--hairline-color);
+  padding: 12px;
+  font: 14px/1.8 Vazirmatn, Tahoma, sans-serif;
+  background: var(--body-bg);
+  color: var(--body-fg);
+}
+.lp-trace-form button {
+  background: #0284c7;
+  color: #fff;
+  border: none;
+  padding: 9px 22px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 10px;
+}
+.lp-trace-form button:hover {
+  background: #0369a1;
+}
+table.lp-trace-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+table.lp-trace-table th, table.lp-trace-table td {
+  border: 1px solid var(--hairline-color);
+  padding: 10px 12px;
+  text-align: right;
+  vertical-align: top;
+  font-size: 13px;
+}
+table.lp-trace-table th {
+  background: var(--darkened-bg);
+  font-weight: 700;
+}
+.quote-text {
+  max-width: 420px;
+  white-space: pre-wrap;
+  color: var(--body-fg);
+  font-family: inherit;
+}
+.badge-clean {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: bold;
+}
+.badge-clean.green { background: #dcfce7; color: #15803d; }
+.badge-clean.blue { background: #e0f2fe; color: #0369a1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 16px;">
+  <a href="{% url 'admin:catalog_book_change' book.pk %}" style="text-decoration:none; font-size:13px; color:var(--link-fg);">‹ بازگشت به شناسنامه کتاب «{{ book.title }}»</a>
+</div>
+
+<h2>🛡️ ردیاب هوشمند کپی و اصالت متن: «{{ book.title }}»</h2>
+
+<div class="lp-guide-card">
+  <h4>🛡️ سازوکار ضدسرقت و ردیابی اثرانگشت در لیموخوان چگونه کار می‌کند؟</h4>
+  <ul>
+    <li><b>اثرانگشت نامرئی Zero-Width:</b> به هنگام کپی متن درسنامه‌ها یا تست‌های کتاب شما توسط دانشجو، سامانه کاراکترهای رمزنگاری‌شده نامرئی و یکتایی را در تاروپود متن تزریق می‌کند که برای چشم انسان کاملاً غیرقابل‌تشخیص است.</li>
+    <li><b>ردیابی حتی در صورت پاک شدن نشانه:</b> حتی اگر فرد تمام فاصله‌ها و علائم نامرئی را دستی پاک کند یا متن را در پیام‌رسان‌ها بازنویسی نماید، الگوریتم هوشمند تطبیق ساختاری لیموخوان متن را با قطعات ثبت‌شده کتاب شما مطابقت می‌دهد.</li>
+    <li><b>ایزولاسیون کامل و محرمانگی:</b> این بخش منحصراً متونِ متعلق به همین اثر را جستجو می‌کند و اطلاعات هویتی و شماره تماس دانشجو برای حفظ حریم خصوصی به صورت ماسک‌شده (مثلاً <code>۰۹۱۲***۴۵۶۷</code>) نمایش داده می‌شود.</li>
+    <li><b>استناد انضباطی و رسمی:</b> رکوردهای یافت‌شده شامل تاریخ دقیق، زمان، و عنوان دقیق بخش هستند و به عنوان مستند موثق قابل ارائه به مراجع دانشگاهی یا مدیریت سامانه می‌باشند.</li>
+  </ul>
+</div>
+
+<div class="lp-tracker-box">
+  <h3 style="margin-top:0; font-size:15px;">متن مشکوکِ منتشرشده را اینجا پیست کنید:</h3>
+  <form method="post" class="lp-trace-form">
+    {% csrf_token %}
+    <textarea name="text" placeholder="متنی که در کانال تلگرام، گروه دانشجویی یا سایت دیگری دیده‌اید را اینجا قرار دهید…">{{ pasted }}</textarea>
+    <div>
+      <button type="submit">🔍 ردیابی و استعلام منشأ کپی</button>
+      <span style="font-size:12px; color:var(--body-quiet-color); margin-right:12px;">(دست‌کم ۲۰ حرف برای استعلام دقیق لازم است)</span>
+    </div>
+  </form>
+</div>
+
+{% if searched %}
+  {% if found.marked %}
+    <h3>✅ نتیجه: اثرانگشت نامرئی با موفقیت شناسایی شد</h3>
+    <p style="font-size:13px; color:#15803d;">کد رمزنگاری‌شده در بافت این متن، کپی‌کننده دقیق را معین کرد:</p>
+    <table class="lp-trace-table">
+      <thead>
+        <tr>
+          <th>کاربر کپی‌کننده</th>
+          <th>زمان دقیق کپی</th>
+          <th>بخش مربوطه در کتاب</th>
+          <th>متن ثبت‌شده در لحظه کپی</th>
+          <th>وضعیت تطبیق</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in found.marked %}
+          <tr>
+            <td><strong>{{ r.display_user }}</strong></td>
+            <td>{{ r.when }}</td>
+            <td>{{ r.node_title }}</td>
+            <td class="quote-text">{{ r.text }}</td>
+            <td><span class="badge-clean green">{{ r.state }}</span></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% elif found.similar %}
+    <h3>🔍 نشانه‌ی نامرئی در متن نبود؛ اما کپی‌های هم‌متن کشف شد</h3>
+    <p style="font-size:13px; color:#0369a1;">متن از نظر ساختاری با کپی‌های ثبت‌شده از این کتاب مطابقت دارد:</p>
+    <table class="lp-trace-table">
+      <thead>
+        <tr>
+          <th>کاربر کپی‌کننده</th>
+          <th>زمان دقیق کپی</th>
+          <th>بخش مربوطه در کتاب</th>
+          <th>متن ثبت‌شده در لحظه کپی</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in found.similar %}
+          <tr>
+            <td><strong>{{ r.display_user }}</strong></td>
+            <td>{{ r.when }}</td>
+            <td>{{ r.node_title }}</td>
+            <td class="quote-text">{{ r.text }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:14px; color:#991b1b; font-size:13.5px;">
+      ❌ <b>موردی یافت نشد:</b> هیچ کپی یا اثرانگشتی از کتاب «{{ book.title }}» در این متن شناسایی نشد. ممکن است متن متعلق به این کتاب نباشد یا طول آن برای استعلام کافی نباشد.
+    </div>
+  {% endif %}
+{% endif %}
+
+{% endblock %}

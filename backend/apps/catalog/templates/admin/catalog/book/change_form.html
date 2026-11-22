@@ -6,6 +6,7 @@
     {% if can_view_study %}
       <li><a href="{% url 'admin:catalog_book_study_analytics' original.pk %}" style="background:#0284c7;color:#fff;font-weight:700;">📊 آمار مطالعه کلاس</a></li>
     {% endif %}
+    <li><a href="{% url 'admin:catalog_book_trace' original.pk %}" style="background:#047857;color:#fff;font-weight:700;" title="ردیابی اثرانگشت نامرئی متون کپی‌شده از این کتاب و شناسایی کاربر متخلف">🛡️ ردیاب متن و اصالت اثر</a></li>
     <li><a href="{% url 'admin:catalog_book_export' original.pk %}">دریافت کل کتاب (Markdown ZIP)</a></li>
     <li><a href="{% url 'admin:catalog_book_tex_export' original.pk %}" style="font-weight:700;" title="پروژه چندفصلی کامل LaTeX به همراه تصاویر و فایل تنظیمات">📥 خروجی کامل LaTeX کتاب</a></li>
     {% if request.user.email and request.user.is_email_verified %}
