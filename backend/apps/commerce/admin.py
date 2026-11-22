@@ -19,8 +19,10 @@ from .models import (
     OrderRevenueSnapshot,
     PayoutRequest,
     Plan,
+    PoolBookShare,
     RevenuePlan,
     SaleCampaign,
+    SubscriptionPoolPeriod,
     TeacherBankAccount,
     TeacherWallet,
     WalletTransaction,
@@ -107,9 +109,13 @@ class OrderPlanFilter(admin.SimpleListFilter):
 
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
-    list_display = ("title", "scope", "months", "price", "is_active", "order")
+    list_display = ("title", "scope", "months", "price", "pool_share_display", "is_active", "order")
     list_editable = ("price", "is_active", "order")
     search_fields = ("title",)
+
+    @admin.display(description="سهم استخر اساتید")
+    def pool_share_display(self, obj):
+        return f"{obj.pool_share_percent}٪"
 
     # Subscription prices are financial settings, not teacher/editor controls.
     def has_module_permission(self, request):
@@ -1000,6 +1006,82 @@ class PayoutRequestAdmin(admin.ModelAdmin):
             mark_payout_as_processing(p, manager_user=request.user)
             count += 1
         self.message_user(request, f"{count} درخواست تسویه به وضعیت «در حال واریز بانکی» منتقل شدند.")
+
+
+class PoolBookShareInline(admin.TabularInline):
+    model = PoolBookShare
+    extra = 0
+    can_delete = False
+    readonly_fields = ("book", "valid_seconds", "valid_quizzes", "unique_active_users", "computed_score", "share_percent", "total_amount")
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(SubscriptionPoolPeriod)
+class SubscriptionPoolPeriodAdmin(admin.ModelAdmin):
+    list_display = ("title", "date_window", "sharing_model", "sales_toman", "pool_toman", "status_chip", "finalized_display")
+    list_filter = ("status", "sharing_model", "exclude_free_chapters")
+    search_fields = ("title",)
+    inlines = [PoolBookShareInline]
+    actions = ["run_simulation_action", "finalize_period_action"]
+    fieldsets = (
+        ("مشخصات دوره", {"fields": ("title", "starts_at", "ends_at", "status")}),
+        ("قوانین و ضدتقلب", {"fields": ("sharing_model", "exclude_free_chapters", "daily_user_cap_hours", "min_published_chapters", "min_active_questions")}),
+        ("نتایج مالی", {"fields": ("total_subscription_sales", "total_pool_amount", "finalized_at")}),
+    )
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.status == SubscriptionPoolPeriod.Status.FINALIZED:
+            return [f.name for f in SubscriptionPoolPeriod._meta.fields]
+        return ("total_subscription_sales", "total_pool_amount", "finalized_at")
+
+    @admin.display(description="بازه زمانی")
+    def date_window(self, obj):
+        return f"{jalali_date(obj.starts_at)} تا {jalali_date(obj.ends_at)}"
+
+    @admin.display(description="کل فروش اشتراک")
+    def sales_toman(self, obj):
+        return toman(obj.total_subscription_sales)
+
+    @admin.display(description="مبلغ استخر اساتید")
+    def pool_toman(self, obj):
+        return toman(obj.total_pool_amount)
+
+    @admin.display(description="وضعیت")
+    def status_chip(self, obj):
+        if obj.status == SubscriptionPoolPeriod.Status.FINALIZED:
+            return badges(("نهایی و واریزشده", "green"))
+        return badges(("پیش‌نویس / شبیه‌سازی", "yellow"))
+
+    @admin.display(description="زمان نهایی‌سازی")
+    def finalized_display(self, obj):
+        return jalali_datetime(obj.finalized_at) if obj.finalized_at else "—"
+
+    @admin.action(description="⚡ اجرای شبیه‌سازی و پیش‌نمایش سهم‌ها")
+    def run_simulation_action(self, request, queryset):
+        from .pool import simulate_subscription_pool
+        for p in queryset:
+            sim = simulate_subscription_pool(p)
+            self.message_user(
+                request,
+                f"شبیه‌سازی «{p.title}» انجام شد: {len(sim.get('books', []))} کتاب و {len(sim.get('teachers', []))} استاد واجد شرایط یافت شدند. کل استخر: {fa_number(sim.get('total_pool', 0))} تومان."
+            )
+
+    @admin.action(description="✅ نهایی‌سازی قطعی و واریز مبالغ به کیف پول اساتید")
+    def finalize_period_action(self, request, queryset):
+        from .pool import finalize_subscription_pool
+        from django.core.exceptions import ValidationError
+        for p in queryset:
+            try:
+                cnt = finalize_subscription_pool(p, manager_user=request.user)
+                self.message_user(request, f"دوره «{p.title}» نهایی شد و سهم {cnt} استاد مستقیماً به کیف پول‌ها واریز گردید.")
+            except ValidationError as e:
+                self.message_user(request, f"خطا در نهایی‌سازی «{p.title}»: {e.message}", level="error")
+
 
 
 
