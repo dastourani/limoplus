@@ -848,7 +848,7 @@ class TeacherProfile(models.Model):
         return f"{name}{title}"
 
 
-class BookReview(models.Model):
+class BookOpinion(models.Model):
     """«نظرات و امتیازهای کتاب»: ثبت نظر دانشجویان با ستاره ۱ تا ۵، درصد رضایت، شاخص میزان مطالعه، پاسخ استاد و ممیزی مدیر."""
 
     class Status(models.TextChoices):
@@ -859,14 +859,14 @@ class BookReview(models.Model):
     book = models.ForeignKey(
         ContentNode,
         on_delete=models.CASCADE,
-        related_name="reviews",
+        related_name="opinions",
         limit_choices_to={"kind": ContentNode.Kind.BOOK, "depth": 1},
         verbose_name="کتاب",
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="book_reviews",
+        related_name="catalog_opinions",
         verbose_name="دانشجو / کاربر",
     )
     rating = models.PositiveSmallIntegerField(
@@ -947,7 +947,7 @@ class BookReview(models.Model):
         verbose_name_plural = "نظرات و امتیازهای کتاب‌ها"
         ordering = ["-is_pinned", "-created_at"]
         constraints = [
-            models.UniqueConstraint(fields=["book", "user"], name="uniq_user_book_review"),
+            models.UniqueConstraint(fields=["book", "user"], name="uniq_user_book_opinion"),
         ]
 
     def __str__(self):
