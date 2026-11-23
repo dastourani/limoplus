@@ -530,7 +530,7 @@ export default function Book() {
           )}
           {!!note && <Text style={[styles.note, rtl]}>{note}</Text>}
 
-          {/* تب‌های سه‌گانه همگن: درباره کتاب | درباره نویسنده | نظرات */}
+          {/* تب‌های سه‌گانه همگن با منوی اصلی: درباره کتاب | درباره نویسنده | نظرات */}
           <View style={styles.tabsContainer}>
             <View style={styles.tabHeader}>
               <Pressable
@@ -544,7 +544,7 @@ export default function Book() {
                 style={[styles.tabButton, activeTab === 'book' && styles.tabButtonActive]}
                 accessibilityRole="tab"
               >
-                <Icon name="book-open" size={16} color={activeTab === 'book' ? colors.ink : colors.muted} />
+                <Icon name="book-open" size={17} color={activeTab === 'book' ? colors.ink : colors.muted} strokeWidth={activeTab === 'book' ? 2.3 : 1.8} />
                 <Text style={[styles.tabButtonText, activeTab === 'book' && styles.tabButtonTextActive]}>درباره‌ی کتاب</Text>
               </Pressable>
 
@@ -553,7 +553,7 @@ export default function Book() {
                 style={[styles.tabButton, activeTab === 'author' && styles.tabButtonActive]}
                 accessibilityRole="tab"
               >
-                <Icon name="user" size={16} color={activeTab === 'author' ? colors.ink : colors.muted} />
+                <Icon name="circle-user-round" size={17} color={activeTab === 'author' ? colors.ink : colors.muted} strokeWidth={activeTab === 'author' ? 2.3 : 1.8} />
                 <Text style={[styles.tabButtonText, activeTab === 'author' && styles.tabButtonTextActive]}>درباره‌ی نویسنده</Text>
               </Pressable>
 
@@ -562,7 +562,7 @@ export default function Book() {
                 style={[styles.tabButton, activeTab === 'reviews' && styles.tabButtonActive]}
                 accessibilityRole="tab"
               >
-                <Icon name="message-square" size={16} color={activeTab === 'reviews' ? colors.ink : colors.muted} />
+                <Icon name="message-circle" size={17} color={activeTab === 'reviews' ? colors.ink : colors.muted} strokeWidth={activeTab === 'reviews' ? 2.3 : 1.8} />
                 <Text style={[styles.tabButtonText, activeTab === 'reviews' && styles.tabButtonTextActive]}>
                   نظرات {book.community_reviews?.total_count ? `(${toPersianDigits(book.community_reviews.total_count)})` : ''}
                 </Text>
@@ -977,7 +977,7 @@ function ChapterCard({
   let lastGroup = '';
   return (
     <View style={styles.chapter}>
-      <View style={{ position: 'relative', borderBottomWidth: open ? 1 : 0, borderBottomColor: colors.line }}>
+      <View style={{ position: 'relative' }}>
         <Pressable onPress={onToggle} style={styles.chapterHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
           {/* As tall as two lines of the title, so the lemon and the name read as one. */}
           <HelpTip
@@ -1003,6 +1003,7 @@ function ChapterCard({
             <Icon name="chevron-down" size={16} color={open ? colors.ink : colors.muted} />
           </Animated.View>
         </Pressable>
+        {open && <View style={{ height: 1, backgroundColor: colors.line, width: '100%' }} />}
         {seconds >= 60 && (
           <View style={styles.badgeWrapper} pointerEvents="none">
             <View style={styles.floatingChapterBadge}>
