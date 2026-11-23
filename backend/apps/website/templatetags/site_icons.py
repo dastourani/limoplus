@@ -1,3 +1,4 @@
+import math
 """{% icon "name" size %}: the app's icons (Lucide, ISC licence) as inline SVG, in the colour of the text around them."""
 from django import template
 from django.utils.safestring import mark_safe
