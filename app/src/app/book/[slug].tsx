@@ -296,11 +296,19 @@ export default function Book() {
               {!!user && !!book.words && (
                 <View style={[styles.stat, { backgroundColor: top.stat }]}>
                   <Text style={[styles.statValue, { color: top.value }]}>
-                    {toPersianDigits(book.words.learned)} از {toPersianDigits(book.words.total)}
+                    {toPersianDigits(book.words.total)}
                   </Text>
                   <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
-                    <Text style={[styles.statLabel, { color: top.label }]}>لغت حفظ‌شده</Text>
-                    <HelpTip size={18} title="لغت حفظ‌شده" text="فلش‌کارت‌های لغت این کتاب که به جعبه‌ی ۴ یا بالاتر مرور رسیده‌اند، یعنی چند بار پشت‌سرهم بلدشان بوده‌ای." />
+                    <Text style={[styles.statLabel, { color: top.label }]}>لغت</Text>
+                    <HelpTip
+                      size={18}
+                      title="لغت‌های حفظ‌شده"
+                      text={
+                        book.words.learned > 0
+                          ? `تا الان ${toPersianDigits(book.words.learned)} از ${toPersianDigits(book.words.total)} لغت این کتاب را حفظ کرده‌ای؛ یعنی به جعبه‌ی ۴ یا بالاتر مرور رسیده‌اند و چند بار پشت‌سرهم بلدشان بوده‌ای.`
+                          : `تا الان هیچ لغتی از ${toPersianDigits(book.words.total)} لغت این کتاب را حفظ نکرده‌ای. وقتی لغتی به جعبه‌ی ۴ یا بالاتر مرور برسد، حفظ‌شده محسوب می‌شود.`
+                      }
+                    />
                   </View>
                 </View>
               )}
@@ -335,32 +343,29 @@ export default function Book() {
               />
             </View>
           ) : fullAccess ? (
-            <View style={[styles.cta, { paddingBottom: 0, overflow: 'hidden' }]}>
-              <View style={[styles.ctaRow, { paddingBottom: 16 }]}>
-                <HelpTip
-                  size={54}
-                  title="لیموی پیشرفت کتاب"
-                  text={`${user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش این کتاب تمام شده است. ` : ''}هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای.`}
-                >
-                  <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={54} />
-                </HelpTip>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-                    <Text style={[styles.ctaSmall, rtl]}>
-                      {user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش تمام‌شده` : 'برای ذخیره‌ی پیشرفت وارد شو'}
-                    </Text>
-                    {!!user && <HelpTip size={18} title="لیموی پیشرفت" text="هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای." />}
-                  </View>
-                  <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{last ? last.title : 'از اول کتاب شروع کن'}</Text>
+            <View style={[styles.cta, styles.ctaRow, !!book.mine?.time_seconds && book.mine.time_seconds >= 60 && { marginBottom: 16 }]}>
+              <HelpTip
+                size={54}
+                title="لیموی پیشرفت کتاب"
+                text={`${user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش این کتاب تمام شده است. ` : ''}هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای.`}
+              >
+                <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={54} />
+              </HelpTip>
+              <View style={{ flex: 1, gap: 2 }}>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.ctaSmall, rtl]}>
+                    {user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش تمام‌شده` : 'برای ذخیره‌ی پیشرفت وارد شو'}
+                  </Text>
+                  {!!user && <HelpTip size={18} title="لیموی پیشرفت" text="هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای." />}
                 </View>
-                <Pressable onPress={() => (last ? router.push(`/section/${last.id}`) : startFree())} style={styles.ctaButton} accessibilityRole="button">
-                  <Text style={styles.ctaButtonText}>{last ? 'ادامه بده' : 'شروع'}</Text>
-                </Pressable>
+                <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{last ? last.title : 'از اول کتاب شروع کن'}</Text>
               </View>
+              <Pressable onPress={() => (last ? router.push(`/section/${last.id}`) : startFree())} style={styles.ctaButton} accessibilityRole="button">
+                <Text style={styles.ctaButtonText}>{last ? 'ادامه بده' : 'شروع'}</Text>
+              </Pressable>
               {!!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
-                <View style={styles.ctaTimeFooter}>
-                  <Icon name="time-spent" size={14} color="#166534" />
-                  <Text style={styles.ctaTimeFooterText}>⏱️ {studyDuration(book.mine.time_seconds)} مطالعه‌ی این کتاب</Text>
+                <View style={styles.floatingTimeBadge} pointerEvents="none">
+                  <Text style={styles.floatingTimeBadgeText}>⏱️ {studyDuration(book.mine.time_seconds)} مطالعه‌ی این کتاب</Text>
                 </View>
               )}
             </View>
@@ -958,40 +963,36 @@ function ChapterCard({
           <Icon name="chevron-down" size={16} color={open ? colors.ink : colors.muted} />
         </Animated.View>
       </Pressable>
-      {/* A quiet strip for what is the learner's own: time spent and the next review. Nothing when there is none. */}
-      {(seconds >= 60 || !!review) && (
+      {/* A quiet strip for review. */}
+      {!!review && (
         <View style={styles.strip}>
-          {seconds >= 60 ? (
+          <View />
+          {review.days > 0 ? (
             <View style={styles.stripItem}>
-              <Icon name="time-spent" size={14} color="#166534" />
-              <Text style={[styles.stripText, { color: '#166534', fontWeight: '800' }]}>⏱️ {studyDuration(seconds)} مطالعه‌ی این فصل</Text>
+              <Icon name="calendar" size={14} color={colors.muted} />
+              <Text style={styles.stripText}>مرور فصل: {toPersianDigits(review.days)} روز دیگر</Text>
             </View>
           ) : (
-            <View />
+            <Pressable
+              onPress={() =>
+                review.id &&
+                openReview({ kind: 'chapter', id: review.id, chapter_id: chapter.id } as ReviewItem).catch((e: Error) => toast(e.message || 'مرور شروع نشد.'))
+              }
+              accessibilityRole="button"
+              accessibilityLabel={review.days === 0 ? 'مرور فصل، امروز' : 'مرور فصل، عقب افتاده'}
+            >
+              {review.days === 0 ? (
+                <Chip label="مرور فصل: امروز ←" icon="rotate-ccw" color={colors.ink} background={colors.lemon} />
+              ) : (
+                <Chip label={`مرور فصل: ${toPersianDigits(-review.days)} روز عقب ←`} icon="rotate-ccw" color={colors.amberDark} background={colors.amberSoft} />
+              )}
+            </Pressable>
           )}
-          {!!review &&
-            (review.days > 0 ? (
-              <View style={styles.stripItem}>
-                <Icon name="calendar" size={14} color={colors.muted} />
-                <Text style={styles.stripText}>مرور فصل: {toPersianDigits(review.days)} روز دیگر</Text>
-              </View>
-            ) : (
-              // Its day has come (or passed): a tap starts the chapter's review, as the home page's tile does.
-              <Pressable
-                onPress={() =>
-                  review.id &&
-                  openReview({ kind: 'chapter', id: review.id, chapter_id: chapter.id } as ReviewItem).catch((e: Error) => toast(e.message || 'مرور شروع نشد.'))
-                }
-                accessibilityRole="button"
-                accessibilityLabel={review.days === 0 ? 'مرور فصل، امروز' : 'مرور فصل، عقب افتاده'}
-              >
-                {review.days === 0 ? (
-                  <Chip label="مرور فصل: امروز ←" icon="rotate-ccw" color={colors.ink} background={colors.lemon} />
-                ) : (
-                  <Chip label={`مرور فصل: ${toPersianDigits(-review.days)} روز عقب ←`} icon="rotate-ccw" color={colors.amberDark} background={colors.amberSoft} />
-                )}
-              </Pressable>
-            ))}
+        </View>
+      )}
+      {seconds >= 60 && (
+        <View style={styles.floatingChapterBadge} pointerEvents="none">
+          <Text style={styles.floatingChapterBadgeText}>⏱️ {studyDuration(seconds)} مطالعه‌ی این فصل</Text>
         </View>
       )}
       {open && (
@@ -1115,8 +1116,10 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: '#C9D3CC' },
   ownedRibbon: { position: 'absolute', top: 12, left: -6, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: '#3FB8A9', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
   ownedRibbonText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  ctaTimeFooter: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#f0fdf4', borderTopWidth: 1, borderTopColor: '#bbf7d0', paddingVertical: 7, marginHorizontal: -16 },
-  ctaTimeFooterText: { fontSize: 12, fontWeight: '800', color: '#166534' },
+  floatingTimeBadge: { position: 'absolute', bottom: -11, alignSelf: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 20, borderWidth: 1, borderColor: '#d1fae5', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2, zIndex: 10 },
+  floatingTimeBadgeText: { fontSize: 11, fontWeight: '800', color: '#15803d' },
+  floatingChapterBadge: { position: 'absolute', bottom: -10, alignSelf: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 16, borderWidth: 1, borderColor: '#d1fae5', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1, zIndex: 5 },
+  floatingChapterBadgeText: { fontSize: 10, fontWeight: '800', color: '#15803d' },
   cta: { marginTop: -34, backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
   ctaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   ctaHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
@@ -1213,7 +1216,7 @@ const styles = StyleSheet.create({
   chevronCircleOn: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   aboutTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
   chaptersTitle: { fontSize: 18, fontWeight: '900', color: colors.ink, marginTop: 6 },
-  chapter: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
+  chapter: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'visible', marginBottom: 14 },
   chapterHead: { flexDirection: 'row-reverse', alignItems: 'center', padding: 16, gap: 12 },
   strip: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingVertical: 8, minHeight: 40, backgroundColor: '#F9FAF5', borderTopWidth: 1, borderTopColor: colors.line },
   metaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
