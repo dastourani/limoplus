@@ -1,7 +1,7 @@
 import { accessLabel } from '../../lib/access';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, LayoutAnimation, Platform, Pressable, ScrollView, Share, StyleSheet, UIManager, useWindowDimensions, View } from 'react-native';
+import { Animated, Image, LayoutAnimation, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, UIManager, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from 'react-native-svg';
 
 import { ApiError } from '../../api/client';
@@ -59,6 +59,7 @@ export default function Book() {
   const [aboutOpen, setAboutOpen] = useState<boolean | null>(null);
   // تب‌های سه‌گانه: «درباره کتاب» | «درباره نویسنده» | «نظرات»
   const [activeTab, setActiveTab] = useState<'book' | 'author' | 'reviews'>('book');
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewBody, setReviewBody] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
@@ -612,9 +613,23 @@ export default function Book() {
             {activeTab === 'author' && (
               <View style={styles.tabContent}>
                 <View style={styles.authorHeader}>
-                  <View style={styles.authorAvatar}>
-                    <Icon name="user" size={30} color={colors.muted} />
-                  </View>
+                  {book.author_profile?.avatar ? (
+                    <Pressable
+                      onPress={() => setAvatarModalOpen(true)}
+                      style={[styles.authorAvatar, styles.authorAvatarClickable]}
+                      accessibilityRole="button"
+                      accessibilityLabel="مشاهده‌ی تصویر بزرگ‌تر مؤلف"
+                    >
+                      <Image source={{ uri: book.author_profile.avatar }} style={styles.authorAvatarImg} resizeMode="cover" />
+                      <View style={styles.avatarZoomBadge}>
+                        <Icon name="search" size={11} color="#FFFFFF" />
+                      </View>
+                    </Pressable>
+                  ) : (
+                    <View style={styles.authorAvatar}>
+                      <Icon name="circle-user-round" size={36} color={colors.muted} strokeWidth={1.7} />
+                    </View>
+                  )}
                   <View style={{ flex: 1, gap: 4 }}>
                     <Text style={[styles.authorName, rtl]}>{book.author_profile?.name || book.author || 'مؤلف اثر'}</Text>
                     {!!book.author_profile?.academic_title && (
@@ -622,6 +637,24 @@ export default function Book() {
                     )}
                   </View>
                 </View>
+
+                {/* مودال بزرگنمایی تصویر مؤلف */}
+                {!!book.author_profile?.avatar && (
+                  <Modal visible={avatarModalOpen} transparent animationType="fade" onRequestClose={() => setAvatarModalOpen(false)}>
+                    <Pressable style={styles.avatarModalBackdrop} onPress={() => setAvatarModalOpen(false)}>
+                      <View style={styles.avatarModalCard}>
+                        <Image source={{ uri: book.author_profile.avatar }} style={styles.avatarModalImg} resizeMode="contain" />
+                        <Text style={styles.avatarModalName}>{book.author_profile?.name || book.author}</Text>
+                        {!!book.author_profile?.academic_title && (
+                          <Text style={styles.avatarModalTitle}>{book.author_profile.academic_title}</Text>
+                        )}
+                        <Pressable onPress={() => setAvatarModalOpen(false)} style={styles.avatarModalClose}>
+                          <Text style={styles.avatarModalCloseText}>بستن تصویر ✕</Text>
+                        </Pressable>
+                      </View>
+                    </Pressable>
+                  </Modal>
+                )}
 
                 {book.author_profile?.bio ? (
                   <View style={{ marginTop: 12, maxHeight: 380 }}>
@@ -1222,8 +1255,18 @@ const styles = StyleSheet.create({
   tabContent: { padding: 16 },
   emptyNote: { fontSize: 13, color: colors.muted, textAlign: 'center', paddingVertical: 18 },
   // نویسنده
-  authorHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.line },
-  authorAvatar: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line },
+  authorHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.line },
+  authorAvatar: { width: 70, height: 70, borderRadius: 35, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.line, overflow: 'hidden' },
+  authorAvatarClickable: { borderColor: colors.lemon, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  authorAvatarImg: { width: '100%', height: '100%' },
+  avatarZoomBadge: { position: 'absolute', bottom: 2, left: 2, backgroundColor: 'rgba(23,32,26,0.72)', width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  avatarModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  avatarModalCard: { backgroundColor: colors.surface, borderRadius: 20, padding: 18, alignItems: 'center', gap: 10, maxWidth: 360, width: '100%' },
+  avatarModalImg: { width: 260, height: 260, borderRadius: 16 },
+  avatarModalName: { fontSize: 16, fontWeight: '900', color: colors.ink, marginTop: 4 },
+  avatarModalTitle: { fontSize: 13, color: colors.muted, textAlign: 'center' },
+  avatarModalClose: { marginTop: 10, paddingVertical: 8, paddingHorizontal: 20, backgroundColor: colors.ground, borderRadius: 20 },
+  avatarModalCloseText: { fontSize: 13, fontWeight: '800', color: colors.ink },
   authorName: { fontSize: 16, fontWeight: '900', color: colors.ink },
   authorTitle: { fontSize: 12.5, fontWeight: '700', color: colors.greenDark },
   authorMetaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 12 },
