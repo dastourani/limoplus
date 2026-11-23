@@ -5,7 +5,10 @@
 {% block main %}
 <section class="hero small">
   <div class="wrap bookhero">
-    <div class="cover" data-cover="{{ cover }}" data-w="200" style="width:200px"><div class="cover-ph"><b>{{ b.title }}</b></div></div>
+    <div class="cover" data-cover="{{ cover }}" data-w="200" style="width:200px">
+      <div class="cover-ph"><b>{{ b.title }}</b></div>
+      {% if sample_label %}<span class="bk-ribbon">{% icon "gift" 12 %}{{ sample_label }}</span>{% endif %}
+    </div>
     <div class="herotext">
       {% if majors %}<span class="kicker">{% for m in majors %}{{ m.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</span>{% endif %}
       <h1>{{ b.title }}</h1>
@@ -39,12 +42,7 @@
             </div>
             <a class="btn lemon" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب با قیمت ویژه</a>
             {% else %}<a class="btn ghost" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب، {{ price }}</a>{% endif %}
-            {% if sample_label %}
-            <div class="sample-label-pill">
-              {% icon "gift" 13 %}
-              <span>{{ sample_label }}</span>
-            </div>
-            {% endif %}
+
           {% elif product_status.state == 'unpriced' %}
             <span class="book-sample-note">قیمت نسخه‌ی کامل هنوز تعیین نشده است.</span>
           {% elif product_status.state == 'free' and not first_free %}
