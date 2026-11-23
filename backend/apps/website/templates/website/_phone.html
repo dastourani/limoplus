@@ -1,24 +1,132 @@
-<div class="phone" aria-hidden="true"><div class="screen">
-  <div class="ph-row">{% include "website/_lemon.html" with size=22 %}<b>سلام!</b></div>
-  <b class="ph-h">ادامه‌ی خواندن</b>
-  <div class="ph-read"><div class="ph-cv"></div><div><b>ریاضی عمومی ۱</b><div class="ph-mut">فصل ۱، حد و پیوستگی</div><span class="ph-go">ادامه بده</span></div></div>
-  <b class="ph-h">برنامه‌ی امروز</b>
-  <div class="ph-card">
-    <div class="ph-task">{% include "website/_lemon.html" with size=22 %}<b>مرور فصل ۱</b><span class="ph-pill">ادامه</span></div>
-    <div class="ph-task">{% include "website/_lemon.html" with size=22 %}<b>مرور کارت‌ها</b><span class="ph-pill">شروع</span></div>
-    <div class="ph-task">{% include "website/_lemon.html" with size=22 %}<b>اشتباهات من</b><span class="ph-pill">شروع</span></div>
-  </div>
-  <b class="ph-h">کتاب‌ها</b>
-  <div class="ph-shelf">
-    {% for c in books|slice:":3" %}
-    <div class="ph-bk-item">
-      <div class="ph-bk" style="--c:#F5C518"><span>{{ c.book.title|truncatechars:18 }}</span></div>
-      <small>{{ c.book.title|truncatechars:14 }}</small>
+{% load site_icons %}
+<div class="phone" aria-hidden="true">
+  <div class="phone-speaker"></div>
+  <div class="screen">
+    <!-- Status Bar with Dynamic Island -->
+    <div class="ph-status-bar">
+      <span class="ph-time">۹:۴۱</span>
+      <div class="ph-island"></div>
+      <div class="ph-status-icons">
+        {% icon "wifi" 12 2.5 %}
+        {% icon "battery-medium" 13 2.5 %}
+      </div>
     </div>
-    {% empty %}
-    <div class="ph-bk-item"><div class="ph-bk" style="--c:#3B44B8"><span>ریاضی عمومی ۱</span></div><small>ریاضی عمومی ۱</small></div>
-    <div class="ph-bk-item"><div class="ph-bk" style="--c:#C93F8E"><span>فیزیک تصویر</span></div><small>فیزیک تصویر</small></div>
-    <div class="ph-bk-item"><div class="ph-bk" style="--c:#23945A"><span>زبان ارشد</span></div><small>زبان ارشد</small></div>
-    {% endfor %}
+
+    <!-- App Header -->
+    <div class="ph-header">
+      <div class="ph-user">
+        {% include "website/_lemon.html" with size=24 %}
+        <div>
+          <b class="ph-greeting">سلام، خوش‌آمدی!</b>
+          <span class="ph-subgreeting">امروز ۳ تسک داری</span>
+        </div>
+      </div>
+      <div class="ph-streak">
+        <span class="ph-streak-num">۵</span>
+        {% icon "timer" 13 2.5 %}
+      </div>
+    </div>
+
+    <!-- Continue Reading Card -->
+    <div class="ph-section-title">ادامه‌ی خواندن</div>
+    <div class="ph-read-card">
+      <div class="ph-book-cover">
+        <span class="ph-cover-spine"></span>
+        <div class="ph-cover-content">
+          <small>ریاضی ۱</small>
+          {% lemon_progress 6 22 "#FFD43B" %}
+        </div>
+      </div>
+      <div class="ph-read-info">
+        <b>ریاضی عمومی ۱</b>
+        <span class="ph-read-sub">فصل ۱: حد و پیوستگی</span>
+        <div class="ph-progress-wrap">
+          <div class="ph-progress-bar"><div class="ph-progress-fill" style="width: 65%;"></div></div>
+          <span class="ph-progress-pct">۶۵٪</span>
+        </div>
+      </div>
+      <div class="ph-action-btn">{% icon "play" 12 3 %}</div>
+    </div>
+
+    <!-- Today's Tasks -->
+    <div class="ph-section-title">
+      <span>برنامه‌ی امروز</span>
+      <small class="ph-section-badge">۱۵ دقیقه</small>
+    </div>
+    <div class="ph-task-card">
+      <div class="ph-task-row">
+        {% include "website/_lemon.html" with size=20 %}
+        <div class="ph-task-meta">
+          <b>مرور مشتق زنجیره‌ای</b>
+          <small>فصل ۲ · ۵ تست تشریحی</small>
+        </div>
+        <span class="ph-btn-pill on">ادامه</span>
+      </div>
+      <div class="ph-task-row">
+        <div class="ph-task-ic-wrap">{% icon "layers" 14 2.2 %}</div>
+        <div class="ph-task-meta">
+          <b>جعبه لایتنر هوشمند</b>
+          <small>۱۲ فلش‌کارت در انتظار</small>
+        </div>
+        <span class="ph-btn-pill">مرور</span>
+      </div>
+    </div>
+
+    <!-- Books Shelf -->
+    <div class="ph-section-title">کتابخانه‌ی من</div>
+    <div class="ph-shelf">
+      {% for c in books|slice:":3" %}
+      <div class="ph-shelf-item">
+        <div class="ph-shelf-cover" style="--c:#3B44B8">
+          <span class="ph-shelf-tag">رایگان</span>
+          <b>{{ c.book.title|truncatechars:12 }}</b>
+        </div>
+        <small>{{ c.book.title|truncatechars:10 }}</small>
+      </div>
+      {% empty %}
+      <div class="ph-shelf-item">
+        <div class="ph-shelf-cover" style="--c:#3B44B8; background: linear-gradient(145deg, #1f2a37, #111827);">
+          <span class="ph-shelf-tag">رایگان</span>
+          <b>ریاضی ۱</b>
+        </div>
+        <small>ریاضی ۱</small>
+      </div>
+      <div class="ph-shelf-item">
+        <div class="ph-shelf-cover" style="--c:#059669; background: linear-gradient(145deg, #064e3b, #022c22);">
+          <span class="ph-shelf-tag">هدیه</span>
+          <b>فیزیک ۲</b>
+        </div>
+        <small>فیزیک ۲</small>
+      </div>
+      <div class="ph-shelf-item">
+        <div class="ph-shelf-cover" style="--c:#b45309; background: linear-gradient(145deg, #78350f, #451a03);">
+          <b>زبان ارشد</b>
+        </div>
+        <small>زبان ارشد</small>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- App Bottom Navigation Bar -->
+    <div class="ph-nav-bar">
+      <div class="ph-nav-item on">
+        <div class="ph-nav-capsule">
+          {% icon "house" 16 2.4 %}
+        </div>
+        <span>خانه</span>
+      </div>
+      <div class="ph-nav-item">
+        {% icon "library-big" 16 1.8 %}
+        <span>کتابخانه</span>
+      </div>
+      <div class="ph-nav-item">
+        {% icon "chart-column" 16 1.8 %}
+        <span>آمار</span>
+      </div>
+      <div class="ph-nav-item">
+        {% icon "circle-user-round" 16 1.8 %}
+        <span>پروفایل</span>
+      </div>
+    </div>
   </div>
-</div></div>
+</div>
