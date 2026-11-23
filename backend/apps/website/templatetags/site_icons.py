@@ -6,6 +6,11 @@ from django.utils.safestring import mark_safe
 register = template.Library()
 
 ICONS = {
+        "house": "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/><path d=\"M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/>",
+    "library-big": "<rect width=\"8\" height=\"18\" x=\"3\" y=\"3\" rx=\"1\"/><path d=\"m16 8 1.83 11.2a1 1 0 0 1-.83 1.15l-1.97.32a1 1 0 0 1-1.15-.83L12 8\"/><path d=\"M7 3v18\"/><path d=\"M20.4 3.7A2 2 0 0 0 18.5 2H18a2 2 0 0 0-1.8 1.1L12.5 12\"/>",
+    "circle-user-round": "<path d=\"M18 20a6 6 0 0 0-12 0\"/><circle cx=\"12\" cy=\"10\" r=\"4\"/><circle cx=\"12\" cy=\"12\" r=\"10\"/>",
+    "wifi": "<path d=\"M12 20h.01\"/><path d=\"M2 8.82a15 15 0 0 1 20 0\"/><path d=\"M5 12.859a10 10 0 0 1 14 0\"/><path d=\"M8.5 16.429a5 5 0 0 1 7 0\"/>",
+    "battery-medium": "<rect width=\"16\" height=\"10\" x=\"2\" y=\"7\" rx=\"2\"/><line x1=\"22\" x2=\"22\" y1=\"11\" y2=\"13\"/><line x1=\"6\" x2=\"6\" y1=\"11\" y2=\"13\"/><line x1=\"10\" x2=\"10\" y1=\"11\" y2=\"13\"/>",
     "download": "<path d=\"M12 15V3\"/><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><path d=\"m7 10 5 5 5-5\"/>",
     "book-open": "<path d=\"M12 5v16\"/><path d=\"M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z\"/>",
     "circle-check": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m16 9-5.5 5.5L8 12\"/>",
