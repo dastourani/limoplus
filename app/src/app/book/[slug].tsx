@@ -10,7 +10,7 @@ import { openReview } from '../../lib/reviews';
 import { BookCover } from '../../components/BookCover';
 import { Pill } from '../../components/Pill';
 import { MarkdownView } from '../../components/MarkdownView';
-import { Text } from '../../components/Text';
+import { Text, TextInput } from '../../components/Text';
 import { useFeedback } from '../../components/Feedback';
 import { useCelebrate } from '../../components/Celebrate';
 import { LemonProgress } from '../../components/LemonProgress';
@@ -653,27 +653,32 @@ export default function Book() {
                         ))}
                       </View>
                     </View>
-                    <View style={styles.textAreaWrap}>
-                      <MarkdownView markdown={reviewBody || ' '} />
-                    </View>
-                    {/* Native / Web Input Simulation via Prompt or direct TextInput */}
-                    <Button
-                      label={submittingReview ? 'در حال ارسال...' : 'ارسال نظر'}
-                      disabled={submittingReview}
-                      onPress={() => {
-                        if (Platform.OS === 'web') {
-                          const val = window.prompt('نظر خود را بنویسید:', reviewBody);
-                          if (val !== null) {
-                            setReviewBody(val);
-                            endpoints.submitReview(String(slug), { rating: reviewRating, satisfaction_percent: reviewRating * 20, body: val.trim() })
-                              .then(() => { toast('نظر شما ثبت شد.'); setShowReviewForm(false); retry(); })
-                              .catch((err) => toast(err?.message || 'خطا در ثبت'));
-                          }
-                        } else {
-                          handleSendReview();
-                        }
-                      }}
+                    <TextInput
+                      value={reviewBody}
+                      onChangeText={setReviewBody}
+                      multiline
+                      numberOfLines={4}
+                      placeholder="دیدگاه خود را درباره این کتاب بنویسید..."
+                      placeholderTextColor={colors.muted}
+                      style={[styles.reviewTextInput, rtl]}
+                      maxLength={1000}
                     />
+                    <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Button
+                          label={submittingReview ? 'در حال ارسال...' : 'ارسال نظر'}
+                          disabled={submittingReview || !reviewBody.trim()}
+                          onPress={handleSendReview}
+                        />
+                      </View>
+                      <Pressable
+                        onPress={() => setShowReviewForm(false)}
+                        style={styles.cancelReviewButton}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.cancelReviewText}>انصراف</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 )}
 
@@ -1172,6 +1177,9 @@ const styles = StyleSheet.create({
   reviewStatDivider: { width: 1, height: 44, backgroundColor: colors.line },
   reviewHighlightRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   reviewHighlightText: { fontSize: 12, color: colors.ink },
+  reviewTextInput: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 12, minHeight: 90, textAlignVertical: 'top', fontSize: 14, color: colors.ink },
+  cancelReviewButton: { paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.line },
+  cancelReviewText: { fontSize: 13, color: colors.muted, fontWeight: '700' },
   writeReviewButton: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 12, backgroundColor: colors.ground, borderWidth: 1, borderColor: colors.line },
   writeReviewText: { fontSize: 13, fontWeight: '800', color: colors.ink },
   reviewFormBox: { backgroundColor: colors.ground, borderRadius: 12, padding: 12, gap: 10 },
