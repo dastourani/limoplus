@@ -57,10 +57,41 @@ export default function Book() {
   // «درباره‌ی کتاب»: three lines that fade out, with «ادامه‌ی معرفی ▾» (or a tap on the text); opened by the learner,
   // it stays open on later visits.
   const [aboutOpen, setAboutOpen] = useState<boolean | null>(null);
+  // تب‌های سه‌گانه: «درباره کتاب» | «درباره نویسنده» | «نظرات»
+  const [activeTab, setActiveTab] = useState<'book' | 'author' | 'reviews'>('book');
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewBody, setReviewBody] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+
   useEffect(() => {
     setAboutOpen(null);
     storage.getAbout(String(slug)).then((v) => setAboutOpen(v === 'open'));
   }, [slug]);
+  const handleSendReview = async () => {
+    if (!requireLogin(user, 'برای ثبت نظر ابتدا وارد حساب خود شوید.')) return;
+    if (!reviewBody.trim()) {
+      toast('لطفاً متن نظر خود را بنویسید.');
+      return;
+    }
+    setSubmittingReview(true);
+    try {
+      await endpoints.submitReview(String(slug), {
+        rating: reviewRating,
+        satisfaction_percent: reviewRating * 20,
+        body: reviewBody.trim(),
+      });
+      toast('نظر شما با موفقیت ثبت شد.');
+      setReviewBody('');
+      setShowReviewForm(false);
+      retry();
+    } catch (e: any) {
+      toast(e?.message || 'خطا در ثبت نظر');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   const toggleAbout = () => {
     const open = !aboutOpen;
     if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.create(260, 'easeInEaseOut', 'opacity'));
@@ -457,38 +488,232 @@ export default function Book() {
           )}
           {!!note && <Text style={[styles.note, rtl]}>{note}</Text>}
 
-          {!!book.about && aboutOpen !== null && (
-            <View style={styles.about}>
-              <Text style={[styles.aboutTitle, rtl]}>درباره‌ی کتاب</Text>
-              {shortAbout(book.about) ? (
-                <MarkdownView markdown={book.about} compact />
-              ) : (
-                <>
-                  <View style={[styles.aboutBody, aboutOpen ? styles.aboutBodyOpen : styles.aboutFolded]}>
+          {/* تب‌های سه‌گانه همگن: درباره کتاب | درباره نویسنده | نظرات */}
+          <View style={styles.tabsContainer}>
+            <View style={styles.tabHeader}>
+              <Pressable
+                onPress={() => setActiveTab('book')}
+                style={[styles.tabButton, activeTab === 'book' && styles.tabButtonActive]}
+                accessibilityRole="tab"
+              >
+                <Icon name="book-open" size={16} color={activeTab === 'book' ? colors.ink : colors.muted} />
+                <Text style={[styles.tabButtonText, activeTab === 'book' && styles.tabButtonTextActive]}>درباره‌ی کتاب</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setActiveTab('author')}
+                style={[styles.tabButton, activeTab === 'author' && styles.tabButtonActive]}
+                accessibilityRole="tab"
+              >
+                <Icon name="user" size={16} color={activeTab === 'author' ? colors.ink : colors.muted} />
+                <Text style={[styles.tabButtonText, activeTab === 'author' && styles.tabButtonTextActive]}>درباره‌ی نویسنده</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setActiveTab('reviews')}
+                style={[styles.tabButton, activeTab === 'reviews' && styles.tabButtonActive]}
+                accessibilityRole="tab"
+              >
+                <Icon name="message-square" size={16} color={activeTab === 'reviews' ? colors.ink : colors.muted} />
+                <Text style={[styles.tabButtonText, activeTab === 'reviews' && styles.tabButtonTextActive]}>
+                  نظرات {book.community_reviews?.total_count ? `(${toPersianDigits(book.community_reviews.total_count)})` : ''}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* محتوای تب ۱: درباره کتاب */}
+            {activeTab === 'book' && (
+              <View style={styles.tabContent}>
+                {book.about ? (
+                  shortAbout(book.about) ? (
                     <MarkdownView markdown={book.about} compact />
-                    {!aboutOpen && (
-                      <>
-                        {/* The last line fades into the card; a tap anywhere on the text opens it. */}
-                        <Svg pointerEvents="none" style={styles.aboutFade} width="100%" height={44}>
-                          <Defs>
-                            <SvgGradient id="aboutFade" x1="0" y1="0" x2="0" y2="1">
-                              <Stop offset="0" stopColor={colors.surface} stopOpacity={0} />
-                              <Stop offset="1" stopColor={colors.surface} stopOpacity={1} />
-                            </SvgGradient>
-                          </Defs>
-                          <Rect x="0" y="0" width="100%" height="44" fill="url(#aboutFade)" />
-                        </Svg>
-                        <Pressable onPress={toggleAbout} style={StyleSheet.absoluteFill} accessibilityLabel="ادامه‌ی معرفی" />
-                      </>
+                  ) : (
+                    <>
+                      <View style={[styles.aboutBody, aboutOpen ? styles.aboutBodyOpen : styles.aboutFolded]}>
+                        <MarkdownView markdown={book.about} compact />
+                        {!aboutOpen && (
+                          <>
+                            <Svg pointerEvents="none" style={styles.aboutFade} width="100%" height={44}>
+                              <Defs>
+                                <SvgGradient id="aboutFade" x1="0" y1="0" x2="0" y2="1">
+                                  <Stop offset="0" stopColor={colors.surface} stopOpacity={0} />
+                                  <Stop offset="1" stopColor={colors.surface} stopOpacity={1} />
+                                </SvgGradient>
+                              </Defs>
+                              <Rect x="0" y="0" width="100%" height="44" fill="url(#aboutFade)" />
+                            </Svg>
+                            <Pressable onPress={toggleAbout} style={StyleSheet.absoluteFill} accessibilityLabel="ادامه‌ی معرفی" />
+                          </>
+                        )}
+                      </View>
+                      <Pressable onPress={toggleAbout} style={styles.aboutMore} accessibilityRole="button" accessibilityState={{ expanded: aboutOpen ?? false }}>
+                        <Text style={[styles.aboutMoreText, rtl]}>{aboutOpen ? 'بستن معرفی ▴' : 'ادامه‌ی معرفی ▾'}</Text>
+                      </Pressable>
+                    </>
+                  )
+                ) : (
+                  <Text style={[styles.emptyNote, rtl]}>توضیحاتی برای این اثر ثبت نشده است.</Text>
+                )}
+              </View>
+            )}
+
+            {/* محتوای تب ۲: درباره نویسنده / استاد */}
+            {activeTab === 'author' && (
+              <View style={styles.tabContent}>
+                <View style={styles.authorHeader}>
+                  <View style={styles.authorAvatar}>
+                    <Icon name="user" size={32} color={colors.muted} />
+                  </View>
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={[styles.authorName, rtl]}>{book.author_profile?.name || book.author || 'مؤلف اثر'}</Text>
+                    {!!book.author_profile?.academic_title && (
+                      <Text style={[styles.authorTitle, rtl]}>{book.author_profile.academic_title}</Text>
                     )}
                   </View>
-                  <Pressable onPress={toggleAbout} style={styles.aboutMore} accessibilityRole="button" accessibilityState={{ expanded: aboutOpen }}>
-                    <Text style={[styles.aboutMoreText, rtl]}>{aboutOpen ? 'بستن معرفی ▴' : 'ادامه‌ی معرفی ▾'}</Text>
+                </View>
+
+                {book.author_profile?.bio ? (
+                  <View style={{ marginTop: 12 }}>
+                    <MarkdownView markdown={book.author_profile.bio} compact />
+                  </View>
+                ) : (
+                  <Text style={[styles.emptyNote, rtl]}>رزومه و اطلاعات تکمیلی مؤلف به زودی قرار می‌گیرد.</Text>
+                )}
+
+                {!!book.author_profile?.contact_email && (
+                  <View style={styles.authorMetaRow}>
+                    <Icon name="mail" size={14} color={colors.muted} />
+                    <Text style={styles.authorMetaText}>{book.author_profile.contact_email}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* محتوای تب ۳: نظرات و امتیازها */}
+            {activeTab === 'reviews' && (
+              <View style={styles.tabContent}>
+                {/* خلاصه امتیازها و شاخص رضایت */}
+                <View style={styles.reviewStatsBox}>
+                  <View style={styles.reviewStatCol}>
+                    <Text style={styles.reviewBigScore}>{toPersianDigits(book.community_reviews?.average_rating ?? 5)}</Text>
+                    <View style={{ flexDirection: 'row-reverse', gap: 2 }}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Text key={star} style={{ color: star <= Math.round(book.community_reviews?.average_rating ?? 5) ? '#eab308' : '#d1d5db', fontSize: 14 }}>
+                          ★
+                        </Text>
+                      ))}
+                    </View>
+                    <Text style={styles.reviewSubLabel}>از ۵ ستاره</Text>
+                  </View>
+
+                  <View style={styles.reviewStatDivider} />
+
+                  <View style={{ flex: 1, gap: 6, justifyContent: 'center' }}>
+                    <View style={styles.reviewHighlightRow}>
+                      <Icon name="thumbs-up" size={14} color={colors.greenDark} />
+                      <Text style={[styles.reviewHighlightText, rtl]}>
+                        <Text style={{ fontWeight: '900', color: colors.greenDark }}>{toPersianDigits(book.community_reviews?.satisfaction_rate ?? 100)}٪</Text> رضایت خوانندگان
+                      </Text>
+                    </View>
+                    <View style={styles.reviewHighlightRow}>
+                      <Icon name="award" size={14} color="#0284c7" />
+                      <Text style={[styles.reviewHighlightText, rtl]}>
+                        امتیاز خوانندگان جدی (+۵۰٪ مطالعه): <Text style={{ fontWeight: '900', color: '#0284c7' }}>{toPersianDigits(book.community_reviews?.serious_readers_rating ?? 5)}</Text>
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* دکمه ثبت نظر */}
+                {!showReviewForm ? (
+                  <Pressable onPress={() => setShowReviewForm(true)} style={styles.writeReviewButton} accessibilityRole="button">
+                    <Icon name="edit-3" size={16} color={colors.ink} />
+                    <Text style={styles.writeReviewText}>ثبت نظر و امتیاز شما برای این کتاب</Text>
                   </Pressable>
-                </>
-              )}
-            </View>
-          )}
+                ) : (
+                  <View style={styles.reviewFormBox}>
+                    <Text style={[styles.formTitle, rtl]}>دیدگاه و امتیاز شما درباره کتاب:</Text>
+                    <View style={styles.starsSelectRow}>
+                      <Text style={[styles.starLabel, rtl]}>امتیاز شما:</Text>
+                      <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Pressable key={s} onPress={() => setReviewRating(s)}>
+                            <Text style={{ fontSize: 24, color: s <= reviewRating ? '#eab308' : '#d1d5db' }}>★</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                    <View style={styles.textAreaWrap}>
+                      <MarkdownView markdown={reviewBody || ' '} />
+                    </View>
+                    {/* Native / Web Input Simulation via Prompt or direct TextInput */}
+                    <Button
+                      label={submittingReview ? 'در حال ارسال...' : 'ارسال نظر'}
+                      disabled={submittingReview}
+                      onPress={() => {
+                        if (Platform.OS === 'web') {
+                          const val = window.prompt('نظر خود را بنویسید:', reviewBody);
+                          if (val !== null) {
+                            setReviewBody(val);
+                            endpoints.submitReview(String(slug), { rating: reviewRating, satisfaction_percent: reviewRating * 20, body: val.trim() })
+                              .then(() => { toast('نظر شما ثبت شد.'); setShowReviewForm(false); retry(); })
+                              .catch((err) => toast(err?.message || 'خطا در ثبت'));
+                          }
+                        } else {
+                          handleSendReview();
+                        }
+                      }}
+                    />
+                  </View>
+                )}
+
+                {/* لیست نظرات */}
+                {book.community_reviews?.reviews?.length ? (
+                  <View style={{ gap: 12, marginTop: 14 }}>
+                    {book.community_reviews.reviews.map((r) => (
+                      <View key={r.id} style={styles.singleReviewCard}>
+                        <View style={styles.reviewUserHead}>
+                          <View style={{ flex: 1, gap: 2 }}>
+                            <Text style={[styles.reviewUserName, rtl]}>{r.display_name}</Text>
+                            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <View style={styles.studyBadge}>
+                                <Text style={styles.studyBadgeText}>{toPersianDigits(r.study_percent)}٪ مطالعه</Text>
+                              </View>
+                              {r.test_percent > 0 && (
+                                <View style={[styles.studyBadge, { backgroundColor: '#f0fdf4' }]}>
+                                  <Text style={[styles.studyBadgeText, { color: '#166534' }]}>{toPersianDigits(r.test_percent)}٪ تست</Text>
+                                </View>
+                              )}
+                              <Text style={styles.reviewDate}>{r.created_at}</Text>
+                            </View>
+                          </View>
+                          <View style={{ flexDirection: 'row-reverse', gap: 1 }}>
+                            {[1, 2, 3, 4, 5].map((st) => (
+                              <Text key={st} style={{ color: st <= r.rating ? '#eab308' : '#e5e7eb', fontSize: 13 }}>★</Text>
+                            ))}
+                          </View>
+                        </View>
+                        <Text style={[styles.reviewBodyText, rtl]}>{r.body}</Text>
+
+                        {/* کادر پاسخ استاد */}
+                        {!!r.teacher_reply && (
+                          <View style={styles.teacherReplyBox}>
+                            <View style={styles.teacherReplyHead}>
+                              <Icon name="corner-down-left" size={14} color="#0369a1" />
+                              <Text style={styles.teacherReplyBadge}>پاسخ مؤلف / استاد</Text>
+                            </View>
+                            <Text style={[styles.teacherReplyBody, rtl]}>{r.teacher_reply}</Text>
+                          </View>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={[styles.emptyNote, rtl]}>هنوز نظری برای این کتاب ثبت نشده است. اولین نفری باشید که دیدگاه خود را می‌نویسد!</Text>
+                )}
+              </View>
+            )}
+          </View>
 
           {!isPreparing && !!past?.exams.length && (
             <View style={styles.about}>
@@ -905,6 +1130,49 @@ const styles = StyleSheet.create({
   pastBtn: { borderRadius: 999, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, paddingVertical: 6 },
   pastBtnMain: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   pastBtnText: { fontSize: 13, fontWeight: '800', color: colors.ink },
+  // استایل‌های تب‌های سه‌گانه
+  tabsContainer: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
+  tabHeader: { flexDirection: 'row-reverse', borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: colors.ground },
+  tabButton: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12 },
+  tabButtonActive: { borderBottomWidth: 2.5, borderBottomColor: colors.ink, backgroundColor: colors.surface },
+  tabButtonText: { fontSize: 13, fontWeight: '700', color: colors.muted },
+  tabButtonTextActive: { color: colors.ink, fontWeight: '900' },
+  tabContent: { padding: 16 },
+  emptyNote: { fontSize: 13, color: colors.muted, textAlign: 'center', paddingVertical: 18 },
+  // نویسنده
+  authorHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.line },
+  authorAvatar: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line },
+  authorName: { fontSize: 16, fontWeight: '900', color: colors.ink },
+  authorTitle: { fontSize: 12.5, fontWeight: '700', color: colors.greenDark },
+  authorMetaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 12 },
+  authorMetaText: { fontSize: 12, color: colors.muted },
+  // نظرات
+  reviewStatsBox: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: colors.ground, borderRadius: 12, padding: 14, marginBottom: 14 },
+  reviewStatCol: { alignItems: 'center', gap: 2 },
+  reviewBigScore: { fontSize: 28, fontWeight: '900', color: colors.ink },
+  reviewSubLabel: { fontSize: 11, color: colors.muted },
+  reviewStatDivider: { width: 1, height: 44, backgroundColor: colors.line },
+  reviewHighlightRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  reviewHighlightText: { fontSize: 12, color: colors.ink },
+  writeReviewButton: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 12, backgroundColor: colors.ground, borderWidth: 1, borderColor: colors.line },
+  writeReviewText: { fontSize: 13, fontWeight: '800', color: colors.ink },
+  reviewFormBox: { backgroundColor: colors.ground, borderRadius: 12, padding: 12, gap: 10 },
+  formTitle: { fontSize: 13, fontWeight: '800', color: colors.ink },
+  starsSelectRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  starLabel: { fontSize: 12, color: colors.muted },
+  textAreaWrap: { minHeight: 80, backgroundColor: colors.surface, borderRadius: 8, padding: 8, borderWidth: 1, borderColor: colors.line },
+  singleReviewCard: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 8 },
+  reviewUserHead: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between' },
+  reviewUserName: { fontSize: 13.5, fontWeight: '800', color: colors.ink },
+  studyBadge: { backgroundColor: '#e0f2fe', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  studyBadgeText: { fontSize: 10.5, fontWeight: '800', color: '#0369a1' },
+  reviewDate: { fontSize: 11, color: colors.muted },
+  reviewBodyText: { fontSize: 13, lineHeight: 1.8, color: colors.ink },
+  teacherReplyBox: { backgroundColor: '#f0f9ff', borderRadius: 8, borderRightWidth: 3, borderRightColor: '#0284c7', padding: 10, marginTop: 4, gap: 4 },
+  teacherReplyHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  teacherReplyBadge: { fontSize: 11.5, fontWeight: '900', color: '#0284c7' },
+  teacherReplyBody: { fontSize: 12.5, lineHeight: 1.8, color: '#0f172a' },
+
   // About four lines of the compact text (16px, line height 1.9).
   aboutBody: { overflow: 'hidden', ...(Platform.OS === 'web' ? ({ transitionProperty: 'max-height', transitionDuration: '260ms' } as object) : null) },
   aboutFolded: { maxHeight: 92 }, // three lines of the compact text (16px × 1.9)
