@@ -1,0 +1,8 @@
+{% load site_icons %}
+<div class="lemon-loader-wrap" style="--l-sz:{{ size|default:150 }}px;">
+  <span class="lemon-ripple"></span>
+  <div class="lemon-leaper">
+    {% include "website/_lemon.html" with size=size|default:150 %}
+  </div>
+  <span class="lemon-shadow"></span>
+</div>

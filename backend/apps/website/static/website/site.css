@@ -115,7 +115,8 @@ img, svg { max-width: 100%; }
 /* Shelf */
 .ph-shelf { display: flex; gap: 8px; margin: 0 12px; flex: 1; min-height: 0; }
 .ph-shelf-item { flex: 1; display: flex; flex-direction: column; gap: 3px; align-items: center; }
-.ph-shelf-cover { width: 100%; height: 74px; border-radius: 3px 6px 6px 3px; border-top: 3px solid var(--c); box-shadow: 0 2px 8px rgba(0,0,0,.15); padding: 5px; display: flex; flex-direction: column; justify-content: space-between; color: #fff; font-size: 8px; font-weight: 800; position: relative; overflow: hidden; }
+.ph-shelf-cover { width: 100%; height: 74px; border-radius: 3px 6px 6px 3px; border-top: 3px solid var(--c, #3B44B8); background: linear-gradient(150deg, #1e293b, #0f172a); box-shadow: 0 3px 10px rgba(0,0,0,.25); padding: 6px; display: flex; flex-direction: column; justify-content: space-between; color: #fff; font-size: 8.5px; font-weight: 800; position: relative; overflow: hidden; }
+.ph-shelf-cover b { color: #fff !important; text-shadow: 0 1px 2px rgba(0,0,0,0.8); display: block; line-height: 1.3; }
 .ph-shelf-tag { font-size: 7px; background: var(--green); color: #fff; padding: 1px 4px; border-radius: 4px; align-self: flex-start; font-weight: 900; }
 .ph-shelf-item small { font-size: 8.5px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -196,25 +197,86 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .book-index-count { color: var(--muted); font-size: 13px; }
 .book-index-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
 
-/* Band */
+/* Band & Signature Lemon Loader */
 .band { background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-top: 64px; padding: 56px 0; }
 .bandin { display: flex; gap: 60px; align-items: center; } .bandtext { flex: 1; min-width: 0; }
 .checks { list-style: none; } .checks li { display: flex; gap: 10px; align-items: center; font-size: 17px; margin: 12px 0; } .checks .i { color: var(--green); }
 .checks.small li { font-size: 14px; color: var(--muted); margin: 8px 0; }
 .bigl { display: flex; gap: 24px; align-items: center; max-width: 380px; } .bigl b { display: block; font-size: 28px; font-weight: 900; margin-bottom: 4px; } .bigl span { color: var(--muted); font-size: 14px; line-height: 1.8; display: block; }
-.lemon-anim { display: flex; flex-direction: column; align-items: center; flex: none; }
-.lemon-anim svg { animation: lemonBounce 2.2s ease-in-out infinite; transform-origin: center; }
-.lemon-shadow { width: 110px; height: 10px; border-radius: 50%; background: rgba(23,32,26,.12); margin-top: 8px; animation: lemonShadow 2.2s ease-in-out infinite; }
-@keyframes lemonBounce {
-  0%, 100% { transform: translateY(0) scale(1.06, 0.94) rotate(0deg); }
-  15% { transform: translateY(-2px) scale(1.12, 0.88) rotate(0deg); }
-  45% { transform: translateY(-22px) scale(0.96, 1.04) rotate(180deg); }
-  75% { transform: translateY(0) scale(1.1, 0.9) rotate(360deg); }
-  88% { transform: translateY(-4px) scale(0.99, 1.01) rotate(360deg); }
+.lemon-anim { display: flex; align-items: center; justify-content: center; flex: none; min-width: 170px; }
+
+/* The Official App LemonLoader in CSS: 1.9s physics cycle with crouch, 360 spin, squash-landing and golden ripple */
+.lemon-loader-wrap {
+  position: relative;
+  width: var(--l-sz, 150px);
+  height: calc(var(--l-sz, 150px) * 1.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
 }
-@keyframes lemonShadow {
-  0%, 75%, 100% { transform: scaleX(1.08); opacity: .9; }
-  45% { transform: scaleX(0.62); opacity: .35; }
+.lemon-leaper {
+  width: var(--l-sz, 150px);
+  height: var(--l-sz, 150px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: lemonPhysics 1.9s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  transform-origin: 50% 85%;
+  z-index: 2;
+}
+.lemon-leaper svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 4px 12px rgba(245,197,24,0.3));
+}
+.lemon-shadow {
+  position: absolute;
+  bottom: 6px;
+  width: calc(var(--l-sz, 150px) * 0.72);
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(23, 32, 26, 0.18);
+  animation: lemonShadowPhysics 1.9s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  z-index: 1;
+}
+.lemon-ripple {
+  position: absolute;
+  bottom: 4px;
+  width: calc(var(--l-sz, 150px) * 0.85);
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #F5C518;
+  animation: lemonRipplePhysics 1.9s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  z-index: 1;
+  pointer-events: none;
+}
+
+@keyframes lemonPhysics {
+  0% { transform: translateY(0) scale(1, 1) rotate(0deg); }
+  10% { transform: translateY(0) scale(1.14, 0.82) rotate(0deg); } /* Crouch */
+  22% { transform: translateY(calc(var(--l-sz, 150px) * -0.32)) scale(0.92, 1.1) rotate(60deg); } /* Lift */
+  45% { transform: translateY(calc(var(--l-sz, 150px) * -0.68)) scale(1, 1) rotate(200deg); } /* Apex */
+  68% { transform: translateY(calc(var(--l-sz, 150px) * -0.05)) scale(0.96, 1.05) rotate(340deg); } /* Descend */
+  73% { transform: translateY(0) scale(1.16, 0.82) rotate(360deg); } /* Land Squash */
+  82% { transform: translateY(calc(var(--l-sz, 150px) * -0.08)) scale(0.98, 1.03) rotate(360deg); } /* Micro Bounce */
+  90% { transform: translateY(0) scale(1.02, 0.98) rotate(360deg); }
+  100% { transform: translateY(0) scale(1, 1) rotate(360deg); }
+}
+
+@keyframes lemonShadowPhysics {
+  0%, 100% { transform: scaleX(1); opacity: 0.85; }
+  10% { transform: scaleX(1.18); opacity: 0.95; }
+  45% { transform: scaleX(0.48); opacity: 0.25; }
+  73% { transform: scaleX(1.22); opacity: 1; }
+  82% { transform: scaleX(0.88); opacity: 0.65; }
+}
+
+@keyframes lemonRipplePhysics {
+  0%, 70% { transform: scale(0.6); opacity: 0; }
+  73% { transform: scale(0.7); opacity: 0.9; }
+  92% { transform: scale(1.45); opacity: 0; }
+  100% { transform: scale(1.5); opacity: 0; }
 }
 .home-stats { display: grid; grid-template-columns: repeat(4, minmax(128px, 1fr)); gap: 10px; margin-top: 22px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
 .home-stats div { background: var(--ground); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; text-align: center; }
