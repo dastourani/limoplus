@@ -1010,7 +1010,7 @@ function ChapterCard({
   let lastGroup = '';
   return (
     <View style={styles.chapter}>
-      <View style={{ position: 'relative' }}>
+      <View style={{ position: 'relative', zIndex: 10 }}>
         <Pressable onPress={onToggle} style={styles.chapterHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
           {/* As tall as two lines of the title, so the lemon and the name read as one. */}
           <HelpTip
@@ -1074,7 +1074,7 @@ function ChapterCard({
       )}
 
       {open && (
-        <View style={seconds >= 60 ? { paddingTop: 10, backgroundColor: colors.ground } : undefined}>
+        <View style={seconds >= 60 ? { paddingTop: 14, backgroundColor: colors.ground } : undefined}>
           {chapter.has_overview && (
             <Pressable onPress={() => router.push(`/section/${chapter.id}`)} style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}>
               <Icon name="map" size={18} color={colors.greenDark} />
