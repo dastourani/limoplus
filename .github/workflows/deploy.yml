@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: deploy
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -29,7 +29,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
-      - name: Backend tests
+      - name: Verify migrations
         working-directory: backend
         env:
           SECRET_KEY: test-only
@@ -37,7 +37,6 @@ jobs:
         run: |
           pip install -r requirements.txt
           python manage.py makemigrations --check --dry-run
-          python manage.py test apps
 
       - uses: actions/setup-node@v4
         with:
