@@ -1020,7 +1020,7 @@ function ChapterCard({
           >
             <LemonProgress parts={chapter.sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={46} />
           </HelpTip>
-          <View style={{ flex: 1, gap: 5 }}>
+          <View style={{ flex: 1, gap: 4 }}>
             <Text style={[styles.chapterTitle, rtl]} numberOfLines={2}>
               فصل {toPersianDigits(number)}، {chapter.title}
             </Text>
@@ -1031,19 +1031,19 @@ function ChapterCard({
               </Text>
               {chapter.is_locked ? <Chip label="نسخه‌ی کامل" icon="lock" /> : !owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
             </View>
-            {seconds >= 60 && (
-              <View style={styles.chapterTimePill}>
-                <Text style={[styles.chapterTimePillText, rtl]}>
-                  ⏱️ {studyDuration(seconds)} زمان صرف شده برای این فصل
-                </Text>
-              </View>
-            )}
           </View>
           <Animated.View style={[styles.chevronCircle, open && styles.chevronCircleOn, { transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-180deg'] }) }] }]}>
             <Icon name="chevron-down" size={16} color={open ? colors.ink : colors.muted} />
           </Animated.View>
         </Pressable>
         {open && <View style={{ height: 1, backgroundColor: colors.line, width: '100%' }} />}
+        {seconds >= 60 && (
+          <View style={styles.badgeWrapper} pointerEvents="none">
+            <View style={styles.floatingChapterBadge}>
+              <Text style={styles.floatingChapterBadgeText}>⏱️ {studyDuration(seconds)} زمان صرف شده برای فصل {toPersianDigits(number)}</Text>
+            </View>
+          </View>
+        )}
       </View>
       {/* A quiet strip for review. */}
       {!!review && (
@@ -1074,7 +1074,7 @@ function ChapterCard({
       )}
 
       {open && (
-        <>
+        <View style={{ paddingTop: seconds >= 60 ? 10 : 0 }}>
           {chapter.has_overview && (
             <Pressable onPress={() => router.push(`/section/${chapter.id}`)} style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}>
               <Icon name="map" size={18} color={colors.greenDark} />
@@ -1091,6 +1091,7 @@ function ChapterCard({
               </View>
             );
           })}
+        </View>
           {!!chapter.term_count && (
             <Pressable
               onPress={() => router.push({ pathname: '/glossary/[slug]', params: { slug: bookSlug, chapter: String(chapter.id) } })}
@@ -1197,6 +1198,8 @@ const styles = StyleSheet.create({
   badgeWrapper: { position: 'absolute', bottom: -11, left: 0, right: 0, alignItems: 'center', zIndex: 99, elevation: 6 },
   floatingTimeBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
   floatingTimeBadgeText: { fontSize: 11.5, fontWeight: '800', color: '#166534' },
+  floatingChapterBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 16, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 6 },
+  floatingChapterBadgeText: { fontSize: 11.5, fontWeight: '800', color: '#166534' },
   cta: { marginTop: -34, backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
   ctaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   ctaHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
@@ -1316,8 +1319,6 @@ const styles = StyleSheet.create({
   resumeLabel: { fontSize: 12, color: colors.muted },
   resumeTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
   chapterTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: colors.ink },
-  chapterTimePill: { alignSelf: 'flex-start', flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: '#f0fdf4', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 12, borderWidth: 1, borderColor: '#bbf7d0', marginTop: 1 },
-  chapterTimePillText: { fontSize: 11, fontWeight: '800', color: '#15803d' },
   section: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.line, gap: 10 },
   check: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
   checkOn: { backgroundColor: colors.green, borderColor: colors.green },
