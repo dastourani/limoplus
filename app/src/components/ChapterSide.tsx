@@ -31,8 +31,7 @@ export function BookSide({
   return (
     <View style={styles.side}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 4 }}>
-        <Text style={[styles.book, rtl]} numberOfLines={1}>{book.title}</Text>
-        <Text style={[styles.chapter, rtl, { color: colors.ink, marginBottom: 8 }]}>فهرست فصل‌ها</Text>
+        <Text style={[styles.chapter, rtl, { color: colors.ink, marginBottom: 12, marginTop: 4 }]}>فهرست فصل‌ها</Text>
         {book.chapters.map((ch, idx) => {
           const on = openId === ch.id;
           const parts = ch.sections.map((s) => (done.has(s.id) ? ('done' as const) : read.has(s.id) ? ('soft' as const) : ('empty' as const)));
@@ -106,16 +105,17 @@ export function BookSide({
         })}
         <View style={styles.actions}>
           {[
-            ['کادرهای کتاب', () => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(book.id) } })],
-            ['واژه‌نامه', () => router.push(`/glossary/${book.slug}`)],
-            ...(book.done_card_count
-              ? [['مرور کارت‌ها', () => router.push({ pathname: '/flashcards/[nodeId]', params: { nodeId: String(book.id), done: '1' } })]]
+            ...(book.chapters.some((c) => c.flashcard_count || c.sections.some((s) => s.flashcard_count))
+              ? [[book.done_card_count ? `مرور کارت‌ها (${toPersianDigits(book.done_card_count)})` : 'مرور کارت‌ها', 'layers', () => router.push({ pathname: '/flashcards/[nodeId]', params: { nodeId: String(book.id), done: '1' } })]]
               : []),
+            ['کادرهای کتاب', 'clipboard-list', () => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(book.id) } })],
+            ['واژه‌نامه‌ی کتاب', 'languages', () => router.push(`/glossary/${book.slug}`)],
             ...(book.mine?.mistakes.count
-              ? [['اشتباه‌هایم', () => router.push({ pathname: '/mistakes', params: { book: book.slug } })]]
+              ? [[`اشتباه‌هایم (${toPersianDigits(book.mine.mistakes.count)})`, 'notebook-pen', () => router.push({ pathname: '/mistakes', params: { book: book.slug } })]]
               : []),
-          ].map(([label, go]) => (
+          ].map(([label, iconName, go]) => (
             <Pressable key={label as string} onPress={go as () => void} style={styles.action} accessibilityRole="button">
+              <Icon name={iconName as any} size={15} color={colors.ink} />
               <Text style={[styles.actionText, { color: colors.ink }]}>{label as string}</Text>
             </Pressable>
           ))}
@@ -227,6 +227,6 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, fontSize: 14 },
   dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: colors.line },
   actions: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginTop: 14 },
-  action: { flexGrow: 1, flexBasis: '45%', backgroundColor: colors.ground, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+  action: { flexGrow: 1, flexBasis: '45%', flexDirection: 'row-reverse', backgroundColor: colors.ground, borderRadius: 12, paddingVertical: 9, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: colors.line },
   actionText: { fontSize: 13, fontWeight: '700' },
 });
