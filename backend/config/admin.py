@@ -30,7 +30,7 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     ("catalog", "AIProvider"),
     ("catalog", "BookAssistantAuditLog"),
     ("catalog", "TeacherProfile"),
-    ("catalog", "BookReview"),
+    ("catalog", "BookOpinion"),
     # commerce (royalty, wallet & payout)
     ("commerce", "TeacherWallet"),
     ("commerce", "PayoutRequest"),
@@ -102,7 +102,7 @@ class LimoAdminSite(AdminSite):
 
         # 3. ارزیابی، تمرین و بازخورد (Assessment & Feedback)
         _ASSESSMENT_KEYS = [
-            ("catalog", "BookReview"),
+            ("catalog", "BookOpinion"),
             ("learning", "Question"),
             ("learning", "Flashcard"),
             ("learning", "ExamSource"),
@@ -117,7 +117,7 @@ class LimoAdminSite(AdminSite):
             ("catalog", "AIProvider"),
             ("catalog", "BookAssistantAuditLog"),
     ("catalog", "TeacherProfile"),
-    ("catalog", "BookReview"),
+    ("catalog", "BookOpinion"),
         ]
         for key in _AI_KEYS:
             if key in all_models:

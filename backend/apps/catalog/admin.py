@@ -17,7 +17,7 @@ from .filters import BookFilter, BookFKFilter, ChapterFilter, YesNoFilter
 from .panel_display import badges
 from .models import (
     TeacherProfile,
-    BookReview,AIProvider, Banner, Book, BookAssistantAuditLog, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
+    BookOpinion,AIProvider, Banner, Book, BookAssistantAuditLog, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
                      ShareSettings, Shelf, ShelfBook)
 
 
@@ -2123,8 +2123,8 @@ class TeacherProfileAdmin(admin.ModelAdmin):
         return request.user.is_superuser
 
 
-@admin.register(BookReview)
-class BookReviewAdmin(admin.ModelAdmin):
+@admin.register(BookOpinion)
+class BookOpinionAdmin(admin.ModelAdmin):
     list_display = ("book", "display_user", "rating_badge", "satisfaction_display", "study_percent_display", "status", "has_reply", "is_pinned", "created_at")
     list_filter = ("status", "rating", "is_pinned", "created_at")
     search_fields = ("book__title", "user__phone", "user__first_name", "user__last_name", "body", "teacher_reply")

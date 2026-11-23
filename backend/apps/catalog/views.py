@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .access import AccessMap
@@ -732,7 +732,7 @@ def _teacher_info(book, request=None):
 
 def _book_reviews_data(book, user=None):
     """نظرات تأییدشده کتاب همراه با میانگین و آمار رضایت"""
-    reviews_qs = book.reviews.filter(status="approved").select_related("user", "teacher_replied_by")
+    reviews_qs = book.opinions.filter(status="approved").select_related("user", "teacher_replied_by")
     total_count = reviews_qs.count()
     if total_count == 0:
         return {
@@ -801,13 +801,13 @@ def submit_book_review(request, slug):
     study_pct = round((len(done) / len(sections)) * 100) if sections else 0
 
     from apps.learning.models import Question
-    from apps.study.models import Answer
+    from apps.study.models import ExamAnswer
     total_q = Question.objects.filter(node_id__in=[s.id for s in sections], is_archived=False).count()
-    user_answered_q = Answer.objects.filter(user=request.user, question__node_id__in=[s.id for s in sections]).values("question_id").distinct().count()
+    user_answered_q = ExamAnswer.objects.filter(attempt__user=request.user, question__node_id__in=[s.id for s in sections]).values("question_id").distinct().count()
     test_pct = round((user_answered_q / total_q) * 100) if total_q else 0
 
-    from .models import BookReview
-    review, created = BookReview.objects.update_or_create(
+    from .models import BookOpinion
+    review, created = BookOpinion.objects.update_or_create(
         book=book,
         user=request.user,
         defaults={
@@ -816,7 +816,7 @@ def submit_book_review(request, slug):
             "body": body,
             "study_percent": study_pct,
             "test_percent": test_pct,
-            "status": BookReview.Status.APPROVED,
+            "status": BookOpinion.Status.APPROVED,
         }
     )
 

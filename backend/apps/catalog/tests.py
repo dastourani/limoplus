@@ -564,7 +564,7 @@ class TeacherProfileAndReviewTests(TestCase):
         from apps.accounts.models import User
         self.teacher = User.objects.create_user("09121112233", first_name="علی", last_name="حسینی", is_staff=True)
         self.student = User.objects.create_user("09124445566", first_name="سارا", last_name="رادمهر")
-        from apps.catalog.models import ContentNode, BookEditor, TeacherProfile, BookReview
+        from apps.catalog.models import ContentNode, BookEditor, TeacherProfile, BookOpinion
         self.book = ContentNode.add_root(title="کتاب آزمایشی", kind=ContentNode.Kind.BOOK, slug="test-book-review", is_published=True)
         BookEditor.objects.create(book=self.book, user=self.teacher)
         TeacherProfile.objects.create(user=self.teacher, academic_title="دانشیار دانشگاه", bio="رزومه دکتر حسینی")
@@ -599,8 +599,8 @@ class TeacherProfileAndReviewTests(TestCase):
         self.assertEqual(reviews["reviews"][0]["rating"], 5)
 
         # 3. Teacher adds reply via model/admin
-        from apps.catalog.models import BookReview
-        rev = BookReview.objects.get(book=self.book, user=self.student)
+        from apps.catalog.models import BookOpinion
+        rev = BookOpinion.objects.get(book=self.book, user=self.student)
         rev.teacher_reply = "با تشکر از نظر دقیق شما خانم رادمهر، موفق باشید."
         rev.teacher_replied_by = self.teacher
         rev.save()
