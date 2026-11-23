@@ -1003,7 +1003,17 @@ function ChapterCard({
             <Icon name="chevron-down" size={16} color={open ? colors.ink : colors.muted} />
           </Animated.View>
         </Pressable>
-        {open && <View style={{ height: 1, backgroundColor: colors.line, width: '100%' }} />}
+        {open && (
+          seconds >= 60 ? (
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', width: '100%', height: 1 }}>
+              <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
+              <View style={{ width: 220 }} />
+              <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
+            </View>
+          ) : (
+            <View style={{ height: 1, backgroundColor: colors.line, width: '100%' }} />
+          )
+        )}
         {seconds >= 60 && (
           <View style={styles.badgeWrapper} pointerEvents="none">
             <View style={styles.floatingChapterBadge}>
