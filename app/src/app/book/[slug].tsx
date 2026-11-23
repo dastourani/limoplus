@@ -570,10 +570,10 @@ export default function Book() {
                         )}
                       </View>
                       <Pressable onPress={toggleAbout} style={styles.aboutMore} accessibilityRole="button" accessibilityState={{ expanded: aboutOpen ?? false }}>
-                        <View style={[styles.chevronCircle, styles.chevronCircleOn, { width: 28, height: 28 }]}>
-                          <Icon name={aboutOpen ? 'chevron-up' : 'chevron-down'} size={15} color={colors.ink} />
-                        </View>
                         <Text style={[styles.aboutMoreText, rtl]}>{aboutOpen ? 'بستن معرفی' : 'ادامه‌ی معرفی'}</Text>
+                        <View style={[styles.chevronCircle, styles.chevronCircleOn, { width: 24, height: 24 }]}>
+                          <Icon name={aboutOpen ? 'chevron-up' : 'chevron-down'} size={13} color={colors.ink} />
+                        </View>
                       </Pressable>
                     </>
                   )
@@ -588,7 +588,7 @@ export default function Book() {
               <View style={styles.tabContent}>
                 <View style={styles.authorHeader}>
                   <View style={styles.authorAvatar}>
-                    <Icon name="user" size={32} color={colors.muted} />
+                    <Icon name="user" size={30} color={colors.muted} />
                   </View>
                   <View style={{ flex: 1, gap: 4 }}>
                     <Text style={[styles.authorName, rtl]}>{book.author_profile?.name || book.author || 'مؤلف اثر'}</Text>
@@ -599,8 +599,10 @@ export default function Book() {
                 </View>
 
                 {book.author_profile?.bio ? (
-                  <View style={{ marginTop: 12 }}>
-                    <MarkdownView markdown={book.author_profile.bio} compact />
+                  <View style={{ marginTop: 12, maxHeight: 380 }}>
+                    <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                      <MarkdownView markdown={book.author_profile.bio} compact />
+                    </ScrollView>
                   </View>
                 ) : (
                   <Text style={[styles.emptyNote, rtl]}>رزومه و اطلاعات تکمیلی مؤلف به زودی قرار می‌گیرد.</Text>
@@ -698,9 +700,9 @@ export default function Book() {
                   </View>
                 )}
 
-                {/* لیست نظرات */}
+                {/* لیست نظرات با اسکرول کنترل‌شده */}
                 {book.community_reviews?.reviews?.length ? (
-                  <View style={{ gap: 12, marginTop: 14 }}>
+                  <ScrollView nestedScrollEnabled style={{ maxHeight: 440 }} contentContainerStyle={{ gap: 12, marginTop: 14 }} showsVerticalScrollIndicator={false}>
                     {book.community_reviews.reviews.map((r) => (
                       <View key={r.id} style={styles.singleReviewCard}>
                         <View style={styles.reviewUserHead}>
@@ -738,7 +740,7 @@ export default function Book() {
                         )}
                       </View>
                     ))}
-                  </View>
+                  </ScrollView>
                 ) : (
                   <Text style={[styles.emptyNote, rtl]}>هنوز نظری برای این کتاب ثبت نشده است. اولین نفری باشید که دیدگاه خود را می‌نویسد!</Text>
                 )}
@@ -975,7 +977,7 @@ function ChapterCard({
             <Icon name="chevron-down" size={16} color={open ? colors.ink : colors.muted} />
           </Animated.View>
         </Pressable>
-        {!open && seconds >= 60 && (
+        {seconds >= 60 && (
           <View style={styles.badgeWrapper} pointerEvents="none">
             <View style={styles.floatingChapterBadge}>
               <Text style={styles.floatingChapterBadgeText}>⏱️ {studyDuration(seconds)} زمان صرف شده برای فصل {toPersianDigits(number)}</Text>
@@ -1010,13 +1012,7 @@ function ChapterCard({
           )}
         </View>
       )}
-      {open && seconds >= 60 && (
-        <View style={[styles.badgeWrapper, { bottom: -11 }]} pointerEvents="none">
-          <View style={styles.floatingChapterBadge}>
-            <Text style={styles.floatingChapterBadgeText}>⏱️ {studyDuration(seconds)} زمان صرف شده برای فصل {toPersianDigits(number)}</Text>
-          </View>
-        </View>
-      )}
+
       {open && (
         <>
           {chapter.has_overview && (

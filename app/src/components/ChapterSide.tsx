@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   side: { width: 290, borderLeftWidth: 1, borderLeftColor: colors.line, backgroundColor: colors.surface },
   sideDark: { backgroundColor: '#161E19', borderLeftColor: '#26302A' },
   bookLink: { alignSelf: 'flex-end', paddingVertical: 2 },
-  book: { fontSize: 12, fontWeight: '700', color: colors.greenDark },
+  book: { fontSize: 12, fontWeight: '700', color: colors.muted },
   chapter: { fontSize: 17, fontWeight: '900', lineHeight: 26 },
   row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: radius.sm },
   rowOn: { backgroundColor: colors.lemonSoft },
