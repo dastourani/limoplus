@@ -77,29 +77,29 @@
     <div class="ph-shelf">
       {% for c in books|slice:":3" %}
       <div class="ph-shelf-item">
-        <div class="ph-shelf-cover" style="--c:#3B44B8">
-          <span class="ph-shelf-tag">رایگان</span>
-          <b>{{ c.book.title|truncatechars:12 }}</b>
+        <div class="ph-shelf-cover" style="{% if forloop.counter == 1 %}--c:#3B44B8; background: linear-gradient(150deg, #1e293b, #0f172a);{% elif forloop.counter == 2 %}--c:#059669; background: linear-gradient(150deg, #064e3b, #022c22);{% else %}--c:#b45309; background: linear-gradient(150deg, #78350f, #451a03);{% endif %}">
+          {% if forloop.counter == 1 %}<span class="ph-shelf-tag">رایگان</span>{% elif forloop.counter == 2 %}<span class="ph-shelf-tag" style="background:#0284c7">هدیه</span>{% endif %}
+          <b>{{ c.book.title|truncatechars:14 }}</b>
         </div>
-        <small>{{ c.book.title|truncatechars:10 }}</small>
+        <small>{{ c.book.title|truncatechars:12 }}</small>
       </div>
       {% empty %}
       <div class="ph-shelf-item">
-        <div class="ph-shelf-cover" style="--c:#3B44B8; background: linear-gradient(145deg, #1f2a37, #111827);">
+        <div class="ph-shelf-cover" style="--c:#3B44B8; background: linear-gradient(150deg, #1e293b, #0f172a);">
           <span class="ph-shelf-tag">رایگان</span>
-          <b>ریاضی ۱</b>
+          <b>ریاضی عمومی ۱</b>
         </div>
         <small>ریاضی ۱</small>
       </div>
       <div class="ph-shelf-item">
-        <div class="ph-shelf-cover" style="--c:#059669; background: linear-gradient(145deg, #064e3b, #022c22);">
-          <span class="ph-shelf-tag">هدیه</span>
+        <div class="ph-shelf-cover" style="--c:#059669; background: linear-gradient(150deg, #064e3b, #022c22);">
+          <span class="ph-shelf-tag" style="background:#0284c7">هدیه</span>
           <b>فیزیک ۲</b>
         </div>
         <small>فیزیک ۲</small>
       </div>
       <div class="ph-shelf-item">
-        <div class="ph-shelf-cover" style="--c:#b45309; background: linear-gradient(145deg, #78350f, #451a03);">
+        <div class="ph-shelf-cover" style="--c:#b45309; background: linear-gradient(150deg, #78350f, #451a03);">
           <b>زبان ارشد</b>
         </div>
         <small>زبان ارشد</small>
