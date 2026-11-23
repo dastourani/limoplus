@@ -52,7 +52,9 @@ export function BookSide({
                 <Text style={[styles.rowText, rtl, { color: colors.ink }, on && { fontWeight: '900' }]} numberOfLines={2}>
                   فصل {toPersianDigits(idx + 1)}، {ch.title}
                 </Text>
-                <Icon name={on ? 'chevron-up' : 'chevron-down'} size={14} color={on ? colors.ink : colors.muted} />
+                <View style={[styles.chevronMini, on && styles.chevronMiniOn]}>
+                  <Icon name={on ? 'chevron-up' : 'chevron-down'} size={13} color={colors.ink} />
+                </View>
               </Pressable>
 
               {/* زیرمنوی درختی بخش‌های فصل در حالت باز */}
@@ -64,28 +66,39 @@ export function BookSide({
                       style={styles.subRow}
                       accessibilityRole="button"
                     >
-                      <View style={[styles.subDot, read.has(ch.id) && styles.subDotRead, done.has(ch.id) && styles.subDotDone]} />
-                      <Text style={[styles.subRowText, rtl]} numberOfLines={1}>مقدمه‌ی فصل</Text>
+                      <Icon name="map" size={14} color={colors.greenDark} />
+                      <Text style={[styles.subRowText, rtl, { color: colors.greenDark, fontWeight: '700' }]} numberOfLines={2}>مقدمه‌ی فصل</Text>
                     </Pressable>
                   )}
-                  {ch.sections.map((sec) => (
-                    <Pressable
-                      key={sec.id}
-                      onPress={() => router.push(`/section/${sec.id}`)}
-                      style={styles.subRow}
-                      accessibilityRole="button"
-                    >
-                      {done.has(sec.id) ? (
-                        <Icon name="circle-check" size={14} color={colors.green} />
-                      ) : (
-                        <View style={[styles.subDot, read.has(sec.id) && styles.subDotRead]} />
-                      )}
-                      <Text style={[styles.subRowText, rtl, sec.is_locked && { color: colors.muted }]} numberOfLines={1}>
-                        {sec.title}
-                      </Text>
-                      {sec.is_locked && <Icon name="lock" size={12} color={colors.muted} />}
-                    </Pressable>
-                  ))}
+                  {ch.sections.map((sec) => {
+                    const isDone = done.has(sec.id);
+                    const isRead = read.has(sec.id);
+                    return (
+                      <Pressable
+                        key={sec.id}
+                        onPress={() => router.push(`/section/${sec.id}`)}
+                        style={styles.subRow}
+                        accessibilityRole="button"
+                      >
+                        {sec.is_locked ? (
+                          <Icon name="lock" size={13} color={colors.muted} />
+                        ) : isDone ? (
+                          <Icon name="circle-check" size={14} color={colors.green} />
+                        ) : isRead ? (
+                          <View style={styles.lemonSlicePart}>
+                            <LemonProgress parts={['soft']} size={14} />
+                          </View>
+                        ) : (
+                          <View style={styles.lemonSlicePart}>
+                            <LemonProgress parts={['empty']} size={14} />
+                          </View>
+                        )}
+                        <Text style={[styles.subRowText, rtl, sec.is_locked && { color: colors.muted }]} numberOfLines={2}>
+                          {sec.title}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -197,7 +210,10 @@ export function ChapterSide({
 const styles = StyleSheet.create({
   subSectionsBox: { paddingRight: 24, paddingLeft: 8, paddingVertical: 4, gap: 2, borderRightWidth: 2, borderRightColor: colors.lemon, marginRight: 12 },
   subRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 6, borderRadius: radius.xs },
-  subRowText: { flex: 1, fontSize: 12.5, color: colors.ink },
+  subRowText: { flex: 1, fontSize: 12.5, color: colors.ink, lineHeight: 18 },
+  lemonSlicePart: { width: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
+  chevronMini: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
+  chevronMiniOn: { backgroundColor: colors.lemon },
   subDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: 'transparent' },
   subDotRead: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   subDotDone: { backgroundColor: colors.green, borderColor: colors.green },
