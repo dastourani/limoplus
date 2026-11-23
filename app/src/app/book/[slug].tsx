@@ -227,13 +227,38 @@ export default function Book() {
           book={book}
           openId={openId}
           onSelect={(cid) => {
-            LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
-            setOpenId((prev) => (prev === cid ? null : cid));
-            // اسکرول نرم به سمت کارت فصل در بدنه اصلی صفحه
-            const y = chapterOffsets.current[cid];
-            if (y != null && scrollRef.current) {
-              scrollRef.current.scrollTo({ y: Math.max(0, y - 40), animated: true });
-            }
+            LayoutAnimation.configureNext(LayoutAnimation.create(280, 'easeInEaseOut', 'opacity'));
+            setOpenId((prev) => {
+              const next = prev === cid ? null : cid;
+              if (next != null) {
+                // اسکرول نرم و مطمئن به محل باز شدن منوی فصل در بدنه اصلی
+                const doScroll = () => {
+                  const y = chapterOffsets.current[cid];
+                  if (y != null) {
+                    const targetY = Math.max(0, y + (heroH || 380) - 10);
+                    if (scrollRef.current) {
+                      if (typeof (scrollRef.current as any).scrollTo === 'function') {
+                        (scrollRef.current as any).scrollTo({ y: targetY, animated: true });
+                      } else if (typeof (scrollRef.current as any).scrollToOffset === 'function') {
+                        (scrollRef.current as any).scrollToOffset({ offset: targetY, animated: true });
+                      }
+                    }
+                    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                      try {
+                        const el = document.getElementById(`chapter-card-${cid}`);
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                      } catch (_) {}
+                    }
+                  }
+                };
+                // تأخیر کوتاه جهت رندر کامل باز شدن بخش‌ها
+                setTimeout(doScroll, 80);
+                setTimeout(doScroll, 220);
+              }
+              return next;
+            });
           }}
         />
       )}
@@ -843,6 +868,7 @@ export default function Book() {
           {book.chapters.map((chapter, index) => (
             <View
               key={chapter.id}
+              nativeID={`chapter-card-${chapter.id}`}
               onLayout={(e) => {
                 chapterOffsets.current[chapter.id] = e.nativeEvent.layout.y;
               }}
