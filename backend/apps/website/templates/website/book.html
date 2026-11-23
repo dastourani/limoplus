@@ -5,8 +5,8 @@
 {% block main %}
 <section class="hero small">
   <div class="wrap bookhero">
-    <div class="cover" data-cover="{{ cover }}" data-w="200" style="width:200px">
-      <div class="cover-ph"><b>{{ b.title }}</b></div>
+    <div class="book-cover-wrap" style="position:relative; width:200px; flex:none;">
+      <div class="cover" data-cover="{{ cover }}" data-w="200" style="width:200px"><div class="cover-ph"><b>{{ b.title }}</b></div></div>
       {% if sample_label %}<span class="bk-ribbon">{% icon "gift" 12 %}{{ sample_label }}</span>{% endif %}
     </div>
     <div class="herotext">

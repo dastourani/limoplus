@@ -486,7 +486,7 @@ def book(request, slug):
             "order": ch_idx,
             "section_count": len(sections),
             "sections": fa(len(sections)), "tests": fa(ch_tests) if ch_tests else "", "cards": fa(ch_cards) if ch_cards else "",
-            "free": access.readable(c.id),
+            "free": bool(b.is_free or c.is_free),
             "chapter_free": bool(b.is_free or c.is_free),
             "sample_free": bool(b.is_free or c.is_free or any(section.is_free for section in sections)),
             "has_overview": bool(c.full_body.strip()),
