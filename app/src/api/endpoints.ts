@@ -95,6 +95,32 @@ export type BookDetail = BookListItem & {
   /** «آخرین به‌روزرسانی»: the date of the book's last «مطلب تازه», and how many lines «تغییرات کتاب» has. */
   updated_on?: string | null;
   change_count?: number;
+  author_profile?: {
+    name: string;
+    academic_title: string;
+    avatar: string | null;
+    bio: string;
+    contact_email?: string;
+    social_links?: string;
+  };
+  community_reviews?: {
+    average_rating: number;
+    satisfaction_rate: number;
+    serious_readers_rating: number;
+    total_count: number;
+    reviews: {
+      id: number;
+      display_name: string;
+      rating: number;
+      satisfaction_percent: number;
+      body: string;
+      study_percent: number;
+      test_percent: number;
+      is_pinned: boolean;
+      teacher_reply?: string;
+      created_at: string;
+    }[];
+  };
 };
 export type NodeDetail = {
   id: number;
@@ -530,6 +556,8 @@ export const endpoints = {
   book: (slug: string) => api<BookDetail>(`books/${encodeURIComponent(slug)}/`),
   node: (id: number) => api<NodeDetail>(`nodes/${id}/`),
   notifyBook: (slug: string, on: boolean) => api<{ notify: boolean; can_cancel: boolean }>(`books/${encodeURIComponent(slug)}/notify/`, { body: { on } }),
+  submitReview: (slug: string, data: { rating: number; satisfaction_percent: number; body: string }) =>
+    api<{ status: string; message: string; review_id: number }>(`books/${encodeURIComponent(slug)}/reviews/`, { body: data }),
   knownWords: (slug: string) => api<{ known: string[] }>(`books/${encodeURIComponent(slug)}/words/me/`),
   markWords: (slug: string, terms: string[], known: boolean) =>
     api<{ known: string[] }>(`books/${encodeURIComponent(slug)}/words/me/`, { body: { terms, known } }),
