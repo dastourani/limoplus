@@ -1091,7 +1091,6 @@ function ChapterCard({
               </View>
             );
           })}
-        </View>
           {!!chapter.term_count && (
             <Pressable
               onPress={() => router.push({ pathname: '/glossary/[slug]', params: { slug: bookSlug, chapter: String(chapter.id) } })}
@@ -1132,7 +1131,7 @@ function ChapterCard({
               </Pressable>
             </View>
           )}
-        </>
+        </View>
       )}
     </View>
   );
