@@ -465,7 +465,7 @@ def book(request, slug):
     q_by_node = dict(questions.values("node_id").annotate(n=Count("id")).values_list("node_id", "n"))
     f_by_node = dict(flashcards.values("node_id").annotate(n=Count("id")).values_list("node_id", "n"))
     chapters = []
-    for c in access.children(b):
+    for ch_idx, c in enumerate(access.children(b), start=1):
         sections = access.children(c)
         ids = [c.id, *[s.id for s in sections]]
         ch_tests = sum(q_by_node.get(i, 0) for i in ids)
@@ -482,8 +482,9 @@ def book(request, slug):
                 "free": s_free, "url": app_url(f"section/{s.id}") if s_free else app_url(f"buy/{b.slug}"),
             })
         chapters.append({
-            "id": c.id, "title": c.title, "number": fa(c.position or len(chapters) + 1),
-            "order": c.position or len(chapters) + 1,
+            "id": c.id, "title": c.title, "number": fa(ch_idx),
+            "order": ch_idx,
+            "section_count": len(sections),
             "sections": fa(len(sections)), "tests": fa(ch_tests) if ch_tests else "", "cards": fa(ch_cards) if ch_cards else "",
             "free": access.readable(c.id),
             "chapter_free": bool(b.is_free or c.is_free),
