@@ -254,7 +254,7 @@ export default function Book() {
             {
               opacity: heroFade,
               backgroundColor: top.bg,
-              ...(Platform.OS !== 'web' ? { transform: [{ translateY: scrollY }] } : null),
+              transform: [{ translateY: scrollY }],
             },
           ]}
           onLayout={(e) => {
@@ -364,8 +364,10 @@ export default function Book() {
                 <Text style={styles.ctaButtonText}>{last ? 'ادامه بده' : 'شروع'}</Text>
               </Pressable>
               {!!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
-                <View style={styles.floatingTimeBadge} pointerEvents="none">
-                  <Text style={styles.floatingTimeBadgeText}>⏱️ {studyDuration(book.mine.time_seconds)} مطالعه‌ی این کتاب</Text>
+                <View style={styles.badgeWrapper} pointerEvents="none">
+                  <View style={styles.floatingTimeBadge}>
+                    <Text style={styles.floatingTimeBadgeText}>⏱️ {studyDuration(book.mine.time_seconds)} زمان صرف شده برای کل کتاب</Text>
+                  </View>
                 </View>
               )}
             </View>
@@ -507,7 +509,13 @@ export default function Book() {
           <View style={styles.tabsContainer}>
             <View style={styles.tabHeader}>
               <Pressable
-                onPress={() => setActiveTab('book')}
+                onPress={() => {
+                  if (activeTab === 'book' && aboutOpen) {
+                    setAboutOpen(false);
+                  } else {
+                    setActiveTab('book');
+                  }
+                }}
                 style={[styles.tabButton, activeTab === 'book' && styles.tabButtonActive]}
                 accessibilityRole="tab"
               >
@@ -562,7 +570,10 @@ export default function Book() {
                         )}
                       </View>
                       <Pressable onPress={toggleAbout} style={styles.aboutMore} accessibilityRole="button" accessibilityState={{ expanded: aboutOpen ?? false }}>
-                        <Text style={[styles.aboutMoreText, rtl]}>{aboutOpen ? 'بستن معرفی ▴' : 'ادامه‌ی معرفی ▾'}</Text>
+                        <View style={[styles.chevronCircle, styles.chevronCircleOn, { width: 28, height: 28 }]}>
+                          <Icon name={aboutOpen ? 'chevron-up' : 'chevron-down'} size={15} color={colors.ink} />
+                        </View>
+                        <Text style={[styles.aboutMoreText, rtl]}>{aboutOpen ? 'بستن معرفی' : 'ادامه‌ی معرفی'}</Text>
                       </Pressable>
                     </>
                   )
@@ -938,31 +949,40 @@ function ChapterCard({
   let lastGroup = '';
   return (
     <View style={styles.chapter}>
-      <Pressable onPress={onToggle} style={styles.chapterHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
-        {/* As tall as two lines of the title, so the lemon and the name read as one. */}
-        <HelpTip
-          size={46}
-          title={`فصل ${toPersianDigits(number)}، ${chapter.title}`}
-          text={`${toPersianDigits(chapter.sections.filter((s) => done.has(s.id)).length)} از ${toPersianDigits(chapter.sections.length)} بخش این فصل تمام شده است.`}
-        >
-          <LemonProgress parts={chapter.sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={46} />
-        </HelpTip>
-        <View style={{ flex: 1, gap: 4 }}>
-          <Text style={[styles.chapterTitle, rtl]} numberOfLines={2}>
-            فصل {toPersianDigits(number)}، {chapter.title}
-          </Text>
-          {/* Counts and the free/locked label share one line, so the title keeps the width. */}
-          <View style={styles.metaRow}>
-            <Text style={[styles.sectionMeta, rtl]}>
-              {toPersianDigits(chapter.sections.length)} بخش{tests ? `، ${toPersianDigits(tests)} تست` : ''}
+      <View style={{ position: 'relative' }}>
+        <Pressable onPress={onToggle} style={styles.chapterHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+          {/* As tall as two lines of the title, so the lemon and the name read as one. */}
+          <HelpTip
+            size={46}
+            title={`فصل ${toPersianDigits(number)}، ${chapter.title}`}
+            text={`${toPersianDigits(chapter.sections.filter((s) => done.has(s.id)).length)} از ${toPersianDigits(chapter.sections.length)} بخش این فصل تمام شده است.`}
+          >
+            <LemonProgress parts={chapter.sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={46} />
+          </HelpTip>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={[styles.chapterTitle, rtl]} numberOfLines={2}>
+              فصل {toPersianDigits(number)}، {chapter.title}
             </Text>
-            {chapter.is_locked ? <Chip label="نسخه‌ی کامل" icon="lock" /> : !owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
+            {/* Counts and the free/locked label share one line, so the title keeps the width. */}
+            <View style={styles.metaRow}>
+              <Text style={[styles.sectionMeta, rtl]}>
+                {toPersianDigits(chapter.sections.length)} بخش{tests ? `، ${toPersianDigits(tests)} تست` : ''}
+              </Text>
+              {chapter.is_locked ? <Chip label="نسخه‌ی کامل" icon="lock" /> : !owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
+            </View>
           </View>
-        </View>
-        <Animated.View style={[styles.chevronCircle, open && styles.chevronCircleOn, { transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-180deg'] }) }] }]}>
-          <Icon name="chevron-down" size={16} color={open ? colors.ink : colors.muted} />
-        </Animated.View>
-      </Pressable>
+          <Animated.View style={[styles.chevronCircle, open && styles.chevronCircleOn, { transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-180deg'] }) }] }]}>
+            <Icon name="chevron-down" size={16} color={open ? colors.ink : colors.muted} />
+          </Animated.View>
+        </Pressable>
+        {!open && seconds >= 60 && (
+          <View style={styles.badgeWrapper} pointerEvents="none">
+            <View style={styles.floatingChapterBadge}>
+              <Text style={styles.floatingChapterBadgeText}>⏱️ {studyDuration(seconds)} زمان صرف شده برای فصل {toPersianDigits(number)}</Text>
+            </View>
+          </View>
+        )}
+      </View>
       {/* A quiet strip for review. */}
       {!!review && (
         <View style={styles.strip}>
@@ -990,9 +1010,11 @@ function ChapterCard({
           )}
         </View>
       )}
-      {seconds >= 60 && (
-        <View style={styles.floatingChapterBadge} pointerEvents="none">
-          <Text style={styles.floatingChapterBadgeText}>⏱️ {studyDuration(seconds)} مطالعه‌ی این فصل</Text>
+      {open && seconds >= 60 && (
+        <View style={[styles.badgeWrapper, { bottom: -11 }]} pointerEvents="none">
+          <View style={styles.floatingChapterBadge}>
+            <Text style={styles.floatingChapterBadgeText}>⏱️ {studyDuration(seconds)} زمان صرف شده برای فصل {toPersianDigits(number)}</Text>
+          </View>
         </View>
       )}
       {open && (
@@ -1116,10 +1138,11 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: '#C9D3CC' },
   ownedRibbon: { position: 'absolute', top: 12, left: -6, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: '#3FB8A9', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
   ownedRibbonText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  floatingTimeBadge: { position: 'absolute', bottom: -11, alignSelf: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 20, borderWidth: 1, borderColor: '#d1fae5', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2, zIndex: 10 },
-  floatingTimeBadgeText: { fontSize: 11, fontWeight: '800', color: '#15803d' },
-  floatingChapterBadge: { position: 'absolute', bottom: -10, alignSelf: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 16, borderWidth: 1, borderColor: '#d1fae5', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1, zIndex: 5 },
-  floatingChapterBadgeText: { fontSize: 10, fontWeight: '800', color: '#15803d' },
+  badgeWrapper: { position: 'absolute', bottom: -11, left: 0, right: 0, alignItems: 'center', zIndex: 10 },
+  floatingTimeBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  floatingTimeBadgeText: { fontSize: 11.5, fontWeight: '800', color: '#166534' },
+  floatingChapterBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 16, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  floatingChapterBadgeText: { fontSize: 11.5, fontWeight: '800', color: '#166534' },
   cta: { marginTop: -34, backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
   ctaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   ctaHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
@@ -1158,9 +1181,9 @@ const styles = StyleSheet.create({
   pastBtnText: { fontSize: 13, fontWeight: '800', color: colors.ink },
   // استایل‌های تب‌های سه‌گانه
   tabsContainer: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
-  tabHeader: { flexDirection: 'row-reverse', borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: colors.ground },
-  tabButton: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12 },
-  tabButtonActive: { borderBottomWidth: 2.5, borderBottomColor: colors.ink, backgroundColor: colors.surface },
+  tabHeader: { flexDirection: 'row-reverse', backgroundColor: '#F0F2EB', padding: 5, gap: 6, borderBottomWidth: 1, borderBottomColor: colors.line },
+  tabButton: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 10 },
+  tabButtonActive: { backgroundColor: colors.lemon, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   tabButtonText: { fontSize: 13, fontWeight: '700', color: colors.muted },
   tabButtonTextActive: { color: colors.ink, fontWeight: '900' },
   tabContent: { padding: 16 },
@@ -1207,7 +1230,7 @@ const styles = StyleSheet.create({
   aboutFolded: { maxHeight: 92 }, // three lines of the compact text (16px × 1.9)
   aboutBodyOpen: { maxHeight: 4000 },
   aboutFade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  aboutMore: { height: 44, borderRadius: 12, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
+  aboutMore: { height: 44, borderRadius: 12, backgroundColor: colors.ground, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
   aboutMoreText: { fontSize: 14, fontWeight: '700', color: colors.greenDark },
   about: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 6 },
   aboutHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
