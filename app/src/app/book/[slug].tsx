@@ -335,26 +335,34 @@ export default function Book() {
               />
             </View>
           ) : fullAccess ? (
-            <View style={[styles.cta, styles.ctaRow]}>
-              <HelpTip
-                size={54}
-                title="لیموی پیشرفت کتاب"
-                text={`${user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش این کتاب تمام شده است. ` : ''}هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای.`}
-              >
-                <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={54} />
-              </HelpTip>
-              <View style={{ flex: 1, gap: 2 }}>
-                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-                  <Text style={[styles.ctaSmall, rtl]}>
-                    {user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش تمام‌شده` : 'برای ذخیره‌ی پیشرفت وارد شو'}
-                  </Text>
-                  {!!user && <HelpTip size={18} title="لیموی پیشرفت" text="هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای." />}
+            <View style={[styles.cta, { paddingBottom: 0, overflow: 'hidden' }]}>
+              <View style={[styles.ctaRow, { paddingBottom: 16 }]}>
+                <HelpTip
+                  size={54}
+                  title="لیموی پیشرفت کتاب"
+                  text={`${user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش این کتاب تمام شده است. ` : ''}هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای.`}
+                >
+                  <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={54} />
+                </HelpTip>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.ctaSmall, rtl]}>
+                      {user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش تمام‌شده` : 'برای ذخیره‌ی پیشرفت وارد شو'}
+                    </Text>
+                    {!!user && <HelpTip size={18} title="لیموی پیشرفت" text="هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای." />}
+                  </View>
+                  <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{last ? last.title : 'از اول کتاب شروع کن'}</Text>
                 </View>
-                <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{last ? last.title : 'از اول کتاب شروع کن'}</Text>
+                <Pressable onPress={() => (last ? router.push(`/section/${last.id}`) : startFree())} style={styles.ctaButton} accessibilityRole="button">
+                  <Text style={styles.ctaButtonText}>{last ? 'ادامه بده' : 'شروع'}</Text>
+                </Pressable>
               </View>
-              <Pressable onPress={() => (last ? router.push(`/section/${last.id}`) : startFree())} style={styles.ctaButton} accessibilityRole="button">
-                <Text style={styles.ctaButtonText}>{last ? 'ادامه بده' : 'شروع'}</Text>
-              </Pressable>
+              {!!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
+                <View style={styles.ctaTimeFooter}>
+                  <Icon name="time-spent" size={14} color="#166534" />
+                  <Text style={styles.ctaTimeFooterText}>⏱️ {studyDuration(book.mine.time_seconds)} مطالعه‌ی این کتاب</Text>
+                </View>
+              )}
             </View>
           ) : (
             <View style={styles.cta}>
@@ -468,13 +476,7 @@ export default function Book() {
               )}
             </View>
           )}
-          {/* Information, not a button: last, the full width (long times such as «۱۲ ساعت» never wrap), quiet. */}
-          {!isPreparing && !!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
-            <View style={styles.timeRow} accessible accessibilityLabel={`تا الان ${studyDuration(book.mine.time_seconds)} روی این کتاب وقت گذاشتی`}>
-              <Icon name="time-spent" size={16} color={colors.muted} />
-              <Text style={styles.timeText}>تا الان {studyDuration(book.mine.time_seconds)} وقت گذاشتی</Text>
-            </View>
-          )}
+
           {/* «آخرین به‌روزرسانی»: the book's last important update; tap for «تغییرات کتاب». */}
           {!!book.updated_on && (
             <Pressable onPress={() => router.push({ pathname: '/changes/[slug]', params: { slug: book.slug } })} style={styles.timeRow} accessibilityRole="button">
@@ -956,8 +958,8 @@ function ChapterCard({
         <View style={styles.strip}>
           {seconds >= 60 ? (
             <View style={styles.stripItem}>
-              <Icon name="time-spent" size={14} color={colors.muted} />
-              <Text style={styles.stripText}>{studyDuration(seconds)} وقت گذاشتی</Text>
+              <Icon name="time-spent" size={14} color="#166534" />
+              <Text style={[styles.stripText, { color: '#166534', fontWeight: '800' }]}>⏱️ {studyDuration(seconds)} مطالعه‌ی این فصل</Text>
             </View>
           ) : (
             <View />
@@ -1108,6 +1110,8 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: '#C9D3CC' },
   ownedRibbon: { position: 'absolute', top: 12, left: -6, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: '#3FB8A9', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
   ownedRibbonText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+  ctaTimeFooter: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#f0fdf4', borderTopWidth: 1, borderTopColor: '#bbf7d0', paddingVertical: 7, marginHorizontal: -16 },
+  ctaTimeFooterText: { fontSize: 12, fontWeight: '800', color: '#166534' },
   cta: { marginTop: -34, backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
   ctaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   ctaHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
