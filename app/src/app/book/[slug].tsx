@@ -1074,7 +1074,8 @@ function ChapterCard({
       )}
 
       {open && (
-        <View style={seconds >= 60 ? { paddingTop: 14, backgroundColor: colors.ground } : undefined}>
+        <>
+          {seconds >= 60 && <View style={{ height: 14, backgroundColor: colors.ground, width: '100%' }} />}
           {chapter.has_overview && (
             <Pressable onPress={() => router.push(`/section/${chapter.id}`)} style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}>
               <Icon name="map" size={18} color={colors.greenDark} />
@@ -1131,7 +1132,7 @@ function ChapterCard({
               </Pressable>
             </View>
           )}
-        </View>
+        </>
       )}
     </View>
   );
