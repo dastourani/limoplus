@@ -74,6 +74,7 @@ import CreditCard from 'lucide-react-native/icons/credit-card';
 import LockOpen from 'lucide-react-native/icons/lock-open';
 import User from 'lucide-react-native/icons/user';
 import MessageSquare from 'lucide-react-native/icons/message-square';
+import MessageCircle from 'lucide-react-native/icons/message-circle';
 import Award from 'lucide-react-native/icons/award';
 import ThumbsUp from 'lucide-react-native/icons/thumbs-up';
 import Mail from 'lucide-react-native/icons/mail';
@@ -156,6 +157,7 @@ const ICONS = {
   'lock-open': LockOpen,
   'user': User,
   'message-square': MessageSquare,
+  'message-circle': MessageCircle,
   'award': Award,
   'thumbs-up': ThumbsUp,
   'mail': Mail,
