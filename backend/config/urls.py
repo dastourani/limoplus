@@ -37,6 +37,7 @@ api = [
     path("books/<str:slug>/past/questions/", learning.book_past_questions),
     path("books/<str:slug>/past/repeats/", learning.book_past_repeats),
     path("books/<str:slug>/notify/", catalog.book_notify),
+    path("books/<str:slug>/reviews/", catalog.submit_book_review),
     path("books/<str:slug>/changes/", catalog.book_changes),
     path("formula-commands/", catalog.formula_commands),
     path("nodes/<int:node_id>/", catalog.node_detail),

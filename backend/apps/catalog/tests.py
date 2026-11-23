@@ -556,3 +556,55 @@ class ChapterCountsTests(TestCase):
         from_node = self.client.get(f"/api/v1/nodes/{chapter.id}/").data
         self.assertEqual(from_book["question_count"], from_node["question_count"])
         self.assertEqual(from_book["flashcard_count"], from_node["flashcard_count"])
+
+
+class TeacherProfileAndReviewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        from apps.accounts.models import User
+        self.teacher = User.objects.create_user("09121112233", first_name="علی", last_name="حسینی", is_staff=True)
+        self.student = User.objects.create_user("09124445566", first_name="سارا", last_name="رادمهر")
+        from apps.catalog.models import ContentNode, BookEditor, TeacherProfile, BookReview
+        self.book = ContentNode.add_root(title="کتاب آزمایشی", kind=ContentNode.Kind.BOOK, slug="test-book-review", is_published=True)
+        BookEditor.objects.create(book=self.book, user=self.teacher)
+        TeacherProfile.objects.create(user=self.teacher, academic_title="دانشیار دانشگاه", bio="رزومه دکتر حسینی")
+
+    def test_book_detail_returns_author_profile_and_reviews(self):
+        resp = self.client.get(f"/api/v1/books/{self.book.slug}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("author_profile", resp.data)
+        self.assertEqual(resp.data["author_profile"]["name"], "علی حسینی")
+        self.assertEqual(resp.data["author_profile"]["academic_title"], "دانشیار دانشگاه")
+        self.assertIn("community_reviews", resp.data)
+        self.assertEqual(resp.data["community_reviews"]["total_count"], 0)
+
+    def test_submit_book_review_and_teacher_reply(self):
+        # 1. Student submits review
+        self.client.force_authenticate(self.student)
+        url = f"/api/v1/books/{self.book.slug}/reviews/"
+        post_data = {
+            "rating": 5,
+            "satisfaction_percent": 95,
+            "body": "کتاب فوق‌العاده‌ای بود، درسنامه‌ها عالی و روان بودند.",
+        }
+        res = self.client.post(url, post_data, format="json")
+        self.assertEqual(res.status_code, 200)
+
+        # 2. Verify review in book detail
+        detail = self.client.get(f"/api/v1/books/{self.book.slug}/").data
+        reviews = detail["community_reviews"]
+        self.assertEqual(reviews["total_count"], 1)
+        self.assertEqual(reviews["average_rating"], 5.0)
+        self.assertEqual(reviews["reviews"][0]["display_name"], "سارا رادمهر")
+        self.assertEqual(reviews["reviews"][0]["rating"], 5)
+
+        # 3. Teacher adds reply via model/admin
+        from apps.catalog.models import BookReview
+        rev = BookReview.objects.get(book=self.book, user=self.student)
+        rev.teacher_reply = "با تشکر از نظر دقیق شما خانم رادمهر، موفق باشید."
+        rev.teacher_replied_by = self.teacher
+        rev.save()
+
+        # 4. Verify teacher reply shows in book detail
+        detail_after = self.client.get(f"/api/v1/books/{self.book.slug}/").data
+        self.assertEqual(detail_after["community_reviews"]["reviews"][0]["teacher_reply"], rev.teacher_reply)

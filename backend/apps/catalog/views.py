@@ -279,6 +279,8 @@ def book_detail(request, slug):
             "change_count": book.changes.filter(is_hidden=False).count(),
             # «N از M لغت»: word cards learned (Leitner box 4+), when the book has word cards.
             "words": word_counts(request.user, access, book),
+            "author_profile": _teacher_info(book, request),
+            "community_reviews": _book_reviews_data(book, request.user),
         }
     )
 
@@ -701,3 +703,125 @@ def node_boxes(request, node_id):
     from .numbering import book_refs
     return Response({"labels": labels, "boxes": boxes, "locked_count": locked, "title": node.title,
                      "all_labels": all_labels(), "refs": book_refs(access) if wanted else {}})
+
+def _teacher_info(book, request=None):
+    """اطلاعات نویسنده / استاد کتاب جهت نمایش در تب «درباره نویسنده»"""
+    # First check editors
+    editor = book.editors.select_related("user__teacher_profile").first()
+    if editor and hasattr(editor.user, "teacher_profile"):
+        prof = editor.user.teacher_profile
+        name = f"{editor.user.first_name} {editor.user.last_name}".strip() or book.author or editor.user.phone
+        avatar_url = request.build_absolute_uri(prof.avatar.url) if (request and prof.avatar) else None
+        return {
+            "name": name,
+            "academic_title": prof.academic_title,
+            "avatar": avatar_url,
+            "bio": prof.bio,
+            "contact_email": prof.contact_email,
+            "social_links": prof.social_links,
+        }
+    return {
+        "name": book.author or "مؤلف لیموخوان",
+        "academic_title": "",
+        "avatar": None,
+        "bio": "",
+        "contact_email": "",
+        "social_links": "",
+    }
+
+
+def _book_reviews_data(book, user=None):
+    """نظرات تأییدشده کتاب همراه با میانگین و آمار رضایت"""
+    reviews_qs = book.reviews.filter(status="approved").select_related("user", "teacher_replied_by")
+    total_count = reviews_qs.count()
+    if total_count == 0:
+        return {
+            "average_rating": 5.0,
+            "satisfaction_rate": 100,
+            "serious_readers_rating": 5.0,
+            "total_count": 0,
+            "reviews": [],
+        }
+
+    from django.db.models import Avg
+    avg_rating = reviews_qs.aggregate(avg=Avg("rating"))["avg"] or 5.0
+    avg_sat = reviews_qs.aggregate(avg=Avg("satisfaction_percent"))["avg"] or 100
+
+    # خوانندگان جدی: کسانی که بالای ۵۰٪ مطالعه کرده‌اند
+    serious_qs = reviews_qs.filter(study_percent__gte=50)
+    serious_avg = serious_qs.aggregate(avg=Avg("rating"))["avg"] if serious_qs.exists() else avg_rating
+
+    items = []
+    for r in reviews_qs[:50]:
+        name = f"{r.user.first_name} {r.user.last_name}".strip()
+        display_name = name if name else "کاربر لیموخوان"
+        items.append({
+            "id": r.id,
+            "display_name": display_name,
+            "rating": r.rating,
+            "satisfaction_percent": r.satisfaction_percent,
+            "body": r.body,
+            "study_percent": r.study_percent,
+            "test_percent": r.test_percent,
+            "is_pinned": r.is_pinned,
+            "teacher_reply": r.teacher_reply,
+            "created_at": r.created_at.strftime("%Y-%m-%d"),
+        })
+
+    return {
+        "average_rating": round(float(avg_rating), 1),
+        "satisfaction_rate": round(float(avg_sat)),
+        "serious_readers_rating": round(float(serious_avg), 1),
+        "total_count": total_count,
+        "reviews": items,
+    }
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def submit_book_review(request, slug):
+    """ثبت یا ویرایش نظر و امتیاز کاربر برای کتاب با محاسبه خودکار درصد پیشرفت مطالعه"""
+    from django.shortcuts import get_object_or_404
+    book = get_object_or_404(ContentNode, kind=ContentNode.Kind.BOOK, slug=slug, depth=1)
+    
+    rating = int(request.data.get("rating", 5))
+    rating = max(1, min(5, rating))
+    satisfaction = int(request.data.get("satisfaction_percent", 100))
+    satisfaction = max(0, min(100, satisfaction))
+    body = str(request.data.get("body", "")).strip()[:2000]
+
+    if not body:
+        return Response({"error": "متن نظر الزامی است."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # محاسبه خودکار درصد مطالعه و تست‌های کاربر
+    from apps.study.progress import section_states
+    access = AccessMap(request.user, book)
+    sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
+    done = section_states(request.user, access, request)[1] & {s.id for s in sections}
+    study_pct = round((len(done) / len(sections)) * 100) if sections else 0
+
+    from apps.learning.models import Question
+    from apps.study.models import Answer
+    total_q = Question.objects.filter(node_id__in=[s.id for s in sections], is_archived=False).count()
+    user_answered_q = Answer.objects.filter(user=request.user, question__node_id__in=[s.id for s in sections]).values("question_id").distinct().count()
+    test_pct = round((user_answered_q / total_q) * 100) if total_q else 0
+
+    from .models import BookReview
+    review, created = BookReview.objects.update_or_create(
+        book=book,
+        user=request.user,
+        defaults={
+            "rating": rating,
+            "satisfaction_percent": satisfaction,
+            "body": body,
+            "study_percent": study_pct,
+            "test_percent": test_pct,
+            "status": BookReview.Status.APPROVED,
+        }
+    )
+
+    return Response({
+        "status": "success",
+        "message": "نظر شما با موفقیت ثبت شد.",
+        "review_id": review.id,
+    })
