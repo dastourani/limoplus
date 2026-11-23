@@ -105,6 +105,8 @@ export default function Book() {
   // The green part with the cover stays put; the page slides up over it. A bar with the buttons stays on top, and the
   // book's name shows in it once the cover is covered.
   const scrollY = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<any>(null);
+  const chapterOffsets = useRef<Record<number, number>>({});
   // «ظاهر اپ»: the top of the page is dark green, or warm cream when the learner chose the light look.
   const light = useAppearance() === 'light';
   const top = light
@@ -226,7 +228,12 @@ export default function Book() {
           openId={openId}
           onSelect={(cid) => {
             LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
-            setOpenId(cid);
+            setOpenId((prev) => (prev === cid ? null : cid));
+            // اسکرول نرم به سمت کارت فصل در بدنه اصلی صفحه
+            const y = chapterOffsets.current[cid];
+            if (y != null && scrollRef.current) {
+              scrollRef.current.scrollTo({ y: Math.max(0, y - 40), animated: true });
+            }
           }}
         />
       )}
@@ -235,6 +242,7 @@ export default function Book() {
       {/* The margin is on a wrapper: on the web a refresh control gives the scroll view's style to two elements. */}
       <View style={{ flex: 1, marginTop: BAR_H }}>
       <Animated.ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scroll}
         refreshControl={refresh}
         scrollEventThrottle={16}
@@ -808,8 +816,13 @@ export default function Book() {
 
           {!isPreparing && <Text style={[styles.chaptersTitle, rtl]}>فصل‌ها</Text>}
           {book.chapters.map((chapter, index) => (
-            <ChapterCard
+            <View
               key={chapter.id}
+              onLayout={(e) => {
+                chapterOffsets.current[chapter.id] = e.nativeEvent.layout.y;
+              }}
+            >
+            <ChapterCard
               chapter={chapter}
               number={index + 1}
               open={openId === chapter.id}
@@ -835,6 +848,7 @@ export default function Book() {
                 endpoints.finishChapter(chapter.id).then(retry).catch(() => undefined);
               }}
             />
+            </View>
           ))}
         </View>
         </View>
