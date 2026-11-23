@@ -210,8 +210,18 @@ export default function Book() {
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: Platform.OS !== 'web' })}
       >
         <Animated.View
-          style={[styles.hero, { opacity: heroFade, backgroundColor: top.bg, transform: [{ translateY: scrollY }] }]}
-          onLayout={(e) => setHeroH(Math.round(e.nativeEvent.layout.height))}
+          style={[
+            styles.hero,
+            {
+              opacity: heroFade,
+              backgroundColor: top.bg,
+              ...(Platform.OS !== 'web' ? { transform: [{ translateY: scrollY }] } : null),
+            },
+          ]}
+          onLayout={(e) => {
+            const h = Math.round(e.nativeEvent.layout.height);
+            if (h && h !== heroH) setHeroH(h);
+          }}
         >
           <View style={{ alignItems: 'center' }}>
             {/* The cover carries the title (and author), so it is not written again under it; screen readers hear it here. */}
