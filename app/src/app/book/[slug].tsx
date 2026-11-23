@@ -1016,18 +1016,19 @@ function ChapterCard({
       {open && (
         <>
           {chapter.has_overview && (
-            <Pressable onPress={() => router.push(`/section/${chapter.id}`)} style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}>
+            <Pressable onPress={() => router.push(`/section/${chapter.id}`)} style={({ pressed }) => [styles.section, { borderTopWidth: 0, paddingTop: 18 }, pressed && { backgroundColor: colors.ground }]}>
               <Icon name="map" size={18} color={colors.greenDark} />
               <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>مقدمه‌ی فصل</Text>
             </Pressable>
           )}
-          {chapter.sections.map((section) => {
+          {chapter.sections.map((section, sIdx) => {
             const header = section.group && section.group !== lastGroup ? section.group : '';
             if (section.group) lastGroup = section.group;
+            const isFirstItem = !chapter.has_overview && sIdx === 0;
             return (
-              <View key={section.id}>
-                {!!header && <Text style={[styles.group, rtl]}>{header}</Text>}
-                <SectionRow section={section} state={done.has(section.id) ? 'done' : read.has(section.id) ? 'read' : 'none'} />
+              <View key={section.id} style={isFirstItem && { paddingTop: 6 }}>
+                {!!header && <Text style={[styles.group, rtl, isFirstItem && { borderTopWidth: 0 }]}>{header}</Text>}
+                <SectionRow section={section} state={done.has(section.id) ? 'done' : read.has(section.id) ? 'read' : 'none'} style={isFirstItem && !header ? { borderTopWidth: 0 } : undefined} />
               </View>
             );
           })}
@@ -1134,7 +1135,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: '#C9D3CC' },
   ownedRibbon: { position: 'absolute', top: 12, left: -6, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: '#3FB8A9', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
   ownedRibbonText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  badgeWrapper: { position: 'absolute', bottom: -11, left: 0, right: 0, alignItems: 'center', zIndex: 10 },
+  badgeWrapper: { position: 'absolute', bottom: -11, left: 0, right: 0, alignItems: 'center', zIndex: 25 },
   floatingTimeBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
   floatingTimeBadgeText: { fontSize: 11.5, fontWeight: '800', color: '#166534' },
   floatingChapterBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 16, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
