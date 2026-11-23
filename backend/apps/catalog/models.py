@@ -800,3 +800,160 @@ class AIProvider(models.Model):
         super().save(*args, **kwargs)
 
 
+
+
+class TeacherProfile(models.Model):
+    """«پروفایل و بیوگرافی استاد»: تصویر، عنوان علمی، رزومه و راه‌های ارتباطی جهت نمایش در شناسنامه کتاب و اپ."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="teacher_profile",
+        verbose_name="کاربر (استاد)",
+    )
+    academic_title = models.CharField(
+        "مرتبه علمی / عنوان رسمی",
+        max_length=120,
+        blank=True,
+        help_text="مثلاً «دانشیار دانشگاه تهران» یا «مؤلف برتر کتب حقوقی»",
+    )
+    avatar = models.ImageField(
+        "تصویر استاد",
+        upload_to="teachers/avatars/",
+        blank=True,
+        help_text="تصویر پرسنلی یا پرتره باکیفیت (ترجیحاً مربع، ۵۰۰×۵۰۰)",
+    )
+    bio = models.TextField(
+        "درباره استاد / رزومه (Markdown)",
+        blank=True,
+        help_text="سوابق آموزشی، پژوهشی، کتب تألیفی و معرفی به دانشجویان",
+    )
+    contact_email = models.EmailField("ایمیل ارتباطی", blank=True)
+    social_links = models.CharField(
+        "شبکه‌های اجتماعی / وبگاه",
+        max_length=255,
+        blank=True,
+        help_text="لینک وبسایت شخصی، کانال تلگرام یا لینکدین",
+    )
+    created_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+    updated_at = models.DateTimeField("زمان به‌روزرسانی", auto_now=True)
+
+    class Meta:
+        verbose_name = "پروفایل استاد"
+        verbose_name_plural = "پروفایل‌های استادان"
+
+    def __str__(self):
+        name = f"{self.user.first_name} {self.user.last_name}".strip() or self.user.phone
+        title = f" ({self.academic_title})" if self.academic_title else ""
+        return f"{name}{title}"
+
+
+class BookReview(models.Model):
+    """«نظرات و امتیازهای کتاب»: ثبت نظر دانشجویان با ستاره ۱ تا ۵، درصد رضایت، شاخص میزان مطالعه، پاسخ استاد و ممیزی مدیر."""
+
+    class Status(models.TextChoices):
+        APPROVED = "approved", "تأییدشده و عمومی"
+        PENDING = "pending", "در انتظار بازبینی"
+        HIDDEN = "hidden", "پنهان‌شده / ردشده"
+
+    book = models.ForeignKey(
+        ContentNode,
+        on_delete=models.CASCADE,
+        related_name="reviews",
+        limit_choices_to={"kind": ContentNode.Kind.BOOK, "depth": 1},
+        verbose_name="کتاب",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="book_reviews",
+        verbose_name="دانشجو / کاربر",
+    )
+    rating = models.PositiveSmallIntegerField(
+        "امتیاز (۱ تا ۵ ستاره)",
+        default=5,
+        help_text="امتیاز عددی از ۱ تا ۵ ستاره",
+    )
+    satisfaction_percent = models.PositiveSmallIntegerField(
+        "درصد رضایت",
+        default=100,
+        help_text="درصد رضایت کلی کاربر از مطالعه کتاب (۰ تا ۱۰۰)",
+    )
+    body = models.TextField(
+        "متن نظر",
+        max_length=2000,
+        help_text="دیدگاه کاربر درباره درسنامه‌ها، تست‌ها یا کیفیت تألیف کتاب",
+    )
+    # شاخص‌های اعتبار مطالعه هنگام ثبت نظر
+    study_percent = models.PositiveSmallIntegerField(
+        "درصد مطالعه کتاب",
+        default=0,
+        help_text="درصد بخش‌های خوانده‌شده کتاب توسط کاربر در زمان ثبت نظر",
+    )
+    test_percent = models.PositiveSmallIntegerField(
+        "درصد تست‌های حل‌شده",
+        default=0,
+        help_text="درصد تست‌های تمرین‌شده توسط کاربر در زمان ثبت نظر",
+    )
+    is_pinned = models.BooleanField(
+        "سنجاق‌شده در بالای لیست",
+        default=False,
+        help_text="نمایش ویژه در ابتدای نظرات با تصمیم استاد یا مدیر",
+    )
+    # پاسخ استاد به نظر دانشجو
+    teacher_reply = models.TextField(
+        "پاسخ استاد / مؤلف",
+        blank=True,
+        max_length=1500,
+        help_text="پاسخ توضیحی یا تقدیر استاد از دانشجو",
+    )
+    teacher_replied_at = models.DateTimeField("زمان پاسخ استاد", null=True, blank=True)
+    teacher_replied_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="استاد پاسخ‌دهنده",
+    )
+    # گزارش تخلف ارسالی از طرف استاد یا کاربران به مدیر کل
+    report_reason = models.CharField(
+        "دلیل گزارش تخلف",
+        max_length=255,
+        blank=True,
+        help_text="توضیح استاد به مدیر کل در صورت نامناسب یا بی‌ربط بودن نظر",
+    )
+    reported_at = models.DateTimeField("زمان گزارش", null=True, blank=True)
+    reported_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="گزارش‌کننده",
+    )
+    status = models.CharField(
+        "وضعیت انتشار",
+        max_length=15,
+        choices=Status.choices,
+        default=Status.APPROVED,
+        db_index=True,
+    )
+    created_at = models.DateTimeField("تاریخ ثبت", auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField("تاریخ ویرایش", auto_now=True)
+
+    class Meta:
+        verbose_name = "نظر و امتیاز کتاب"
+        verbose_name_plural = "نظرات و امتیازهای کتاب‌ها"
+        ordering = ["-is_pinned", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["book", "user"], name="uniq_user_book_review"),
+        ]
+
+    def __str__(self):
+        return f"{self.book.title} — {self.user.phone} ({self.rating}★)"
+
+    @property
+    def display_author_name(self):
+        full = f"{self.user.first_name} {self.user.last_name}".strip()
+        return full if full else "کاربر لیموخوان"

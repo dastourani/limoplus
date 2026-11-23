@@ -15,7 +15,9 @@ from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
 from .filters import BookFilter, BookFKFilter, ChapterFilter, YesNoFilter
 from .panel_display import badges
-from .models import (AIProvider, Banner, Book, BookAssistantAuditLog, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
+from .models import (
+    TeacherProfile,
+    BookReview,AIProvider, Banner, Book, BookAssistantAuditLog, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
                      ShareSettings, Shelf, ShelfBook)
 
 
@@ -2093,3 +2095,89 @@ class AIProviderAdmin(admin.ModelAdmin):
         return bool(request.user.is_superuser or access.is_book_teacher(request.user))
 
 
+
+
+@admin.register(TeacherProfile)
+class TeacherProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "academic_title", "contact_email", "updated_at")
+    search_fields = ("user__phone", "user__first_name", "user__last_name", "academic_title", "bio")
+    readonly_fields = ("created_at", "updated_at")
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(user=request.user)
+
+    def has_change_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if obj is not None and obj.user != request.user:
+            return False
+        return access.is_book_teacher(request.user)
+
+    def has_view_permission(self, request, obj=None):
+        return self.has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
+@admin.register(BookReview)
+class BookReviewAdmin(admin.ModelAdmin):
+    list_display = ("book", "display_user", "rating_badge", "satisfaction_display", "study_percent_display", "status", "has_reply", "is_pinned", "created_at")
+    list_filter = ("status", "rating", "is_pinned", "created_at")
+    search_fields = ("book__title", "user__phone", "user__first_name", "user__last_name", "body", "teacher_reply")
+    readonly_fields = ("created_at", "updated_at", "study_percent", "test_percent", "reported_by", "reported_at", "teacher_replied_at", "teacher_replied_by")
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("book", "user", "teacher_replied_by")
+        if request.user.is_superuser:
+            return qs
+        my_book_ids = access.book_editor_ids(request.user).values_list("book_id", flat=True)
+        return qs.filter(book_id__in=my_book_ids)
+
+    def display_user(self, obj):
+        name = f"{obj.user.first_name} {obj.user.last_name}".strip()
+        phone = obj.user.phone
+        masked = phone[:4] + "***" + phone[-4:] if len(phone) >= 7 else phone
+        return f"{name} ({masked})" if name else masked
+    display_user.short_description = "کاربر / دانشجو"
+
+    def rating_badge(self, obj):
+        stars = "★" * obj.rating + "☆" * (5 - obj.rating)
+        color = "#eab308" if obj.rating >= 4 else ("#f97316" if obj.rating == 3 else "#ef4444")
+        return format_html('<span style="color: {}; font-weight: bold; font-size: 14px;">{} ({} از ۵)</span>', color, stars, fa_digits(obj.rating))
+    rating_badge.short_description = "امتیاز"
+
+    def satisfaction_display(self, obj):
+        return f"{fa_digits(obj.satisfaction_percent)}٪"
+    satisfaction_display.short_description = "رضایت"
+
+    def study_percent_display(self, obj):
+        return f"مطالعه: {fa_digits(obj.study_percent)}٪ | تست: {fa_digits(obj.test_percent)}٪"
+    study_percent_display.short_description = "میزان پیشرفت"
+
+    def has_reply(self, obj):
+        return bool(obj.teacher_reply)
+    has_reply.boolean = True
+    has_reply.short_description = "پاسخ استاد"
+
+    def has_change_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if obj is not None:
+            return access.can_edit_book(request.user, obj.book)
+        return access.is_book_teacher(request.user)
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def save_model(self, request, obj, form, change):
+        if not request.user.is_superuser and not access.is_book_teacher(request.user):
+            raise PermissionDenied
+        # اگر استاد پاسخ داد، اطلاعات پاسخ‌دهنده را ثبت کن
+        if "teacher_reply" in form.changed_data and obj.teacher_reply:
+            obj.teacher_replied_at = timezone.now()
+            obj.teacher_replied_by = request.user
+        super().save_model(request, obj, form, change)

@@ -1,0 +1,61 @@
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('catalog', '0040_alter_aiprovider_api_key_alter_aiprovider_is_active_and_more'),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='TeacherProfile',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('academic_title', models.CharField(blank=True, help_text='مثلاً «دانشیار دانشگاه تهران» یا «مؤلف برتر کتب حقوقی»', max_length=120, verbose_name='مرتبه علمی / عنوان رسمی')),
+                ('avatar', models.ImageField(blank=True, help_text='تصویر پرسنلی یا پرتره باکیفیت (ترجیحاً مربع، ۵۰۰×۵۰۰)', upload_to='teachers/avatars/', verbose_name='تصویر استاد')),
+                ('bio', models.TextField(blank=True, help_text='سوابق آموزشی، پژوهشی، کتب تألیفی و معرفی به دانشجویان', verbose_name='درباره استاد / رزومه (Markdown)')),
+                ('contact_email', models.EmailField(blank=True, max_length=254, verbose_name='ایمیل ارتباطی')),
+                ('social_links', models.CharField(blank=True, help_text='لینک وبسایت شخصی، کانال تلگرام یا لینکدین', max_length=255, verbose_name='شبکه\u200cهای اجتماعی / وبگاه')),
+                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='زمان ثبت')),
+                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='زمان به\u200cروزرسانی')),
+                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='teacher_profile', to=settings.AUTH_USER_MODEL, verbose_name='کاربر (استاد)')),
+            ],
+            options={
+                'verbose_name': 'پروفایل استاد',
+                'verbose_name_plural': 'پروفایل\u200cهای استادان',
+            },
+        ),
+        migrations.CreateModel(
+            name='BookReview',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('rating', models.PositiveSmallIntegerField(default=5, help_text='امتیاز عددی از ۱ تا ۵ ستاره', verbose_name='امتیاز (۱ تا ۵ ستاره)')),
+                ('satisfaction_percent', models.PositiveSmallIntegerField(default=100, help_text='درصد رضایت کلی کاربر از مطالعه کتاب (۰ تا ۱۰۰)', verbose_name='درصد رضایت')),
+                ('body', models.TextField(help_text='دیدگاه کاربر درباره درسنامه\u200cها، تست\u200cها یا کیفیت تألیف کتاب', max_length=2000, verbose_name='متن نظر')),
+                ('study_percent', models.PositiveSmallIntegerField(default=0, help_text='درصد بخش\u200cهای خوانده\u200cشده کتاب توسط کاربر در زمان ثبت نظر', verbose_name='درصد مطالعه کتاب')),
+                ('test_percent', models.PositiveSmallIntegerField(default=0, help_text='درصد تست\u200cهای تمرین\u200cشده توسط کاربر در زمان ثبت نظر', verbose_name='درصد تست\u200cهای حل\u200cشده')),
+                ('is_pinned', models.BooleanField(default=False, help_text='نمایش ویژه در ابتدای نظرات با تصمیم استاد یا مدیر', verbose_name='سنجاق\u200cشده در بالای لیست')),
+                ('teacher_reply', models.TextField(blank=True, help_text='پاسخ توضیحی یا تقدیر استاد از دانشجو', max_length=1500, verbose_name='پاسخ استاد / مؤلف')),
+                ('teacher_replied_at', models.DateTimeField(blank=True, null=True, verbose_name='زمان پاسخ استاد')),
+                ('report_reason', models.CharField(blank=True, help_text='توضیح استاد به مدیر کل در صورت نامناسب یا بی\u200cربط بودن نظر', max_length=255, verbose_name='دلیل گزارش تخلف')),
+                ('reported_at', models.DateTimeField(blank=True, null=True, verbose_name='زمان گزارش')),
+                ('status', models.CharField(choices=[('approved', 'تأییدشده و عمومی'), ('pending', 'در انتظار بازبینی'), ('hidden', 'پنهان\u200cشده / ردشده')], db_index=True, default='approved', max_length=15, verbose_name='وضعیت انتشار')),
+                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='تاریخ ثبت')),
+                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='تاریخ ویرایش')),
+                ('book', models.ForeignKey(limit_choices_to={'depth': 1, 'kind': 'book'}, on_delete=django.db.models.deletion.CASCADE, related_name='reviews', to='catalog.contentnode', verbose_name='کتاب')),
+                ('reported_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL, verbose_name='گزارش\u200cکننده')),
+                ('teacher_replied_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL, verbose_name='استاد پاسخ\u200cدهنده')),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='book_reviews', to=settings.AUTH_USER_MODEL, verbose_name='دانشجو / کاربر')),
+            ],
+            options={
+                'verbose_name': 'نظر و امتیاز کتاب',
+                'verbose_name_plural': 'نظرات و امتیازهای کتاب\u200cها',
+                'ordering': ['-is_pinned', '-created_at'],
+                'constraints': [models.UniqueConstraint(fields=('book', 'user'), name='uniq_user_book_review')],
+            },
+        ),
+    ]

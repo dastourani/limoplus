@@ -29,6 +29,8 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     ("catalog", "ShareSettings"),
     ("catalog", "AIProvider"),
     ("catalog", "BookAssistantAuditLog"),
+    ("catalog", "TeacherProfile"),
+    ("catalog", "BookReview"),
     # commerce (royalty, wallet & payout)
     ("commerce", "TeacherWallet"),
     ("commerce", "PayoutRequest"),
@@ -80,7 +82,8 @@ class LimoAdminSite(AdminSite):
             ("catalog", "Label"),
             ("catalog", "ChapterRevision"),
             ("teacher_workflows", "PublicationRequest"),
-                ]
+            ("catalog", "TeacherProfile"),
+        ]
         for key in _AUTHORING_KEYS:
             if key in all_models:
                 m_item = dict(all_models[key])
@@ -99,6 +102,7 @@ class LimoAdminSite(AdminSite):
 
         # 3. ارزیابی، تمرین و بازخورد (Assessment & Feedback)
         _ASSESSMENT_KEYS = [
+            ("catalog", "BookReview"),
             ("learning", "Question"),
             ("learning", "Flashcard"),
             ("learning", "ExamSource"),
@@ -112,6 +116,8 @@ class LimoAdminSite(AdminSite):
         _AI_KEYS = [
             ("catalog", "AIProvider"),
             ("catalog", "BookAssistantAuditLog"),
+    ("catalog", "TeacherProfile"),
+    ("catalog", "BookReview"),
         ]
         for key in _AI_KEYS:
             if key in all_models:
