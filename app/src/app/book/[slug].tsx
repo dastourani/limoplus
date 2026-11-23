@@ -34,6 +34,58 @@ import { BookSide } from '../../components/ChapterSide';
 import { HelpTip } from '../../components/HelpTip';
 import { useWide } from '../../lib/layout';
 
+
+function ReviewCardItem({ r }: { r: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = (r.body || '').length > 130;
+  return (
+    <View style={styles.singleReviewCard}>
+      <View style={styles.reviewUserHead}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={[styles.reviewUserName, rtl]}>{r.display_name}</Text>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <View style={styles.studyBadge}>
+              <Text style={styles.studyBadgeText}>{toPersianDigits(r.study_percent)}٪ مطالعه</Text>
+            </View>
+            {r.test_percent > 0 && (
+              <View style={[styles.studyBadge, { backgroundColor: '#f0fdf4' }]}>
+                <Text style={[styles.studyBadgeText, { color: '#166534' }]}>{toPersianDigits(r.test_percent)}٪ تست</Text>
+              </View>
+            )}
+            <Text style={styles.reviewDate}>{r.created_at}</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row-reverse', gap: 1 }}>
+          {[1, 2, 3, 4, 5].map((st) => (
+            <Text key={st} style={{ color: st <= r.rating ? '#eab308' : '#e5e7eb', fontSize: 13 }}>★</Text>
+          ))}
+        </View>
+      </View>
+      <Text style={[styles.reviewBodyText, rtl]} numberOfLines={!expanded && isLong ? 2 : undefined}>
+        {r.body}
+      </Text>
+      {isLong && (
+        <Pressable onPress={() => setExpanded(!expanded)} style={{ alignSelf: 'flex-start', marginTop: 2 }}>
+          <Text style={{ fontSize: 11.5, fontWeight: '800', color: colors.greenDark }}>
+            {expanded ? 'بستن متن نظر ▴' : 'ادامه‌ی نظر ▾'}
+          </Text>
+        </Pressable>
+      )}
+
+      {/* کادر پاسخ استاد */}
+      {!!r.teacher_reply && (
+        <View style={styles.teacherReplyBox}>
+          <View style={styles.teacherReplyHead}>
+            <Icon name="corner-down-left" size={14} color="#0369a1" />
+            <Text style={styles.teacherReplyBadge}>پاسخ مؤلف / استاد</Text>
+          </View>
+          <Text style={[styles.teacherReplyBody, rtl]}>{r.teacher_reply}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function Book() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
@@ -71,8 +123,8 @@ export default function Book() {
   }, [slug]);
   const handleSendReview = async () => {
     if (!requireLogin(user, 'برای ثبت نظر ابتدا وارد حساب خود شوید.')) return;
-    if (!reviewBody.trim()) {
-      toast('لطفاً متن نظر خود را بنویسید.');
+    if (reviewBody.trim().length < 5) {
+      toast('لطفاً حداقل یک جمله کوتاه (حداقل ۵ حرف) درباره کتاب بنویسید.');
       return;
     }
     setSubmittingReview(true);
@@ -679,36 +731,50 @@ export default function Book() {
             {activeTab === 'reviews' && (
               <View style={styles.tabContent}>
                 {/* خلاصه امتیازها و شاخص رضایت */}
-                <View style={styles.reviewStatsBox}>
-                  <View style={styles.reviewStatCol}>
-                    <Text style={styles.reviewBigScore}>{toPersianDigits(book.community_reviews?.average_rating ?? 5)}</Text>
-                    <View style={{ flexDirection: 'row-reverse', gap: 2 }}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Text key={star} style={{ color: star <= Math.round(book.community_reviews?.average_rating ?? 5) ? '#eab308' : '#d1d5db', fontSize: 14 }}>
-                          ★
+                {book.community_reviews?.total_count ? (
+                  <View style={styles.reviewStatsBox}>
+                    <View style={styles.reviewStatCol}>
+                      <Text style={styles.reviewBigScore}>{toPersianDigits(book.community_reviews?.average_rating ?? 5)}</Text>
+                      <View style={{ flexDirection: 'row-reverse', gap: 2 }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Text key={star} style={{ color: star <= Math.round(book.community_reviews?.average_rating ?? 5) ? '#eab308' : '#d1d5db', fontSize: 14 }}>
+                            ★
+                          </Text>
+                        ))}
+                      </View>
+                      <Text style={styles.reviewSubLabel}>از ۵ ستاره</Text>
+                    </View>
+
+                    <View style={styles.reviewStatDivider} />
+
+                    <View style={{ flex: 1, gap: 6, justifyContent: 'center' }}>
+                      <View style={styles.reviewHighlightRow}>
+                        <Icon name="thumbs-up" size={14} color={colors.greenDark} />
+                        <Text style={[styles.reviewHighlightText, rtl]}>
+                          <Text style={{ fontWeight: '900', color: colors.greenDark }}>{toPersianDigits(book.community_reviews?.satisfaction_rate ?? 100)}٪</Text> رضایت خوانندگان
                         </Text>
-                      ))}
-                    </View>
-                    <Text style={styles.reviewSubLabel}>از ۵ ستاره</Text>
-                  </View>
-
-                  <View style={styles.reviewStatDivider} />
-
-                  <View style={{ flex: 1, gap: 6, justifyContent: 'center' }}>
-                    <View style={styles.reviewHighlightRow}>
-                      <Icon name="thumbs-up" size={14} color={colors.greenDark} />
-                      <Text style={[styles.reviewHighlightText, rtl]}>
-                        <Text style={{ fontWeight: '900', color: colors.greenDark }}>{toPersianDigits(book.community_reviews?.satisfaction_rate ?? 100)}٪</Text> رضایت خوانندگان
-                      </Text>
-                    </View>
-                    <View style={styles.reviewHighlightRow}>
-                      <Icon name="award" size={14} color="#0284c7" />
-                      <Text style={[styles.reviewHighlightText, rtl]}>
-                        امتیاز خوانندگان جدی (+۵۰٪ مطالعه): <Text style={{ fontWeight: '900', color: '#0284c7' }}>{toPersianDigits(book.community_reviews?.serious_readers_rating ?? 5)}</Text>
-                      </Text>
+                      </View>
+                      <View style={styles.reviewHighlightRow}>
+                        <Icon name="award" size={14} color="#0284c7" />
+                        <Text style={[styles.reviewHighlightText, rtl]}>
+                          امتیاز خوانندگان جدی (+۵۰٪ مطالعه): <Text style={{ fontWeight: '900', color: '#0284c7' }}>{toPersianDigits(book.community_reviews?.serious_readers_rating ?? 5)}</Text>
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
+                ) : (
+                  <View style={[styles.reviewStatsBox, { justifyContent: 'center', paddingVertical: 18 }]}>
+                    <View style={{ alignItems: 'center', gap: 6 }}>
+                      <View style={{ flexDirection: 'row-reverse', gap: 4 }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Text key={star} style={{ color: '#e5e7eb', fontSize: 20 }}>★</Text>
+                        ))}
+                      </View>
+                      <Text style={{ fontSize: 13.5, fontWeight: '800', color: colors.ink }}>هنوز امتیازی برای این کتاب ثبت نشده است</Text>
+                      <Text style={{ fontSize: 12, color: colors.muted }}>تجربه و نظر ارزشمند شما به سایر همراهان لیمو کمک می‌کند.</Text>
+                    </View>
+                  </View>
+                )}
 
                 {/* دکمه ثبت نظر */}
                 {!showReviewForm ? (
@@ -719,14 +785,18 @@ export default function Book() {
                 ) : (
                   <View style={styles.reviewFormBox}>
                     <Text style={[styles.formTitle, rtl]}>دیدگاه و امتیاز شما درباره کتاب:</Text>
-                    <View style={styles.starsSelectRow}>
-                      <Text style={[styles.starLabel, rtl]}>امتیاز شما:</Text>
-                      <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
-                        {[1, 2, 3, 4, 5].map((s) => (
-                          <Pressable key={s} onPress={() => setReviewRating(s)}>
-                            <Text style={{ fontSize: 24, color: s <= reviewRating ? '#eab308' : '#d1d5db' }}>★</Text>
-                          </Pressable>
-                        ))}
+                    <View style={styles.starsSelectCard}>
+                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={[styles.starPrompt, rtl]}>
+                          شما در حال ثبت امتیاز <Text style={{ color: '#ca8a04', fontWeight: '900' }}>{toPersianDigits(reviewRating)} از ۵</Text> هستید
+                        </Text>
+                        <View style={{ flexDirection: 'row-reverse', gap: 5 }}>
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Pressable key={s} onPress={() => setReviewRating(s)} accessibilityRole="button" accessibilityLabel={`${toPersianDigits(s)} ستاره`}>
+                              <Text style={{ fontSize: 26, color: s <= reviewRating ? '#eab308' : '#d1d5db' }}>★</Text>
+                            </Pressable>
+                          ))}
+                        </View>
                       </View>
                     </View>
                     <TextInput
@@ -734,18 +804,39 @@ export default function Book() {
                       onChangeText={setReviewBody}
                       multiline
                       numberOfLines={4}
-                      placeholder="دیدگاه خود را درباره این کتاب بنویسید..."
+                      placeholder="دیدگاه و تجربه خود را از مطالعه این کتاب بنویسید (حداقل ۵ حرف)..."
                       placeholderTextColor={colors.muted}
                       style={[styles.reviewTextInput, rtl]}
                       maxLength={1000}
                     />
-                    <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 8 }}>
+                    <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 11, color: reviewBody.trim().length < 5 ? colors.muted : colors.greenDark }}>
+                        {reviewBody.trim().length < 5 ? 'حداقل ۵ حرف لازم است' : 'آماده‌ی ارسال'}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.muted }}>
+                        {toPersianDigits(reviewBody.length)} / ۱۰۰۰
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 4 }}>
                       <View style={{ flex: 1 }}>
-                        <Button
-                          label={submittingReview ? 'در حال ارسال...' : 'ارسال نظر'}
-                          disabled={submittingReview || !reviewBody.trim()}
+                        <Pressable
+                          disabled={submittingReview || reviewBody.trim().length < 5}
                           onPress={handleSendReview}
-                        />
+                          style={[
+                            styles.sendReviewBtn,
+                            reviewBody.trim().length >= 5 ? styles.sendReviewBtnActive : styles.sendReviewBtnDisabled,
+                          ]}
+                          accessibilityRole="button"
+                        >
+                          <Text
+                            style={[
+                              styles.sendReviewBtnText,
+                              reviewBody.trim().length >= 5 ? styles.sendReviewBtnTextActive : styles.sendReviewBtnTextDisabled,
+                            ]}
+                          >
+                            {submittingReview ? 'در حال ارسال...' : 'ارسال نظر'}
+                          </Text>
+                        </Pressable>
                       </View>
                       <Pressable
                         onPress={() => setShowReviewForm(false)}
@@ -762,41 +853,7 @@ export default function Book() {
                 {book.community_reviews?.reviews?.length ? (
                   <ScrollView nestedScrollEnabled style={{ maxHeight: 440 }} contentContainerStyle={{ gap: 12, marginTop: 14 }} showsVerticalScrollIndicator={false}>
                     {book.community_reviews.reviews.map((r) => (
-                      <View key={r.id} style={styles.singleReviewCard}>
-                        <View style={styles.reviewUserHead}>
-                          <View style={{ flex: 1, gap: 2 }}>
-                            <Text style={[styles.reviewUserName, rtl]}>{r.display_name}</Text>
-                            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              <View style={styles.studyBadge}>
-                                <Text style={styles.studyBadgeText}>{toPersianDigits(r.study_percent)}٪ مطالعه</Text>
-                              </View>
-                              {r.test_percent > 0 && (
-                                <View style={[styles.studyBadge, { backgroundColor: '#f0fdf4' }]}>
-                                  <Text style={[styles.studyBadgeText, { color: '#166534' }]}>{toPersianDigits(r.test_percent)}٪ تست</Text>
-                                </View>
-                              )}
-                              <Text style={styles.reviewDate}>{r.created_at}</Text>
-                            </View>
-                          </View>
-                          <View style={{ flexDirection: 'row-reverse', gap: 1 }}>
-                            {[1, 2, 3, 4, 5].map((st) => (
-                              <Text key={st} style={{ color: st <= r.rating ? '#eab308' : '#e5e7eb', fontSize: 13 }}>★</Text>
-                            ))}
-                          </View>
-                        </View>
-                        <Text style={[styles.reviewBodyText, rtl]}>{r.body}</Text>
-
-                        {/* کادر پاسخ استاد */}
-                        {!!r.teacher_reply && (
-                          <View style={styles.teacherReplyBox}>
-                            <View style={styles.teacherReplyHead}>
-                              <Icon name="corner-down-left" size={14} color="#0369a1" />
-                              <Text style={styles.teacherReplyBadge}>پاسخ مؤلف / استاد</Text>
-                            </View>
-                            <Text style={[styles.teacherReplyBody, rtl]}>{r.teacher_reply}</Text>
-                          </View>
-                        )}
-                      </View>
+                      <ReviewCardItem key={r.id} r={r} />
                     ))}
                   </ScrollView>
                 ) : (
@@ -1277,8 +1334,14 @@ const styles = StyleSheet.create({
   writeReviewText: { fontSize: 13, fontWeight: '800', color: colors.ink },
   reviewFormBox: { backgroundColor: colors.ground, borderRadius: 12, padding: 12, gap: 10 },
   formTitle: { fontSize: 13, fontWeight: '800', color: colors.ink },
-  starsSelectRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  starLabel: { fontSize: 12, color: colors.muted },
+  starsSelectCard: { backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: colors.line },
+  starPrompt: { fontSize: 12.5, fontWeight: '700', color: colors.ink },
+  sendReviewBtn: { height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  sendReviewBtnActive: { backgroundColor: colors.lemon },
+  sendReviewBtnDisabled: { backgroundColor: '#e2e8f0' },
+  sendReviewBtnText: { fontSize: 14, fontWeight: '800' },
+  sendReviewBtnTextActive: { color: colors.ink },
+  sendReviewBtnTextDisabled: { color: '#94a3b8' },
   textAreaWrap: { minHeight: 80, backgroundColor: colors.surface, borderRadius: 8, padding: 8, borderWidth: 1, borderColor: colors.line },
   singleReviewCard: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 8 },
   reviewUserHead: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between' },
