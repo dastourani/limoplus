@@ -72,6 +72,13 @@ import BellRing from 'lucide-react-native/icons/bell-ring';
 import Gift from 'lucide-react-native/icons/gift';
 import CreditCard from 'lucide-react-native/icons/credit-card';
 import LockOpen from 'lucide-react-native/icons/lock-open';
+import User from 'lucide-react-native/icons/user';
+import MessageSquare from 'lucide-react-native/icons/message-square';
+import Award from 'lucide-react-native/icons/award';
+import ThumbsUp from 'lucide-react-native/icons/thumbs-up';
+import Mail from 'lucide-react-native/icons/mail';
+import CornerDownLeft from 'lucide-react-native/icons/corner-down-left';
+
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { colors } from '../theme';
@@ -147,6 +154,13 @@ const ICONS = {
   gift: Gift,
   'credit-card': CreditCard,
   'lock-open': LockOpen,
+  'user': User,
+  'message-square': MessageSquare,
+  'award': Award,
+  'thumbs-up': ThumbsUp,
+  'mail': Mail,
+  'corner-down-left': CornerDownLeft,
+  'edit-3': PenLine,
 } as const;
 
 export type IconName = keyof typeof ICONS;
