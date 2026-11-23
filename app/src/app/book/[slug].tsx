@@ -977,7 +977,7 @@ function ChapterCard({
   let lastGroup = '';
   return (
     <View style={styles.chapter}>
-      <View style={{ position: 'relative' }}>
+      <View style={{ position: 'relative', borderBottomWidth: open ? 1 : 0, borderBottomColor: colors.line }}>
         <Pressable onPress={onToggle} style={styles.chapterHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
           {/* As tall as two lines of the title, so the lemon and the name read as one. */}
           <HelpTip
@@ -1042,19 +1042,18 @@ function ChapterCard({
       {open && (
         <>
           {chapter.has_overview && (
-            <Pressable onPress={() => router.push(`/section/${chapter.id}`)} style={({ pressed }) => [styles.section, { borderTopWidth: 0, paddingTop: 18 }, pressed && { backgroundColor: colors.ground }]}>
+            <Pressable onPress={() => router.push(`/section/${chapter.id}`)} style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}>
               <Icon name="map" size={18} color={colors.greenDark} />
               <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>مقدمه‌ی فصل</Text>
             </Pressable>
           )}
-          {chapter.sections.map((section, sIdx) => {
+          {chapter.sections.map((section) => {
             const header = section.group && section.group !== lastGroup ? section.group : '';
             if (section.group) lastGroup = section.group;
-            const isFirstItem = !chapter.has_overview && sIdx === 0;
             return (
-              <View key={section.id} style={isFirstItem && { paddingTop: 6 }}>
-                {!!header && <Text style={[styles.group, rtl, isFirstItem && { borderTopWidth: 0 }]}>{header}</Text>}
-                <SectionRow section={section} state={done.has(section.id) ? 'done' : read.has(section.id) ? 'read' : 'none'} style={isFirstItem && !header ? { borderTopWidth: 0 } : undefined} />
+              <View key={section.id}>
+                {!!header && <Text style={[styles.group, rtl]}>{header}</Text>}
+                <SectionRow section={section} state={done.has(section.id) ? 'done' : read.has(section.id) ? 'read' : 'none'} />
               </View>
             );
           })}
@@ -1161,10 +1160,10 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: '#C9D3CC' },
   ownedRibbon: { position: 'absolute', top: 12, left: -6, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: '#3FB8A9', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
   ownedRibbonText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  badgeWrapper: { position: 'absolute', bottom: -11, left: 0, right: 0, alignItems: 'center', zIndex: 25 },
+  badgeWrapper: { position: 'absolute', bottom: -11, left: 0, right: 0, alignItems: 'center', zIndex: 99, elevation: 6 },
   floatingTimeBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
   floatingTimeBadgeText: { fontSize: 11.5, fontWeight: '800', color: '#166534' },
-  floatingChapterBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 16, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  floatingChapterBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 16, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 6 },
   floatingChapterBadgeText: { fontSize: 11.5, fontWeight: '800', color: '#166534' },
   cta: { marginTop: -34, backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
   ctaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
