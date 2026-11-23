@@ -16,6 +16,16 @@
         {% if s.myket_url %}<a class="btn ghost" href="{{ s.myket_url }}">{% icon "download" 18 %}مایکت</a>{% endif %}
       </div>{% endif %}
       <div class="ticks"><span>{% icon "circle-check" 16 %}فصل اول هر کتاب رایگان</span><span>{% icon "circle-check" 16 %}بدون اینترنت هم کار می‌کند</span></div>
+      {% if site_stats %}
+      <div class="hero-stats">
+        {% for val, label in site_stats %}
+        <div class="hero-stat-box">
+          <b>{{ val }}</b>
+          <span>{{ label }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
     {% include "website/_phone.html" %}
   </div>
@@ -89,11 +99,7 @@
   <div class="wrap bandin">
     <div class="bandtext"><h2>{{ s.band_title }}</h2><p class="sub">{{ s.band_sub }}</p>
       <ul class="checks"><li>{% icon "circle-check" 22 %}مرور زمان‌بندی‌شده‌ی فصل‌ها و کارت‌ها: فردا، یک هفته بعد، یک ماه بعد</li><li>{% icon "circle-check" 22 %}دفترچه‌ی اشتباهات: تست‌هایی که غلط زده‌ای تا تثبیت کامل برمی‌گردند</li><li>{% icon "circle-check" 22 %}حالت «فقط ۵ دقیقه وقت دارم»: مرور سریع در مترو، دانشگاه یا استراحت</li></ul>
-      {% if site_stats %}
-      <div class="home-stats">
-        {% for val, label in site_stats %}<div><b>{{ val }}</b><span>{{ label }}</span></div>{% endfor %}
-      </div>
-      {% endif %}
+
     </div>
     <div class="bigl">
       <div class="lemon-anim">{% include "website/_lemon_loader.html" with size=150 %}</div>

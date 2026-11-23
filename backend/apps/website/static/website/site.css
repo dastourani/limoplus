@@ -64,6 +64,52 @@ img, svg { max-width: 100%; }
 .stats div { background: rgba(255,255,255,.07); border-radius: 14px; padding: 8px 20px; text-align: center; }
 .stats b { display: block; color: var(--lemon); font-size: 22px; font-weight: 900; } .stats span { font-size: 13px; color: #C9D3CC; }
 
+
+/* Hero Live Stats Cards (dark themed with gold lemon numbers) */
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 32px;
+  max-width: 620px;
+}
+.hero-stat-box {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 12px 10px;
+  text-align: center;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s, border-color 0.2s;
+}
+.hero-stat-box:hover {
+  transform: translateY(-2px);
+  border-color: rgba(245, 197, 24, 0.3);
+}
+.hero-stat-box b {
+  display: block;
+  font-size: 24px;
+  font-weight: 900;
+  color: #F5C518;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+.hero-stat-box span {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .hero-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
 /* A phone with the app, drawn */
 .phone { width: 280px; height: 580px; border-radius: 42px; background: linear-gradient(160deg, #2a332d, #121713); padding: 10px; box-shadow: 0 35px 70px -15px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,0.1) inset; margin-bottom: -70px; flex: none; position: relative; user-select: none; }
 .screen { width: 100%; height: 100%; border-radius: 32px; background: var(--ground); color: var(--ink); overflow: hidden; display: flex; flex-direction: column; font-size: 11px; line-height: 1.5; position: relative; }
