@@ -2,10 +2,10 @@
 <div class="phone" aria-hidden="true">
   <div class="phone-speaker"></div>
   <div class="screen">
-    <!-- Status Bar with Dynamic Island -->
+    <!-- Status Bar with Centered Camera Pill -->
     <div class="ph-status-bar">
       <span class="ph-time">۹:۴۱</span>
-      <div class="ph-island"></div>
+      <div class="ph-notch-pill"></div>
       <div class="ph-status-icons">
         {% icon "wifi" 12 2.5 %}
         {% icon "battery-medium" 13 2.5 %}
@@ -105,6 +105,16 @@
         <small>زبان ارشد</small>
       </div>
       {% endfor %}
+    </div>
+
+    <!-- Fresh App Updates / News Banner (تازه‌های لیمو) to eliminate blank bottom gap -->
+    <div class="ph-banner-card">
+      <div class="ph-banner-sparkle">{% icon "sparkles" 13 2.5 %}</div>
+      <div class="ph-banner-meta">
+        <b>تازه‌های لیموخوان</b>
+        <small>افزوده شدن تست‌های کنکور ۱۴۰۳</small>
+      </div>
+      <span class="ph-banner-arrow">←</span>
     </div>
 
     <!-- App Bottom Navigation Bar -->
