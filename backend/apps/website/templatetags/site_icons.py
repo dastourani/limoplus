@@ -38,3 +38,43 @@ def icon(name, size=20, width=2):
         f'<svg class="i" width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{width}" '
         f'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{body}</svg>'
     )
+
+
+def _point(r, deg):
+    a = (deg - 90) * math.pi / 180
+    return f"{r * math.cos(a):.2f} {r * math.sin(a):.2f}"
+
+def _wedge_path(i, n, outer=76):
+    step = 360 / n
+    a0 = i * step
+    a1 = (i + 1) * step
+    large = 1 if (a1 - a0) > 180 else 0
+    return f"M 0 0 L {_point(outer, a0)} A {outer} {outer} 0 {large} 1 {_point(outer, a1)} Z"
+
+@register.simple_tag
+def lemon_progress(segments=8, size=44, fill="#FFC414"):
+    """Renders the signature Limokhan lemon with N juicy wedges matching LemonProgress in the app."""
+    try:
+        n = int(segments)
+    except (ValueError, TypeError):
+        n = 8
+    n = max(1, min(24, n))
+    stroke_w = 3.5 if n > 16 else (4.5 if n > 8 else 6)
+    
+    wedges_html = []
+    # If 1 section, render 8 wedges so it always looks like a full natural lemon
+    render_n = 8 if n == 1 else n
+    for i in range(render_n):
+        path = _wedge_path(i, render_n)
+        wedges_html.append(f'<path d="{path}" fill="{fill}" stroke="#fff" stroke-width="{stroke_w}" stroke-linejoin="round"/>')
+    
+    body = "".join(wedges_html)
+    return mark_safe(
+        f'<svg class="lemon-progress-icon" width="{size}" height="{size}" viewBox="-100 -100 200 200" aria-hidden="true">'
+        f'<circle r="98" fill="#F5C518"/>'
+        f'<circle r="98" fill="none" stroke="#E0AE0B" stroke-width="3"/>'
+        f'<circle r="87" fill="#fff"/>'
+        f'<g>{body}</g>'
+        f'<circle r="9" fill="#fff"/>'
+        f'</svg>'
+    )

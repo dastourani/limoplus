@@ -807,14 +807,14 @@ export default function Book() {
                       placeholder="دیدگاه و تجربه خود را از مطالعه این کتاب بنویسید (حداقل ۵ حرف)..."
                       placeholderTextColor={colors.muted}
                       style={[styles.reviewTextInput, rtl]}
-                      maxLength={1000}
+                      maxLength={350}
                     />
                     <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text style={{ fontSize: 11, color: reviewBody.trim().length < 5 ? colors.muted : colors.greenDark }}>
                         {reviewBody.trim().length < 5 ? 'حداقل ۵ حرف لازم است' : 'آماده‌ی ارسال'}
                       </Text>
                       <Text style={{ fontSize: 11, color: colors.muted }}>
-                        {toPersianDigits(reviewBody.length)} / ۱۰۰۰
+                        {toPersianDigits(reviewBody.length)} / ۳۵۰
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 4 }}>

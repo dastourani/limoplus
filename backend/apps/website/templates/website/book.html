@@ -39,7 +39,12 @@
             </div>
             <a class="btn lemon" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب با قیمت ویژه</a>
             {% else %}<a class="btn ghost" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب، {{ price }}</a>{% endif %}
-            {% if sample_label %}<span class="book-sample-note">{{ sample_label }}</span>{% endif %}
+            {% if sample_label %}
+            <div class="sample-label-pill">
+              {% icon "gift" 13 %}
+              <span>{{ sample_label }}</span>
+            </div>
+            {% endif %}
           {% elif product_status.state == 'unpriced' %}
             <span class="book-sample-note">قیمت نسخه‌ی کامل هنوز تعیین نشده است.</span>
           {% elif product_status.state == 'free' and not first_free %}
@@ -65,7 +70,9 @@
     {% for ch in chapters %}
       <details class="ch-box"{% if forloop.first %} open{% endif %}>
         <summary class="feat row ch-sum">
-          <div class="num">{{ ch.number }}</div>
+          <div class="lemon-icon-wrap" title="فصل {{ ch.number }} ({{ ch.sections }} بخش)">
+            {% lemon_progress ch.section_count 46 %}
+          </div>
           <div class="grow">
             <b>فصل {{ ch.number }}: {{ ch.title }}</b>
             <span class="mut">{{ ch.sections }} بخش{% if ch.tests %}، {{ ch.tests }} تست{% endif %}{% if ch.cards %}، {{ ch.cards }} فلش‌کارت{% endif %}</span>
