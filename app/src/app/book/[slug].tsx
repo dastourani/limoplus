@@ -1067,8 +1067,135 @@ function ChapterCard({
   let lastGroup = '';
   return (
     <View style={styles.chapter}>
-      <View style={{ position: 'relative', zIndex: 10 }}>
-        <Pressable onPress={onToggle} style={styles.chapterHead} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+      {(open || !!review) && (
+        <View collapsable={false} style={styles.chapterBody}>
+          {/* A quiet strip for review. */}
+          {!!review && (
+            <View style={[styles.strip, seconds >= 60 && { paddingTop: 20, paddingBottom: 10 }]}>
+              <View />
+              {review.days > 0 ? (
+                <View style={styles.stripItem}>
+                  <Icon name="calendar" size={14} color={colors.muted} />
+                  <Text style={styles.stripText}>مرور فصل: {toPersianDigits(review.days)} روز دیگر</Text>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() =>
+                    review.id &&
+                    openReview({ kind: 'chapter', id: review.id, chapter_id: chapter.id } as ReviewItem).catch((e: Error) => toast(e.message || 'مرور شروع نشد.'))
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={review.days === 0 ? 'مرور فصل، امروز' : 'مرور فصل، عقب افتاده'}
+                >
+                  {review.days === 0 ? (
+                    <Chip label="مرور فصل: امروز ←" icon="rotate-ccw" color={colors.ink} background={colors.lemon} />
+                  ) : (
+                    <Chip label={`مرور فصل: ${toPersianDigits(-review.days)} روز عقب ←`} icon="rotate-ccw" color={colors.amberDark} background={colors.amberSoft} />
+                  )}
+                </Pressable>
+              )}
+            </View>
+          )}
+
+          {open && (
+            <>
+              {chapter.has_overview && (
+                <Pressable
+                  onPress={() => router.push(`/section/${chapter.id}`)}
+                  style={({ pressed }) => [
+                    styles.section,
+                    !review && { borderTopWidth: 0 },
+                    !review && seconds >= 60 && { paddingTop: 22 },
+                    pressed && { backgroundColor: colors.ground },
+                  ]}
+                >
+                  <Icon name="map" size={18} color={colors.greenDark} />
+                  <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>مقدمه‌ی فصل</Text>
+                </Pressable>
+              )}
+              {chapter.sections.map((section, sectionIndex) => {
+                const header = section.group && section.group !== lastGroup ? section.group : '';
+                if (section.group) lastGroup = section.group;
+                const isFirstRow = !review && !chapter.has_overview && sectionIndex === 0;
+                return (
+                  <View key={section.id}>
+                    {!!header && (
+                      <Text style={[styles.group, rtl, isFirstRow && { borderTopWidth: 0, paddingTop: seconds >= 60 ? 22 : 14 }]}>
+                        {header}
+                      </Text>
+                    )}
+                    <SectionRow
+                      section={section}
+                      state={done.has(section.id) ? 'done' : read.has(section.id) ? 'read' : 'none'}
+                      firstWithoutTopBorder={isFirstRow && !header}
+                      extraTopPadding={isFirstRow && !header && seconds >= 60}
+                    />
+                  </View>
+                );
+              })}
+              {!!chapter.term_count && (
+                <Pressable
+                  onPress={() => router.push({ pathname: '/glossary/[slug]', params: { slug: bookSlug, chapter: String(chapter.id) } })}
+                  style={({ pressed }) => [
+                    styles.section,
+                    !review && !chapter.has_overview && chapter.sections.length === 0 && { borderTopWidth: 0, paddingTop: seconds >= 60 ? 22 : 14 },
+                    pressed && { backgroundColor: colors.ground },
+                  ]}
+                  accessibilityRole="button"
+                >
+                  <Icon name="languages" size={18} color={colors.greenDark} />
+                  <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>واژه‌های این فصل</Text>
+                  <Text style={styles.sectionMeta}>{toPersianDigits(chapter.term_count)} واژه</Text>
+                </Pressable>
+              )}
+              {!chapter.is_locked && canFinish && !review && (
+                <Pressable
+                  onPress={onFinish}
+                  style={({ pressed }) => [
+                    styles.section,
+                    !chapter.has_overview && chapter.sections.length === 0 && !chapter.term_count && { borderTopWidth: 0, paddingTop: seconds >= 60 ? 22 : 14 },
+                    pressed && { backgroundColor: colors.ground },
+                  ]}
+                  accessibilityRole="button"
+                >
+                  <Icon name="circle-check" size={18} color={colors.greenDark} />
+                  <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>این فصل را تمام کردم</Text>
+                </Pressable>
+              )}
+              {!chapter.is_locked && (
+                <View style={[styles.actions, !review && !chapter.has_overview && chapter.sections.length === 0 && !chapter.term_count && !canFinish && { borderTopWidth: 0, paddingTop: seconds >= 60 ? 22 : 12 }]}>
+                  {/* Only the practice this chapter actually has: no tests, no «تمرین کل فصل» and «آزمون». */}
+                  {!!tests && (
+                    <Pressable style={styles.action} onPress={() => router.push(`/quiz/${chapter.id}`)}>
+                      <Text style={styles.actionText}>تمرین کل فصل</Text>
+                    </Pressable>
+                  )}
+                  {!!tests && (
+                    <Pressable style={styles.action} onPress={() => router.push(`/exam/${chapter.id}`)}>
+                      <Text style={styles.actionText}>آزمون</Text>
+                    </Pressable>
+                  )}
+                  {!!cards && (
+                    <Pressable style={styles.action} onPress={() => router.push(`/flashcards/${chapter.id}`)}>
+                      <Text style={styles.actionText}>فلش‌کارت</Text>
+                    </Pressable>
+                  )}
+                  <Pressable style={styles.action} onPress={() => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(chapter.id) } })}>
+                    <Text style={styles.actionText}>کادرها</Text>
+                  </Pressable>
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      )}
+      <View collapsable={false} style={styles.chapterTop}>
+        <Pressable
+          onPress={onToggle}
+          style={[styles.chapterHead, seconds >= 60 && (open || !!review) && { paddingBottom: 20 }]}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+        >
           {/* As tall as two lines of the title, so the lemon and the name read as one. */}
           <HelpTip
             size={46}
@@ -1093,7 +1220,7 @@ function ChapterCard({
             <Icon name="chevron-down" size={16} color={open ? colors.ink : colors.muted} />
           </Animated.View>
         </Pressable>
-        {open && <View style={{ height: 1, backgroundColor: colors.line, width: '100%' }} />}
+        {(open || !!review) && <View style={{ height: 1, backgroundColor: colors.line, width: '100%' }} />}
         {seconds >= 60 && (
           <View style={styles.badgeWrapper} pointerEvents="none">
             <View style={styles.floatingChapterBadge}>
@@ -1102,95 +1229,6 @@ function ChapterCard({
           </View>
         )}
       </View>
-      {/* A quiet strip for review. */}
-      {!!review && (
-        <View style={styles.strip}>
-          <View />
-          {review.days > 0 ? (
-            <View style={styles.stripItem}>
-              <Icon name="calendar" size={14} color={colors.muted} />
-              <Text style={styles.stripText}>مرور فصل: {toPersianDigits(review.days)} روز دیگر</Text>
-            </View>
-          ) : (
-            <Pressable
-              onPress={() =>
-                review.id &&
-                openReview({ kind: 'chapter', id: review.id, chapter_id: chapter.id } as ReviewItem).catch((e: Error) => toast(e.message || 'مرور شروع نشد.'))
-              }
-              accessibilityRole="button"
-              accessibilityLabel={review.days === 0 ? 'مرور فصل، امروز' : 'مرور فصل، عقب افتاده'}
-            >
-              {review.days === 0 ? (
-                <Chip label="مرور فصل: امروز ←" icon="rotate-ccw" color={colors.ink} background={colors.lemon} />
-              ) : (
-                <Chip label={`مرور فصل: ${toPersianDigits(-review.days)} روز عقب ←`} icon="rotate-ccw" color={colors.amberDark} background={colors.amberSoft} />
-              )}
-            </Pressable>
-          )}
-        </View>
-      )}
-
-      {open && (
-        <>
-          {seconds >= 60 && <View style={{ height: 14, backgroundColor: colors.ground, width: '100%' }} />}
-          {chapter.has_overview && (
-            <Pressable onPress={() => router.push(`/section/${chapter.id}`)} style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}>
-              <Icon name="map" size={18} color={colors.greenDark} />
-              <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>مقدمه‌ی فصل</Text>
-            </Pressable>
-          )}
-          {chapter.sections.map((section) => {
-            const header = section.group && section.group !== lastGroup ? section.group : '';
-            if (section.group) lastGroup = section.group;
-            return (
-              <View key={section.id}>
-                {!!header && <Text style={[styles.group, rtl]}>{header}</Text>}
-                <SectionRow section={section} state={done.has(section.id) ? 'done' : read.has(section.id) ? 'read' : 'none'} />
-              </View>
-            );
-          })}
-          {!!chapter.term_count && (
-            <Pressable
-              onPress={() => router.push({ pathname: '/glossary/[slug]', params: { slug: bookSlug, chapter: String(chapter.id) } })}
-              style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}
-              accessibilityRole="button"
-            >
-              <Icon name="languages" size={18} color={colors.greenDark} />
-              <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>واژه‌های این فصل</Text>
-              <Text style={styles.sectionMeta}>{toPersianDigits(chapter.term_count)} واژه</Text>
-            </Pressable>
-          )}
-          {!chapter.is_locked && canFinish && !review && (
-            <Pressable onPress={onFinish} style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]} accessibilityRole="button">
-              <Icon name="circle-check" size={18} color={colors.greenDark} />
-              <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>این فصل را تمام کردم</Text>
-            </Pressable>
-          )}
-          {!chapter.is_locked && (
-            <View style={styles.actions}>
-              {/* Only the practice this chapter actually has: no tests, no «تمرین کل فصل» and «آزمون». */}
-              {!!tests && (
-                <Pressable style={styles.action} onPress={() => router.push(`/quiz/${chapter.id}`)}>
-                  <Text style={styles.actionText}>تمرین کل فصل</Text>
-                </Pressable>
-              )}
-              {!!tests && (
-                <Pressable style={styles.action} onPress={() => router.push(`/exam/${chapter.id}`)}>
-                  <Text style={styles.actionText}>آزمون</Text>
-                </Pressable>
-              )}
-              {!!cards && (
-                <Pressable style={styles.action} onPress={() => router.push(`/flashcards/${chapter.id}`)}>
-                  <Text style={styles.actionText}>فلش‌کارت</Text>
-                </Pressable>
-              )}
-              <Pressable style={styles.action} onPress={() => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(chapter.id) } })}>
-                <Text style={styles.actionText}>کادرها</Text>
-              </Pressable>
-            </View>
-          )}
-        </>
-      )}
     </View>
   );
 }
@@ -1198,7 +1236,17 @@ function ChapterCard({
 /** A section in the contents: the title takes up to two lines (then «…»; a long press shows it whole), the counts stay at
  * its left so the list never grows wider. */
 /** none: not started; read: half (the notes read, or most of its questions answered); done: «تمام شد» (green tick: both). */
-function SectionRow({ section, state }: { section: NodeSummary; state: 'none' | 'read' | 'done' }) {
+function SectionRow({
+  section,
+  state,
+  firstWithoutTopBorder = false,
+  extraTopPadding = false,
+}: {
+  section: NodeSummary;
+  state: 'none' | 'read' | 'done';
+  firstWithoutTopBorder?: boolean;
+  extraTopPadding?: boolean;
+}) {
   const done = state === 'done';
   const { toast } = useFeedback();
   return (
@@ -1206,7 +1254,12 @@ function SectionRow({ section, state }: { section: NodeSummary; state: 'none' | 
       onPress={() => router.push(`/section/${section.id}`)}
       onLongPress={() => toast(section.title)}
       delayLongPress={350}
-      style={({ pressed }) => [styles.section, pressed && { backgroundColor: colors.ground }]}
+      style={({ pressed }) => [
+        styles.section,
+        firstWithoutTopBorder && { borderTopWidth: 0 },
+        extraTopPadding && { paddingTop: 22 },
+        pressed && { backgroundColor: colors.ground },
+      ]}
       accessibilityRole="button"
     >
       <View
@@ -1252,12 +1305,12 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: '#C9D3CC' },
   ownedRibbon: { position: 'absolute', top: 12, left: -6, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: '#3FB8A9', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
   ownedRibbonText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  badgeWrapper: { position: 'absolute', bottom: -11, left: 0, right: 0, alignItems: 'center', zIndex: 99, elevation: 6 },
+  badgeWrapper: { position: 'absolute', bottom: -13, left: 0, right: 0, width: '100%', alignItems: 'center', justifyContent: 'center', zIndex: 99, elevation: 6 },
   floatingTimeBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  floatingTimeBadgeText: { fontSize: 11.5, fontWeight: '800', color: '#166534' },
+  floatingTimeBadgeText: { fontSize: 11.5, lineHeight: 18, fontWeight: '800', color: '#166534' },
   floatingChapterBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 16, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 6 },
-  floatingChapterBadgeText: { fontSize: 11.5, fontWeight: '800', color: '#166534' },
-  cta: { marginTop: -34, backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+  floatingChapterBadgeText: { fontSize: 11.5, lineHeight: 18, fontWeight: '800', color: '#166534' },
+  cta: { marginTop: -34, zIndex: 20, backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
   ctaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   ctaHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   ctaTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
@@ -1369,9 +1422,11 @@ const styles = StyleSheet.create({
   chevronCircleOn: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   aboutTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
   chaptersTitle: { fontSize: 18, fontWeight: '900', color: colors.ink, marginTop: 6 },
-  chapter: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'visible', marginBottom: 14 },
+  chapter: { flexDirection: 'column-reverse', backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'visible', marginBottom: 14 },
+  chapterTop: { position: 'relative', zIndex: 20 },
+  chapterBody: { position: 'relative', zIndex: 1, overflow: 'hidden', borderBottomLeftRadius: radius.md - 1, borderBottomRightRadius: radius.md - 1 },
   chapterHead: { flexDirection: 'row-reverse', alignItems: 'center', padding: 16, gap: 12 },
-  strip: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingVertical: 8, minHeight: 40, backgroundColor: '#F9FAF5', borderTopWidth: 1, borderTopColor: colors.line },
+  strip: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingVertical: 8, minHeight: 40, backgroundColor: '#F9FAF5' },
   metaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   stripItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   stripText: { fontSize: 12, color: colors.muted },
