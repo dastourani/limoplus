@@ -264,14 +264,15 @@ def _plans():
     return result
 
 
-def _format_sample(q, idx: int, book_node=None, majors=None, request=None) -> dict:
+def _format_sample(q, idx: int, book_node=None, majors=None, request=None, access=None) -> dict:
     src = next(iter(q.questionsource_set.all()), None)
-    stem = media_urls(request, q.stem, book=book_node) if (request is not None and book_node is not None) else q.stem
+    sign_kw = {"book": book_node, "access": access, "allow_locked_chapters": False}
+    stem = media_urls(request, q.stem, **sign_kw) if (request is not None and book_node is not None) else q.stem
     choices = [
         {
             "id": c.id,
             "num": fa(i),
-            "text": media_urls(request, c.text, book=book_node) if (request is not None and book_node is not None) else c.text,
+            "text": media_urls(request, c.text, **sign_kw) if (request is not None and book_node is not None) else c.text,
         }
         for i, c in enumerate(q.choices.all(), start=1)
     ]
@@ -303,7 +304,7 @@ def _book_samples(questions, access, limit: int = 3, book_node=None, request=Non
             if not (_usable(access, q) and _usable(anon_access, q)):
                 continue
             picked_ids.add(q.id)
-            out.append(_format_sample(q, len(out) + 1, book_node=book_node or access.book, request=request))
+            out.append(_format_sample(q, len(out) + 1, book_node=book_node or access.book, request=request, access=anon_access))
             if len(out) >= limit:
                 return out
     return out

@@ -15,15 +15,31 @@ import { Text } from '../components/Text';
 import { colors } from '../theme';
 
 const OUTBOX = 'limo.outbox';
+export const MAX_OUTBOX_JOBS = 500;
 /** A queued request, with the account it belongs to: it is only ever sent for that account. */
 type Job = { id: string; path: string; body: unknown; at: number; owner?: number };
+export type OutboxOutcome = 'sent' | 'queued' | 'dropped' | 'failed';
 const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+
+let outboxWarning: string | null = null;
+const outboxWarningListeners = new Set<(msg: string | null) => void>();
+function emitOutboxWarning(msg: string | null) {
+  outboxWarning = msg;
+  for (const fn of outboxWarningListeners) fn(msg);
+}
+export function subscribeOutboxWarning(fn: (msg: string | null) => void): () => void {
+  outboxWarningListeners.add(fn);
+  fn(outboxWarning);
+  return () => {
+    outboxWarningListeners.delete(fn);
+  };
+}
 
 let owner: number | null = null;
 /** Called by the auth provider whenever the signed-in account changes. */
 export function setOutboxOwner(id: number | null) {
   owner = id;
-  if (id != null) flushOutbox();
+  if (id != null) flushOutbox().catch(() => undefined);
 }
 
 let onReconnect: (() => void) | null = null;
@@ -53,23 +69,43 @@ let chain: Promise<unknown> = Promise.resolve();
 function update(change: (jobs: Job[]) => Job[]): Promise<void> {
   const next = chain.then(async () => {
     const jobs = await readOutbox();
-    await AsyncStorage.setItem(OUTBOX, JSON.stringify(change(jobs).slice(-500))).catch(() => undefined);
+    const now = Date.now();
+    const fresh = change(jobs).filter((j) => now - j.at <= MAX_AGE_MS);
+    const trimmed = fresh.length > MAX_OUTBOX_JOBS ? fresh.slice(-MAX_OUTBOX_JOBS) : fresh;
+    try {
+      await AsyncStorage.setItem(OUTBOX, JSON.stringify(trimmed));
+      if (fresh.length > MAX_OUTBOX_JOBS) {
+        emitOutboxWarning('صف ذخیرهٔ آفلاین پر شده است؛ قدیمی‌ترین موارد کنار گذاشته شدند.');
+      } else {
+        emitOutboxWarning(null);
+      }
+    } catch (err) {
+      emitOutboxWarning('ذخیرهٔ آفلاین پیشرفت روی حافظهٔ دستگاه ممکن نشد.');
+      throw err;
+    }
   });
   chain = next.catch(() => undefined);
   return next;
 }
 
 /** POST that is retried later if there is no connection or a transient server error (429 / 5xx). */
-export async function sendOrQueue(path: string, body: unknown): Promise<void> {
-  if (owner == null) return;
+export async function sendOrQueue(path: string, body: unknown): Promise<OutboxOutcome> {
+  if (owner == null) return 'dropped';
   const mine = owner;
   try {
     await api(path, { body });
+    return 'sent';
   } catch (e) {
     if (e instanceof ApiError && (isRetryableStatus(e.status) || e.status === 401)) {
       const job: Job = { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, path, body, at: Date.now(), owner: mine };
-      await update((jobs) => [...jobs, job]);
+      try {
+        await update((jobs) => [...jobs, job]);
+        return 'queued';
+      } catch {
+        return 'failed';
+      }
     }
+    return 'dropped';
   }
 }
 
@@ -113,8 +149,11 @@ const BANNER_SECONDS = 4;
 export function NetworkProvider({ children }: { children: ReactNode }) {
   const [online, setState] = useState(true);
   const [banner, setBanner] = useState<'offline' | 'back' | null>(null);
+  const [queueWarn, setQueueWarn] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const wasOnline = useRef(true);
+
+  useEffect(() => subscribeOutboxWarning(setQueueWarn), []);
 
   // When the connection drops: a banner for a few seconds, then only a small icon in the corner (reading in peace).
   // When it comes back: a short «back online» note.
@@ -161,7 +200,13 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
   return (
     <OnlineContext.Provider value={online}>
       {children}
-      {banner && (
+      {queueWarn && (
+        <View style={[styles.banner, { paddingTop: insets.top + 6, backgroundColor: colors.redSoft }]}>
+          <Icon name="circle-alert" size={16} color={colors.redDark} />
+          <Text style={[styles.text, { color: colors.redDark }]}>{queueWarn}</Text>
+        </View>
+      )}
+      {!queueWarn && banner && (
         <View style={[styles.banner, { paddingTop: insets.top + 6 }, banner === 'back' && { backgroundColor: colors.greenSoft }]} pointerEvents="none">
           <Icon name={banner === 'back' ? 'circle-check' : 'cloud-off'} size={16} color={banner === 'back' ? colors.greenDark : colors.ink} />
           <Text style={[styles.text, banner === 'back' && { color: colors.greenDark }]}>

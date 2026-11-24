@@ -462,8 +462,13 @@ class AppPagesTests(TestCase):
                 book.save(update_fields=["about"])
 
                 sec = ContentNode.objects.get(slug="limit-idea")
-                q = Question.objects.create(node=sec, slug="site-img-q", stem=f"متن ![q](media:{free_img})", is_sample=True)
-                Choice.objects.create(question=q, order=1, text="یک", is_correct=True)
+                q = Question.objects.create(
+                    node=sec,
+                    slug="site-img-q",
+                    stem=f"متن ![q](media:{free_img}) ![qlocked](media:{locked_img}) ![qother](media:{other_img})",
+                    is_sample=True,
+                )
+                Choice.objects.create(question=q, order=1, text=f"یک ![c](media:{locked_img})", is_correct=True)
                 Choice.objects.create(question=q, order=2, text="دو", is_correct=False)
 
                 r = Client().get("/site/books/math-1/")

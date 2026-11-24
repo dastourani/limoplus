@@ -171,7 +171,11 @@ async function restore(id: number, phone: string | null) {
       if (owner !== id) return;
       inflightByBatch.set(batch.id, batch.entries);
       emit();
-      await sendOrQueue('me/time/', batch);
+      const outcome = await sendOrQueue('me/time/', batch).catch(() => 'failed' as const);
+      if (outcome === 'failed') {
+        emit();
+        return;
+      }
       inflightByBatch.delete(batch.id);
       await updateInflight(id, (all) => all.filter((b) => b.id !== batch.id));
     }
@@ -257,7 +261,11 @@ async function runFlush(): Promise<void> {
   await updateInflight(mine, (all) => [...all, batch]);
   keep();
   emit();
-  await sendOrQueue('me/time/', batch).catch(() => undefined);
+  const outcome = await sendOrQueue('me/time/', batch).catch(() => 'failed' as const);
+  if (outcome === 'failed') {
+    emit();
+    return;
+  }
   inflightByBatch.delete(id);
   await updateInflight(mine, (all) => all.filter((b) => b.id !== id));
   emit();

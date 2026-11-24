@@ -2,11 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const store = new Map<string, string>();
 const apiMock = vi.fn();
+let failNextSetItem = false;
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: {
     getItem: vi.fn(async (k: string) => store.get(k) ?? null),
     setItem: vi.fn(async (k: string, v: string) => {
+      if (failNextSetItem) {
+        failNextSetItem = false;
+        throw new Error('disk full');
+      }
       store.set(k, v);
     }),
     removeItem: vi.fn(async (k: string) => {
@@ -53,12 +58,13 @@ vi.mock('../../api/client', () => {
 });
 
 import { ApiError } from '../../api/client';
-import { flushOutbox, isRetryableStatus, sendOrQueue, setOutboxOwner } from '../network';
+import { flushOutbox, isRetryableStatus, sendOrQueue, setOutboxOwner, subscribeOutboxWarning } from '../network';
 
 describe('network outbox resilience', () => {
   beforeEach(() => {
     store.clear();
     apiMock.mockReset();
+    failNextSetItem = false;
     setOutboxOwner(null);
   });
 
@@ -115,5 +121,27 @@ describe('network outbox resilience', () => {
     const remaining = JSON.parse(store.get('limo.outbox') ?? '[]');
     expect(remaining).toHaveLength(1);
     expect(remaining[0].path).toBe('nodes/2/progress/');
+  });
+
+  it('reports failed (never silent queued) and warns UI if AsyncStorage.setItem fails', async () => {
+    setOutboxOwner(7);
+    await flushOutbox();
+    const warnings: (string | null)[] = [];
+    const unsub = subscribeOutboxWarning((m) => warnings.push(m));
+    try {
+      apiMock.mockRejectedValueOnce(new ApiError(503, 'unavailable', 'deploy'));
+      failNextSetItem = true;
+      const outcome = await sendOrQueue('me/time/', { entries: [{ node_id: 1, seconds: 10 }] });
+      expect(outcome).toBe('failed');
+      expect(warnings[warnings.length - 1]).toContain('ممکن نشد');
+
+      // Subsequent successful queue clears the warning.
+      apiMock.mockRejectedValueOnce(new ApiError(503, 'unavailable', 'deploy'));
+      const okOutcome = await sendOrQueue('me/time/', { entries: [{ node_id: 1, seconds: 10 }] });
+      expect(okOutcome).toBe('queued');
+      expect(warnings[warnings.length - 1]).toBeNull();
+    } finally {
+      unsub();
+    }
   });
 });

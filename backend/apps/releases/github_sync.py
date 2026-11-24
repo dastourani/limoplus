@@ -20,30 +20,44 @@ log = logging.getLogger(__name__)
 GITHUB_REPO = getattr(settings, "GITHUB_REPOSITORY", "dastourani/limoplus")
 
 
+def _next_link(link_header: str) -> str | None:
+    for part in (link_header or "").split(","):
+        segs = [s.strip() for s in part.split(";")]
+        if len(segs) >= 2 and segs[0].startswith("<") and segs[0].endswith(">") and 'rel="next"' in segs[1:]:
+            return segs[0][1:-1]
+    return None
+
+
 def fetch_latest_github_release(repo: str = GITHUB_REPO, channel: str = AppRelease.CHANNEL_TEST) -> dict | None:
-    """Fetch the newest release metadata for `channel` (`official` or `test`) from GitHub API."""
+    """Fetch the newest release metadata for `channel` (`official` or `test`) from GitHub API across pages."""
     ch = normalize_channel(channel)
-    url = f"https://api.github.com/repos/{repo}/releases"
+    url: str | None = f"https://api.github.com/repos/{repo}/releases?per_page=100"
     headers = {"User-Agent": "Limoplus-AppRelease-Sync", "Accept": "application/vnd.github.v3+json"}
     token = getattr(settings, "GITHUB_TOKEN", None)
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    req = urllib.request.Request(url, headers=headers)
+    max_pages = 5
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            if not isinstance(data, list) or not data:
-                return None
-            for rel in data:
-                tag = rel.get("tag_name", "")
-                if ch == AppRelease.CHANNEL_OFFICIAL:
-                    if (tag.startswith("official-") or tag.startswith("v")) and not rel.get("prerelease"):
-                        return rel
-                else:
-                    if tag.startswith("apk-") or tag.startswith("test-"):
-                        return rel
-            return None if ch == AppRelease.CHANNEL_OFFICIAL else data[0]
+        for _ in range(max_pages):
+            if not url:
+                break
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if not isinstance(data, list) or not data:
+                    return None
+                for rel in data:
+                    tag = rel.get("tag_name", "")
+                    if ch == AppRelease.CHANNEL_OFFICIAL:
+                        if (tag.startswith("official-") or tag.startswith("v")) and not rel.get("prerelease"):
+                            return rel
+                    else:
+                        if tag.startswith("apk-") or tag.startswith("test-"):
+                            return rel
+                link_header = resp.headers.get("Link", "") if getattr(resp, "headers", None) else ""
+                url = _next_link(link_header)
+        return None
     except Exception as exc:
         log.warning("Failed to fetch GitHub releases: %s", exc)
         return None
