@@ -713,6 +713,8 @@ class Classroom(models.Model):
         if self.expiry_policy == self.ExpiryPolicy.FIXED_DATE:
             if not self.ends_on:
                 errors["ends_on"] = "برای تاریخ پایان مشخص، فیلد «تاریخ پایان دسترسی» الزامی است."
+            elif self.is_active and self.ends_on < timezone.localdate():
+                errors["ends_on"] = "تاریخ پایان کلاس فعال نمی‌تواند در گذشته باشد."
         elif self.expiry_policy == self.ExpiryPolicy.FROM_JOIN:
             if not self.duration_days or self.duration_days <= 0:
                 errors["duration_days"] = "برای مدت مشخص از زمان پیوستن، تعداد روزهای مجاز را وارد کنید."
@@ -725,19 +727,33 @@ class Classroom(models.Model):
 
     def calculate_end_time(self, joined_at=None):
         """Calculate exclusive ends_at instant based on class expiry policy."""
-        now = joined_at or timezone.now()
-        if self.expiry_policy == self.ExpiryPolicy.UNLIMITED:
-            return None
-        if self.expiry_policy == self.ExpiryPolicy.FIXED_DATE and self.ends_on:
-            exclusive_date = self.ends_on + timedelta(days=1)
-            return timezone.make_aware(datetime.combine(exclusive_date, time.min))
-        if self.expiry_policy == self.ExpiryPolicy.FROM_JOIN and self.duration_days:
-            return now + timedelta(days=self.duration_days)
-        return None
+        from .group_access import calculate_cohort_end_time
+
+        return calculate_cohort_end_time(
+            expiry_policy=self.expiry_policy,
+            ends_on=self.ends_on,
+            duration_days=self.duration_days,
+            now=joined_at,
+        )
+
+    def is_expired(self, now=None) -> bool:
+        """True when a fixed-date classroom deadline has already elapsed."""
+        now = now or timezone.now()
+        end_at = self.calculate_end_time(now)
+        return end_at is not None and end_at <= now
 
     @property
     def active_members_count(self) -> int:
-        return self.members.filter(status=ClassroomMember.Status.ACTIVE).count()
+        now = timezone.now()
+        return (
+            self.members.filter(
+                status=ClassroomMember.Status.ACTIVE,
+                entitlement__is_archived=False,
+                entitlement__starts_at__lte=now,
+            )
+            .filter(models.Q(entitlement__ends_at__isnull=True) | models.Q(entitlement__ends_at__gt=now))
+            .count()
+        )
 
     @property
     def has_capacity(self) -> bool:
@@ -844,10 +860,6 @@ class ClassroomMember(models.Model):
 
     @property
     def is_active(self) -> bool:
-        return bool(
-            self.status == self.Status.ACTIVE
-            and self.entitlement_id
-            and not self.entitlement.is_archived
-            and self.entitlement.starts_at <= timezone.now()
-            and (self.entitlement.ends_at is None or self.entitlement.ends_at > timezone.now())
-        )
+        from .group_access import is_entitlement_active_now
+
+        return bool(self.status == self.Status.ACTIVE and is_entitlement_active_now(self.entitlement))

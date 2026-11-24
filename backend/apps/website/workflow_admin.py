@@ -1087,11 +1087,13 @@ class ClassroomMemberAdmin(admin.ModelAdmin):
 
         if request.method == "POST":
             with transaction.atomic():
-                member.status = ClassroomMember.Status.REVOKED
-                member.revoked_at = timezone.now()
-                member.revoked_by = request.user
-                member.revocation_reason = request.POST.get("reason", "لغو توسط استاد")
-                member.save(update_fields=["status", "revoked_at", "revoked_by", "revocation_reason"])
+                member = ClassroomMember.objects.select_for_update().select_related("entitlement").get(pk=member.pk)
+                if member.status != ClassroomMember.Status.REVOKED:
+                    member.status = ClassroomMember.Status.REVOKED
+                    member.revoked_at = timezone.now()
+                    member.revoked_by = request.user
+                    member.revocation_reason = request.POST.get("reason", "لغو توسط استاد")
+                    member.save(update_fields=["status", "revoked_at", "revoked_by", "revocation_reason"])
 
                 if member.entitlement_id and not member.entitlement.is_archived:
                     member.entitlement.is_archived = True
