@@ -347,7 +347,7 @@ def panel_login(request):
     found = PanelLoginCode.find(data.validated_data["code"].strip())
     if found is not None:
         found = PanelLoginCode.objects.select_for_update().select_related("user").get(pk=found.pk)
-    if found is None or not found.is_usable or not (found.user.is_active and found.user.is_staff):
+    if found is None or not found.is_usable or not found.user.is_active or (found.staff_only and not found.user.is_staff):
         ratelimit.hit(ip_wrong_key)
         return _error("این پیوند ورود دیگر کار نمی‌کند. از پنل دوباره «باز کردن وب اپ» را بزنید.", "panel_code_invalid")
     user = found.user

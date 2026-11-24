@@ -15,14 +15,21 @@ from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
 from apps.accounts import ratelimit
-from apps.accounts.models import OTPCode, User
+from apps.accounts.models import OTPCode, PanelLoginCode, User
 from apps.accounts.phone import InvalidPhone, normalize_phone
 from apps.accounts.views import _PERSIAN_DIGITS, _client_ip
 from apps.catalog.panel_display import jalali_date
 
 from .group_access import activate_approved_members, activate_classroom_members, is_valid_cohort_book
 from .models import Classroom, ClassroomMember
-from .views import _base
+from .views import _base, app_url
+
+
+def _web_app_book_handoff(user: User, book) -> str:
+    """Build an absolute web-app URL with a single-use login fragment so a cross-domain classroom join opens the
+    book signed in on the web app without a second SMS login."""
+    code = PanelLoginCode.issue(user, staff_only=False)
+    return app_url(f"panel-login?next=/book/{book.slug}#{code}")
 
 
 def _classroom_error(classroom: Classroom, now=None) -> tuple[str, str] | None:
@@ -148,7 +155,9 @@ def _handle_web_otp_verify(request, classroom: Classroom):
             )
 
     django_login(request, user, backend="django.contrib.auth.backends.ModelBackend")
-    return JsonResponse({"ok": True, "redirect": f"/book/{locked_classroom.book.slug}"})
+    response = JsonResponse({"ok": True, "redirect": _web_app_book_handoff(user, locked_classroom.book)})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @sensitive_post_parameters("phone", "code")
@@ -209,8 +218,12 @@ def classroom_join(request, code):
                 locked_member.refresh_from_db()
 
             if locked_member.is_active:
-                messages.success(request, f"کتاب «{locked_classroom.book.title}» با موفقیت به کتابخانه شما اضافه شد.")
-                return redirect(f"/book/{locked_classroom.book.slug}")
+                if request.POST.get("action") != "open_app":
+                    messages.success(request, f"کتاب «{locked_classroom.book.title}» با موفقیت به کتابخانه شما اضافه شد.")
+                response = redirect(_web_app_book_handoff(user, locked_classroom.book))
+                response["Cache-Control"] = "no-store"
+                response["Referrer-Policy"] = "no-referrer"
+                return response
 
             messages.error(request, "امکان فعال‌سازی دسترسی این کلاس وجود ندارد؛ مهلت یا ظرفیت کلاس را بررسی کنید.")
             return redirect(request.path)
@@ -236,7 +249,7 @@ def classroom_join(request, code):
         "already_member": already_member,
         "error_state": error_state,
         "message": error_message,
-        "app_book_url": f"/book/{classroom.book.slug}",
+        "app_book_url": app_url(f"book/{classroom.book.slug}"),
         "deep_link_url": f"limookhan://book/{classroom.book.slug}",
     })
 

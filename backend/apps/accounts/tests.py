@@ -429,6 +429,20 @@ class PanelLoginTests(TestCase):
         User.objects.filter(pk=self.staff.pk).update(is_staff=False)
         self.assertEqual(self._login(code).data["code"], "panel_code_invalid")
 
+    def test_learner_scoped_handoff_code_works_once_without_granting_open_app_access(self):
+        from .models import PanelLoginCode
+
+        learner = User.objects.create_user("09120000503")
+        code = PanelLoginCode.issue(learner, staff_only=False)
+        r = self._login(code)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(r.data["user"].get("is_staff"))
+        self.assertEqual(self._login(code).data["code"], "panel_code_invalid")
+
+        # Default staff_only=True codes still reject non-staff users.
+        staff_code = PanelLoginCode.issue(learner)
+        self.assertEqual(self._login(staff_code).data["code"], "panel_code_invalid")
+
     def test_wrong_codes_count_toward_the_ip_limit(self):
         with override_settings(OTP_WRONG_PER_IP_PER_HOUR=3):
             for _ in range(3):
