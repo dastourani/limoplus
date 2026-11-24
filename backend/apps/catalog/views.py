@@ -225,7 +225,7 @@ def book_detail(request, slug):
 
     _states = section_states(request.user, access, request)
 
-    sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION]
+    sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
     counts = {}
     from apps.learning.models import Flashcard, Question
 
@@ -327,7 +327,7 @@ def _sample_count(access, book) -> int:
     return sum(
         1
         for q in Question.objects.filter(node_id__in=access.visible_ids_under(book), is_sample=True, is_archived=False).only("id", "node_id", "is_free")
-        if access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))
+        if access.usable(q)
     )
 
 
@@ -378,7 +378,7 @@ def _practice_counts(access, node) -> dict:
 
     def count(model) -> int:
         rows = model.objects.filter(node_id__in=ids, is_archived=False).only("id", "node_id", "is_free")
-        return sum(1 for r in rows if r.is_free or access.readable(r.node_id))
+        return sum(1 for r in rows if access.usable(r))
 
     return {"question_count": count(Question), "flashcard_count": count(Flashcard)}
 
@@ -405,6 +405,7 @@ def node_detail(request, node_id):
     last_in_chapter = (
         node.kind == ContentNode.Kind.SECTION and parent is not None and access.children(parent)[-1:] == [node]
     )
+    practice = _practice_counts(access, node)
     return Response(
         {
             "id": node.id,
@@ -427,13 +428,13 @@ def node_detail(request, node_id):
             "updated_at": node.updated_at,
             "chapter_end": _chapter_end(access, node, parent, request) if last_in_chapter else None,
             "status": _section_status(request.user, access, node),
-            "intro": _chapter_intro(request, access, node) if is_chapter else None,
+            "intro": _chapter_intro(request, access, node, practice=practice) if is_chapter else None,
             # «به‌روز شده»: the panel marked this text since the learner last read it.
             "badge": section_badges(request.user, [node]).get(node.id),
             "refreshed_at": node.refreshed_at,
             "macros": formula_macros(),
             # The buttons of the bottom bar («تست‌ها», «فلش‌کارت») are hidden when there is nothing to practise.
-            **_practice_counts(access, node),
+            **practice,
         }
     )
 
@@ -456,14 +457,12 @@ def _turn_title(access, node_id):
     return f"مقدمه‌ی فصل {n.position}، {n.title}" if n.kind == ContentNode.Kind.CHAPTER and n.position else n.title
 
 
-def _chapter_intro(request, access, chapter):
+def _chapter_intro(request, access, chapter, practice=None):
     """A chapter's introduction page: its number, its sections (each with the learner's state), counts, and where to go on."""
-    from apps.learning.models import Flashcard, Question
     from apps.study.progress import section_states
 
     started, done = section_states(request.user, access, request)
     sections = access.children(chapter)
-    ids = [s.id for s in sections]
     badges = section_badges(request.user, sections)
     items = [
         {"id": s.id, "title": s.title, "locked": not access.readable(s.id),
@@ -471,11 +470,12 @@ def _chapter_intro(request, access, chapter):
         for s in sections
     ]
     go_on = next((i for i in items if i["state"] != "done" and not i["locked"]), None) or next((i for i in items if not i["locked"]), None)
+    counts = practice if practice is not None else _practice_counts(access, chapter)
     return {
         "number": chapter.position,
         "sections": items,
-        "questions": Question.objects.filter(node_id__in=[chapter.id, *ids], is_archived=False).count(),
-        "flashcards": Flashcard.objects.filter(node_id__in=[chapter.id, *ids], is_archived=False).count(),
+        "questions": counts["question_count"],
+        "flashcards": counts["flashcard_count"],
         "continue_id": go_on["id"] if go_on else None,
         "started": any(i["state"] != "empty" for i in items),
     }
@@ -498,7 +498,7 @@ def _chapter_end(access, node, chapter, request=None):
     from apps.learning.models import Question
 
     pool = [q for q in Question.objects.filter(node_id__in=access.visible_ids_under(chapter), is_archived=False).only("id", "node_id", "is_free", "estimated_seconds")
-            if access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))]
+            if access.usable(q)]
     count = min(10, len(pool))
     seconds = sum(q.estimated_seconds or 90 for q in sorted(pool, key=lambda q: q.estimated_seconds or 90)[:count])
     from apps.study.progress import chapter_state
@@ -522,7 +522,7 @@ def _section_status(user, access, node):
     from apps.study.progress import core
 
     usable = [q for q in Question.objects.filter(node=node, is_archived=False).only("id", "node_id", "is_free", "is_extra")
-              if access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))]
+              if access.usable(q)]
     kept = set(core((q.id, q.is_extra) for q in usable))
     questions = [q for q in usable if q.id in kept]
     answered = set(QuizAnswer.objects.filter(user=user, question_id__in=[q.id for q in questions], is_archived=False).values_list("question_id", flat=True))

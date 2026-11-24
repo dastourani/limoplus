@@ -64,14 +64,14 @@
 
   {# ——— Backups ——— #}
   <div class="sv-pane p1">
-    <p class="hint">هر شب یک نسخه از دیتابیس و هر هفته عکس‌ها و فایل‌های تازه، خودکار
-      {% if bale_ready %}به گفت‌وگوی مدیر در بله فرستاده می‌شود.{% else %}ساخته می‌شود؛ <b>ربات بله هنوز تنظیم نشده</b>
-      (BALE_BOT_TOKEN و BALE_CHAT_ID)، پس فعلاً فقط نسخه‌ی دیتابیس روی همین سرور می‌ماند.{% endif %}</p>
+    <p class="hint">هر شب یک نسخه از دیتابیس و هر هفته عکس‌ها و فایل‌های تازه، خودکار ساخته می‌شود
+      (روش ارسال فعلی: <code>{{ backup_storage_mode }}</code>{% if object_storage_ready %} · فضای ابری S3 فعال{% endif %}{% if bale_ready %} · بله فعال{% endif %}).
+      {% if not storage_ready %}<b>مقصد ارسال بیرونی (بله یا S3) هنوز تنظیم نشده</b>، پس فعلاً فقط نسخه‌ی دیتابیس روی همین سرور می‌ماند.{% endif %}</p>
     {% if can_run %}
     <div class="sv-actions">
       <form method="post" action="backup-now/">{% csrf_token %}
         <button class="button default" type="submit">پشتیبان همین حالا</button>
-        {% if bale_ready %}<label style="margin-inline-start:8px"><input type="checkbox" name="media" value="1"> عکس‌ها هم</label>{% endif %}
+        {% if storage_ready %}<label style="margin-inline-start:8px"><input type="checkbox" name="media" value="1"> عکس‌ها هم</label>{% endif %}
       </form>
       {% if bale_ready %}<form method="post" action="test-bale/">{% csrf_token %}<button class="button" type="submit">آزمایش بله</button></form>{% endif %}
     </div>
@@ -79,7 +79,7 @@
     <table>
       <tr><th>زمان</th><th>نوع</th><th>نتیجه</th><th>حجم</th><th>توضیح</th></tr>
       {% for b in backups %}<tr><td>{{ b.at }}</td><td>{{ b.kind }}</td>
-        <td>{% if b.ok %}<span class="sv-ok">✓</span>{% if b.sent %} در بله{% endif %}{% else %}<span class="sv-no">✗</span>{% endif %}</td>
+        <td>{% if b.ok %}<span class="sv-ok">✓</span>{% if b.sent %} ارسال‌شده{% endif %}{% else %}<span class="sv-no">✗</span>{% endif %}</td>
         <td>{{ b.size|filesizeformat }}</td><td>{{ b.note }}</td></tr>
       {% empty %}<tr><td colspan="5">هنوز پشتیبانی گرفته نشده است.</td></tr>{% endfor %}
     </table>
@@ -106,7 +106,7 @@
 
       <h4>از یک فایل</h4>
       <p class="hint">یک <b>zip</b> با <code>db.sqlite3</code> و/یا پوشه‌ی <code>media</code> (از لپ‌تاپ: هر دو را از پوشه‌ی backend با هم zip کنید)،
-        یا پشتیبان دیتابیس از بله (<code>.sqlite3.gz</code>)، یا پشتیبان عکس‌ها از بله (<code>.zip</code>).
+        یا پشتیبان دیتابیس (<code>.dump</code> برای PostgreSQL، <code>.sql.gz</code>، <code>.json.gz</code> یا <code>.sqlite3.gz</code>)، یا پشتیبان عکس‌ها (<code>.zip</code>).
         پشتیبان بزرگ دیتابیس در بله چند تکه است (<code>…part1of3</code>): تکه‌ها را یکی‌یکی، به هر ترتیبی، بارگذاری کنید؛ با رسیدن تکه‌ی آخر بازگردانی انجام می‌شود.</p>
       <form method="post" action="restore/" enctype="multipart/form-data" class="sv-actions">{% csrf_token %}
         <input type="file" name="file" required>

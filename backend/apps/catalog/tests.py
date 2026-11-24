@@ -556,6 +556,96 @@ class ChapterCountsTests(TestCase):
         from_node = self.client.get(f"/api/v1/nodes/{chapter.id}/").data
         self.assertEqual(from_book["question_count"], from_node["question_count"])
         self.assertEqual(from_book["flashcard_count"], from_node["flashcard_count"])
+        self.assertEqual(from_node["intro"]["questions"], from_node["question_count"])
+        self.assertEqual(from_node["intro"]["flashcards"], from_node["flashcard_count"])
+
+    def test_chapter_intro_and_node_counts_exclude_locked_and_unpublished_sections(self):
+        book = ContentNode.add_root(title="کتاب", kind=ContentNode.Kind.BOOK, slug="mix-book", is_published=True)
+        chapter = book.add_child(title="فصل", kind=ContentNode.Kind.CHAPTER, slug="mix-ch", is_published=True, is_free=True)
+        sec_open = chapter.add_child(title="بخش آزاد", kind=ContentNode.Kind.SECTION, slug="mix-s1", is_published=True, is_free=True)
+        sec_paid = chapter.add_child(title="بخش قفل", kind=ContentNode.Kind.SECTION, slug="mix-s2", is_published=True, is_free=False)
+        sec_draft = chapter.add_child(title="بخش پیش‌نویس", kind=ContentNode.Kind.SECTION, slug="mix-s3", is_published=False, is_free=True)
+        # Note: AccessMap inherits `free` from ancestors (`chapter.is_free=True` makes descendants free too).
+        # To test a locked section inside a readable chapter, make chapter paid with an unpublished/paid child
+        # after granting a free chapter or checking unpublished exclusion, OR make chapter paid? Wait:
+        # if chapter is free, `AccessMap` treats `any(n.path.startswith(f) for f in free)` as free.
+        # So test unpublished exclusion here (`sec_draft` is invisible even when chapter is free!),
+        # and also test `AccessMap.usable` directly when chapter is paid (`sec_open.is_free=True`, `sec_paid.is_free=False`).
+        Question.objects.create(node=sec_open, stem="s1")
+        Question.objects.create(node=sec_draft, stem="s3")
+        Flashcard.objects.create(node=sec_open, title="f1", point="p1")
+        Flashcard.objects.create(node=sec_draft, title="f3", point="p3")
+
+        data = self.client.get(f"/api/v1/nodes/{chapter.id}/").data
+        self.assertEqual(data["question_count"], 1)
+        self.assertEqual(data["flashcard_count"], 1)
+        self.assertEqual(data["intro"]["questions"], 1)
+        self.assertEqual(data["intro"]["flashcards"], 1)
+
+        # Now make the chapter paid so `sec_open` is free while `sec_paid` is locked.
+        chapter.is_free = False
+        chapter.save(update_fields=["is_free"])
+        q_paid = Question.objects.create(node=sec_paid, stem="s2", slug="s2-paid")
+        q_paid_free_item = Question.objects.create(node=sec_paid, stem="s2-free", slug="s2-free", is_free=True)
+        from django.contrib.auth.models import AnonymousUser
+
+        from .access import AccessMap
+
+        am = AccessMap(AnonymousUser(), chapter)
+        self.assertTrue(am.usable(Question.objects.get(node=sec_open)))
+        self.assertFalse(am.usable(q_paid))
+        self.assertTrue(am.usable(q_paid_free_item))
+        self.assertFalse(am.usable(Question.objects.get(node=sec_draft)))
+
+
+class AccessCoverageHelperTests(TestCase):
+    def test_owns_book_and_access_until_with_majors_all_majors_and_editor(self):
+        from datetime import timedelta
+
+        from django.contrib.auth.models import Group
+        from django.utils import timezone
+
+        from apps.accounts.models import User
+        from apps.commerce.models import Entitlement
+
+        from .access import BOOK_EDITOR_GROUP, access_until, owns_book
+        from .models import BookEditor, Major
+
+        major = Major.objects.create(name="ریاضی", slug="math-cov")
+        other_major = Major.objects.create(name="تجربی", slug="bio-cov")
+        book_with_major = ContentNode.add_root(title="کتاب با رشته", kind=ContentNode.Kind.BOOK, slug="book-maj", is_published=True)
+        book_with_major.majors.add(major)
+        book_no_major = ContentNode.add_root(title="کتاب بی‌رشته", kind=ContentNode.Kind.BOOK, slug="book-nomaj", is_published=True)
+
+        user = User.objects.create_user("09128887766")
+        self.assertFalse(owns_book(user, book_no_major))
+        self.assertIsNone(access_until(user, book_no_major))
+
+        # Unrelated major does not cover
+        Entitlement.objects.create(user=user, major=other_major, ends_at=timezone.now() + timedelta(days=5))
+        self.assertFalse(owns_book(user, book_with_major))
+        self.assertFalse(owns_book(user, book_no_major))
+
+        # Matching major covers book_with_major until ends_at
+        end_major = timezone.now() + timedelta(days=10)
+        Entitlement.objects.create(user=user, major=major, ends_at=end_major)
+        self.assertTrue(owns_book(user, book_with_major))
+        self.assertEqual(access_until(user, book_with_major), end_major)
+        self.assertFalse(owns_book(user, book_no_major))
+
+        # all_majors covers book_no_major too
+        end_all = timezone.now() + timedelta(days=20)
+        Entitlement.objects.create(user=user, all_majors=True, ends_at=end_all)
+        self.assertTrue(owns_book(user, book_no_major))
+        self.assertEqual(access_until(user, book_no_major), end_all)
+
+        # Book teacher with edit permission has permanent editor access (`access_until` is None)
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        teacher = User.objects.create_user("09128887755", is_staff=True)
+        teacher.groups.add(group)
+        BookEditor.objects.create(user=teacher, book=book_no_major, can_edit_content=True)
+        Entitlement.objects.create(user=teacher, all_majors=True, ends_at=end_all)
+        self.assertIsNone(access_until(teacher, book_no_major))
 
 
 class TeacherProfileAndReviewTests(TestCase):

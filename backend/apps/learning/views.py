@@ -20,7 +20,7 @@ LOCKED = {"code": "locked", "message": "این مورد در نسخه‌ی کا�
 
 def _usable(access, item):
     """A question or flashcard is usable if its node is visible and it is free or its node is readable."""
-    return access.visible(item.node_id) and (item.is_free or access.readable(item.node_id))
+    return access.usable(item)
 
 
 def _share_place(access, q) -> dict:

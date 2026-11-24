@@ -1,9 +1,12 @@
+import gzip
 import io
+import json
 import os
 import shutil
 import sqlite3
 import tempfile
 import zipfile
+from datetime import datetime, timezone as dt_tz
 from pathlib import Path
 from unittest import mock
 
@@ -25,6 +28,9 @@ class BackupTests(TestCase):
         (self.media / "apk").mkdir()
         (self.media / "content" / "b" / "a.png").write_bytes(b"png")
         (self.media / "apk" / "x.apk").write_bytes(b"apk")
+        self.bale_patch = mock.patch.object(backups, "_bale", return_value=None)
+        self.mock_bale = self.bale_patch.start()
+        self.addCleanup(self.bale_patch.stop)
         self.override = override_settings(MEDIA_ROOT=str(self.media), BACKUP_DIR=str(self.tmp / "backups"), BALE_BOT_TOKEN="t", BALE_CHAT_ID="1")
         self.override.enable()
         self.addCleanup(self.override.disable)
@@ -178,3 +184,179 @@ class SplitBackupTests(BackupTests):
         self.assertEqual(done["waiting"], [1])
         with self.assertRaises(backups.RestoreError):
             backups.restore_upload(SimpleUploadedFile("limookhan-db-x.sqlite3.gz.part5of3", b"b"))
+
+
+class PostgresAndStorageModeTests(BackupTests):
+    def test_safe_redacts_s3_secrets(self):
+        with override_settings(BACKUP_S3_ACCESS_KEY="AK_TEST_KEY", BACKUP_S3_SECRET_KEY="SK_SUPER_SECRET"):
+            cleaned = backups._safe(RuntimeError("upload AK_TEST_KEY with SK_SUPER_SECRET failed"))
+        self.assertNotIn("AK_TEST_KEY", cleaned)
+        self.assertNotIn("SK_SUPER_SECRET", cleaned)
+        self.assertIn("***", cleaned)
+
+    def test_pg_dump_backup_and_pg_restore_upload(self):
+        pg_settings = {
+            "NAME": "limo_db",
+            "USER": "limo_user",
+            "PASSWORD": "pg-secret-password",
+            "HOST": "db.internal",
+            "PORT": "5432",
+            "OPTIONS": {"sslmode": "require"},
+        }
+
+        def fake_run(cmd, env=None, capture_output=True, text=True, check=False):
+            if cmd[0] == "pg_dump":
+                out_file = Path(cmd[cmd.index("--file") + 1])
+                out_file.write_bytes(b"PGDMP-custom-backup-payload")
+                self.assertEqual(env["PGPASSWORD"], "pg-secret-password")
+                self.assertEqual(env["PGSSLMODE"], "require")
+                self.assertIn("--format=custom", cmd)
+                self.assertIn("--no-owner", cmd)
+                self.assertIn("--no-privileges", cmd)
+            elif cmd[0] == "pg_restore":
+                self.assertIn("--clean", cmd)
+                self.assertIn("--if-exists", cmd)
+                self.assertIn("--single-transaction", cmd)
+                self.assertEqual(env["PGPASSWORD"], "pg-secret-password")
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(backups.connection, "vendor", "postgresql"), \
+                mock.patch.object(backups.connection, "settings_dict", pg_settings), \
+                mock.patch.object(backups.shutil, "which", return_value="/usr/bin/pg_dump"), \
+                mock.patch.object(backups.subprocess, "run", side_effect=fake_run), \
+                mock.patch.object(backups.connections, "close_all"), \
+                mock.patch("django.core.management.call_command") as mock_cmd:
+            run = backups.backup_database(send=True)
+            self.assertTrue(run.ok and run.sent)
+            self.assertTrue(run.files[0].endswith(".dump"))
+            dump_path = backups.backup_dir() / run.files[0]
+            self.assertTrue(dump_path.exists())
+
+            done = backups.restore_upload(SimpleUploadedFile(dump_path.name, dump_path.read_bytes()))
+            self.assertTrue(done["db"])
+            self.assertTrue(done["aside"].endswith(".dump"))
+            mock_cmd.assert_called_once_with("migrate", interactive=False, verbosity=0)
+
+        with mock.patch.object(backups.connection, "vendor", "postgresql"), \
+                mock.patch.object(backups.shutil, "which", return_value="/usr/bin/pg_restore"):
+            with self.assertRaises(backups.RestoreError):
+                backups.restore_upload(SimpleUploadedFile("bad.dump", b"NOT_A_DUMP"))
+
+    def test_postgres_dumpdata_fallback_uses_repeatable_read_when_pg_dump_missing(self):
+        executed = []
+        real_cursor = backups.connection.cursor
+
+        class FakeCursor:
+            def __init__(self):
+                self._inner = real_cursor()
+
+            def __enter__(self):
+                self._inner.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self._inner.__exit__(*args)
+
+            def execute(self, sql, params=None):
+                executed.append(sql)
+                if sql.startswith("SET TRANSACTION ISOLATION LEVEL"):
+                    return None
+                return self._inner.execute(sql, params) if params is not None else self._inner.execute(sql)
+
+            def __getattr__(self, name):
+                return getattr(self._inner, name)
+
+        def fake_call(cmd, *args, stdout=None, **kwargs):
+            if cmd == "dumpdata":
+                stdout.write('[{"model": "catalog.book", "pk": 1, "fields": {}}]')
+
+        with mock.patch.object(backups.connection, "vendor", "postgresql"), \
+                mock.patch.object(backups.connection, "in_atomic_block", False), \
+                mock.patch.object(backups.connection, "cursor", side_effect=FakeCursor), \
+                mock.patch.object(backups.transaction, "atomic", return_value=mock.MagicMock()), \
+                mock.patch.object(backups.shutil, "which", return_value=None), \
+                mock.patch("django.core.management.call_command", side_effect=fake_call):
+            run = backups.backup_database(send=False)
+        self.assertTrue(run.ok)
+        self.assertTrue(run.files[0].endswith(".json.gz"))
+        self.assertIn("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY", executed)
+
+    def test_multipart_dump_and_json_gz_restore(self):
+        payload = b"PGDMP" + (b"0123456789" * 50)
+        mid = len(payload) // 2
+        with mock.patch.object(backups.connection, "vendor", "postgresql"), \
+                mock.patch.object(backups.shutil, "which", return_value="/usr/bin/pg_restore"), \
+                mock.patch.object(backups.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="", stderr="")), \
+                mock.patch.object(backups.connections, "close_all"), \
+                mock.patch("django.core.management.call_command"):
+            first = backups.restore_upload(SimpleUploadedFile("limookhan-db-20261124-0300.dump.part2of2", payload[mid:]))
+            self.assertEqual(first["waiting"], [1])
+            done = backups.restore_upload(SimpleUploadedFile("limookhan-db-20261124-0300.dump.part1of2", payload[:mid]))
+            self.assertTrue(done["db"])
+
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+            gz.write(json.dumps([{"model": "catalog.book", "pk": 1, "fields": {}}]).encode("utf-8"))
+        gz_bytes = buf.getvalue()
+        half = len(gz_bytes) // 2
+        with mock.patch.object(backups, "_db_copy", return_value=backups.backup_dir() / "before-restore-test.sqlite3"), \
+                mock.patch("django.core.management.call_command") as mock_cmd:
+            w = backups.restore_upload(SimpleUploadedFile("limookhan-db-20261124-0300.json.gz.part1of2", gz_bytes[:half]))
+            self.assertEqual(w["waiting"], [2])
+            done = backups.restore_upload(SimpleUploadedFile("limookhan-db-20261124-0300.json.gz.part2of2", gz_bytes[half:]))
+            self.assertTrue(done["db"])
+            called_cmds = [c.args[0] for c in mock_cmd.call_args_list]
+            self.assertEqual(called_cmds, ["flush", "loaddata", "migrate"])
+
+    def test_storage_mode_object_storage_and_both_and_pruning(self):
+        fake_s3 = mock.MagicMock()
+        fake_s3.list_objects_v2.return_value = {
+            "Contents": [
+                {"Key": "limo/db/limookhan-db-3.sqlite3.gz", "LastModified": datetime(2026, 11, 24, tzinfo=dt_tz.utc)},
+                {"Key": "limo/db/limookhan-db-2.sqlite3.gz", "LastModified": datetime(2026, 11, 23, tzinfo=dt_tz.utc)},
+                {"Key": "limo/db/limookhan-db-1.sqlite3.gz", "LastModified": datetime(2026, 11, 22, tzinfo=dt_tz.utc)},
+            ]
+        }
+
+        with override_settings(
+            BACKUP_STORAGE_MODE="object_storage",
+            BACKUP_S3_ENDPOINT="https://c123.parspack.net",
+            BACKUP_S3_BUCKET="limo-backups",
+            BACKUP_S3_ACCESS_KEY="ak",
+            BACKUP_S3_SECRET_KEY="sk",
+            BACKUP_S3_PREFIX="limo",
+            BACKUP_S3_KEEP=2,
+        ), mock.patch.object(backups, "_s3_client", return_value=fake_s3), mock.patch.object(backups, "send_file") as bale_send:
+            self.assertTrue(backups.storage_ready())
+            run = backups.backup_database(send=True)
+            self.assertTrue(run.ok and run.sent)
+            self.assertIn("S3: limo/db/", run.note)
+            bale_send.assert_not_called()
+            fake_s3.upload_file.assert_called_once()
+            fake_s3.delete_objects.assert_called_once_with(
+                Bucket="limo-backups",
+                Delete={"Objects": [{"Key": "limo/db/limookhan-db-1.sqlite3.gz"}]},
+            )
+
+        # object_storage without credentials fails closed
+        with override_settings(BACKUP_STORAGE_MODE="object_storage", BACKUP_S3_ENDPOINT="", BACKUP_S3_BUCKET=""):
+            self.assertFalse(backups.storage_ready())
+            with self.assertRaises(RuntimeError):
+                backups.deliver_backup(self.media / "content" / "b" / "a.png", kind="db", caption="x")
+
+        # both: uploads to S3 AND sends to Bale; partial failure still marks sent=True
+        fake_s3.reset_mock()
+        with override_settings(
+            BACKUP_STORAGE_MODE="both",
+            BACKUP_S3_ENDPOINT="https://c123.parspack.net",
+            BACKUP_S3_BUCKET="limo-backups",
+            BACKUP_S3_ACCESS_KEY="ak",
+            BACKUP_S3_SECRET_KEY="sk",
+        ), mock.patch.object(backups, "_s3_client", return_value=fake_s3), \
+                mock.patch.object(backups, "send_to_bale_in_chunks", side_effect=RuntimeError("bale down")):
+            res = backups.deliver_backup(self.media / "content" / "b" / "a.png", kind="db", caption="cap")
+            self.assertTrue(res["sent"])
+            self.assertTrue(res["sent_s3"])
+            self.assertFalse(res["sent_bale"])
+            self.assertIn("خطای جزئی", res["note"])
+

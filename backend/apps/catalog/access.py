@@ -81,16 +81,24 @@ def acts_as_staff(user) -> bool:
     )
 
 
+def book_coverage_q(book: ContentNode):
+    """Query filter matching any Entitlement that covers `book` (direct, major-scoped, or all-majors)."""
+    from django.db.models import Q
+
+    majors = list(book.majors.values_list("id", flat=True))
+    q = Q(book=book) | Q(all_majors=True)
+    if majors:
+        q |= Q(major_id__in=majors, book__isnull=True)
+    return q
+
+
 def owns_book(user, book: ContentNode) -> bool:
     """Bought the book, or has an active subscription covering it."""
     if not (user and user.is_authenticated):
         return False
-    from django.db.models import Q
-
     from apps.commerce.models import Entitlement
 
-    majors = list(book.majors.values_list("id", flat=True))
-    return Entitlement.active_for(user).filter(Q(book=book) | Q(all_majors=True) | Q(major_id__in=majors, book__isnull=True)).exists()
+    return Entitlement.active_for(user).filter(book_coverage_q(book)).exists()
 
 
 def active_rows(user) -> list[tuple]:
@@ -142,22 +150,21 @@ def access_kind(user, book: ContentNode) -> str | None:
 
 
 def access_until(user, book: ContentNode):
-    """When the user's paid access to the book ends: None if it never does (bought, staff) or there is none."""
-    if not (user and user.is_authenticated) or acts_as_staff(user):
+    """When the user's paid access to the book ends: None if it never does (bought, staff, editor) or there is none."""
+    if not (user and user.is_authenticated) or acts_as_staff(user) or _teacher_can_read_book(user, book.id):
         return None
-    from django.db.models import Max, Q
+    from django.db.models import Max
 
     from apps.commerce.models import Entitlement
 
-    covering = Entitlement.active_for(user).filter(Q(book=book) | Q(all_majors=True) | Q(major__in=book.majors.all(), book__isnull=True))
+    coverage_q = book_coverage_q(book)
+    covering = Entitlement.active_for(user).filter(coverage_q)
     if covering.filter(ends_at__isnull=True).exists():
         return None
     if not covering.exists():
         return None
     # Renewals already bought extend the access; so does a timed gift of this book.
-    return Entitlement.objects.filter(user=user, is_archived=False).filter(
-        Q(book=book) | Q(all_majors=True) | Q(major__in=book.majors.all(), book__isnull=True)
-    ).aggregate(end=Max("ends_at"))["end"]
+    return Entitlement.objects.filter(user=user, is_archived=False).filter(coverage_q).aggregate(end=Max("ends_at"))["end"]
 
 
 def book_of(node: ContentNode) -> ContentNode:
@@ -261,6 +268,13 @@ class AccessMap:
 
     def readable(self, node_id) -> bool:
         return self._readable.get(node_id, False)
+
+    def usable_node(self, node_id, is_free: bool = False) -> bool:
+        return self.visible(node_id) and (is_free or self.readable(node_id))
+
+    def usable(self, item) -> bool:
+        """True if the item's node is visible and the item is free or its node is readable."""
+        return self.usable_node(item.node_id, getattr(item, "is_free", False))
 
     def visible_ids_under(self, node: ContentNode) -> list[int]:
         return [n.id for n in self.nodes.values() if n.path.startswith(node.path) and self._visible[n.id]]

@@ -1416,7 +1416,15 @@ class StorageAdmin(admin.ModelAdmin):
                 f"{s['revisions']} نسخه‌ی قدیمی فصل، {s['images']} عکس بی‌استفاده.",
             )
             return redirect(request.path)
-        from .backups import bale_ready, disk, local_backups, next_db_backup
+        from .backups import (
+            bale_ready,
+            disk,
+            local_backups,
+            next_db_backup,
+            object_storage_ready,
+            storage_mode,
+            storage_ready,
+        )
         from .models import BackupRun
 
         report = storage_report()
@@ -1446,6 +1454,9 @@ class StorageAdmin(admin.ModelAdmin):
                 for b in BackupRun.objects.all()[:12]
             ],
             "bale_ready": bale_ready(),
+            "object_storage_ready": object_storage_ready(),
+            "storage_ready": storage_ready(),
+            "backup_storage_mode": storage_mode(),
             "disk": disk(),
             "local": [{**b, "at": jalali_datetime(b["at"])} for b in local_backups()[:12]],
             "next_backup": jalali_datetime(next_db_backup()),
@@ -1463,7 +1474,7 @@ class StorageAdmin(admin.ModelAdmin):
 
         site = self.admin_site.admin_view
         custom = [
-            path("backup-now/", site(self.backup_now), name="catalog_backup_now"),
+            path("backup-now/", transaction.non_atomic_requests(site(self.backup_now)), name="catalog_backup_now"),
             # Not inside the request's transaction: the database file itself is replaced.
             path("restore/", transaction.non_atomic_requests(site(self.restore)), name="catalog_restore"),
             path("restore-local/", transaction.non_atomic_requests(site(self.restore_local)), name="catalog_restore_local"),
@@ -1477,13 +1488,13 @@ class StorageAdmin(admin.ModelAdmin):
         from django.core.exceptions import PermissionDenied
         from django.shortcuts import redirect
 
-        from .backups import backup_database, backup_media, bale_ready
+        from .backups import backup_database, backup_media, storage_ready
 
         if request.method != "POST" or not request.user.is_superuser:
             raise PermissionDenied
         db = backup_database()
-        msg = "پشتیبان دیتابیس " + ("ساخته شد" if db.ok else f"ساخته نشد: {db.note}") + ("، و در بله فرستاده شد" if db.sent else "")
-        if request.POST.get("media") and bale_ready():
+        msg = "پشتیبان دیتابیس " + ("ساخته شد" if db.ok else f"ساخته نشد: {db.note}") + ("، و به مقصد ارسال شد" if db.sent else "")
+        if request.POST.get("media") and storage_ready():
             media = backup_media()
             msg += "؛ پشتیبان عکس‌ها " + (f"فرستاده شد ({media.note})" if media.sent else f"انجام نشد {media.note}")
         (messages.success if db.ok else messages.error)(request, msg + ".")

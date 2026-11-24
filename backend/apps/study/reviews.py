@@ -63,7 +63,7 @@ SYNC_EVERY = timedelta(minutes=10)
 
 
 def _usable(access, q) -> bool:
-    return access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))
+    return access.usable(q)
 
 
 def chapter_pool(access, chapter) -> list[Question]:

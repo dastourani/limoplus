@@ -29,7 +29,7 @@ def _err(message, code, http=status.HTTP_400_BAD_REQUEST):
 
 
 def _usable(access, item):
-    return access.visible(item.node_id) and (item.is_free or access.readable(item.node_id))
+    return access.usable(item)
 
 
 def _readable_node(request, node_id):

@@ -1,14 +1,17 @@
 """
 Backups of the real server, and putting one back.
 
-- The database every night: SQLite through its own backup API (a consistent copy while the app runs), PostgreSQL as
-  Django's `dumpdata` JSON; gzipped into BACKUP_DIR (the last KEEP_DB kept) and sent to the admin's chat in Bale.
-- Pictures and files (MEDIA_ROOT) once a week: only what changed since the last media backup, as zip parts small
-  enough for Bale. The APK folder and half-finished imports are left out.
-- Restore (panel «فضای سرور», superusers only): a .zip with db.sqlite3 and/or a media/ folder (e.g. from the laptop),
-  a database backup (.sqlite3 / .sqlite3.gz), or a weekly media zip. The current database is copied aside first,
-  the uploaded one is copied in with SQLite's backup API, then `migrate` brings an older copy up to date.
-  Pictures are added (never deleted), with every path checked to stay inside MEDIA_ROOT.
+- The database every night:
+  * SQLite: via SQLite's own online backup API, gzipped into BACKUP_DIR.
+  * PostgreSQL: via `pg_dump --format=custom` (consistent snapshot, `.dump`), falling back to `dumpdata` JSON inside
+    a `REPEATABLE READ READ ONLY` transaction when `pg_dump` is not installed.
+- Pictures and files (MEDIA_ROOT) once a week: only what changed since the last media backup, as zip parts.
+- Delivery destination (`BACKUP_STORAGE_MODE`):
+  * `bale_chunks` (default): send directly or in <=45 MB split parts to Bale.
+  * `object_storage`: upload to S3-compatible object storage (e.g. ParsPack / Arvan) with automatic pruning.
+  * `both`: upload to S3 object storage AND send to Bale.
+- Restore (panel «فضای سرور», superusers only): accepts `.sqlite3`, `.sqlite3.gz`, `.dump` (PostgreSQL `pg_restore`),
+  `.sql.gz`, `.json`/`.json.gz`, `.zip`, or split `.partXofY` chunks.
 
 `python manage.py nightly` runs what is due; `nightly --loop` (started by gunicorn.conf.py when NIGHTLY_JOBS is on)
 does so every hour in its own process.
@@ -17,11 +20,13 @@ does so every hour in its own process.
 from __future__ import annotations
 
 import gzip
+import json
 import logging
 import os
 import re
 import shutil
 import sqlite3
+import subprocess
 import tempfile
 import uuid
 import zipfile
@@ -30,7 +35,7 @@ from pathlib import Path
 
 import requests
 from django.conf import settings
-from django.db import connection
+from django.db import connection, connections, transaction
 from django.utils import timezone
 from django.utils._os import safe_join
 
@@ -44,6 +49,7 @@ NIGHT_HOURS = range(2, 7)  # Tehran time
 PART_LIMIT = 45 * 1024 * 1024  # under Bale's bot upload limit
 SKIP_MEDIA = ("apk/", "imports/")
 MAX_RESTORE_BYTES = 8 * 1024**3  # uncompressed total of one upload
+VALID_STORAGE_MODES = ("bale_chunks", "object_storage", "both")
 
 
 class RestoreError(Exception):
@@ -51,10 +57,15 @@ class RestoreError(Exception):
 
 
 def _safe(exc) -> str:
-    """An error's text without the Bale bot token (requests puts the whole URL in its messages)."""
+    """An error's text without secrets (Bale token or S3 secret key)."""
     text = str(exc)
-    if settings.BALE_BOT_TOKEN:
-        text = text.replace(settings.BALE_BOT_TOKEN, "***")
+    for secret in (
+        getattr(settings, "BALE_BOT_TOKEN", ""),
+        getattr(settings, "BACKUP_S3_SECRET_KEY", ""),
+        getattr(settings, "BACKUP_S3_ACCESS_KEY", ""),
+    ):
+        if secret:
+            text = text.replace(secret, "***")
     return text[:1000]
 
 
@@ -68,11 +79,34 @@ def _stamp(now=None) -> str:
     return timezone.localtime(now or timezone.now()).strftime("%Y%m%d-%H%M")
 
 
-# --- Bale ----------------------------------------------------------------------------------------------------------
+# --- Storage destinations (Bale & S3-compatible object storage) ---------------------------------------------------
+
+
+def storage_mode() -> str:
+    mode = str(getattr(settings, "BACKUP_STORAGE_MODE", "bale_chunks") or "bale_chunks").strip().lower()
+    return mode if mode in VALID_STORAGE_MODES else "bale_chunks"
 
 
 def bale_ready() -> bool:
     return bool(settings.BALE_BOT_TOKEN and settings.BALE_CHAT_ID)
+
+
+def object_storage_ready() -> bool:
+    return bool(
+        getattr(settings, "BACKUP_S3_ENDPOINT", "")
+        and getattr(settings, "BACKUP_S3_BUCKET", "")
+        and getattr(settings, "BACKUP_S3_ACCESS_KEY", "")
+        and getattr(settings, "BACKUP_S3_SECRET_KEY", "")
+    )
+
+
+def storage_ready() -> bool:
+    mode = storage_mode()
+    if mode == "object_storage":
+        return object_storage_ready()
+    if mode == "both":
+        return bale_ready() or object_storage_ready()
+    return bale_ready()
 
 
 def _bale(method: str, data: dict, files=None) -> None:
@@ -92,26 +126,171 @@ def send_text(text: str) -> None:
     _bale("sendMessage", {"chat_id": settings.BALE_CHAT_ID, "text": text})
 
 
-# --- Making backups ------------------------------------------------------------------------------------------------
+def send_to_bale_in_chunks(path: Path, caption: str) -> str:
+    """Send a backup file to Bale, splitting into <= PART_LIMIT pieces when necessary."""
+    if path.stat().st_size > PART_LIMIT:
+        pieces = split_file(path, PART_LIMIT)
+        try:
+            for i, piece in enumerate(pieces, 1):
+                send_file(
+                    piece,
+                    f"{caption}\nتکه‌ی {i} از {len(pieces)}: برای بازگردانی همه‌ی تکه‌ها را یکی‌یکی بارگذاری کنید.",
+                )
+        finally:
+            for piece in pieces:
+                piece.unlink(missing_ok=True)
+        return f"{len(pieces)} تکه در بله"
+    send_file(path, caption)
+    return ""
+
+
+def _s3_client():
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client(
+        "s3",
+        endpoint_url=settings.BACKUP_S3_ENDPOINT,
+        aws_access_key_id=settings.BACKUP_S3_ACCESS_KEY,
+        aws_secret_access_key=settings.BACKUP_S3_SECRET_KEY,
+        region_name=getattr(settings, "BACKUP_S3_REGION", "us-east-1") or "us-east-1",
+        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+    )
+
+
+def upload_to_object_storage(path: Path, kind: str) -> str:
+    """Upload a backup artifact to S3-compatible object storage (e.g. ParsPack) and prune older copies."""
+    if not object_storage_ready():
+        raise RuntimeError("تنظیمات فضای ابری S3 کامل نیست.")
+    client = _s3_client()
+    bucket = settings.BACKUP_S3_BUCKET
+    prefix = str(getattr(settings, "BACKUP_S3_PREFIX", "limoplus-backups") or "").strip("/")
+    folder_prefix = f"{prefix}/{kind}/" if prefix else f"{kind}/"
+    key = f"{folder_prefix}{path.name}"
+    client.upload_file(str(path), bucket, key)
+
+    keep = int(getattr(settings, "BACKUP_S3_KEEP", 30) or 0)
+    if keep > 0:
+        item_prefix = f"{folder_prefix}limookhan-{kind}-"
+        listed = client.list_objects_v2(Bucket=bucket, Prefix=item_prefix).get("Contents", [])
+        stale = sorted(listed, key=lambda o: o["LastModified"], reverse=True)[keep:]
+        if stale:
+            client.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": o["Key"]} for o in stale]})
+    return key
+
+
+def deliver_backup(path: Path, *, kind: str, caption: str) -> dict:
+    """Deliver a generated backup according to BACKUP_STORAGE_MODE (`bale_chunks` | `object_storage` | `both`)."""
+    mode = storage_mode()
+    sent_bale = False
+    sent_s3 = False
+    notes = []
+    errors = []
+
+    if mode in ("object_storage", "both"):
+        if object_storage_ready():
+            try:
+                key = upload_to_object_storage(path, kind)
+                sent_s3 = True
+                notes.append(f"S3: {key}")
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"S3: {_safe(exc)}")
+                log.error("object storage upload failed: %s", _safe(exc))
+        elif mode == "object_storage":
+            raise RuntimeError("حالت BACKUP_STORAGE_MODE=object_storage است ولی متغیرهای S3 تنظیم نشده‌اند.")
+
+    if mode in ("bale_chunks", "both") and bale_ready():
+        try:
+            chunk_note = send_to_bale_in_chunks(path, caption)
+            sent_bale = True
+            if chunk_note:
+                notes.append(chunk_note)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"بله: {_safe(exc)}")
+            log.error("bale backup delivery failed: %s", _safe(exc))
+
+    if errors and not (sent_bale or sent_s3):
+        raise RuntimeError("؛ ".join(errors))
+    if errors:
+        notes.append("خطای جزئی: " + "؛ ".join(errors))
+    return {"sent": sent_bale or sent_s3, "sent_bale": sent_bale, "sent_s3": sent_s3, "note": " · ".join(notes)}
+
+
+# --- Database helpers (SQLite + PostgreSQL pg_dump / pg_restore) ---------------------------------------------------
+
+
+def _pg_env_and_args() -> tuple[dict[str, str], list[str]]:
+    cfg = connection.settings_dict
+    env = os.environ.copy()
+    if cfg.get("PASSWORD"):
+        env["PGPASSWORD"] = str(cfg["PASSWORD"])
+    sslmode = (cfg.get("OPTIONS") or {}).get("sslmode")
+    if sslmode:
+        env["PGSSLMODE"] = str(sslmode)
+    args = []
+    if cfg.get("HOST"):
+        args += ["-h", str(cfg["HOST"])]
+    if cfg.get("PORT"):
+        args += ["-p", str(cfg["PORT"])]
+    if cfg.get("USER"):
+        args += ["-U", str(cfg["USER"])]
+    args += ["-d", str(cfg["NAME"])]
+    return env, args
 
 
 def _db_copy(target: Path) -> Path:
-    """A consistent copy of the database. SQLite: a .sqlite3 file; PostgreSQL: dumpdata JSON."""
+    """A consistent copy of the database. SQLite: .sqlite3; PostgreSQL: pg_dump custom .dump (or repeatable-read JSON)."""
     if connection.vendor == "sqlite":
-        source = sqlite3.connect(str(connection.settings_dict["NAME"]))
+        name = str(connection.settings_dict["NAME"])
+        in_memory = name == ":memory:" or "mode=memory" in name
         dest = sqlite3.connect(str(target))
+        if in_memory and connection.in_atomic_block:
+            connection.ensure_connection()
+            try:
+                dest.executescript("\n".join(connection.connection.iterdump()))
+            finally:
+                dest.close()
+            return target
+        if in_memory:
+            connection.ensure_connection()
+            source = connection.connection
+        else:
+            source = sqlite3.connect(name, uri=name.startswith("file:"), timeout=30)
         try:
             source.backup(dest)
         finally:
             dest.close()
-            source.close()
+            if not in_memory:
+                source.close()
         return target
+
+    if connection.vendor == "postgresql" and shutil.which("pg_dump"):
+        dump_path = target.with_suffix(".dump")
+        env, conn_args = _pg_env_and_args()
+        proc = subprocess.run(
+            ["pg_dump", "--format=custom", "--compress=6", "--no-owner", "--no-privileges", *conn_args, "--file", str(dump_path)],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            dump_path.unlink(missing_ok=True)
+            raise RuntimeError(f"pg_dump failed: {(proc.stderr or proc.stdout).strip()}")
+        return dump_path
+
     from django.core.management import call_command
 
-    target = target.with_suffix(".json")
-    with open(target, "w", encoding="utf-8") as out:
-        call_command("dumpdata", "--natural-foreign", "--exclude=contenttypes", "--exclude=auth.permission", stdout=out)
-    return target
+    json_path = target.with_suffix(".json")
+    with open(json_path, "w", encoding="utf-8") as out:
+        if connection.vendor == "postgresql" and not connection.in_atomic_block:
+            with transaction.atomic():
+                with connection.cursor() as cur:
+                    cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                call_command("dumpdata", "--natural-foreign", "--exclude=contenttypes", "--exclude=auth.permission", stdout=out)
+        else:
+            call_command("dumpdata", "--natural-foreign", "--exclude=contenttypes", "--exclude=auth.permission", stdout=out)
+    return json_path
 
 
 def backup_database(send=True):
@@ -121,29 +300,23 @@ def backup_database(send=True):
     folder = backup_dir()
     try:
         raw = _db_copy(folder / f"limookhan-db-{_stamp()}.sqlite3")
-        packed = raw.with_name(raw.name + ".gz")
-        try:
-            with open(raw, "rb") as src, gzip.open(packed, "wb", compresslevel=6) as dst:
-                shutil.copyfileobj(src, dst)
-        finally:
-            raw.unlink(missing_ok=True)
+        if raw.suffix == ".dump":
+            packed = raw
+        else:
+            packed = raw.with_name(raw.name + ".gz")
+            try:
+                with open(raw, "rb") as src, gzip.open(packed, "wb", compresslevel=6) as dst:
+                    shutil.copyfileobj(src, dst)
+            finally:
+                raw.unlink(missing_ok=True)
         run.files, run.size, run.ok = [packed.name], packed.stat().st_size, True
         _prune(folder, "limookhan-db-", KEEP_DB)
-        if send and bale_ready():
+        if send and storage_ready():
             caption = f"🗄 پشتیبان دیتابیس لیموخوان\n{_stamp()}\nاطلاعات کاربران در آن است؛ جای دیگری نفرستید."
-            if run.size > PART_LIMIT:
-                # Bigger than Bale takes: sent in pieces; «بازگردانی» in the panel takes the pieces one by one and joins them.
-                pieces = split_file(packed, PART_LIMIT)
-                try:
-                    for i, piece in enumerate(pieces, 1):
-                        send_file(piece, f"{caption}\nتکه‌ی {i} از {len(pieces)}: برای بازگردانی همه‌ی تکه‌ها را یکی‌یکی بارگذاری کنید.")
-                finally:
-                    for piece in pieces:
-                        piece.unlink(missing_ok=True)
-                run.note = f"{len(pieces)} تکه"
-            else:
-                send_file(packed, caption)
-            run.sent = True
+            delivery = deliver_backup(packed, kind="db", caption=caption)
+            run.sent = delivery["sent"]
+            if delivery["note"]:
+                run.note = delivery["note"]
     except Exception as exc:  # noqa: BLE001 — recorded and reported, never silent
         log.error("database backup failed: %s: %s", type(exc).__name__, _safe(exc))
         run.note = _safe(exc)
@@ -152,11 +325,13 @@ def backup_database(send=True):
     return run
 
 
-PIECE = re.compile(r"^(?P<base>.+\.sqlite3\.gz)\.part(?P<n>\d{1,3})of(?P<m>\d{1,3})$")
+PIECE = re.compile(
+    r"^(?P<base>.+\.(?:sqlite3\.gz|dump|sql\.gz|json\.gz))\.part(?P<n>\d{1,3})of(?P<m>\d{1,3})$"
+)
 
 
 def split_file(path: Path, size: int) -> list[Path]:
-    """`name.sqlite3.gz.part1of3`, … : plain byte pieces of the file, next to it."""
+    """`name.<ext>.part1of3`, … : plain byte pieces of the file, next to it."""
     total = path.stat().st_size
     count = max(1, -(-total // size))
     pieces = []
@@ -219,16 +394,31 @@ def backup_media(send=True):
         run.size = sum(p.stat().st_size for p in parts)
         run.ok = True
         run.note = f"{len(files)} فایل" + ("" if since else " (اولین پشتیبان: همه‌ی فایل‌ها)")
-        if send and bale_ready() and parts:
+        if send and storage_ready() and parts:
+            mode = storage_mode()
+            use_s3 = mode in ("object_storage", "both") and object_storage_ready()
+            use_bale = mode in ("bale_chunks", "both") and bale_ready()
             kept = []
+            delivered = 0
             for i, p in enumerate(parts, 1):
-                if p.stat().st_size > PART_LIMIT + 5 * 1024 * 1024:  # one file bigger than a part: it stays here
-                    send_text(f"⚠️ بخش {i} پشتیبان عکس‌ها برای بله بزرگ است؛ روی سرور در پوشه‌ی backups مانده: {p.name}")
-                    kept.append(p.name)
-                    continue
-                send_file(p, f"🖼 پشتیبان عکس‌ها و فایل‌های لیموخوان\n{_stamp()} — بخش {i} از {len(parts)}")
-                p.unlink(missing_ok=True)  # sent: the disk holds the media themselves anyway
-            run.sent = not kept
+                part_sent_s3 = False
+                part_sent_bale = False
+                if use_s3:
+                    upload_to_object_storage(p, "media")
+                    part_sent_s3 = True
+                if use_bale:
+                    if p.stat().st_size > PART_LIMIT + 5 * 1024 * 1024:  # one file bigger than a part: it stays here if not in S3
+                        if not part_sent_s3:
+                            send_text(f"⚠️ بخش {i} پشتیبان عکس‌ها برای بله بزرگ است؛ روی سرور در پوشه‌ی backups مانده: {p.name}")
+                            kept.append(p.name)
+                    else:
+                        send_file(p, f"🖼 پشتیبان عکس‌ها و فایل‌های لیموخوان\n{_stamp()} — بخش {i} از {len(parts)}")
+                        part_sent_bale = True
+                if part_sent_s3 or part_sent_bale:
+                    delivered += 1
+                if p.name not in kept:
+                    p.unlink(missing_ok=True)
+            run.sent = delivered == len(parts) and not kept
             if kept:
                 run.note += f"؛ روی سرور مانده: {', '.join(kept)}"
         _prune(folder, "limookhan-media-", 20)
@@ -275,15 +465,39 @@ def local_backup_path(name: str) -> Path:
     raise RestoreError("این پشتیبان روی سرور پیدا نشد.")
 
 
+def _decompress_gz(source: Path, dest: Path) -> Path:
+    room = min(MAX_RESTORE_BYTES, int(shutil.disk_usage(backup_dir()).free * 0.8))
+    try:
+        with gzip.open(source, "rb") as src, open(dest, "wb") as dst:
+            while chunk := src.read(1024 * 1024):
+                dst.write(chunk)
+                if dst.tell() > room:
+                    raise RestoreError("فایل بازشده بیش از حد بزرگ است یا جای دیسک کافی نیست.")
+    except RestoreError:
+        raise
+    except (OSError, EOFError) as exc:
+        raise RestoreError("فایل gz خراب است.") from exc
+    return dest
+
+
 def restore_local(name: str) -> str:
     path = local_backup_path(name)
+    lower = path.name.lower()
     with tempfile.TemporaryDirectory(dir=backup_dir()) as tmp:
-        db = Path(tmp) / "db.sqlite3"
-        if path.name.endswith(".gz"):
-            with gzip.open(path, "rb") as src, open(db, "wb") as dst:
-                shutil.copyfileobj(src, dst, 1024 * 1024)
-        else:
-            shutil.copyfile(path, db)
+        tmp_dir = Path(tmp)
+        if lower.endswith(".dump"):
+            return _restore_postgres_dump(path)
+        if lower.endswith(".sql.gz"):
+            return _restore_sql_file(_decompress_gz(path, tmp_dir / "backup.sql"))
+        if lower.endswith(".json.gz"):
+            return _restore_json_file(_decompress_gz(path, tmp_dir / "backup.json"))
+        if lower.endswith(".json"):
+            return _restore_json_file(path)
+        if lower.endswith(".gz"):
+            db = _decompress_gz(path, tmp_dir / "db.sqlite3")
+            return _restore_db(db)
+        db = tmp_dir / "db.sqlite3"
+        shutil.copyfile(path, db)
         return _restore_db(db)
 
 
@@ -342,9 +556,9 @@ def run_due(now=None, force=False) -> list[str]:
     if force or age is None or age > DB_LATE or (age > DB_EVERY and night):
         backup_database()
         done.append("db")
-    # Media live on this same disk; a copy here adds nothing, so they are only backed up when they can go to Bale.
+    # Media live on this same disk; a copy here adds nothing, so they are only backed up when an external storage is ready.
     last_media = BackupRun.objects.filter(kind=BackupRun.Kind.MEDIA, ok=True).order_by("-at").first()
-    if bale_ready() and (force or last_media is None or (now - last_media.at > MEDIA_EVERY and night)):
+    if storage_ready() and (force or last_media is None or (now - last_media.at > MEDIA_EVERY and night)):
         backup_media()
         done.append("media")
     try:
@@ -430,7 +644,7 @@ def _match_page_size(path: Path, live: str) -> None:
 
 def _restore_db(path: Path) -> str:
     if connection.vendor != "sqlite":
-        raise RestoreError("بازگردانی دیتابیس از این صفحه فقط برای SQLite است.")
+        raise RestoreError("فایل .sqlite3 فقط روی دیتابیس SQLite قابل بازگردانی است؛ برای PostgreSQL فایل .dump یا .json.gz بارگذاری کنید.")
     _check_sqlite(path)
     live = str(connection.settings_dict["NAME"])
     aside = backup_dir() / f"before-restore-{timezone.localtime().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.sqlite3"
@@ -463,6 +677,97 @@ def _restore_db(path: Path) -> str:
     return aside.name
 
 
+def _pg_safety_copy() -> Path:
+    """Create a safety pg_dump snapshot before replacing the PostgreSQL database."""
+    aside = backup_dir() / f"before-restore-{timezone.localtime().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.dump"
+    return _db_copy(aside)
+
+
+def _restore_postgres_dump(path: Path) -> str:
+    if connection.vendor != "postgresql":
+        raise RestoreError("فایل .dump فقط روی دیتابیس PostgreSQL قابل بازگردانی است.")
+    if not shutil.which("pg_restore"):
+        raise RestoreError("ابزار pg_restore روی سرور نصب نیست.")
+    with open(path, "rb") as f:
+        if f.read(5) != b"PGDMP":
+            raise RestoreError("این فایل پشتیبان معتبر pg_dump نیست.")
+
+    aside = _pg_safety_copy()
+    env, conn_args = _pg_env_and_args()
+    connections.close_all()
+    proc = subprocess.run(
+        ["pg_restore", "--clean", "--if-exists", "--no-owner", "--no-privileges", "--single-transaction", *conn_args, str(path)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RestoreError(
+            f"بازگردانی pg_restore ناموفق بود ({(proc.stderr or proc.stdout).strip()[:300]}). نسخه‌ی قبلی در backups/{aside.name} است."
+        )
+    from django.core.management import call_command
+
+    try:
+        call_command("migrate", interactive=False, verbosity=0)
+    except Exception as exc:  # noqa: BLE001
+        raise RestoreError(f"دیتابیس بازگردانی شد ولی migrate خطا داد ({exc}). نسخه‌ی قبلی در backups/{aside.name} است.") from exc
+    _prune(backup_dir(), "before-restore-", 10)
+    return aside.name
+
+
+def _restore_sql_file(path: Path) -> str:
+    if connection.vendor != "postgresql":
+        raise RestoreError("فایل .sql.gz فقط روی دیتابیس PostgreSQL قابل بازگردانی است.")
+    if not shutil.which("psql"):
+        raise RestoreError("ابزار psql روی سرور نصب نیست.")
+    aside = _pg_safety_copy()
+    env, conn_args = _pg_env_and_args()
+    connections.close_all()
+    proc = subprocess.run(
+        ["psql", "-v", "ON_ERROR_STOP=1", "--single-transaction", *conn_args, "-f", str(path)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RestoreError(
+            f"بازگردانی SQL ناموفق بود ({(proc.stderr or proc.stdout).strip()[:300]}). نسخه‌ی قبلی در backups/{aside.name} است."
+        )
+    from django.core.management import call_command
+
+    try:
+        call_command("migrate", interactive=False, verbosity=0)
+    except Exception as exc:  # noqa: BLE001
+        raise RestoreError(f"دیتابیس بازگردانی شد ولی migrate خطا داد ({exc}). نسخه‌ی قبلی در backups/{aside.name} است.") from exc
+    _prune(backup_dir(), "before-restore-", 10)
+    return aside.name
+
+
+def _restore_json_file(path: Path) -> str:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RestoreError("فایل JSON پشتیبان معتبر نیست.") from exc
+    if not isinstance(payload, list):
+        raise RestoreError("ساختار فایل JSON پشتیبان معتبر نیست.")
+
+    aside = _db_copy(backup_dir() / f"before-restore-{timezone.localtime().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.sqlite3")
+    from django.core.management import call_command
+
+    try:
+        with transaction.atomic():
+            call_command("flush", interactive=False, verbosity=0)
+            call_command("loaddata", str(path), verbosity=0)
+        call_command("migrate", interactive=False, verbosity=0)
+    except Exception as exc:  # noqa: BLE001
+        raise RestoreError(f"بازگردانی JSON ناموفق بود ({exc}). نسخه‌ی قبلی در backups/{aside.name} است.") from exc
+    _prune(backup_dir(), "before-restore-", 10)
+    return aside.name
+
+
 def _media_target(name: str) -> str | None:
     """The path inside MEDIA_ROOT for a zip entry under media/ (or backend/media/), else None."""
     name = name.replace("\\", "/").lstrip("/")
@@ -480,7 +785,7 @@ def _is_db_name(name: str) -> bool:
 
 
 def _take_piece(uploaded, match) -> Path | None:
-    """Keeps one piece of a split database backup in backups/incoming/<name>/. Returns the joined .gz once every
+    """Keeps one piece of a split database backup in backups/incoming/<name>/. Returns the joined archive once every
     piece is there (the pieces are then removed), else None."""
     base, n, m = match["base"], int(match["n"]), int(match["m"])
     if not 1 <= n <= m <= 200 or "/" in base or "\\" in base or base.startswith("."):
@@ -530,8 +835,8 @@ class _Joined:
 
 def restore_upload(uploaded) -> dict:
     """Puts an uploaded backup back. Returns what was done; raises RestoreError with a message for the panel.
-    A piece of a split database backup (…sqlite3.gz.part2of3) is kept until all pieces are there; meanwhile the
-    result says which are still missing («waiting»)."""
+    A piece of a split database backup (…sqlite3.gz.part2of3 / …dump.part2of3) is kept until all pieces are there;
+    meanwhile the result says which are still missing («waiting»)."""
     match = PIECE.match(uploaded.name.rsplit("/", 1)[-1].lower())
     if match:
         joined = _take_piece(uploaded, match)
@@ -547,22 +852,27 @@ def restore_upload(uploaded) -> dict:
     result = {"db": False, "media": 0, "aside": ""}
     name = uploaded.name.lower()
     with tempfile.TemporaryDirectory(dir=backup_dir()) as tmp:
-        tmp = Path(tmp)
-        raw = tmp / "upload"
+        tmp_dir = Path(tmp)
+        raw = tmp_dir / "upload"
         with open(raw, "wb") as out:
             for chunk in uploaded.chunks():
                 out.write(chunk)
-        if name.endswith(".gz"):
-            db = tmp / "db.sqlite3"
-            room = min(MAX_RESTORE_BYTES, int(shutil.disk_usage(backup_dir()).free * 0.8))
-            try:
-                with gzip.open(raw, "rb") as src, open(db, "wb") as dst:
-                    while chunk := src.read(1024 * 1024):
-                        dst.write(chunk)
-                        if dst.tell() > room:
-                            raise RestoreError("فایل بازشده بیش از حد بزرگ است یا جای دیسک کافی نیست.")
-            except (OSError, EOFError) as exc:
-                raise RestoreError("فایل gz خراب است.") from exc
+        if name.endswith(".dump"):
+            result["aside"] = _restore_postgres_dump(raw)
+            result["db"] = True
+        elif name.endswith(".sql.gz"):
+            sql_file = _decompress_gz(raw, tmp_dir / "backup.sql")
+            result["aside"] = _restore_sql_file(sql_file)
+            result["db"] = True
+        elif name.endswith(".json.gz"):
+            json_file = _decompress_gz(raw, tmp_dir / "backup.json")
+            result["aside"] = _restore_json_file(json_file)
+            result["db"] = True
+        elif name.endswith(".json"):
+            result["aside"] = _restore_json_file(raw)
+            result["db"] = True
+        elif name.endswith(".gz"):
+            db = _decompress_gz(raw, tmp_dir / "db.sqlite3")
             result["aside"] = _restore_db(db)
             result["db"] = True
         elif name.endswith(".sqlite3"):
@@ -587,7 +897,7 @@ def restore_upload(uploaded) -> dict:
                     raise RestoreError("در zip بیش از یک فایل دیتابیس هست.")
                 # The database first: if it is refused, nothing at all has changed.
                 if db_entries:
-                    db = tmp / "db.sqlite3"
+                    db = tmp_dir / "db.sqlite3"
                     with archive.open(db_entries[0]) as src, open(db, "wb") as dst:
                         shutil.copyfileobj(src, dst, 1024 * 1024)
                     result["aside"] = _restore_db(db)
@@ -604,7 +914,7 @@ def restore_upload(uploaded) -> dict:
                         shutil.copyfileobj(src, dst, 1024 * 1024)
                     result["media"] += 1
         else:
-            raise RestoreError("فقط فایل ‎.zip یا ‎.sqlite3 یا ‎.sqlite3.gz")
+            raise RestoreError("فقط فایل ‎.zip یا ‎.dump یا ‎.sql.gz یا ‎.json.gz یا ‎.sqlite3 یا ‎.sqlite3.gz")
     return result
 
 
@@ -615,7 +925,6 @@ def notify_bale(text: str) -> bool:
     try:
         send_text(text)
         return True
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("Failed to send Bale notification: %s", _safe(exc))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to send Bale notification: %s", _safe(exc))
         return False
