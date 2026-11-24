@@ -166,10 +166,15 @@ export async function offlineSection(id: number): Promise<OfflineSection | null>
 export async function removeOfflineBook(slug: string) {
   const existing = await readIndex();
   await saveIndex(existing.filter((b) => b.slug !== slug));
-  const f = fileFor(slug);
-  if (f.exists) f.delete();
-  const bak = backupFileFor(slug);
-  if (bak.exists) bak.delete();
+  try {
+    const f = fileFor(slug);
+    if (f.exists) f.delete();
+    const bak = backupFileFor(slug);
+    if (bak.exists) bak.delete();
+  } catch (e) {
+    await saveIndex(existing).catch(() => undefined);
+    throw e;
+  }
 }
 
 /** Remove downloaded offline books that an admin explicitly wiped on revocation. */

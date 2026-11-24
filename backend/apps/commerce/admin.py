@@ -248,12 +248,28 @@ class SaleCampaignAdmin(admin.ModelAdmin):
         return badges((f"تا {jalali_date(obj.ends_at)}", "green"))
 
 
+class OrderRoyaltyFilter(admin.SimpleListFilter):
+    title = "ثبت سهم استاد"
+    parameter_name = "royalty"
+
+    def lookups(self, request, model_admin):
+        return [("missing", "ثبت‌نشده (نیاز به جبران)"), ("ok", "ثبت‌شده")]
+
+    def queryset(self, request, queryset):
+        v = self.value()
+        if v == "missing":
+            return queryset.filter(status=Order.Status.PAID, book__isnull=False, revenue_snapshot__isnull=True)
+        if v == "ok":
+            return queryset.filter(status=Order.Status.PAID, book__isnull=False, revenue_snapshot__isnull=False)
+        return queryset
+
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     """Orders are a financial record: viewable, never edited or deleted here."""
 
     list_display = ("buyer", "what", "price", "state", "made", "payment")
-    list_filter = ("status", "created_at", OrderBookFilter, OrderPlanFilter)
+    list_filter = ("status", OrderRoyaltyFilter, "created_at", OrderBookFilter, OrderPlanFilter)
     change_list_template = "admin/commerce/order/change_list.html"
 
     def get_urls(self):
@@ -306,7 +322,7 @@ class OrderAdmin(admin.ModelAdmin):
         return response
     search_fields = ("user__phone", "ref_number", "track_id", "title")
     readonly_fields = [f.name for f in Order._meta.fields]
-    list_select_related = ("user",)
+    list_select_related = ("user", "revenue_snapshot")
 
     @admin.display(description="خریدار", ordering="user__phone")
     def buyer(self, obj):
@@ -327,7 +343,13 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.display(description="وضعیت", ordering="status")
     def state(self, obj):
         color = {Order.Status.PAID: "green", Order.Status.PENDING: "yellow", Order.Status.FAILED: "red"}.get(obj.status, "grey")
-        return badges((obj.get_status_display(), color))
+        items = [(obj.get_status_display(), color)]
+        if obj.status == Order.Status.PAID and obj.book_id:
+            try:
+                _ = obj.revenue_snapshot
+            except OrderRevenueSnapshot.DoesNotExist:
+                items.append(("سهم ثبت نشده", "yellow"))
+        return badges(*items)
 
     @admin.display(description="پرداخت (زمان و پیگیری)", ordering="paid_at")
     def payment(self, obj):

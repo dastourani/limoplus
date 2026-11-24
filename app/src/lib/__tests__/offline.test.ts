@@ -5,6 +5,7 @@ const files = new Map<string, Uint8Array>();
 let failNextTempWrite = false;
 let failNextIndexWrite = false;
 let failNextIndexRead = false;
+let failNextDeleteUri: string | null = null;
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: {
@@ -99,6 +100,10 @@ vi.mock('expo-file-system', () => {
       this.uri = dest.uri;
     }
     delete() {
+      if (failNextDeleteUri === this.uri) {
+        failNextDeleteUri = null;
+        throw new Error('delete failed');
+      }
       files.delete(this.uri);
     }
   }
@@ -122,6 +127,7 @@ describe('offline atomic writes & hybrid revocation sync', () => {
     failNextTempWrite = false;
     failNextIndexWrite = false;
     failNextIndexRead = false;
+    failNextDeleteUri = null;
   });
 
   it('preserves existing .bin and cleans up .tmp if temp write fails', async () => {
@@ -203,5 +209,27 @@ describe('offline atomic writes & hybrid revocation sync', () => {
     expect(remaining.map((b) => b.slug)).toEqual(['phys-1']);
     expect(files.has('offline/math-1.bin')).toBe(false);
     expect(files.has('offline/phys-1.bin')).toBe(true);
+  });
+
+  it('continues wiping remaining books when deleting one fails and retries the failed book on next sync', async () => {
+    const future = new Date(Date.now() + 10 * 86400 * 1000).toISOString();
+    await saveOfflineBook(sampleBundle('book-1', '2026-11-20T10:00:00Z', future));
+    await saveOfflineBook(sampleBundle('book-2', '2026-11-20T10:00:00Z', future));
+
+    failNextDeleteUri = 'offline/book-1.bin';
+    const revocations = [
+      { slug: 'book-1', revoked_at: '2026-11-24T11:00:00Z' },
+      { slug: 'book-2', revoked_at: '2026-11-24T11:00:00Z' },
+    ];
+    await reconcileOfflineRevocations(revocations);
+
+    // book-2 was wiped despite book-1 failing, and book-1 stayed indexed so the next sync retries it.
+    expect(files.has('offline/book-2.bin')).toBe(false);
+    expect(files.has('offline/book-1.bin')).toBe(true);
+    expect((await offlineBooks()).map((b) => b.slug)).toEqual(['book-1']);
+
+    await reconcileOfflineRevocations(revocations);
+    expect(files.has('offline/book-1.bin')).toBe(false);
+    expect(await offlineBooks()).toEqual([]);
   });
 });

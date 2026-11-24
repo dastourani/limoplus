@@ -368,19 +368,16 @@ def request_teacher_payout(teacher, amount: int) -> PayoutRequest:
             description=f"مسدودسازی جهت تسویه حساب #{payout.id} (شبا: {bank_account.iban})",
         )
 
-        try:
-            from apps.catalog.backups import notify_bale
-            from apps.catalog.panel_display import fa_number
-            msg = (
-                f"🏦 درخواست تسویه حساب جدید\n"
-                f"استاد: {teacher.phone} ({teacher.full_name or ''})\n"
-                f"مبلغ: {fa_number(amount)} تومان\n"
-                f"شبا: {bank_account.iban}\n"
-                f"صاحب حساب: {bank_account.account_holder_name}"
-            )
-            notify_bale(msg)
-        except Exception:
-            pass
+        from apps.catalog.backups import notify_bale_after_commit
+        from apps.catalog.panel_display import fa_number
+        msg = (
+            f"🏦 درخواست تسویه حساب جدید\n"
+            f"استاد: {teacher.phone} ({teacher.full_name or ''})\n"
+            f"مبلغ: {fa_number(amount)} تومان\n"
+            f"شبا: {bank_account.iban}\n"
+            f"صاحب حساب: {bank_account.account_holder_name}"
+        )
+        notify_bale_after_commit(msg, log_label=f"Bale payout request alert for #{payout.id}")
 
     return payout
 
@@ -441,18 +438,15 @@ def finalize_payout_paid(payout: PayoutRequest, tracking_code: str, receipt_note
             description=f"واریز قطعی تسویه حساب #{payout_locked.id} (کد رهگیری: {tracking_code})",
         )
 
-        try:
-            from apps.catalog.backups import notify_bale
-            from apps.catalog.panel_display import fa_number
-            msg = (
-                f"✅ واریز تسویه حساب استاد انجام شد\n"
-                f"استاد: {payout_locked.teacher.phone}\n"
-                f"مبلغ: {fa_number(payout_locked.amount)} تومان\n"
-                f"کد رهگیری: {tracking_code}"
-            )
-            notify_bale(msg)
-        except Exception:
-            pass
+        from apps.catalog.backups import notify_bale_after_commit
+        from apps.catalog.panel_display import fa_number
+        msg = (
+            f"✅ واریز تسویه حساب استاد انجام شد\n"
+            f"استاد: {payout_locked.teacher.phone}\n"
+            f"مبلغ: {fa_number(payout_locked.amount)} تومان\n"
+            f"کد رهگیری: {tracking_code}"
+        )
+        notify_bale_after_commit(msg, log_label=f"Bale payout paid alert for #{payout_locked.id}")
 
     return payout_locked
 

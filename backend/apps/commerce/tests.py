@@ -580,14 +580,27 @@ class PaymentTests(TestCase):
         with (
             mock.patch("apps.commerce.zibal.verify", return_value={"result": 100, "amount": order.amount * 10}),
             mock.patch("apps.commerce.royalty.calculate_and_save_order_royalty", side_effect=RuntimeError("boom")),
-            mock.patch("apps.catalog.backups.notify_bale") as mock_bale,
+            mock.patch("apps.catalog.backups.notify_bale", side_effect=RuntimeError("bale down")) as mock_bale,
         ):
-            settled = settle("ROY-ERR")
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                settled = settle("ROY-ERR")
+                # While inside the transaction, Bale has NOT been called yet (locks are never held on Bale I/O).
+                self.assertEqual(mock_bale.call_count, 0)
+            self.assertEqual(len(callbacks), 2)
 
         self.assertEqual(settled.status, Order.Status.PAID)
         self.assertTrue(Entitlement.objects.filter(order=order).exists())
         self.assertFalse(OrderRevenueSnapshot.objects.filter(order=order).exists())
         self.assertTrue(any("خطا در ثبت سهم استاد" in c.args[0] for c in mock_bale.call_args_list))
+
+        # Even with Bale completely down, the discrepancy stays visible in OrderAdmin until reconciled.
+        admin_user = User.objects.create_superuser("09120000098", password="StrongPass!123")
+        admin_client = Client()
+        admin_client.force_login(admin_user)
+        missing_page = admin_client.get("/admin/commerce/order/?royalty=missing")
+        self.assertEqual(missing_page.status_code, 200)
+        self.assertContains(missing_page, "سهم ثبت نشده")
+        self.assertContains(missing_page, order.title)
 
         # Recovery repairs missing snapshot & wallet credit idempotently.
         rec = reconcile_missing_royalties()
@@ -595,6 +608,9 @@ class PaymentTests(TestCase):
         self.assertEqual(rec["errors"], 0)
         self.assertTrue(OrderRevenueSnapshot.objects.filter(order=order).exists())
         self.assertGreater(TeacherWallet.objects.get(teacher=teacher).pending_balance, 0)
+
+        missing_after = admin_client.get("/admin/commerce/order/?royalty=missing")
+        self.assertNotContains(missing_after, "سهم ثبت نشده")
 
     def test_settle_locks_user_row_before_granting_entitlement(self):
         import sys
