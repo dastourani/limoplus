@@ -1087,7 +1087,11 @@ class ClassroomMemberAdmin(admin.ModelAdmin):
 
         if request.method == "POST":
             with transaction.atomic():
-                member = ClassroomMember.objects.select_for_update().select_related("entitlement").get(pk=member.pk)
+                member = (
+                    ClassroomMember.objects.select_for_update(of=("self",))
+                    .select_related("entitlement")
+                    .get(pk=member.pk)
+                )
                 if member.status != ClassroomMember.Status.REVOKED:
                     member.status = ClassroomMember.Status.REVOKED
                     member.revoked_at = timezone.now()

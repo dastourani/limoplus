@@ -79,42 +79,49 @@ def _handle_web_otp_verify(request, classroom: Classroom):
     if ratelimit.count(ip_wrong_key) >= settings.OTP_WRONG_PER_IP_PER_HOUR:
         return JsonResponse({"ok": False, "code": "rate_limited", "message": "تلاش‌های ناموفق زیاد است. کمی بعد دوباره تلاش کنید."}, status=429)
 
-    ratelimit.lock(f"otp:{phone}")
-    day_ago = timezone.now() - timedelta(hours=24)
-    wrong_today = OTPCode.objects.filter(phone=phone, created_at__gte=day_ago).aggregate(n=Sum("attempts"))["n"] or 0
-    if wrong_today >= settings.OTP_MAX_WRONG_PER_DAY:
-        return JsonResponse(
-            {"ok": False, "code": "rate_limited", "message": "ورود با این شماره به دلیل تلاش‌های ناموفق تا ۲۴ ساعت بسته شد."},
-            status=429,
-        )
-
-    otp = OTPCode.objects.select_for_update().filter(phone=phone).order_by("-created_at").first()
-    if otp is None or not otp.is_usable:
-        return JsonResponse({"ok": False, "code": "otp_expired", "message": "کد منقضی شده است. کد جدید بگیرید."}, status=400)
-    if not otp.matches(code):
-        otp.attempts += 1
-        otp.save(update_fields=["attempts"])
-        ratelimit.hit(ip_wrong_key)
-        return JsonResponse({"ok": False, "code": "otp_wrong", "message": "کد اشتباه است."}, status=400)
-
-    try:
-        with transaction.atomic():
-            user, _ = User.objects.get_or_create(phone=phone)
-    except IntegrityError:
-        user = User.objects.get(phone=phone)
-    if not user.is_active:
-        return JsonResponse({"ok": False, "code": "user_inactive", "message": "این حساب غیرفعال شده است."}, status=403)
-
-    now = timezone.now()
     with transaction.atomic():
-        locked_classroom = Classroom.objects.select_for_update().select_related("book", "teacher").get(pk=classroom.pk)
+        ratelimit.lock(f"otp:{phone}")
+        day_ago = timezone.now() - timedelta(hours=24)
+        wrong_today = OTPCode.objects.filter(phone=phone, created_at__gte=day_ago).aggregate(n=Sum("attempts"))["n"] or 0
+        if wrong_today >= settings.OTP_MAX_WRONG_PER_DAY:
+            return JsonResponse(
+                {"ok": False, "code": "rate_limited", "message": "ورود با این شماره به دلیل تلاش‌های ناموفق تا ۲۴ ساعت بسته شد."},
+                status=429,
+            )
+
+        otp = OTPCode.objects.select_for_update().filter(phone=phone).order_by("-created_at").first()
+        if otp is None or not otp.is_usable:
+            return JsonResponse({"ok": False, "code": "otp_expired", "message": "کد منقضی شده است. کد جدید بگیرید."}, status=400)
+        if not otp.matches(code):
+            otp.attempts += 1
+            otp.save(update_fields=["attempts"])
+            ratelimit.hit(ip_wrong_key)
+            return JsonResponse({"ok": False, "code": "otp_wrong", "message": "کد اشتباه است."}, status=400)
+
+        try:
+            with transaction.atomic():
+                user, _ = User.objects.get_or_create(phone=phone)
+        except IntegrityError:
+            user = User.objects.get(phone=phone)
+        if not user.is_active:
+            return JsonResponse({"ok": False, "code": "user_inactive", "message": "این حساب غیرفعال شده است."}, status=403)
+
+        now = timezone.now()
+        locked_classroom = (
+            Classroom.objects.select_for_update(of=("self",))
+            .select_related("book", "teacher")
+            .get(pk=classroom.pk)
+        )
         err = _classroom_error(locked_classroom, now=now)
         if err is not None:
             return JsonResponse({"ok": False, "code": err[0], "message": err[1]}, status=400)
 
-        member = ClassroomMember.objects.select_for_update().select_related("entitlement").filter(
-            classroom=locked_classroom, phone=user.phone
-        ).first()
+        member = (
+            ClassroomMember.objects.select_for_update(of=("self",))
+            .select_related("entitlement")
+            .filter(classroom=locked_classroom, phone=user.phone)
+            .first()
+        )
         member_err = _member_error(member, locked_classroom)
         if member_err is not None:
             status_code = 403 if member_err[0] == "revoked" else 400
@@ -168,14 +175,18 @@ def classroom_join(request, code):
     # Logged-in student clicks "Add to Library" directly
     if request.method == "POST" and user and user.is_active:
         with transaction.atomic():
-            locked_classroom = Classroom.objects.select_for_update().select_related("book", "teacher").get(pk=classroom.pk)
+            locked_classroom = (
+                Classroom.objects.select_for_update(of=("self",))
+                .select_related("book", "teacher")
+                .get(pk=classroom.pk)
+            )
             post_err = _classroom_error(locked_classroom, now=now)
             if post_err is not None:
                 messages.error(request, post_err[1])
                 return redirect(request.path)
 
             locked_member = (
-                ClassroomMember.objects.select_for_update()
+                ClassroomMember.objects.select_for_update(of=("self",))
                 .select_related("entitlement")
                 .filter(classroom=locked_classroom, phone=user.phone)
                 .first()
