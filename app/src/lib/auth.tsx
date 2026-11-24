@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearOffline, reconcileOfflineRevocations } from './offline';
 import { secure } from './secure';
+import { storage } from './storage';
 import { flushStudyTime, forgetStudyTime, setStudyOwner } from './studyTime';
 
 const TOKEN_KEY = 'limo.token';
@@ -58,6 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     await secure.set(TOKEN_KEY, null);
     await AsyncStorage.removeItem(USER_KEY).catch(() => undefined);
+    await storage.setLastSection(null);
+    await storage.clearReading();
     await clearOffline(); // offline books belong to the signed-in account
   }, []);
 
