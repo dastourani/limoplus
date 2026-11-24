@@ -47,7 +47,7 @@ export const storage = {
   getMajor: () => getJson<{ slug: string; name: string; color: string }>(KEYS.major),
   setMajor: (major: { slug: string; name: string; color: string } | null) => setJson(KEYS.major, major),
   getLastSection: () => getJson<LastSection>(KEYS.lastSection),
-  setLastSection: (value: LastSection) => setJson(KEYS.lastSection, value),
+  setLastSection: (value: LastSection | null) => setJson(KEYS.lastSection, value),
   getReading: async () => (await getJson<Record<string, ReadingSpot>>(KEYS.reading)) ?? {},
   /** Remembers the spot in this book (one per book, the 20 most recent books). */
   setReading: async (spot: ReadingSpot) => {
@@ -56,6 +56,7 @@ export const storage = {
     const keep = Object.values(all).sort((a, b) => b.at - a.at).slice(0, 20);
     await setJson(KEYS.reading, Object.fromEntries(keep.map((s) => [s.bookSlug, s])));
   },
+  clearReading: () => setJson(KEYS.reading, null),
   getReader: () => getJson<ReaderPrefs>(KEYS.reader),
   setReader: (value: ReaderPrefs) => setJson(KEYS.reader, value),
 };

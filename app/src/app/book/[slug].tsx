@@ -18,6 +18,7 @@ import { PageTurn } from '../../components/PageTurn';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Chip, ErrorState, Header, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { isSectionAccessibleInBook } from '../../lib/bookAccess';
 import { coverByline } from '../../lib/cover';
 import { jalaliDate } from '../../lib/jalali';
 import { offlineBookDetail, offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
@@ -208,10 +209,20 @@ export default function Book() {
     }, [slug]),
   );
   useEffect(() => {
+    if (!data || !last || last.bookSlug !== slug) return;
+    if (!isSectionAccessibleInBook(data, last.id)) {
+      setLast(null);
+      storage.setLastSection(null);
+    }
+  }, [data, last, slug]);
+  useEffect(() => {
     if (!data || openId !== undefined) return;
-    const withLast = last ? data.chapters.find((c) => c.sections.some((x) => x.id === last.id)) : null;
+    const withLast =
+      last && last.bookSlug === slug && isSectionAccessibleInBook(data, last.id)
+        ? data.chapters.find((c) => c.sections.some((x) => x.id === last.id))
+        : null;
     setOpenId((withLast ?? data.chapters[0])?.id ?? null);
-  }, [data, last, openId]);
+  }, [data, last, slug, openId]);
 
   const download = async () => {
     if (!requireLogin(user, 'برای دانلود آفلاین وارد شوید.')) return;
@@ -300,6 +311,8 @@ export default function Book() {
   const heroFade = scrollY.interpolate({ inputRange: [0, heroHeight], outputRange: [1, 0.35], extrapolate: 'clamp' });
 
   const isPreparing = book.product_status.state === 'coming_soon' || book.product_status.state === 'preparing';
+  const validLast = last && last.bookSlug === slug && isSectionAccessibleInBook(book, last.id) ? last : null;
+  const wideCta = width >= 560;
 
   return (
     <Screen background={colors.ground} wide={wide}>
@@ -465,10 +478,10 @@ export default function Book() {
                   </Text>
                   {!!user && <HelpTip size={18} title="لیموی پیشرفت" text="هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای." />}
                 </View>
-                <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{last ? last.title : 'از اول کتاب شروع کن'}</Text>
+                <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{validLast ? validLast.title : 'از اول کتاب شروع کن'}</Text>
               </View>
-              <Pressable onPress={() => (last ? router.push(`/section/${last.id}`) : startFree())} style={styles.ctaButton} accessibilityRole="button">
-                <Text style={styles.ctaButtonText}>{last ? 'ادامه بده' : 'شروع'}</Text>
+              <Pressable onPress={() => (validLast ? router.push(`/section/${validLast.id}`) : startFree())} style={styles.ctaButton} accessibilityRole="button">
+                <Text style={styles.ctaButtonText}>{validLast ? 'ادامه بده' : 'شروع'}</Text>
               </Pressable>
               {totalBookSeconds >= 60 && (
                 <View style={styles.badgeWrapper} pointerEvents="none">
@@ -490,44 +503,68 @@ export default function Book() {
                   </Text>
                 </View>
               )}
-              {!!last && (
-                <Pressable onPress={() => router.push(`/section/${last.id}`)} style={styles.resumeLine} accessibilityRole="button">
-                  <Icon name="book-open" size={16} color={colors.greenDark} />
-                  <Text style={[styles.resumeLineText, rtl]} numberOfLines={1}>ادامه از «{last.title}»</Text>
-                </Pressable>
-              )}
-              {!!firstPreview && !last && <Button label={`شروع رایگان از فصل ${toPersianDigits(firstOpenIndex)}`} onPress={startFree} />}
-              {book.product_status.state === 'paid' && (
-                <>
-                  <Pressable onPress={() => router.push(`/buy/${book.slug}`)} style={[styles.unlock, !(firstPreview && !last) && styles.unlockMain]} accessibilityRole="button">
-                    <Icon name="lock-open" size={18} color={colors.ink} />
-                    <Text style={styles.unlockText}>باز کردن همه‌ی کتاب</Text>
+              {!!validLast && (
+                <View style={styles.resumeRow}>
+                  <View style={styles.resumeInfo}>
+                    <Icon name="book-open" size={18} color={colors.greenDark} />
+                    <Text style={[styles.resumeLineText, rtl]} numberOfLines={1}>ادامه از «{validLast.title}»</Text>
+                  </View>
+                  <Pressable onPress={() => router.push(`/section/${validLast.id}`)} style={styles.resumeAction} accessibilityRole="button">
+                    <Text style={styles.ctaButtonText}>ادامه بده</Text>
                   </Pressable>
-                  {bookPrice.price != null && (bookPrice.discount ? (
-                    <View style={styles.priceDetails}>
-                      <View style={styles.priceLine}>
-                        <Text style={[styles.ctaSmall, rtl]}>قیمت عادی</Text>
-                        <Text style={styles.oldPrice}>{formatToman(bookPrice.regularPrice ?? bookPrice.price)}</Text>
-                      </View>
-                      <View style={styles.priceLine}>
-                        <Text style={[styles.ctaSmall, rtl]}>قیمت ویژه</Text>
-                        <View style={styles.saleAmountLine}>
-                          <Text style={styles.salePrice}>{formatToman(bookPrice.price)}</Text>
-                          <Text style={styles.discountChip}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
-                        </View>
-                      </View>
-                      {!!previewLabel && <Text style={[styles.samplePriceText, rtl]}>{previewLabel}</Text>}
-                      <Text style={[styles.saving, rtl]}>
-                        صرفه‌جویی {formatToman(bookPrice.discount.amount)} · یا با اشتراک لیمو
-                      </Text>
+                </View>
+              )}
+              {(!!(firstPreview && !validLast) || book.product_status.state === 'paid') && (
+                <View style={[styles.ctaActions, wideCta && firstPreview && !validLast && book.product_status.state === 'paid' && styles.ctaActionsRow]}>
+                  {!!firstPreview && !validLast && (
+                    <Pressable
+                      onPress={startFree}
+                      style={[styles.startFreeBtn, wideCta && book.product_status.state === 'paid' && styles.ctaActionFlex]}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.startFreeBtnText}>شروع رایگان از فصل {toPersianDigits(firstOpenIndex)}</Text>
+                    </Pressable>
+                  )}
+                  {book.product_status.state === 'paid' && (
+                    <Pressable
+                      onPress={() => router.push(`/buy/${book.slug}`)}
+                      style={[
+                        styles.unlock,
+                        !(firstPreview || validLast) && styles.unlockMain,
+                        wideCta && firstPreview && !validLast && styles.ctaActionFlex,
+                      ]}
+                      accessibilityRole="button"
+                    >
+                      <Icon name="lock-open" size={18} color={colors.ink} />
+                      <Text style={styles.unlockText}>باز کردن همه‌ی کتاب</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+              {book.product_status.state === 'paid' && bookPrice.price != null && (
+                bookPrice.discount ? (
+                  <View style={styles.priceDetails}>
+                    <View style={styles.priceLine}>
+                      <Text style={[styles.ctaSmall, rtl]}>قیمت عادی</Text>
+                      <Text style={styles.oldPrice}>{formatToman(bookPrice.regularPrice ?? bookPrice.price)}</Text>
                     </View>
-                  ) : (
-                    <Text style={[styles.ctaSmall, { textAlign: 'center' }]}>
-                      {formatToman(bookPrice.price)}، یا با اشتراک ماهانه‌ی لیمو
-                      {!!previewLabel && <Text style={styles.samplePriceText}> · {previewLabel}</Text>}
+                    <View style={styles.priceLine}>
+                      <Text style={[styles.ctaSmall, rtl]}>قیمت ویژه</Text>
+                      <View style={styles.saleAmountLine}>
+                        <Text style={styles.salePrice}>{formatToman(bookPrice.price)}</Text>
+                        <Text style={styles.discountChip}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.saving, rtl]}>
+                      صرفه‌جویی {formatToman(bookPrice.discount.amount)} · یا با اشتراک لیمو
                     </Text>
-                  ))}
-                </>
+                  </View>
+                ) : (
+                  <Text style={[styles.ctaSmall, { textAlign: 'center' }]}>
+                    {formatToman(bookPrice.price)}، یا با اشتراک ماهانه‌ی لیمو
+                    {!firstPreview && !!previewLabel && <Text style={styles.samplePriceText}> · {previewLabel}</Text>}
+                  </Text>
+                )
               )}
               {book.product_status.state === 'unpriced' && <Text style={[styles.ctaSmall, rtl]}>قیمت نسخه‌ی کامل هنوز تعیین نشده است.</Text>}
               {book.product_status.state === 'unavailable' && <Text style={[styles.ctaSmall, rtl]}>این کتاب فعلاً برای خرید در دسترس نیست.</Text>}
@@ -1369,12 +1406,19 @@ const styles = StyleSheet.create({
   saving: { textAlign: 'center', fontSize: 11, fontWeight: '800', color: colors.redDark },
   ctaButton: { backgroundColor: colors.lemon, borderRadius: 12, paddingHorizontal: 18, minHeight: 46, justifyContent: 'center' },
   ctaButtonText: { color: colors.ink, fontWeight: '900', fontSize: 15 },
-  unlock: { minHeight: 52, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  // The one main action of the box is lemon; next to «شروع رایگان» it is the outlined second.
+  ctaActions: { gap: 10 },
+  ctaActionsRow: { flexDirection: 'row-reverse', alignItems: 'stretch' },
+  ctaActionFlex: { flex: 1 },
+  startFreeBtn: { minHeight: 52, borderRadius: radius.md, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  startFreeBtnText: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  unlock: { minHeight: 52, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
+  // The one main action of the box is lemon; next to «شروع رایگان» or «ادامه بده» it is the outlined second.
   unlockMain: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   unlockText: { fontSize: 15, fontWeight: '900', color: colors.ink },
-  resumeLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.greenSoft, borderRadius: 12, paddingHorizontal: 12, minHeight: 44 },
-  resumeLineText: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.greenDark },
+  resumeRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, backgroundColor: colors.greenSoft, borderRadius: radius.md, padding: 6, paddingRight: 12 },
+  resumeInfo: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, minWidth: 0 },
+  resumeAction: { backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 16, minHeight: 40, justifyContent: 'center', alignItems: 'center' },
+  resumeLineText: { flex: 1, fontSize: 14.5, fontWeight: '800', color: colors.greenDark },
   shortcuts: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
   shortcut: { flexGrow: 1, flexBasis: '45%', minHeight: 46, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
   timeRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 4 },
