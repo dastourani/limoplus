@@ -168,6 +168,15 @@ SERVE_MEDIA = env.bool("SERVE_MEDIA", default=False)
 # Backups (apps/catalog/backups.py): kept in BACKUP_DIR (on the server: the persistent disk) and sent to the admin's
 # chat in Bale when the bot is set. A Bale bot token from @BotFather in Bale; the chat id of the admin's chat with it.
 BACKUP_DIR = Path(env("BACKUP_DIR", default=str(BASE_DIR / "backups")))
+# Backup storage mode: 'bale_chunks' (default), 'object_storage' (S3-compatible e.g. ParsPack), or 'both'.
+BACKUP_STORAGE_MODE = env("BACKUP_STORAGE_MODE", default="bale_chunks")
+BACKUP_S3_ENDPOINT = env("BACKUP_S3_ENDPOINT", default="")
+BACKUP_S3_BUCKET = env("BACKUP_S3_BUCKET", default="")
+BACKUP_S3_ACCESS_KEY = env("BACKUP_S3_ACCESS_KEY", default="")
+BACKUP_S3_SECRET_KEY = env("BACKUP_S3_SECRET_KEY", default="")
+BACKUP_S3_REGION = env("BACKUP_S3_REGION", default="us-east-1")
+BACKUP_S3_PREFIX = env("BACKUP_S3_PREFIX", default="limoplus-backups")
+BACKUP_S3_KEEP = env.int("BACKUP_S3_KEEP", default=30)
 BALE_BOT_TOKEN = env("BALE_BOT_TOKEN", default="")
 BALE_CHAT_ID = env("BALE_CHAT_ID", default="")
 # The website (apps/website): the hosts where it is served at the root (e.g. limookhan.ir,www.limookhan.ir); elsewhere
