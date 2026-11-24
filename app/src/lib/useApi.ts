@@ -9,19 +9,43 @@ export function useApi<T>(load: () => Promise<T>, deps: unknown[] = []) {
   const [state, setState] = useState<State<T>>({ data: null, error: null, loading: true });
 
   const started = useRef(0);
+  const hadError = useRef(false);
+  const seq = useRef(0);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
   const run = useCallback(() => {
-    started.current = Date.now();
+    const mySeq = ++seq.current;
+    const fromError = hadError.current;
+    const t0 = Date.now();
+    started.current = t0;
+    hadError.current = false;
     setState((s) => ({ ...s, loading: true, error: null }));
     load()
       // The same answer as before keeps the same object, so nothing on the screen is drawn again for it.
-      .then((data) => setState((s) => ({ data: s.data !== null && same(s.data, data) ? s.data : data, error: null, loading: false })))
-      .catch((error: unknown) =>
+      .then((data) => {
+        if (!alive.current || seq.current !== mySeq) return;
+        hadError.current = false;
+        setState((s) => ({ data: s.data !== null && same(s.data, data) ? s.data : data, error: null, loading: false }));
+      })
+      .catch(async (error: unknown) => {
+        if (fromError) {
+          const wait = 350 - (Date.now() - t0);
+          if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        }
+        if (!alive.current || seq.current !== mySeq) return;
+        hadError.current = true;
         setState({
           data: null,
           loading: false,
           error: error instanceof ApiError ? error : new ApiError(0, 'error', 'خطای ناشناخته. دوباره تلاش کنید.'),
-        }),
-      );
+        });
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
