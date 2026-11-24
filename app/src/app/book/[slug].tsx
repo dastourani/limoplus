@@ -222,7 +222,8 @@ export default function Book() {
     return (
       <Screen>
         <Header subtitle="کتاب" />
-        {coverTitle !== null ? <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.ink }]} /> : <Loading />}
+        <Loading />
+        {!!titleParam && <PageTurn kind="cover" title={titleParam} hold />}
       </Screen>
     );
   if (error || !data) return <Screen><Header subtitle="کتاب" /><ErrorState message={error?.message ?? ''} onRetry={retry} /></Screen>;

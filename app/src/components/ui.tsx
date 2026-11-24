@@ -1,12 +1,14 @@
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native';
 import { WIDE } from '../lib/layout';
+import { offlineSupported } from '../lib/offline';
 
 import { Text } from './Text';
 import { Icon, IconBadge, type IconName } from './Icon';
 import { LemonLoader, LemonSpinner } from './LemonLoader';
+import { LemonSlice } from './LemonSlice';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radius, rtl } from '../theme';
@@ -95,31 +97,70 @@ export function Button({
   );
 }
 
+let retrySpinUntil = 0;
+function markRetrySpin() {
+  retrySpinUntil = Date.now() + 800;
+}
+
 export function Loading() {
+  const immediate = Date.now() < retrySpinUntil;
   return (
     <View style={styles.center}>
-      <LemonLoader />
+      <LemonLoader delay={immediate ? 0 : 300} />
     </View>
   );
 }
 
 export function ErrorState({ message, onRetry, icon }: { message: string; onRetry?: () => void; icon?: IconName }) {
-  // With a retry it is a loading failure (connection or server); without, just a message (e.g. nothing here yet).
+  const [retrying, setRetrying] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  // Without onRetry it is an informational/locked state; with onRetry it is a connection or server failure with brand presence.
+  if (!onRetry) {
+    return (
+      <View style={styles.center}>
+        <IconBadge name={icon ?? 'book-open'} size={56} />
+        <Text style={[styles.errorText, { marginTop: 14 }]}>{message}</Text>
+      </View>
+    );
+  }
+
+  const handleRetry = () => {
+    markRetrySpin();
+    setRetrying(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setRetrying(false), 600);
+    onRetry();
+  };
+
   return (
     <View style={styles.center}>
-      <IconBadge name={icon ?? (onRetry ? 'cloud-off' : 'book-open')} size={56} />
-      <Text style={[styles.errorText, { marginTop: 14 }]}>{message}</Text>
-      {onRetry && <Button label="تلاش دوباره" variant="outline" onPress={onRetry} style={{ marginTop: 16, minWidth: 160 }} />}
-      {onRetry && (
-      <View style={{ flexDirection: 'row-reverse', gap: 20, marginTop: 14 }}>
-        <Pressable onPress={() => router.push('/offline')}>
-          <Text style={styles.link}>کتاب‌های آفلاین</Text>
-        </Pressable>
-        <Pressable onPress={() => router.push('/settings')}>
-          <Text style={styles.link}>تنظیم آدرس سرور</Text>
-        </Pressable>
+      <View style={styles.errorCard}>
+        <View style={styles.errorEmblem}>
+          <LemonSlice size={68} />
+          <View style={styles.errorBadge}>
+            <Icon name={icon ?? 'cloud-off'} size={15} color={colors.ink} strokeWidth={2.2} />
+          </View>
+        </View>
+        <Text style={[styles.errorTitle, rtl]}>ارتباط برقرار نشد</Text>
+        <Text style={[styles.errorText, rtl]}>{message}</Text>
+        <Button label="تلاش دوباره" variant="outline" onPress={handleRetry} loading={retrying} style={{ marginTop: 8, minWidth: 170 }} />
+        {offlineSupported && (
+          <Pressable onPress={() => router.push('/offline')} style={{ marginTop: 6 }} accessibilityRole="link">
+            <Text style={styles.link}>کتاب‌های آفلاین</Text>
+          </Pressable>
+        )}
+        <View style={styles.brandFoot}>
+          <View style={styles.brandRule} />
+          <Text style={styles.brandName}>لیموخوان</Text>
+        </View>
       </View>
-      )}
     </View>
   );
 }
@@ -191,7 +232,37 @@ const styles = StyleSheet.create({
   primaryText: { color: colors.ink },
   darkText: { color: colors.lemon },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  errorText: { fontSize: 15, color: colors.ink, textAlign: 'center', lineHeight: 26 },
+  errorCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingVertical: 26,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    gap: 8,
+  },
+  errorEmblem: { position: 'relative', marginBottom: 6 },
+  errorBadge: {
+    position: 'absolute',
+    bottom: -2,
+    left: -4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.lemon,
+    borderWidth: 2,
+    borderColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorTitle: { fontSize: 17, fontWeight: '900', color: colors.ink, textAlign: 'center' },
+  errorText: { fontSize: 14.5, color: colors.muted, textAlign: 'center', lineHeight: 24 },
+  brandFoot: { alignItems: 'center', gap: 6, marginTop: 10 },
+  brandRule: { width: 42, height: 3, borderRadius: 2, backgroundColor: colors.line },
+  brandName: { fontSize: 12, fontWeight: '800', color: '#8FA095' },
   link: { color: colors.greenDark, fontWeight: '700', fontSize: 13 },
   // Every status label (رایگان، به‌زودی، نسخه‌ی کامل، a question's tags) has this height and shape; its colour says what it means.
   chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },

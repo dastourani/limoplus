@@ -54,7 +54,7 @@ export default function Profile() {
         .catch(() => undefined);
     }, []),
   );
-  const serverUnlocked = versionTaps >= 7;
+  const serverUnlocked = !!user?.is_staff && versionTaps >= 7;
   const [pages, setPages] = useState<AppPages | null>(null);
   const [changed, setChanged] = useState<Set<string>>(new Set());
   const reload = useCallback(() => {
@@ -260,10 +260,16 @@ export default function Profile() {
             />
           </View>
         )}
-        <Text style={styles.version} onPress={() => setVersionTaps((n) => n + 1)} suppressHighlighting>
+        <Text
+          style={styles.version}
+          onPress={() => {
+            if (Platform.OS !== 'web' && user?.is_staff) setVersionTaps((n) => n + 1);
+          }}
+          suppressHighlighting
+        >
           لیموخوان، نسخه‌ی {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}
         </Text>
-        {Platform.OS !== 'web' && versionTaps >= 4 && (
+        {Platform.OS !== 'web' && !!user?.is_staff && versionTaps >= 4 && (
           <Text style={[styles.version, { marginTop: -8 }]}>
             {serverUnlocked ? '«تنظیمات سرور» باز شد: بالاتر، پیش از «نمایش مثل کاربر عادی».' : `${toPersianDigits(7 - versionTaps)} ضربه‌ی دیگر`}
           </Text>
