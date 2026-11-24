@@ -248,12 +248,28 @@ class SaleCampaignAdmin(admin.ModelAdmin):
         return badges((f"تا {jalali_date(obj.ends_at)}", "green"))
 
 
+class OrderRoyaltyFilter(admin.SimpleListFilter):
+    title = "ثبت سهم استاد"
+    parameter_name = "royalty"
+
+    def lookups(self, request, model_admin):
+        return [("missing", "ثبت‌نشده (نیاز به جبران)"), ("ok", "ثبت‌شده")]
+
+    def queryset(self, request, queryset):
+        v = self.value()
+        if v == "missing":
+            return queryset.filter(status=Order.Status.PAID, book__isnull=False, revenue_snapshot__isnull=True)
+        if v == "ok":
+            return queryset.filter(status=Order.Status.PAID, book__isnull=False, revenue_snapshot__isnull=False)
+        return queryset
+
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     """Orders are a financial record: viewable, never edited or deleted here."""
 
     list_display = ("buyer", "what", "price", "state", "made", "payment")
-    list_filter = ("status", "created_at", OrderBookFilter, OrderPlanFilter)
+    list_filter = ("status", OrderRoyaltyFilter, "created_at", OrderBookFilter, OrderPlanFilter)
     change_list_template = "admin/commerce/order/change_list.html"
 
     def get_urls(self):
@@ -306,7 +322,7 @@ class OrderAdmin(admin.ModelAdmin):
         return response
     search_fields = ("user__phone", "ref_number", "track_id", "title")
     readonly_fields = [f.name for f in Order._meta.fields]
-    list_select_related = ("user",)
+    list_select_related = ("user", "revenue_snapshot")
 
     @admin.display(description="خریدار", ordering="user__phone")
     def buyer(self, obj):
@@ -327,7 +343,13 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.display(description="وضعیت", ordering="status")
     def state(self, obj):
         color = {Order.Status.PAID: "green", Order.Status.PENDING: "yellow", Order.Status.FAILED: "red"}.get(obj.status, "grey")
-        return badges((obj.get_status_display(), color))
+        items = [(obj.get_status_display(), color)]
+        if obj.status == Order.Status.PAID and obj.book_id:
+            try:
+                _ = obj.revenue_snapshot
+            except OrderRevenueSnapshot.DoesNotExist:
+                items.append(("سهم ثبت نشده", "yellow"))
+        return badges(*items)
 
     @admin.display(description="پرداخت (زمان و پیگیری)", ordering="paid_at")
     def payment(self, obj):
@@ -385,18 +407,72 @@ class EntitlementKindFilter(admin.SimpleListFilter):
         return queryset
 
 
+class EntitlementAdminForm(forms.ModelForm):
+    OFFLINE_KEEP = "keep"
+    OFFLINE_WIPE = "wipe"
+    OFFLINE_CHOICES = (
+        (
+            OFFLINE_KEEP,
+            "نگهداری نسخه آفلاین تا پایان مهلت قبلی (validUntil) — فقط دسترسی آنلاین قطع شود",
+        ),
+        (
+            OFFLINE_WIPE,
+            "حذف فوری نسخه آفلاین — با اولین اتصال بعدی کاربر به اینترنت (حتی اگر لاگین مانده باشد) فایل آفلاین پاک شود",
+        ),
+    )
+
+    offline_policy = forms.ChoiceField(
+        label="سیاست نسخه آفلاین هنگام لغو دسترسی",
+        choices=OFFLINE_CHOICES,
+        required=False,
+        widget=forms.RadioSelect,
+        help_text=(
+            "اگر تیک «لغو شده» روشن باشد اعمال می‌شود: در حالت اول فایلِ دانلودشدهٔ قبلی تا پایان مهلت قبلی روی دستگاه "
+            "باز می‌ماند و فقط دسترسی آنلاین و دانلود مجدد قطع می‌شود؛ در حالت دوم در اولین همگام‌سازی آنلاین بعدی "
+            "(حتی بدون خروج کاربر از حساب) فایل آفلاین از دستگاه حذف می‌شود."
+        ),
+    )
+
+    class Meta:
+        model = Entitlement
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and self.instance.offline_revoked_at:
+            self.fields["offline_policy"].initial = self.OFFLINE_WIPE
+        else:
+            self.fields["offline_policy"].initial = self.OFFLINE_KEEP
+
+
 @admin.register(Entitlement)
 class EntitlementAdmin(admin.ModelAdmin):
     """Admins can grant access by hand and revoke it by archiving; nothing is deleted. A book given by hand here is a
     gift from the admin who saves it (the book page's «هدیه به کاربر» is the easier way)."""
 
+    form = EntitlementAdminForm
     list_display = ("owner", "scope", "left", "came_from", "start", "warning_sent")
     list_filter = (EntitlementStateFilter, EntitlementKindFilter)
     search_fields = ("user__phone", "book__title")
     list_select_related = ("user", "book", "major", "order", "granted_by")
     autocomplete_fields = ("user",)
     raw_id_fields = ("book", "order")
-    readonly_fields = ("order", "granted_by", "created_at", "expiry_warning_sent_at")
+    readonly_fields = ("order", "granted_by", "offline_revoked_at", "created_at", "expiry_warning_sent_at")
+    actions = ("revoke_keep_offline", "revoke_wipe_offline")
+    fieldsets = (
+        (None, {"fields": ("user", "book", "major", "all_majors", "starts_at", "ends_at", "note")}),
+        (
+            "وضعیت و لغو دسترسی",
+            {
+                "fields": ("is_archived", "offline_policy", "offline_revoked_at"),
+                "description": (
+                    "با فعال‌کردن «لغو شده»، دسترسی آنلاین بلافاصله قطع می‌شود. با انتخاب گزینهٔ پایین مشخص کنید "
+                    "فایلِ آفلاینِ ازپیش‌دانلودشده تا پایان مهلت قبلی (validUntil) باز بماند یا در اولین اتصال بعدی پاک شود."
+                ),
+            },
+        ),
+        ("اطلاعات ثبت", {"fields": ("order", "granted_by", "created_at", "expiry_warning_sent_at")}),
+    )
 
     def has_view_permission(self, request, obj=None):
         return bool(request.user.is_superuser)
@@ -409,6 +485,17 @@ class EntitlementAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    @admin.action(description="لغو دسترسی (نگهداری فایل آفلاین تا پایان مهلت قبلی)")
+    def revoke_keep_offline(self, request, queryset):
+        updated = queryset.filter(is_archived=False).update(is_archived=True, offline_revoked_at=None)
+        self.message_user(request, f"{fa_number(updated)} دسترسی لغو شد؛ فایل‌های آفلاین تا پایان مهلت قبلی باز می‌مانند.")
+
+    @admin.action(description="لغو دسترسی + حذف فوری فایل آفلاین در اتصال بعدی")
+    def revoke_wipe_offline(self, request, queryset):
+        now = timezone.now()
+        updated = queryset.update(is_archived=True, offline_revoked_at=now)
+        self.message_user(request, f"{fa_number(updated)} دسترسی لغو شد و فرمان حذف فایل آفلاین در اتصال بعدی ثبت گردید.")
 
     @admin.display(description="کاربر", ordering="user__phone")
     def owner(self, obj):
@@ -439,10 +526,16 @@ class EntitlementAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         if not change and obj.book_id and not obj.order_id and not obj.granted_by_id:
             obj.granted_by = request.user
+        policy = form.cleaned_data.get("offline_policy") or EntitlementAdminForm.OFFLINE_KEEP
+        if obj.is_archived:
+            if policy == EntitlementAdminForm.OFFLINE_WIPE:
+                if not obj.offline_revoked_at:
+                    obj.offline_revoked_at = timezone.now()
+            else:
+                obj.offline_revoked_at = None
+        else:
+            obj.offline_revoked_at = None
         super().save_model(request, obj, form, change)
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
 @admin.register(RevenuePlan)

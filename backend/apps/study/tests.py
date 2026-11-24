@@ -1100,3 +1100,57 @@ class OfflineResilienceBackendTests(TestCase):
         self.assertEqual(p.position, 80)
         self.assertEqual(p.mode, "summary")
         self.assertEqual(p.client_updated_ms, 2000)
+
+    def test_stats_words_and_library_stay_constant_queries_across_books(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from .models import SectionProgress
+
+        def add_word_book(idx: int):
+            b = ContentNode.add_root(
+                kind=ContentNode.Kind.BOOK,
+                title=f"لغت {idx}",
+                slug=f"words-{idx}",
+                is_free=True,
+                is_published=True,
+            )
+            ch = b.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل", slug=f"wch-{idx}", is_published=True)
+            sec = ch.add_child(
+                kind=ContentNode.Kind.SECTION,
+                title="بخش",
+                slug=f"wsec-{idx}",
+                is_published=True,
+                full_body="متن طولانی " * 100,
+            )
+            hidden_ch = b.add_child(kind=ContentNode.Kind.CHAPTER, title="پیش‌نویس", slug=f"whch-{idx}", is_published=False)
+            hidden_sec = hidden_ch.add_child(kind=ContentNode.Kind.SECTION, title="مخفی", slug=f"whsec-{idx}", is_published=True)
+            c1 = Flashcard.objects.create(node=sec, slug=f"w-{idx}-1", title="one", point="یک")
+            Flashcard.objects.create(node=sec, slug=f"w-{idx}-2", title="two", point="دو")
+            Flashcard.objects.create(node=hidden_sec, slug=f"w-{idx}-hidden", title="hide", point="مخفی")
+            FlashcardReview.objects.create(user=self.user, flashcard=c1, box=FlashcardReview.MASTERED_BOX)
+            SectionProgress.objects.create(user=self.user, book=b, node=sec, percent=50, is_done=False)
+
+        add_word_book(1)
+        with CaptureQueriesContext(connection) as ctx1:
+            stats1 = self.client.get("/api/v1/me/stats/")
+        self.assertEqual(stats1.status_code, 200)
+        with CaptureQueriesContext(connection) as lib_ctx1:
+            lib1 = self.client.get("/api/v1/me/library/")
+        self.assertEqual(lib1.status_code, 200)
+
+        for i in range(2, 6):
+            add_word_book(i)
+
+        with CaptureQueriesContext(connection) as ctx5:
+            stats5 = self.client.get("/api/v1/me/stats/")
+        self.assertEqual(stats5.status_code, 200)
+        self.assertEqual(len(ctx5), len(ctx1), f"stats grew from {len(ctx1)} to {len(ctx5)} queries")
+        self.assertEqual(len(stats5.data["words"]), 5)
+        for item in stats5.data["words"]:
+            self.assertEqual((item["learned"], item["total"]), (1, 2))
+
+        with CaptureQueriesContext(connection) as lib_ctx5:
+            lib5 = self.client.get("/api/v1/me/library/")
+        self.assertEqual(lib5.status_code, 200)
+        self.assertEqual(len(lib_ctx5), len(lib_ctx1), f"library grew from {len(lib_ctx1)} to {len(lib_ctx5)} queries")
+

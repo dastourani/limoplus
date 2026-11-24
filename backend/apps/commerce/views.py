@@ -235,26 +235,23 @@ def settle(track_id: str) -> Order | None:
                     calculate_and_save_order_royalty(order)
             except Exception:
                 log.exception("Failed to calculate royalty snapshot for order %s", order.id)
-                try:
-                    from apps.catalog.backups import notify_bale
-                    notify_bale(f"⚠️ خطا در ثبت سهم استاد سفارش #{order.id} (مبلغ: {order.amount} ت)؛ نیاز به بررسی/جبران")
-                except Exception:
-                    log.warning("Failed to send Bale royalty alert for order %s", order.id)
-            try:
-                from apps.catalog.backups import notify_bale
-                from apps.catalog.panel_display import fa_number
-                item_title = order.book.title if order.book else (order.plan.title if order.plan else order.title)
-                user_desc = f"{order.user.phone}" + (f" ({order.user.full_name})" if getattr(order.user, 'full_name', None) else "")
-                msg = (
-                    f"💳 خرید جدید در لیموپلاس\n"
-                    f"مبلغ: {fa_number(order.amount)} تومان\n"
-                    f"عنوان: {item_title}\n"
-                    f"کاربر: {user_desc}\n"
-                    f"شماره پیگیری: {order.ref_number or '—'}"
+                from apps.catalog.backups import notify_bale_after_commit
+                notify_bale_after_commit(
+                    f"⚠️ خطا در ثبت سهم استاد سفارش #{order.id} (مبلغ: {order.amount} ت)؛ نیاز به بررسی/جبران",
+                    log_label=f"Bale royalty alert for order {order.id}",
                 )
-                notify_bale(msg)
-            except Exception:
-                log.warning("Failed to send Bale purchase alert for order %s", order.id)
+            from apps.catalog.backups import notify_bale_after_commit
+            from apps.catalog.panel_display import fa_number
+            item_title = order.book.title if order.book else (order.plan.title if order.plan else order.title)
+            user_desc = f"{order.user.phone}" + (f" ({order.user.full_name})" if getattr(order.user, 'full_name', None) else "")
+            msg = (
+                f"💳 خرید جدید در لیموپلاس\n"
+                f"مبلغ: {fa_number(order.amount)} تومان\n"
+                f"عنوان: {item_title}\n"
+                f"کاربر: {user_desc}\n"
+                f"شماره پیگیری: {order.ref_number or '—'}"
+            )
+            notify_bale_after_commit(msg, log_label=f"Bale purchase alert for order {order.id}")
         else:
             verified = result.get("result") in (100, 201)
             # Verified but without an amount to compare: stay pending (re-checkable) instead of failing a real payment.

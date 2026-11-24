@@ -30,6 +30,7 @@ import subprocess
 import tempfile
 import uuid
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 
@@ -109,9 +110,14 @@ def storage_ready() -> bool:
     return bale_ready()
 
 
-def _bale(method: str, data: dict, files=None) -> None:
+BALE_TEXT_TIMEOUT = 8
+BALE_FILE_TIMEOUT = 300
+_BALE_NOTIFY_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="bale-notify")
+
+
+def _bale(method: str, data: dict, files=None, *, timeout: int = BALE_FILE_TIMEOUT) -> None:
     url = f"https://tapi.bale.ai/bot{settings.BALE_BOT_TOKEN}/{method}"
-    response = requests.post(url, data=data, files=files, timeout=300)
+    response = requests.post(url, data=data, files=files, timeout=timeout)
     body = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
     if response.status_code != 200 or not body.get("ok", False):
         raise RuntimeError(f"Bale {method}: {response.status_code} {body.get('description', '')}".strip())
@@ -119,11 +125,11 @@ def _bale(method: str, data: dict, files=None) -> None:
 
 def send_file(path: Path, caption: str) -> None:
     with open(path, "rb") as f:
-        _bale("sendDocument", {"chat_id": settings.BALE_CHAT_ID, "caption": caption}, files={"document": (path.name, f)})
+        _bale("sendDocument", {"chat_id": settings.BALE_CHAT_ID, "caption": caption}, files={"document": (path.name, f)}, timeout=BALE_FILE_TIMEOUT)
 
 
 def send_text(text: str) -> None:
-    _bale("sendMessage", {"chat_id": settings.BALE_CHAT_ID, "text": text})
+    _bale("sendMessage", {"chat_id": settings.BALE_CHAT_ID, "text": text}, timeout=BALE_TEXT_TIMEOUT)
 
 
 def send_to_bale_in_chunks(path: Path, caption: str) -> str:
@@ -928,3 +934,22 @@ def notify_bale(text: str) -> bool:
     except Exception as exc:  # noqa: BLE001
         log.warning("Failed to send Bale notification: %s", _safe(exc))
         return False
+
+
+def _send_bale_quietly(text: str, log_label: str) -> None:
+    try:
+        notify_bale(text)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to send %s: %s", log_label, _safe(exc))
+
+
+def notify_bale_after_commit(text: str, *, log_label: str = "Bale notification") -> None:
+    """Schedule a short Bale text alert strictly after the DB transaction commits so row locks and response latency
+    never depend on Bale availability."""
+    def _dispatch():
+        if getattr(settings, "TESTING", False):
+            _send_bale_quietly(text, log_label)
+        else:
+            _BALE_NOTIFY_EXECUTOR.submit(_send_bale_quietly, text, log_label)
+
+    transaction.on_commit(_dispatch)

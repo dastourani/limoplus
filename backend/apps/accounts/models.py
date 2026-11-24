@@ -191,11 +191,13 @@ class DeviceSession(models.Model):
 
 
 class PanelLoginCode(models.Model):
-    """«باز کردن وب اپ با حساب من» in the panel: a one-time code that signs a staff member into the web app without
-    an SMS. Only its keyed hash is kept; it works once, for PANEL_LOGIN_SECONDS, and only for an active staff user."""
+    """A one-time code that signs a user from the panel or website (classroom join) into the web app without a second
+    SMS. Only its keyed hash is kept; it works once, for PANEL_LOGIN_SECONDS, and when `staff_only=True` only for an
+    active staff user."""
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="panel_login_codes")
     code_hash = models.CharField(max_length=64, unique=True)
+    staff_only = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     used_at = models.DateTimeField(null=True, blank=True)
 
@@ -204,9 +206,9 @@ class PanelLoginCode(models.Model):
         verbose_name_plural = "کدهای ورود از پنل"
 
     @classmethod
-    def issue(cls, user) -> str:
+    def issue(cls, user, *, staff_only: bool = True) -> str:
         code = secrets.token_urlsafe(32)
-        cls.objects.create(user=user, code_hash=_hash(code))
+        cls.objects.create(user=user, code_hash=_hash(code), staff_only=staff_only)
         return code
 
     @classmethod

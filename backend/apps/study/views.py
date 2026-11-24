@@ -850,7 +850,7 @@ def _next_section(access, node):
     }
 
 
-def _available_library_books(user):
+def _available_library_books(user, *, entitlements=None):
     """The whole books a learner can currently keep on their own shelf, with the same access rules as reading.
 
     A sample chapter of a paid book is not a personal copy: books enter this shelf when the whole book is free or an
@@ -873,7 +873,7 @@ def _available_library_books(user):
         order__isnull=True,
         granted_by__isnull=False,
     ).values("book_id")
-    candidates = (
+    candidates = list(
         ContentNode.objects.filter(
             kind=ContentNode.Kind.BOOK,
             depth=1,
@@ -884,22 +884,21 @@ def _available_library_books(user):
         .prefetch_related("majors")
         .order_by("position", "title", "pk")
     )
-    entitlements = active_rows(user)
-    available = []
+    if entitlements is None:
+        entitlements = active_rows(user)
+    eligible = []
     for book in candidates:
         major_ids = {major.pk for major in book.majors.all()}
         access_kind = access_kind_from(entitlements, user, book.pk, major_ids)
-        if not (book.is_free or access_kind):
-            continue
-        access = AccessMap(user, book, light=True, kind=access_kind)
-        if access.visible(book.pk) and access.readable(book.pk):
-            available.append((book, access))
-    return available
+        if book.is_free or access_kind:
+            eligible.append(book)
+    maps = AccessMap.bulk_for_books(user, eligible, entitlements=entitlements, card_only=True)
+    return [(book, maps[book.pk]) for book in eligible if maps[book.pk].visible(book.pk) and maps[book.pk].readable(book.pk)]
 
 
-def _library_payload(request):
+def _library_payload(request, *, entitlements=None, card_cache=None, map_cache=None):
     """Every currently accessible whole book, with its saved shelf state (or a useful inferred first state)."""
-    available = _available_library_books(request.user)
+    available = _available_library_books(request.user, entitlements=entitlements)
     if not available:
         return []
 
@@ -913,10 +912,20 @@ def _library_payload(request):
     )
     progress_latest = {row["book_id"]: row["latest"] for row in progress_rows}
     from apps.catalog.views import _prefetch_user_rows, book_card
+    from apps.commerce.pricing import book_price_quotes
 
-    _prefetch_user_rows(request)
+    if not getattr(request, "_limo_prefetched_user_rows", False):
+        _prefetch_user_rows(request)
+        request._limo_prefetched_user_rows = True
+    prices = book_price_quotes([book for book, _ in available])
+    if card_cache is None:
+        card_cache = {}
     items = []
     for book, access in available:
+        if map_cache is not None:
+            map_cache.setdefault(book.pk, access)
+        if book.pk not in card_cache:
+            card_cache[book.pk] = book_card(request, book, access, prices[book.pk])
         state = states.get(book.pk)
         default_status = LibraryBook.Status.READING if book.pk in progress_latest else LibraryBook.Status.LATER
         items.append(
@@ -925,7 +934,7 @@ def _library_payload(request):
                 "status": state.status if state else default_status,
                 "hidden": state.is_hidden if state else False,
                 "position": state.position if state else 0,
-                "book": book_card(request, book, access),
+                "book": card_cache[book.pk],
                 "_book_position": book.position if book.position is not None else 2**31,
                 "_latest_progress": progress_latest.get(book.pk),
             }
@@ -953,23 +962,48 @@ def _library_payload(request):
 
 @api_view(["GET"])
 def library(request):
+    from apps.catalog.views import _prefetch_user_rows, book_card
+    from apps.commerce.pricing import book_price_quotes
+
     user = request.user
     hidden_book_ids = set(LibraryBook.objects.filter(user=user, is_hidden=True).values_list("book_id", flat=True))
-    recent = SectionProgress.objects.filter(user=user).select_related("node", "book").order_by("-updated_at")
-    reading, seen_books, maps = [], set(), {}
-    for p in recent[:200]:
+    entitlements = active_rows(user)
+    _prefetch_user_rows(request)
+    request._limo_prefetched_user_rows = True
+
+    map_cache: dict[int, AccessMap] = {}
+    card_cache: dict[int, dict] = {}
+    books_payload = _library_payload(request, entitlements=entitlements, card_cache=card_cache, map_cache=map_cache)
+
+    recent = list(
+        SectionProgress.objects.filter(user=user)
+        .select_related("node", "book")
+        .prefetch_related("book__majors")
+        .order_by("-updated_at")[:200]
+    )
+    missing_books = []
+    seen_missing = set()
+    for p in recent:
+        if p.book_id in hidden_book_ids or p.book_id in map_cache or p.book_id in seen_missing or p.book.is_archived or not p.book.is_published:
+            continue
+        seen_missing.add(p.book_id)
+        missing_books.append(p.book)
+    if missing_books:
+        map_cache.update(AccessMap.bulk_for_books(user, missing_books, entitlements=entitlements, card_only=True))
+    prices = book_price_quotes(missing_books) if missing_books else {}
+
+    reading, seen_books = [], set()
+    for p in recent:
         if p.book_id in hidden_book_ids or p.book_id in seen_books or p.book.is_archived or not p.book.is_published:
             continue
-        from apps.catalog.views import book_card
-
-        if p.book_id not in maps:
-            maps[p.book_id] = AccessMap(user, p.book)
-        access = maps[p.book_id]
+        access = map_cache[p.book_id]
         # A section hidden or no longer readable: fall back to the next accessible section of that book.
         # In particular, an expired group entitlement must not leave an old paid section looking like active reading.
         if not access.visible(p.node_id) or not access.readable(p.node_id):
             continue
         seen_books.add(p.book_id)
+        if p.book_id not in card_cache:
+            card_cache[p.book_id] = book_card(request, p.book, access, prices.get(p.book_id))
         reading.append(
             {
                 "book_slug": p.book.slug,
@@ -981,7 +1015,7 @@ def library(request):
                 "position": p.position,
                 "mode": p.mode,
                 "updated_at": p.updated_at,
-                "book": book_card(request, p.book, access),
+                "book": card_cache[p.book_id],
                 # Section finished: «ادامه بده» opens the next one (the first of the next chapter at a chapter's end).
                 "next": _next_section(access, p.node) if p.is_done else None,
             }
@@ -991,7 +1025,7 @@ def library(request):
     return Response(
         {
             "reading": reading,
-            "books": _library_payload(request),
+            "books": books_payload,
             "bookmarks": [{**_section_ref(b.node), "created_at": b.created_at} for b in bookmarks if not b.node.is_archived],
             "notes": [{**_note_payload(n), "node_title": n.node.title} for n in notes],
             "mistakes": _notebook_counts(request),
@@ -1302,20 +1336,20 @@ def stats(request):
     sections_done = sum(b["done"] for b in books)
 
     # «N از M لغت»: books whose word cards the learner has started.
-    from .progress import WORD_PREFIX, word_counts
+    from .progress import WORD_PREFIX, word_counts_for_books
 
-    words = []
     started = (
         FlashcardReview.objects.filter(user=user, flashcard__slug__startswith=WORD_PREFIX, flashcard__is_archived=False)
         .values_list("flashcard__node__path", flat=True)
         .distinct()
     )
     roots = sorted({p[: ContentNode.steplen] for p in started})
-    for book in ContentNode.objects.filter(path__in=roots, kind=ContentNode.Kind.BOOK, is_archived=False):
-        access = AccessMap(user, book)
-        counts = word_counts(user, access, book) if access.visible(book.id) else None
-        if counts:
-            words.append({"slug": book.slug, "title": book.title, **counts})
+    started_books = list(
+        ContentNode.objects.filter(path__in=roots, kind=ContentNode.Kind.BOOK, is_archived=False)
+        .prefetch_related("majors")
+        .order_by("path")
+    )
+    words = word_counts_for_books(user, started_books)
 
     # Weakest sections: lowest accuracy with at least 3 answers.
     per_node = (

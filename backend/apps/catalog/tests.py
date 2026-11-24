@@ -7,6 +7,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
+from apps.accounts.models import User
 from apps.learning.models import Flashcard, Question
 
 from .importer import import_file, parse_chapter
@@ -698,3 +699,75 @@ class TeacherProfileAndReviewTests(TestCase):
         # 4. Verify teacher reply shows in book detail
         detail_after = self.client.get(f"/api/v1/books/{self.book.slug}/").data
         self.assertEqual(detail_after["community_reviews"]["reviews"][0]["teacher_reply"], rev.teacher_reply)
+
+
+class CatalogConstantQueryTests(TestCase):
+    """Home shelves, major books, and all-books list must stay constant-query as the catalog grows."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("09120007711")
+        self.major = Major.objects.create(slug="sci", name="علوم", order=1)
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _add_book(self, idx: int):
+        b = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title=f"کتاب {idx}",
+            slug=f"qbook-{idx}",
+            price=10000,
+            is_published=True,
+        )
+        b.majors.add(self.major)
+        ch = b.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل ۱", slug=f"ch-{idx}", is_published=True, is_free=True)
+        sec = ch.add_child(
+            kind=ContentNode.Kind.SECTION,
+            title="بخش ۱",
+            slug=f"sec-{idx}",
+            is_published=True,
+            full_body="متن طولانی درس " * 100,
+        )
+        from apps.learning.models import Question
+        from apps.study.models import SectionProgress
+
+        Question.objects.create(
+            node=sec,
+            slug=f"q-{idx}",
+            stem="سوال؟",
+        )
+        SectionProgress.objects.create(user=self.user, book=b, node=sec, percent=100, is_done=True)
+        return b
+
+    def test_shelves_major_books_and_all_books_do_not_scale_queries_per_book(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self._add_book(1)
+        counts_1 = {}
+        for name, url in (
+            ("shelves", "/api/v1/shelves/"),
+            ("major_books", f"/api/v1/majors/{self.major.slug}/books/"),
+            ("all_books", "/api/v1/books/"),
+        ):
+            with CaptureQueriesContext(connection) as ctx:
+                res = self.client.get(url)
+            self.assertEqual(res.status_code, 200)
+            counts_1[name] = len(ctx)
+
+        for i in range(2, 7):
+            self._add_book(i)
+
+        for name, url in (
+            ("shelves", "/api/v1/shelves/"),
+            ("major_books", f"/api/v1/majors/{self.major.slug}/books/"),
+            ("all_books", "/api/v1/books/"),
+        ):
+            with CaptureQueriesContext(connection) as ctx:
+                res = self.client.get(url)
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(len(ctx), counts_1[name], f"{name} grew from {counts_1[name]} to {len(ctx)} queries")
+            books_payload = res.data[0]["books"] if name == "shelves" else res.data
+            self.assertEqual(len(books_payload), 6)
+            self.assertEqual(books_payload[0]["chapter_count"], 1)
+            self.assertEqual(books_payload[0]["section_count"], 1)
+

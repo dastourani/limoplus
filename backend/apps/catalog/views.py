@@ -53,17 +53,21 @@ def majors(request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def major_books(request, slug):
+    from .access import active_rows
+
     major = get_object_or_404(Major, slug=slug)
-    books = list(ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, majors=major, is_published=True, is_archived=False)
-                 .order_by("is_coming_soon", F("position").asc(nulls_last=True), "title"))
+    books = list(
+        ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, majors=major, is_published=True, is_archived=False)
+        .prefetch_related("majors")
+        .order_by("is_coming_soon", F("position").asc(nulls_last=True), "title")
+    )
     from apps.commerce.pricing import book_price_quotes
 
+    entitlements = active_rows(request.user)
     prices = book_price_quotes(books)
-    payload = []
-    for book in books:
-        access = AccessMap(request.user, book)
-        payload.append(book_card(request, book, access, prices[book.pk]))
-    return Response(payload)
+    _prefetch_user_rows(request)
+    maps = AccessMap.bulk_for_books(request.user, books, entitlements=entitlements, card_only=True)
+    return Response([book_card(request, book, maps[book.pk], prices[book.pk]) for book in books])
 
 
 @never_cache
@@ -71,15 +75,24 @@ def major_books(request, slug):
 @permission_classes([AllowAny])
 def all_books(request):
     """Every book, for a learner who hasn't picked a major yet. Each carries its first major (for the cover)."""
-    books = list(ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_published=True, is_archived=False, majors__isnull=False)
-                 .distinct().order_by("is_coming_soon", F("position").asc(nulls_last=True), "title"))
+    from .access import active_rows
+
+    books = list(
+        ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_published=True, is_archived=False, majors__isnull=False)
+        .prefetch_related("majors")
+        .distinct()
+        .order_by("is_coming_soon", F("position").asc(nulls_last=True), "title")
+    )
     from apps.commerce.pricing import book_price_quotes
 
+    entitlements = active_rows(request.user)
     prices = book_price_quotes(books)
+    _prefetch_user_rows(request)
+    maps = AccessMap.bulk_for_books(request.user, books, entitlements=entitlements, card_only=True)
     payload = []
     for book in books:
-        major = book.majors.order_by("order", "name").first()
-        card = book_card(request, book, AccessMap(request.user, book), prices[book.pk])
+        major = min(book.majors.all(), key=lambda m: (m.order, m.name), default=None)
+        card = book_card(request, book, maps[book.pk], prices[book.pk])
         card["major"] = {"slug": major.slug, "name": major.name, "color": major.color} if major else None
         payload.append(card)
     return Response(payload)
@@ -92,7 +105,7 @@ def shelves(request):
     """The home page: one row per active shelf (set in the panel), then the published books on no shelf, so none is hidden."""
     from .models import Shelf, ShelfBook
 
-    from .access import access_kind_from, active_rows
+    from .access import active_rows
 
     published = {
         b.id: b
@@ -117,21 +130,29 @@ def shelves(request):
             .prefetch_related("majors")
             .order_by("title", "pk")
         )
+    all_home_books = [*published.values(), *private_books]
     from apps.commerce.pricing import book_price_quotes
 
-    prices = book_price_quotes([*published.values(), *private_books])
+    prices = book_price_quotes(all_home_books)
     _prefetch_user_rows(request)
+    maps = AccessMap.bulk_for_books(request.user, all_home_books, entitlements=entitlements, card_only=True)
     cards: dict[int, dict] = {}
 
     def card(book):
         if book.id not in cards:
-            kind = access_kind_from(entitlements, request.user, book.id, {m.id for m in book.majors.all()})
-            cards[book.id] = book_card(request, book, AccessMap(request.user, book, light=True, kind=kind), prices[book.pk])
+            cards[book.id] = book_card(request, book, maps[book.id], prices[book.pk])
         return cards[book.id]
 
+    active_shelves = list(Shelf.objects.filter(is_active=True).order_by("order", "id"))
+    by_shelf: dict[int, list[int]] = {}
+    if active_shelves:
+        for sb in ShelfBook.objects.filter(shelf_id__in=[s.id for s in active_shelves]).order_by("order", "id"):
+            if sb.book_id in published:
+                by_shelf.setdefault(sb.shelf_id, []).append(sb.book_id)
+
     rows, placed = [], set()
-    for shelf in Shelf.objects.filter(is_active=True).order_by("order", "id"):
-        ids = [i.book_id for i in ShelfBook.objects.filter(shelf=shelf).order_by("order", "id") if i.book_id in published]
+    for shelf in active_shelves:
+        ids = by_shelf.get(shelf.id, [])
         if ids:
             rows.append({"id": shelf.id, "title": shelf.title, "books": [card(published[i]) for i in ids]})
             placed.update(ids)
@@ -218,7 +239,7 @@ def _notify(user, book, request=None) -> dict:
 @permission_classes([AllowAny])
 def book_detail(request, slug):
     book = get_object_or_404(ContentNode, kind=ContentNode.Kind.BOOK, slug=slug, depth=1)
-    access = AccessMap(request.user, book)
+    access = AccessMap(request.user, book, defer_full_body=True)
     if not access.visible(book.id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
     from apps.study.progress import section_states, word_counts

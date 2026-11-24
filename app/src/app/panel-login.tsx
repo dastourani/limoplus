@@ -15,9 +15,15 @@ import { colors, rtl } from '../theme';
  * address at once, exchanged for a session (staff only, once, within a minute), and the app opens on the home page.
  * With two devices already signed in, one is chosen to sign out, as after an SMS code.
  */
+function safeNextPath(raw: string | null): string {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/home';
+  return raw;
+}
+
 export default function PanelLogin() {
   const { signIn } = useAuth();
   const code = useRef<string | null>(null);
+  const nextPath = useRef<string>('/home');
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState<DeviceSessionInfo[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -30,7 +36,7 @@ export default function PanelLogin() {
       const r = await endpoints.panelLogin({ code: code.current, device_name: deviceName(), platform: Platform.OS, replace_session_id: replace });
       code.current = null;
       await signIn(r.token, r.user);
-      router.replace('/home');
+      router.replace(nextPath.current as '/home');
     } catch (e) {
       if (e instanceof ApiError && e.code === 'session_limit') setLimit((e.data.sessions as DeviceSessionInfo[]) ?? []);
       else setError(e instanceof ApiError ? e.message : 'ورود ممکن نشد.');
@@ -44,6 +50,8 @@ export default function PanelLogin() {
       setError('این پیوند فقط در مرورگر کار می‌کند.');
       return;
     }
+    const rawNext = new URLSearchParams(window.location.search).get('next');
+    nextPath.current = safeNextPath(rawNext);
     const fromHash = window.location.hash.replace(/^#/, '').trim();
     // Out of the address bar and the history at once: the code must not be bookmarked, shared or reused.
     window.history.replaceState(null, '', window.location.pathname);

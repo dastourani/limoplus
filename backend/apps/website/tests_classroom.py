@@ -173,22 +173,45 @@ class ClassroomJoinLandingTests(TestCase):
         self.assertContains(res, "resend-otp-btn")
 
     def test_authenticated_student_can_join_and_gain_entitlement(self):
+        from django.test import override_settings
+
         student = User.objects.create(phone="09123334444")
         self.client.force_login(student)
-        res = self.client.post(f"/join/{self.classroom.code}/")
+        with override_settings(APP_URL="https://app.example.ir"):
+            res = self.client.post(f"/join/{self.classroom.code}/")
         self.assertEqual(res.status_code, 302)
-        self.assertEqual(res.url, f"/book/{self.book.slug}")
+        self.assertTrue(
+            res.url.startswith(f"https://app.example.ir/panel-login?next=/book/{self.book.slug}#"),
+            res.url,
+        )
+        self.assertEqual(res["Cache-Control"], "no-store")
+        self.assertEqual(res["Referrer-Policy"], "no-referrer")
 
         member = ClassroomMember.objects.get(classroom=self.classroom, phone=student.phone)
         self.assertEqual(member.status, ClassroomMember.Status.ACTIVE)
         self.assertIsNotNone(member.entitlement)
         self.assertEqual(member.entitlement.book, self.book)
 
-        # Check that landing page renders deep link for active members
-        res_member = self.client.get(f"/join/{self.classroom.code}/")
+        # Check that landing page renders deep link and cross-domain web-app open button for active members
+        with override_settings(APP_URL="https://app.example.ir"):
+            res_member = self.client.get(f"/join/{self.classroom.code}/")
         self.assertEqual(res_member.status_code, 200)
         self.assertContains(res_member, f"limookhan://book/{self.book.slug}")
         self.assertContains(res_member, "deep-link-btn")
+        self.assertContains(res_member, 'name="action" value="open_app"')
+
+        # Clicking "open_app" on already_member mints a fresh cross-domain handoff without duplicate success flash
+        from django.contrib.messages import get_messages
+
+        with override_settings(APP_URL="https://app.example.ir"):
+            res_open = self.client.post(f"/join/{self.classroom.code}/", {"action": "open_app"})
+        self.assertEqual(res_open.status_code, 302)
+        self.assertTrue(
+            res_open.url.startswith(f"https://app.example.ir/panel-login?next=/book/{self.book.slug}#"),
+            res_open.url,
+        )
+        msgs = [str(m) for m in get_messages(res_open.wsgi_request)]
+        self.assertFalse(any("اضافه شد" in m for m in msgs))
 
     def test_inactive_classroom_shows_error_state(self):
         self.classroom.is_active = False
@@ -262,6 +285,99 @@ class ClassroomJoinLandingTests(TestCase):
         # Follow-up GET sees the authenticated active membership card immediately.
         res_after = self.client.get(f"/join/{self.classroom.code}/")
         self.assertContains(res_after, "عضو این کلاس شده‌اید")
+
+    def test_guest_student_joins_on_website_host_and_opens_locked_chapter_in_web_app(self):
+        """Determining test: guest follows teacher invite on website host, verifies OTP, gets redirected to the
+        separate web-app origin (not relative /book/...), signs into web app, and opens the paid chapter."""
+        import json
+        from django.test import Client, override_settings
+        from rest_framework.test import APIClient
+        from apps.accounts.models import DeviceSession, OTPCode
+
+        paid_book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title="کتاب پولی کلاس",
+            slug="paid-class-book",
+            price=50000,
+            is_published=True,
+        )
+        chapter = paid_book.add_child(
+            kind=ContentNode.Kind.CHAPTER,
+            title="فصل یکم کلاس",
+            slug="ch-1",
+            is_published=True,
+            is_free=False,
+        )
+        section = chapter.add_child(
+            kind=ContentNode.Kind.SECTION,
+            title="بخش اول فصل یکم",
+            slug="sec-1",
+            is_published=True,
+            is_free=False,
+            full_body="محتوای اختصاصی فصل برای دانشجوی کلاس",
+        )
+        cls = Classroom.objects.create(
+            teacher=self.teacher,
+            book=paid_book,
+            title="کلاس روی دامنه سایت",
+            capacity=30,
+            expiry_policy=Classroom.ExpiryPolicy.FROM_JOIN,
+            duration_days=30,
+        )
+
+        # Confirm the section is locked for anonymous visitors on the web app API.
+        anon_api = APIClient()
+        self.assertEqual(anon_api.get(f"/api/v1/nodes/{section.id}/").status_code, 403)
+
+        phone = "09125550099"
+        _, otp_code = OTPCode.issue(phone)
+        site_client = Client(HTTP_HOST="limookhan.ir")
+
+        with override_settings(
+            WEBSITE_HOSTS=["limookhan.ir"],
+            ALLOWED_HOSTS=["limookhan.ir", "app.limookhan.ir", "testserver"],
+            APP_URL="https://app.limookhan.ir",
+        ):
+            landing = site_client.get(f"/join/{cls.code}/")
+            self.assertEqual(landing.status_code, 200)
+
+            res = site_client.post(
+                f"/join/{cls.code}/",
+                data=json.dumps({"action": "verify_otp", "phone": phone, "code": otp_code}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200, res.content)
+        redirect_url = res.json()["redirect"]
+        self.assertTrue(
+            redirect_url.startswith(f"https://app.limookhan.ir/panel-login?next=/book/{paid_book.slug}#"),
+            redirect_url,
+        )
+
+        # Still no DeviceSession wasted on the website until the browser opens the web app.
+        student = User.objects.get(phone=phone)
+        self.assertEqual(DeviceSession.objects.filter(user=student).count(), 0)
+
+        # Browser follows the redirect to app.limookhan.ir/panel-login and exchanges the fragment code for a Bearer token.
+        handoff_code = redirect_url.split("#", 1)[1]
+        app_api = APIClient()
+        login_res = app_api.post(
+            "/api/v1/auth/panel-login/",
+            {"code": handoff_code, "device_name": "مرورگر وب", "platform": "web"},
+            format="json",
+        )
+        self.assertEqual(login_res.status_code, 200, login_res.data)
+        token = login_res.data["token"]
+
+        # Now the student opens the book and the chapter/section itself inside the web app.
+        authed_api = APIClient(HTTP_AUTHORIZATION=f"Bearer {token}")
+        book_res = authed_api.get(f"/api/v1/books/{paid_book.slug}/")
+        self.assertEqual(book_res.status_code, 200)
+        self.assertTrue(book_res.data["owned"])
+        self.assertFalse(book_res.data["chapters"][0]["is_locked"])
+
+        sec_res = authed_api.get(f"/api/v1/nodes/{section.id}/")
+        self.assertEqual(sec_res.status_code, 200, sec_res.data)
+        self.assertIn("محتوای اختصاصی فصل برای دانشجوی کلاس", sec_res.data["full"])
 
     def test_capacity_limit_is_enforced_and_revoke_blocks_rejoin(self):
         from apps.catalog.access import owns_book

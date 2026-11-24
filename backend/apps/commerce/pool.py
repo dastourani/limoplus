@@ -321,18 +321,15 @@ def finalize_subscription_pool(period: SubscriptionPoolPeriod, manager_user=None
         period_locked.finalized_at = timezone.now()
         period_locked.save()
 
-        try:
-            from apps.catalog.backups import notify_bale
-            from apps.catalog.panel_display import fa_number
-            msg = (
-                f"🎉 دوره استخر اشتراک نهایی و واریز شد\n"
-                f"دوره: {period_locked.title}\n"
-                f"کل استخر: {fa_number(period_locked.total_pool_amount)} تومان\n"
-                f"تعداد اساتید واریزشده: {credited_count}"
-            )
-            notify_bale(msg)
-        except Exception:
-            pass
+        from apps.catalog.backups import notify_bale_after_commit
+        from apps.catalog.panel_display import fa_number
+        msg = (
+            f"🎉 دوره استخر اشتراک نهایی و واریز شد\n"
+            f"دوره: {period_locked.title}\n"
+            f"کل استخر: {fa_number(period_locked.total_pool_amount)} تومان\n"
+            f"تعداد اساتید واریزشده: {credited_count}"
+        )
+        notify_bale_after_commit(msg, log_label=f"Bale pool finalized alert for #{period_locked.id}")
 
     log.info("Subscription pool period #%s finalized: %s teachers credited.", period.id, credited_count)
     return credited_count

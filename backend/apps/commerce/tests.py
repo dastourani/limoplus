@@ -580,14 +580,27 @@ class PaymentTests(TestCase):
         with (
             mock.patch("apps.commerce.zibal.verify", return_value={"result": 100, "amount": order.amount * 10}),
             mock.patch("apps.commerce.royalty.calculate_and_save_order_royalty", side_effect=RuntimeError("boom")),
-            mock.patch("apps.catalog.backups.notify_bale") as mock_bale,
+            mock.patch("apps.catalog.backups.notify_bale", side_effect=RuntimeError("bale down")) as mock_bale,
         ):
-            settled = settle("ROY-ERR")
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                settled = settle("ROY-ERR")
+                # While inside the transaction, Bale has NOT been called yet (locks are never held on Bale I/O).
+                self.assertEqual(mock_bale.call_count, 0)
+            self.assertEqual(len(callbacks), 2)
 
         self.assertEqual(settled.status, Order.Status.PAID)
         self.assertTrue(Entitlement.objects.filter(order=order).exists())
         self.assertFalse(OrderRevenueSnapshot.objects.filter(order=order).exists())
         self.assertTrue(any("خطا در ثبت سهم استاد" in c.args[0] for c in mock_bale.call_args_list))
+
+        # Even with Bale completely down, the discrepancy stays visible in OrderAdmin until reconciled.
+        admin_user = User.objects.create_superuser("09120000098", password="StrongPass!123")
+        admin_client = Client()
+        admin_client.force_login(admin_user)
+        missing_page = admin_client.get("/admin/commerce/order/?royalty=missing")
+        self.assertEqual(missing_page.status_code, 200)
+        self.assertContains(missing_page, "سهم ثبت نشده")
+        self.assertContains(missing_page, order.title)
 
         # Recovery repairs missing snapshot & wallet credit idempotently.
         rec = reconcile_missing_royalties()
@@ -595,6 +608,9 @@ class PaymentTests(TestCase):
         self.assertEqual(rec["errors"], 0)
         self.assertTrue(OrderRevenueSnapshot.objects.filter(order=order).exists())
         self.assertGreater(TeacherWallet.objects.get(teacher=teacher).pending_balance, 0)
+
+        missing_after = admin_client.get("/admin/commerce/order/?royalty=missing")
+        self.assertNotContains(missing_after, "سهم ثبت نشده")
 
     def test_settle_locks_user_row_before_granting_entitlement(self):
         import sys
@@ -684,4 +700,97 @@ class PostgresConcurrentRenewalTransactionTests(TransactionTestCase):
         self.assertEqual(len(ents), 2)
         self.assertEqual(ents[1].starts_at, ents[0].ends_at)
         self.assertEqual((ents[1].ends_at - ents[0].starts_at), timedelta(days=60))
+
+
+class EntitlementAdminOfflinePolicyTests(TestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_superuser("09120009901", password="StrongPass!123")
+        self.learner = User.objects.create_user("09120009902")
+        self.major = Major.objects.create(slug="eng", name="فنی", order=1)
+        self.book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title="کتاب آفلاین ادمین",
+            slug="admin-offline-book",
+            price=40000,
+            is_published=True,
+        )
+        self.book.majors.add(self.major)
+        self.free_book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title="کتاب رایگان",
+            slug="free-book",
+            price=0,
+            is_free=True,
+            is_published=True,
+        )
+        self.free_book.majors.add(self.major)
+        self.admin_client = Client()
+        self.admin_client.force_login(self.admin_user)
+
+    def test_entitlement_admin_revoke_keep_vs_wipe_and_subscription_wipe(self):
+        from apps.accounts.models import DeviceSession
+        from rest_framework.test import APIClient
+
+        ent = Entitlement.objects.create(user=self.learner, book=self.book, note="دستی")
+        _, token = DeviceSession.start(self.learner, "گوشی", "android")
+        api = APIClient(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        # 1. Change form renders both policy options and help text
+        change_url = f"/admin/commerce/entitlement/{ent.pk}/change/"
+        page = self.admin_client.get(change_url)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "نگهداری نسخه آفلاین تا پایان مهلت قبلی")
+        self.assertContains(page, "حذف فوری نسخه آفلاین")
+
+        # 2. Bulk action: keep -> archives without setting offline_revoked_at
+        changelist_url = "/admin/commerce/entitlement/"
+        r_keep = self.admin_client.post(
+            changelist_url,
+            {"action": "revoke_keep_offline", "_selected_action": [str(ent.pk)]},
+        )
+        self.assertEqual(r_keep.status_code, 302)
+        ent.refresh_from_db()
+        self.assertTrue(ent.is_archived)
+        self.assertIsNone(ent.offline_revoked_at)
+        self.assertEqual(api.get("/api/v1/me/").data["offline_revocations"], [])
+
+        # 3. Un-archiving clears any wipe timestamp; saving with wipe sets offline_revoked_at
+        self.admin_client.post(
+            change_url,
+            {
+                "user": str(self.learner.pk),
+                "book": str(self.book.pk),
+                "starts_at_0": ent.starts_at.strftime("%Y-%m-%d"),
+                "starts_at_1": ent.starts_at.strftime("%H:%M:%S"),
+                "note": "دستی",
+                "is_archived": "on",
+                "offline_policy": "wipe",
+            },
+        )
+        ent.refresh_from_db()
+        self.assertTrue(ent.is_archived)
+        self.assertIsNotNone(ent.offline_revoked_at)
+        revs = api.get("/api/v1/me/").data["offline_revocations"]
+        self.assertEqual([r["slug"] for r in revs], [self.book.slug])
+
+        # 4. Revoking a major subscription with wipe also reports non-free books in that major
+        ent.is_archived = False
+        ent.offline_revoked_at = None
+        ent.save()
+        sub = Entitlement.objects.create(user=self.learner, major=self.major, ends_at=timezone.now() + timedelta(days=30))
+        self.admin_client.post(
+            changelist_url,
+            {"action": "revoke_wipe_offline", "_selected_action": [str(sub.pk)]},
+        )
+        sub.refresh_from_db()
+        self.assertTrue(sub.is_archived)
+        self.assertIsNotNone(sub.offline_revoked_at)
+        # Still owns book via `ent`, so not reported yet:
+        self.assertEqual(api.get("/api/v1/me/").data["offline_revocations"], [])
+        # Once book-level access is archived (keep), subscription wipe surfaces the paid book (never free books):
+        ent.is_archived = True
+        ent.save(update_fields=["is_archived"])
+        revs_after = api.get("/api/v1/me/").data["offline_revocations"]
+        self.assertEqual([r["slug"] for r in revs_after], [self.book.slug])
+
 

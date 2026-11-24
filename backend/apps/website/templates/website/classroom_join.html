@@ -24,7 +24,7 @@
       </h1>
       <p class="mut" style="color: #6b7280; line-height: 1.7;">{{ message }}</p>
       <div style="margin-top: 24px;">
-        <a href="/site/" class="btn dark" style="padding: 10px 24px; text-decoration: none;">بازگشت به صفحه اصلی</a>
+        <a href="{% url 'website:home' %}" class="btn dark" style="padding: 10px 24px; text-decoration: none;">بازگشت به صفحه اصلی</a>
       </div>
     {% else %}
       {% if messages %}
@@ -76,9 +76,13 @@
             <a id="deep-link-btn" href="{{ deep_link_url }}" class="btn dark wide" style="display: none; padding: 12px; font-size: 15px; font-weight: bold; text-decoration: none; border-radius: 8px;">
               📱 باز کردن در اپلیکیشن لیموخوان
             </a>
-            <a href="{{ app_book_url }}" class="btn lemon wide" style="display: block; padding: 12px; font-size: 16px; font-weight: bold; text-decoration: none; border-radius: 8px;">
-              ورود به کتاب در وب و شروع مطالعه
-            </a>
+            <form method="post" style="margin: 0;">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="open_app">
+              <button type="submit" class="btn lemon wide" style="display: block; width: 100%; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer;">
+                ورود به کتاب در وب و شروع مطالعه
+              </button>
+            </form>
           </div>
         {% else %}
           <form method="post">
@@ -254,10 +258,10 @@
         verifyBtn.disabled = false;
         return;
       }
-      // Web session cookie is now set and membership is active; reload to show active book & app links.
-      message.textContent = 'ورود موفقیت‌آمیز بود. در حال افزودن کتاب به کتابخانه…';
+      // Web session cookie is now set and membership is active; hand off to the web app directly.
+      message.textContent = 'ورود موفقیت‌آمیز بود. در حال انتقال به کتاب…';
       message.style.color = '#10b981';
-      window.location.reload();
+      window.location.assign(res.data.redirect || bookUrl);
     } catch (_) {
       message.textContent = 'خطا در اتصال به سرور.';
       message.style.color = '#dc2626';
