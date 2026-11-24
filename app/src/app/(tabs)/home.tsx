@@ -353,7 +353,7 @@ export default function Home() {
         </View>
       ),
     });
-  if (!user && (reading.length === 0 || guestSeconds >= 60))
+  if (!user)
     blocks.push({
       key: 'welcome',
       el: guestSeconds >= 60 ? (
@@ -369,7 +369,7 @@ export default function Home() {
           </View>
         </View>
       ) : (
-        // A guest who hasn't started yet: explain they can try free sections right away, or sign in for full tracking.
+        // A guest who hasn't accumulated study time yet: explain they can try free sections, or sign in for full tracking.
         <View style={[styles.planCard, styles.welcome]}>
           <IconBadge name="sparkles" size={40} />
           <View style={{ flex: 1, gap: 4 }}>
