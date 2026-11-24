@@ -123,15 +123,14 @@ def search(request):
                     results.append({"kind": "section", "id": n.id, "node_id": n.id, "title": n.title, "book_title": book.title,
                                     "book_slug": book.slug, "mode": mode, "snippet": snip, "match": match})
                     break
-        usable = lambda item: item.node_id in nodes and (item.is_free or access.readable(item.node_id))  # noqa: E731
         for q in Question.objects.filter(node_id__in=list(nodes), is_archived=False).only("id", "node_id", "stem", "is_free"):
-            if usable(q):
+            if access.usable(q):
                 hit = _snippet(q.stem, rx)
                 if hit:
                     results.append({"kind": "question", "id": q.id, "node_id": q.node_id, "title": nodes[q.node_id].title,
                                     "book_title": book.title, "book_slug": book.slug, "snippet": hit[0], "match": hit[1]})
         for f in Flashcard.objects.filter(node_id__in=list(nodes), is_archived=False).only("id", "node_id", "title", "point", "is_free"):
-            if usable(f):
+            if access.usable(f):
                 hit = _snippet(f.title + " — " + f.point, rx)
                 if hit:
                     results.append({"kind": "flashcard", "id": f.id, "node_id": f.node_id, "title": f.title,

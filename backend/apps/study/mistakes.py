@@ -172,7 +172,7 @@ def _mistakes(request, book_slug=""):
     items = []
     for q in questions:
         access = _map_for(request, q.node)
-        if not (access.visible(q.node_id) and (q.is_free or access.readable(q.node_id))):
+        if not access.usable(q):
             continue
         items.append((q, access.book, book[q.id]))
     all_books = sorted({b.slug: b for _, b, _ in items}.values(), key=lambda b: b.title)
@@ -311,7 +311,7 @@ def _due_cards(request, limit=300):
     for r in reviews[:limit]:
         card = r.flashcard
         access = _map_for(request, card.node)
-        if access.visible(card.node_id) and (card.is_free or access.readable(card.node_id)):
+        if access.usable(card):
             out.append(r)
     return out
 
@@ -482,7 +482,7 @@ def quick(request):
             for q in Question.objects.filter(node=cont.node, is_archived=False).order_by("order", "id"):
                 if len(picked) >= 3:
                     break
-                if q.id not in answered and q not in picked and access.visible(q.node_id) and (q.is_free or access.readable(q.node_id)):
+                if q.id not in answered and q not in picked and access.usable(q):
                     picked.append(q)
     qs = {q.id: q for q in Question.objects.filter(pk__in=[q.id for q in picked]).select_related("node").prefetch_related("choices", "questionsource_set__source")}
     return Response({"cards": cards, "questions": [_practice_payload(request, qs[q.id]) for q in picked]})
