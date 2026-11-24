@@ -11,7 +11,7 @@ import { colors, rtl, toPersianDigits } from '../theme';
 
 export default function Offline() {
   const [books, setBooks] = useState<OfflineBook[]>([]);
-  const { confirm } = useFeedback();
+  const { confirm, toast } = useFeedback();
   useFocusEffect(useCallback(() => void offlineBooks().then(setBooks), []));
 
   return (
@@ -31,7 +31,14 @@ export default function Offline() {
                   {toPersianDigits(b.sectionIds.length)} بخش، معتبر تا {jalaliDate(b.validUntil)}
                 </Text>
               </Pressable>
-              <Pressable onPress={async () => (await confirm({ title: `نسخه‌ی آفلاین «${b.title}» حذف شود؟`, confirmLabel: 'حذف', destructive: true, icon: 'trash' })) && removeOfflineBook(b.slug).then(() => offlineBooks().then(setBooks))}>
+              <Pressable
+                onPress={async () => {
+                  if (!(await confirm({ title: `نسخه‌ی آفلاین «${b.title}» حذف شود؟`, confirmLabel: 'حذف', destructive: true, icon: 'trash' }))) return;
+                  removeOfflineBook(b.slug)
+                    .then(() => offlineBooks().then(setBooks))
+                    .catch(() => toast('حذف نسخه‌ی آفلاین ممکن نشد.'));
+                }}
+              >
                 <Text style={{ color: colors.redDark, fontWeight: '800' }}>حذف</Text>
               </Pressable>
             </View>

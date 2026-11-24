@@ -3,11 +3,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const storage = new Map<string, string>();
 const files = new Map<string, Uint8Array>();
 let failNextTempWrite = false;
+let failNextIndexWrite = false;
+let failNextIndexRead = false;
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: {
-    getItem: vi.fn(async (k: string) => storage.get(k) ?? null),
+    getItem: vi.fn(async (k: string) => {
+      if (failNextIndexRead && k === 'limo.offlineIndex') {
+        failNextIndexRead = false;
+        throw new Error('storage read failed');
+      }
+      return storage.get(k) ?? null;
+    }),
     setItem: vi.fn(async (k: string, v: string) => {
+      if (failNextIndexWrite && k === 'limo.offlineIndex') {
+        failNextIndexWrite = false;
+        throw new Error('storage write failed');
+      }
       storage.set(k, v);
     }),
     removeItem: vi.fn(async (k: string) => {
@@ -94,11 +106,11 @@ vi.mock('expo-file-system', () => {
 });
 
 import type { OfflineBundle } from '../../api/endpoints';
-import { offlineBooks, offlineSection, reconcileOfflineRevocations, saveOfflineBook } from '../offline';
+import { offlineBooks, offlineSection, reconcileOfflineRevocations, removeOfflineBook, saveOfflineBook } from '../offline';
 
-const sampleBundle = (slug: string, downloadedAt: string, validUntil: string): OfflineBundle => ({
+const sampleBundle = (slug: string, downloadedAt: string, validUntil: string, sectionTitle = 'بخش اول'): OfflineBundle => ({
   book: { slug, title: `کتاب ${slug}` },
-  sections: [{ id: 101, title: 'بخش اول', summary: 'خلاصه', full: 'متن کامل' }],
+  sections: [{ id: 101, title: sectionTitle, summary: 'خلاصه', full: 'متن کامل' }],
   downloaded_at: downloadedAt,
   valid_until: validUntil,
 });
@@ -108,6 +120,8 @@ describe('offline atomic writes & hybrid revocation sync', () => {
     storage.clear();
     files.clear();
     failNextTempWrite = false;
+    failNextIndexWrite = false;
+    failNextIndexRead = false;
   });
 
   it('preserves existing .bin and cleans up .tmp if temp write fails', async () => {
@@ -120,8 +134,59 @@ describe('offline atomic writes & hybrid revocation sync', () => {
 
     expect(files.has('offline/math-1.bin')).toBe(true);
     expect(files.has('offline/math-1.bin.tmp')).toBe(false);
+    expect(files.has('offline/math-1.bin.bak')).toBe(false);
     const sec = await offlineSection(101);
     expect(sec?.title).toBe('بخش اول');
+  });
+
+  it('rejects and leaves no orphan .bin when saving the offline index fails on a new download', async () => {
+    const future = new Date(Date.now() + 10 * 86400 * 1000).toISOString();
+    failNextIndexWrite = true;
+
+    await expect(saveOfflineBook(sampleBundle('bio-1', '2026-11-24T10:00:00Z', future))).rejects.toThrow('storage write failed');
+
+    expect(files.has('offline/bio-1.bin')).toBe(false);
+    expect(files.has('offline/bio-1.bin.tmp')).toBe(false);
+    expect(files.has('offline/bio-1.bin.bak')).toBe(false);
+    expect(await offlineBooks()).toEqual([]);
+    expect(await offlineSection(101)).toBeNull();
+  });
+
+  it('restores previous .bin and index entry when saving the offline index fails on a re-download', async () => {
+    const future = new Date(Date.now() + 10 * 86400 * 1000).toISOString();
+    await saveOfflineBook(sampleBundle('math-1', '2026-11-20T10:00:00Z', future, 'نسخه‌ی اول'));
+
+    failNextIndexWrite = true;
+    await expect(saveOfflineBook(sampleBundle('math-1', '2026-11-24T10:00:00Z', future, 'نسخه‌ی جدید'))).rejects.toThrow('storage write failed');
+
+    expect(files.has('offline/math-1.bin')).toBe(true);
+    expect(files.has('offline/math-1.bin.tmp')).toBe(false);
+    expect(files.has('offline/math-1.bin.bak')).toBe(false);
+    const list = await offlineBooks();
+    expect(list.map((b) => b.downloadedAt)).toEqual(['2026-11-20T10:00:00Z']);
+    expect((await offlineSection(101))?.title).toBe('نسخه‌ی اول');
+  });
+
+  it('rejects without wiping existing books or leaving files if reading the index fails', async () => {
+    const future = new Date(Date.now() + 10 * 86400 * 1000).toISOString();
+    await saveOfflineBook(sampleBundle('math-1', '2026-11-20T10:00:00Z', future));
+
+    failNextIndexRead = true;
+    await expect(saveOfflineBook(sampleBundle('chem-1', '2026-11-24T10:00:00Z', future))).rejects.toThrow('storage read failed');
+
+    expect(files.has('offline/chem-1.bin')).toBe(false);
+    expect((await offlineBooks()).map((b) => b.slug)).toEqual(['math-1']);
+  });
+
+  it('keeps .bin intact when removeOfflineBook fails to update the index', async () => {
+    const future = new Date(Date.now() + 10 * 86400 * 1000).toISOString();
+    await saveOfflineBook(sampleBundle('math-1', '2026-11-20T10:00:00Z', future));
+
+    failNextIndexWrite = true;
+    await expect(removeOfflineBook('math-1')).rejects.toThrow('storage write failed');
+
+    expect(files.has('offline/math-1.bin')).toBe(true);
+    expect((await offlineBooks()).map((b) => b.slug)).toEqual(['math-1']);
   });
 
   it('wipes revoked offline books only when revoked_at >= downloadedAt', async () => {
