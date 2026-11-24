@@ -5,7 +5,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react
 import { endpoints, type AppPages, type Purchases } from '../../api/endpoints';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
-import { APP_BUILD, getApiUrl, getDefaultApiUrl } from '../../config';
+import { APP_BUILD, APP_CHANNEL, getApiUrl, getDefaultApiUrl } from '../../config';
 import { useFeedback } from '../../components/Feedback';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Card, Screen, usePullRefresh, Chip } from '../../components/ui';
@@ -78,7 +78,7 @@ export default function Profile() {
   return (
     <Screen tab>
       <ScrollView contentContainerStyle={styles.page} refreshControl={refresh}>
-        {!!otherServer && (
+        {!!otherServer && (APP_CHANNEL === 'test' || !!user?.is_staff) && (
           <Pressable onPress={() => router.push('/settings')} style={styles.testServer} accessibilityRole="button">
             <Text style={[styles.testServerText, rtl]}>به سرور آزمایشی وصل است: {otherServer}. برای برگشت به سرور اصلی بزنید.</Text>
           </Pressable>
@@ -267,7 +267,7 @@ export default function Profile() {
           }}
           suppressHighlighting
         >
-          لیموخوان، نسخه‌ی {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}
+          لیموخوان{APP_CHANNEL === 'test' ? ' آزمایشی' : ''}، نسخه‌ی {APP_BUILD ? toPersianDigits(APP_BUILD) : 'توسعه'}
         </Text>
         {Platform.OS !== 'web' && !!user?.is_staff && versionTaps >= 4 && (
           <Text style={[styles.version, { marginTop: -8 }]}>

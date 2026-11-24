@@ -377,7 +377,7 @@ def _payload(request, session: ReviewSession) -> dict:
         "more": len(pool) > len(session.served),
         "finished": bool(session.finished_at),
         "exam_id": session.exam_id,
-        "questions": [_practice_payload(request, qs[i]) for i in session.served if i in qs and _usable(access, qs[i])],
+        "questions": [_practice_payload(request, qs[i], book_slug=access.book.slug) for i in session.served if i in qs and _usable(access, qs[i])],
     }
 
 

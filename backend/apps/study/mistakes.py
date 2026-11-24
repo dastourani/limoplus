@@ -29,8 +29,8 @@ from rest_framework.response import Response
 
 from apps.catalog.places import chapter_number
 from apps.catalog.access import AccessMap
+from apps.catalog.media import media_urls
 from apps.catalog.models import ContentNode
-from apps.catalog.views import media_urls
 from apps.learning.models import Question, QuizAnswer
 
 from .models import ExamAnswer, MistakeNote
@@ -454,6 +454,18 @@ def _notebook_answered_today(user) -> int:
     return len(earlier_wrong)
 
 
+def _book_slug_for(request, node: ContentNode | None) -> str | None:
+    if node is None:
+        return None
+    root_path = node.path[: ContentNode.steplen]
+    cache = getattr(request, "_limo_book_slugs", None)
+    if cache is None:
+        cache = request._limo_book_slugs = {}
+    if root_path not in cache:
+        cache[root_path] = ContentNode.objects.filter(depth=1, path=root_path).values_list("slug", flat=True).first()
+    return cache[root_path]
+
+
 @api_view(["GET"])
 def quick(request):
     """«فقط ۵ دقیقه»: up to five due cards and three questions (mistakes first, then unanswered ones of the section in progress)."""
@@ -461,17 +473,27 @@ def quick(request):
 
     from .views import _grade_hints
 
+    due = _due_cards(request, limit=60)[:5]
+    root_paths = {r.flashcard.node.path[: ContentNode.steplen] for r in due}
+    if root_paths:
+        cache = getattr(request, "_limo_book_slugs", None)
+        if cache is None:
+            cache = request._limo_book_slugs = {}
+        missing = root_paths - cache.keys()
+        if missing:
+            cache.update(ContentNode.objects.filter(depth=1, path__in=missing).values_list("path", "slug"))
     cards = [
-        {"id": r.flashcard.id, "title": r.flashcard.title, "point": media_urls(request, r.flashcard.point), "formula": r.flashcard.formula,
+        {"id": r.flashcard.id, "title": r.flashcard.title, "point": media_urls(request, r.flashcard.point, book_slug=_book_slug_for(request, r.flashcard.node)), "formula": r.flashcard.formula,
          "node_id": r.flashcard.node_id, "node_title": r.flashcard.node.title, "chapter_number": chapter_number(request, r.flashcard.node),
          "box": r.box, "hints": _grade_hints(r.box)}
-        for r in _due_cards(request, limit=60)[:5]
+        for r in due
     ]
     if not cards:
         cont = _continue(request)
         if cont:
+            cont_slug = _book_slug_for(request, cont.node)
             fresh = Flashcard.objects.filter(node=cont.node, is_archived=False).exclude(reviews__user=request.user).order_by("order", "id")[:3]
-            cards = [{"id": f.id, "title": f.title, "point": media_urls(request, f.point), "formula": f.formula, "node_id": f.node_id, "node_title": cont.node.title, "chapter_number": chapter_number(request, cont.node),
+            cards = [{"id": f.id, "title": f.title, "point": media_urls(request, f.point, book_slug=cont_slug), "formula": f.formula, "node_id": f.node_id, "node_title": cont.node.title, "chapter_number": chapter_number(request, cont.node),
                       "box": 0, "hints": _grade_hints(1)} for f in fresh]
     picked = [q for q, _, _ in due_items(_mistakes(request)[0])[:3]]
     if len(picked) < 3:
@@ -488,14 +510,15 @@ def quick(request):
     return Response({"cards": cards, "questions": [_practice_payload(request, qs[q.id]) for q in picked]})
 
 
-def _practice_payload(request, q):
+def _practice_payload(request, q, *, book_slug: str | None = None):
+    slug = book_slug or _book_slug_for(request, q.node)
     return {
         "id": q.id,
         "node_id": q.node_id,
         "node_title": q.node.title,
         "chapter_number": chapter_number(request, q.node),
-        "stem": media_urls(request, q.stem),
-        "choices": [{"id": c.id, "text": media_urls(request, c.text)} for c in q.choices.all()],
+        "stem": media_urls(request, q.stem, book_slug=slug),
+        "choices": [{"id": c.id, "text": media_urls(request, c.text, book_slug=slug)} for c in q.choices.all()],
         "difficulty": q.difficulty,
         "measured_difficulty": q.measured_difficulty,
         "domain": q.domain,

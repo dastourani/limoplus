@@ -23,6 +23,7 @@ from apps.catalog.drawing import loads as loads_drawing
 from apps.catalog.fresh import book_updated_on, formula_macros
 from apps.catalog.jalali import jalali_date as fa_date
 from apps.catalog.labels import all_labels
+from apps.catalog.media import media_urls
 from apps.catalog.models import ContentNode, Major
 from config.links import app_base_url
 
@@ -214,7 +215,7 @@ def _base(request, **extra) -> dict:
 def _apk(s: SiteSettings) -> dict | None:
     from apps.releases.models import AppRelease
 
-    r = AppRelease.objects.filter(is_published=True).order_by("-build").first()
+    r = AppRelease.objects.filter(channel=AppRelease.CHANNEL_OFFICIAL, is_published=True).order_by("-build").first()
     if not r:
         if s.apk_url:
             return {"url": s.apk_url, "version": "", "date": None, "date_fa": "", "notes": []}
@@ -263,20 +264,29 @@ def _plans():
     return result
 
 
-def _format_sample(q, idx: int, book_node=None, majors=None) -> dict:
+def _format_sample(q, idx: int, book_node=None, majors=None, request=None) -> dict:
     src = next(iter(q.questionsource_set.all()), None)
+    stem = media_urls(request, q.stem, book=book_node) if (request is not None and book_node is not None) else q.stem
+    choices = [
+        {
+            "id": c.id,
+            "num": fa(i),
+            "text": media_urls(request, c.text, book=book_node) if (request is not None and book_node is not None) else c.text,
+        }
+        for i, c in enumerate(q.choices.all(), start=1)
+    ]
     return {
-        "id": q.id, "number": fa(idx), "stem": q.stem,
+        "id": q.id, "number": fa(idx), "stem": stem,
         "section": q.node.title if q.node and q.node.kind == ContentNode.Kind.SECTION else "",
         "book_title": book_node.title if book_node else "",
         "book_url": reverse("website:book", args=[book_node.slug]) if book_node else "",
         "majors": majors or ([m.slug for m in book_node.majors.all()] if book_node else []),
-        "choices": [{"id": c.id, "num": fa(i), "text": c.text} for i, c in enumerate(q.choices.all(), start=1)],
+        "choices": choices,
         "source": (f"{src.source.name} {fa(src.source.year)}" if src.source.year else src.source.name) if src else "",
     }
 
 
-def _book_samples(questions, access, limit: int = 3, book_node=None) -> list[dict]:
+def _book_samples(questions, access, limit: int = 3, book_node=None, request=None) -> list[dict]:
     """Up to `limit` interactive sample questions: `is_sample` first, then automatic fallback to readable questions."""
     from django.contrib.auth.models import AnonymousUser
     from apps.learning.views import _usable
@@ -293,7 +303,7 @@ def _book_samples(questions, access, limit: int = 3, book_node=None) -> list[dic
             if not (_usable(access, q) and _usable(anon_access, q)):
                 continue
             picked_ids.add(q.id)
-            out.append(_format_sample(q, len(out) + 1, book_node=book_node))
+            out.append(_format_sample(q, len(out) + 1, book_node=book_node or access.book, request=request))
             if len(out) >= limit:
                 return out
     return out
@@ -331,7 +341,7 @@ def home(request):
         total_sections += sum(1 for n in acc.nodes.values() if n.kind == ContentNode.Kind.SECTION and acc.visible(n.id))
         if len(pool_samples) < 12:
             qs = Question.objects.filter(node_id__in=v_ids, is_archived=False)
-            pool_samples.extend(_book_samples(qs, acc, limit=3, book_node=b))
+            pool_samples.extend(_book_samples(qs, acc, limit=3, book_node=b, request=request))
 
     random.shuffle(pool_samples)
     home_sample = pool_samples[0] if pool_samples else None
@@ -494,7 +504,7 @@ def book(request, slug):
             "section_list": sec_items,
         })
     first_free = next((ch for ch in chapters if ch["sample_free"]), None)
-    sample_list = _book_samples(questions, access, limit=3)
+    sample_list = _book_samples(questions, access, limit=3, book_node=b, request=request)
     sections = [n for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
     q_total = questions.count()
     f_total = flashcards.count()
@@ -502,7 +512,7 @@ def book(request, slug):
         (fa(len(chapters)), "فصل"), (fa(len(sections)), "بخش"), (fa(q_total), "تست"),
         (fa(f_total), "فلش‌کارت"),
     ]
-    about_text = (b.about or "").strip()
+    about_text = media_urls(request, (b.about or "").strip(), book=b, access=access, allow_locked_chapters=False)
     if not about_text and chapters:
         parts = [f"کتاب **{b.title}** در **{fa(len(chapters))} فصل** و **{fa(len(sections))} بخش** تدوین شده"]
         if q_total:

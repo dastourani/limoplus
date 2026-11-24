@@ -13,15 +13,16 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 
 from .models import AppRelease
-from .service import clear_cache
+from .service import clear_cache, normalize_channel
 
 log = logging.getLogger(__name__)
 
 GITHUB_REPO = getattr(settings, "GITHUB_REPOSITORY", "dastourani/limoplus")
 
 
-def fetch_latest_github_release(repo: str = GITHUB_REPO) -> dict | None:
-    """Fetch the newest release metadata from GitHub API."""
+def fetch_latest_github_release(repo: str = GITHUB_REPO, channel: str = AppRelease.CHANNEL_TEST) -> dict | None:
+    """Fetch the newest release metadata for `channel` (`official` or `test`) from GitHub API."""
+    ch = normalize_channel(channel)
     url = f"https://api.github.com/repos/{repo}/releases"
     headers = {"User-Agent": "Limoplus-AppRelease-Sync", "Accept": "application/vnd.github.v3+json"}
     token = getattr(settings, "GITHUB_TOKEN", None)
@@ -36,29 +37,38 @@ def fetch_latest_github_release(repo: str = GITHUB_REPO) -> dict | None:
                 return None
             for rel in data:
                 tag = rel.get("tag_name", "")
-                if tag.startswith("apk-"):
-                    return rel
-            return data[0]
+                if ch == AppRelease.CHANNEL_OFFICIAL:
+                    if (tag.startswith("official-") or tag.startswith("v")) and not rel.get("prerelease"):
+                        return rel
+                else:
+                    if tag.startswith("apk-") or tag.startswith("test-"):
+                        return rel
+            return None if ch == AppRelease.CHANNEL_OFFICIAL else data[0]
     except Exception as exc:
         log.warning("Failed to fetch GitHub releases: %s", exc)
         return None
 
 
-def sync_release_from_github(download_files: bool = False, repo: str = GITHUB_REPO) -> tuple[AppRelease | None, str]:
+def sync_release_from_github(
+    download_files: bool = False,
+    repo: str = GITHUB_REPO,
+    channel: str = AppRelease.CHANNEL_TEST,
+) -> tuple[AppRelease | None, str]:
     """
-    Reads the latest GitHub APK release and creates or updates the corresponding AppRelease row.
-    If download_files is True, downloads the APK assets into the server's media storage.
+    Reads the latest GitHub APK release for `channel` and creates or updates the corresponding AppRelease row.
+    If download_files is True, downloads the APK assets into the server's media storage outside any DB transaction.
     """
-    rel = fetch_latest_github_release(repo)
+    ch = normalize_channel(channel)
+    rel = fetch_latest_github_release(repo, channel=ch)
     if not rel:
         return None, "هیچ نسخه‌ای در Releases گیت‌هاب یافت نشد یا ارتباط برقرار نشد."
 
     tag = rel.get("tag_name", "")
-    match = re.search(r"(\d+)", tag)
-    if not match:
+    nums = re.findall(r"\d+", tag)
+    if not nums:
         return None, f"تگ نسخه ({tag}) فاقد شماره ساخت معتبر است."
 
-    build_num = int(match.group(1))
+    build_num = int(nums[-1])
     version_name = f"1.0.{build_num}"
 
     # Extract assets
@@ -92,9 +102,11 @@ def sync_release_from_github(download_files: bool = False, repo: str = GITHUB_RE
             notes_lines.append(clean_line)
     notes = "\n".join(notes_lines) or "بهبود کارایی و حل مشکلات گزارش‌شده"
 
+    pending_downloads: list[tuple[str, str, str]] = []
     with transaction.atomic():
         release, created = AppRelease.objects.get_or_create(
             platform=AppRelease.ANDROID,
+            channel=ch,
             build=build_num,
             defaults={
                 "version_name": version_name,
@@ -116,26 +128,50 @@ def sync_release_from_github(download_files: bool = False, repo: str = GITHUB_RE
                 release.notes = notes
             release.save()
 
-        # If file download was requested, download into media storage
         if download_files:
-            _download_asset_to_field(universal_url, release, "apk", f"limookhan-{build_num}.apk")
-            if arm64_url:
-                _download_asset_to_field(arm64_url, release, "apk_arm64", f"limookhan-{build_num}-arm64.apk")
-            if bit32_url:
-                _download_asset_to_field(bit32_url, release, "apk_32", f"limookhan-{build_num}-32bit.apk")
-            release.save()
+            prefix = "limookhan" if ch == AppRelease.CHANNEL_OFFICIAL else "limookhan-test"
+            for field_name, url, filename in (
+                ("apk", universal_url, f"{prefix}-{build_num}.apk"),
+                ("apk_arm64", arm64_url, f"{prefix}-{build_num}-arm64.apk"),
+                ("apk_32", bit32_url, f"{prefix}-{build_num}-32bit.apk"),
+            ):
+                existing = getattr(release, field_name)
+                if url and not (existing and existing.name):
+                    pending_downloads.append((field_name, url, filename))
 
         clear_cache()
 
-    # Send Bale alert
+    # Perform external APK file downloads outside any DB transaction/locks.
+    downloaded: list[tuple[str, str, bytes]] = []
+    for field_name, url, filename in pending_downloads:
+        content = _fetch_asset_bytes(url, field_name)
+        if content is not None:
+            downloaded.append((field_name, filename, content))
+
+    if downloaded:
+        with transaction.atomic():
+            release = AppRelease.objects.select_for_update().get(pk=release.pk)
+            changed = False
+            for field_name, filename, content in downloaded:
+                existing = getattr(release, field_name)
+                if not (existing and existing.name):
+                    getattr(release, field_name).save(filename, ContentFile(content), save=False)
+                    changed = True
+            if changed:
+                release.save()
+                clear_cache()
+
+    # Send Bale alert asynchronously after DB work commits (never inside a DB transaction).
     try:
-        from apps.catalog.backups import notify_bale
+        from apps.catalog.backups import notify_bale_after_commit
         from apps.catalog.panel_display import fa_number
-        notify_bale(
+
+        notify_bale_after_commit(
             f"🚀 نسخه جدید اپلیکیشن همگام‌سازی شد\n"
             f"شماره ساخت: {fa_number(build_num)} (نسخه {version_name})\n"
             f"فایل‌ها: {'دانلود مستقیم در سرور پارس‌پک' if download_files else 'لینک‌های مستقیم گیت‌هاب'}\n"
-            f"تغییرات: {notes[:100]}"
+            f"تغییرات: {notes[:100]}",
+            log_label=f"Bale release sync alert for build {build_num}",
         )
     except Exception:
         pass
@@ -144,19 +180,16 @@ def sync_release_from_github(download_files: bool = False, repo: str = GITHUB_RE
     return release, f"نسخه {build_num} ({version_name}) با موفقیت {action_text}."
 
 
-def _download_asset_to_field(url: str, instance: AppRelease, field_name: str, filename: str):
-    """Downloads a file from url and saves it into the FileField."""
+def _fetch_asset_bytes(url: str, field_name: str) -> bytes | None:
+    """Download an APK asset over HTTP outside a DB transaction."""
     if not url:
-        return
-    existing = getattr(instance, field_name)
-    if existing and existing.name:
-        return  # already has a file
-
+        return None
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Limoplus-Downloader"})
         with urllib.request.urlopen(req, timeout=120) as resp:
             content = resp.read()
-            getattr(instance, field_name).save(filename, ContentFile(content), save=False)
-            log.info("Saved %s to %s (%d bytes)", url, field_name, len(content))
+            log.info("Downloaded %s for %s (%d bytes)", url, field_name, len(content))
+            return content
     except Exception as exc:
-        log.warning("Failed to download %s to %s: %s", url, field_name, exc)
+        log.warning("Failed to download %s for %s: %s", url, field_name, exc)
+        return None

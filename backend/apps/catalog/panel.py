@@ -606,7 +606,10 @@ def _upload_image(request, chapter):
     path = f"content/{book.slug}/{chapter.slug}/{hashlib.sha256(data).hexdigest()[:24]}{ext}"
     if not default_storage.exists(path):
         path = default_storage.save(path, ContentFile(data))
-    return JsonResponse({"ref": f"media:{path}", "url": default_storage.url(path)})
+    from .media import sign_content_path
+
+    signed_rel, _ = sign_content_path(path)
+    return JsonResponse({"ref": f"media:{path}", "url": request.build_absolute_uri("/" + settings.MEDIA_URL.lstrip("/") + signed_rel)})
 
 
 def _lock_teacher_distribution_fields(parsed, book, existing_chapter, user):

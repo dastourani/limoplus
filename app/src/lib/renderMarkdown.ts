@@ -19,6 +19,9 @@ import { DEFAULT_LABEL_ICON, labelIconSvg } from './labelIcons';
 import { cells, jumpTarget, parseSummary } from './reviewCard';
 
 const md = new MarkdownIt({ html: false, linkify: false, typographer: false });
+const defaultValidateLink = md.validateLink.bind(md);
+md.validateLink = (url: string) =>
+  defaultValidateLink(url) || /^data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+$/i.test(url);
 
 function renderMath(tex: string, display: boolean, eq?: { id: string; label: string }): string {
   // A copy each time: KaTeX writes \gdef definitions into the object it is given.

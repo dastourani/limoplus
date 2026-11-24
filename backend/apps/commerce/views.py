@@ -96,6 +96,8 @@ def create_order(request):
         return _err("خرید هنوز فعال نشده است؛ به‌زودی باز می‌شود.", "payments_off", status.HTTP_503_SERVICE_UNAVAILABLE)
     user = request.user
     book_slug, plan_id = request.data.get("book"), request.data.get("plan")
+    from apps.releases.service import normalize_channel
+    return_channel = normalize_channel(request.headers.get("X-App-Channel")) if request.headers.get("X-App-Platform") else ""
     if book_slug and not plan_id:
         book = _book(book_slug)
         if book is None:
@@ -118,6 +120,7 @@ def create_order(request):
             discount_amount=quote.discount_amount,
             campaign_title_snapshot=quote.campaign.title if quote.campaign else "",
             campaign_id_snapshot=quote.campaign.pk if quote.campaign else None,
+            return_channel=return_channel,
         )
     elif plan_id and not book_slug:
         try:
@@ -141,6 +144,7 @@ def create_order(request):
             campaign_id_snapshot=quote.campaign.pk if quote.campaign else None,
             plan_months=plan.months,
             plan_scope=plan.scope,
+            return_channel=return_channel,
         )
     else:
         return _err("کتاب یا طرح اشتراک را انتخاب کنید.", "invalid_request")
@@ -271,7 +275,8 @@ def zibal_callback(request):
     track_id = request.GET.get("trackId", "")
     order = settle(track_id) if track_id else None
     paid = bool(order and order.status == Order.Status.PAID)
-    return_url = f"{settings.APP_RETURN_URL}?order={order.id if order else ''}&status={'paid' if paid else 'failed'}"
+    base_return = settings.TEST_APP_RETURN_URL if (order and order.return_channel == "test") else settings.APP_RETURN_URL
+    return_url = f"{base_return}?order={order.id if order else ''}&status={'paid' if paid else 'failed'}"
     # No order details here: anyone holding a trackId could open this page. The app shows details after sign-in.
     return render(request, "commerce/payment_result.html", {"paid": paid, "return_url": return_url})
 

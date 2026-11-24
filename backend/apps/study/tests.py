@@ -1154,3 +1154,77 @@ class OfflineResilienceBackendTests(TestCase):
         self.assertEqual(lib5.status_code, 200)
         self.assertEqual(len(lib_ctx5), len(lib_ctx1), f"library grew from {len(lib_ctx1)} to {len(lib_ctx5)} queries")
 
+
+class OfflineBundleRichTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.media = tempfile.mkdtemp()
+        self.override = override_settings(MEDIA_ROOT=self.media)
+        self.override.enable()
+        call_command("load_samples", stdout=io.StringIO())
+        self.user = User.objects.create_user("09120000077")
+        _, token = DeviceSession.start(self.user, "test")
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def tearDown(self):
+        self.override.disable()
+        shutil.rmtree(self.media, ignore_errors=True)
+
+    def test_offline_bundle_includes_intro_deduped_media_labels_macros_numbering_and_strips_cross_book(self):
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+        from apps.catalog.fresh import forget_macros
+        from apps.catalog.models import FormulaCommand
+
+        forget_macros()
+        FormulaCommand.objects.create(name=r"\R", definition=r"\mathbb{R}")
+        shared_img = default_storage.save("content/math-1/limits/111111111111111111111111.svg", ContentFile(b"<svg><circle/></svg>"))
+        sec_img = default_storage.save("content/math-1/limits/222222222222222222222222.png", ContentFile(b"\x89PNG\r\n\x1a\n"))
+        other_img = default_storage.save("content/other-book/ch/333333333333333333333333.png", ContentFile(b"\x89PNG\r\n\x1a\n"))
+
+        chapter = ContentNode.objects.get(slug="limits")
+        chapter.full_body = f"مقدمهٔ فصل با تصویر:\n![نمودار ۱](media:{shared_img})"
+        chapter.save(update_fields=["full_body"])
+
+        section = ContentNode.objects.get(slug="limit-idea")
+        section.full_body = (
+            f"تکرار تصویر:\n![نمودار تکراری](media:{shared_img})\n"
+            f"![دوم](media:{sec_img})\n"
+            f"![غیرمجاز](media:{other_img})\n"
+            "::: مثال {#lim-ex}\nحد در $\\R$\n:::\n"
+            "ارجاع به [[#lim-ex]]"
+        )
+        section.save(update_fields=["full_body"])
+
+        res = self.client.get("/api/v1/books/math-1/offline/")
+        self.assertEqual(res.status_code, 200)
+        data = res.data
+        self.assertEqual(data["version"], 2)
+        self.assertIn(r"\R", data["macros"])
+        self.assertTrue(any(l["name"] == "مثال" for l in data["labels"]))
+
+        by_id = {item["id"]: item for item in data["sections"]}
+        self.assertIn(chapter.id, by_id)
+        self.assertEqual(by_id[chapter.id]["kind"], ContentNode.Kind.CHAPTER)
+        self.assertEqual(by_id[chapter.id]["intro"]["number"], chapter.position)
+        self.assertIn(section.id, by_id)
+        sec_payload = by_id[section.id]
+        self.assertEqual(sec_payload["kind"], ContentNode.Kind.SECTION)
+        self.assertIn(f"media:{shared_img}", sec_payload["full"])
+        self.assertNotIn(other_img, sec_payload["full"])
+        self.assertIn("lim-ex", sec_payload["numbering"]["refs"])
+
+        # Deduplicated media manifest: shared_img appears once even though used in both intro and section;
+        # other_img is excluded completely.
+        refs = [m["ref"] for m in data["media"]]
+        self.assertEqual(refs.count(f"media:{shared_img}"), 1)
+        self.assertIn(f"media:{sec_img}", refs)
+        self.assertNotIn(f"media:{other_img}", refs)
+        for item in data["media"]:
+            self.assertIn("?exp=", item["url"])
+            self.assertEqual(self.client.get(item["url"].replace("http://testserver", "")).status_code, 200)
+
+

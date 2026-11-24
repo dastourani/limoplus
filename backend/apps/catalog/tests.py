@@ -771,3 +771,103 @@ class CatalogConstantQueryTests(TestCase):
             self.assertEqual(books_payload[0]["chapter_count"], 1)
             self.assertEqual(books_payload[0]["section_count"], 1)
 
+
+class ProtectedContentMediaTests(TestCase):
+    def setUp(self):
+        self.media = tempfile.mkdtemp()
+        self.override = override_settings(MEDIA_ROOT=self.media)
+        self.override.enable()
+        call_command("load_samples", stdout=io.StringIO())
+        self.client = APIClient()
+
+    def tearDown(self):
+        self.override.disable()
+        shutil.rmtree(self.media, ignore_errors=True)
+
+    def test_signed_content_media_enforces_signature_expiry_and_headers(self):
+        import re
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+        from unittest.mock import patch
+
+        node = ContentNode.objects.get(slug="limit-idea")
+        data = self.client.get(f"/api/v1/nodes/{node.id}/").data
+        m = re.search(r"http://testserver(/media/content/[^\s)]+)", data["full"])
+        self.assertIsNotNone(m)
+        signed_url = m.group(1)
+        bare_path = signed_url.split("?")[0]
+
+        # Valid signed URL returns 200 with private cache headers and nosniff/CSP on SVG.
+        ok = self.client.get(signed_url)
+        self.assertEqual(ok.status_code, 200)
+        self.assertRegex(ok["Cache-Control"], r"^private, max-age=\d+$")
+        self.assertEqual(ok["X-Content-Type-Options"], "nosniff")
+        self.assertIn("default-src 'none'", ok["Content-Security-Policy"])
+
+        # Missing / tampered / wrong-path / expired signature all return 403.
+        self.assertEqual(self.client.get(bare_path).status_code, 403)
+        self.assertEqual(self.client.get(signed_url[:-1] + ("A" if signed_url[-1] != "A" else "B")).status_code, 403)
+        other = default_storage.save("content/math-1/limits/other1234567890abcdef1234.svg", ContentFile(b"<svg/>"))
+        query = signed_url.split("?", 1)[1]
+        self.assertEqual(self.client.get(f"/media/{other}?{query}").status_code, 403)
+        with patch("apps.catalog.media.time.time", return_value=9_999_999_999):
+            self.assertEqual(self.client.get(signed_url).status_code, 403)
+
+        # Public assets under covers/ do not hit serve_content_media (even when SERVE_MEDIA is enabled).
+        from django.urls import Resolver404, resolve
+        from apps.catalog.media import serve_content_media
+
+        self.assertIs(resolve("/media/content/math-1/limits/x.svg").func, serve_content_media)
+        try:
+            self.assertIsNot(resolve("/media/covers/public-cover-test.png").func, serve_content_media)
+        except Resolver404:
+            pass
+
+    def test_cross_book_and_locked_chapter_refs_are_not_signed(self):
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+
+        other_book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب دیگر", slug="other-book", is_published=True, price=50000)
+        other_ch = other_book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل پولی", slug="paid-ch", is_published=True)
+        other_file = default_storage.save("content/other-book/paid-ch/aaaaaaaaaaaaaaaaaaaaaaaa.png", ContentFile(b"PNG"))
+        locked_file = default_storage.save("content/math-1/derivatives/bbbbbbbbbbbbbbbbbbbbbbbb.png", ContentFile(b"PNG"))
+        free_file = default_storage.save("content/math-1/limits/cccccccccccccccccccccccc.png", ContentFile(b"PNG"))
+
+        book = ContentNode.objects.get(slug="math-1")
+        book.about = f"![x](media:{other_file}) ![y](media:{locked_file}) ![z](media:{free_file})"
+        book.save(update_fields=["about"])
+        book_data = self.client.get("/api/v1/books/math-1/").data
+        self.assertIn(f"media:{other_file}", book_data["about"])
+        self.assertIn(f"media:{locked_file}", book_data["about"])
+        self.assertIn("?exp=", book_data["about"])
+        self.assertIn(free_file, book_data["about"])
+        self.assertNotIn(f"/media/{other_file}?exp=", book_data["about"])
+        self.assertNotIn(f"/media/{locked_file}?exp=", book_data["about"])
+
+    def test_staff_panel_preview_only_for_assigned_book_editor(self):
+        from django.contrib.auth.models import Group
+        from apps.accounts.models import User
+        from apps.catalog.models import BookEditor
+
+        book = ContentNode.objects.get(slug="math-1")
+        other_book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب دوم", slug="second-book", is_published=True)
+        node = ContentNode.objects.get(slug="limit-idea")
+        signed_url = self.client.get(f"/api/v1/nodes/{node.id}/").data["full"]
+        import re
+        bare_path = re.search(r"http://testserver(/media/content/[^\s?)]+)", signed_url).group(1)
+
+        teacher = User.objects.create_user("09120000555", is_staff=True)
+        group, _ = Group.objects.get_or_create(name="استاد کتاب")
+        teacher.groups.add(group)
+        BookEditor.objects.create(book=other_book, user=teacher, can_edit_content=True)
+
+        web = self.client.__class__()
+        web.force_login(teacher)
+        self.assertEqual(web.get(bare_path).status_code, 403)
+
+        BookEditor.objects.create(book=book, user=teacher, can_edit_content=True)
+        ok = web.get(bare_path)
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok["Cache-Control"], "private, no-store")
+
+

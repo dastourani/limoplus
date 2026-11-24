@@ -1,5 +1,5 @@
 import { viewAsLearner } from '../lib/viewAs';
-import { APP_ABIS, APP_BUILD, APP_PLATFORM, getApiUrl } from '../config';
+import { APP_ABIS, APP_BUILD, APP_CHANNEL, APP_PLATFORM, getApiUrl } from '../config';
 
 /** Error returned by the server, with its machine code and a Persian message for the user. */
 export class ApiError extends Error {
@@ -61,6 +61,7 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   if (APP_PLATFORM) {
     headers['X-App-Platform'] = APP_PLATFORM;
     headers['X-App-Build'] = String(APP_BUILD);
+    headers['X-App-Channel'] = APP_CHANNEL;
     if (APP_ABIS) headers['X-App-Abi'] = APP_ABIS;
   }
 

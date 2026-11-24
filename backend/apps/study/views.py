@@ -10,11 +10,14 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from apps.catalog.numbering import resolve as resolve_refs
+from apps.catalog.fresh import book_updated_on, formula_macros
+from apps.catalog.labels import all_labels
+from apps.catalog.media import extract_content_media, filter_authorized_media_refs, media_urls
+from apps.catalog.numbering import book_refs, chapter_numbering, resolve as resolve_refs
 from apps.catalog.places import chapter_number
 from apps.catalog.access import AccessMap, access_kind_from, access_until, active_rows, book_of
 from apps.catalog.models import ContentNode
-from apps.catalog.views import NOT_FOUND, media_urls
+from apps.catalog.views import NOT_FOUND, reading_order
 from apps.learning.models import Flashcard, Question, QuestionSource, QuizAnswer, Report
 
 from .models import Bookmark, ExamAnswer, ExamAttempt, FlashcardReview, LibraryBook, Note, SectionProgress, StudyDay
@@ -279,7 +282,7 @@ def due_flashcards(request):
             maps[book_path] = AccessMap(request.user, card.node)
         if not _usable(maps[book_path], card):
             continue
-        cards.append({"id": card.id, "title": card.title, "point": media_urls(request, card.point), "formula": card.formula,
+        cards.append({"id": card.id, "title": card.title, "point": media_urls(request, card.point, book=maps[book_path].book), "formula": card.formula,
                       "node_id": card.node_id, "node_title": card.node.title, "chapter_number": chapter_number(request, card.node),
                       "box": r.box, "hints": _grade_hints(r.box)})
     limit = 50
@@ -630,6 +633,7 @@ def start_exam(request, node_id):
 def _exam_detail(request, attempt):
     ordered = _exam_questions(attempt)
     data = _exam_summary(attempt)
+    attempt_book = attempt.node.book()
     # «نسبت به دفعه‌ی قبل بهتر شدی»: the score of the learner's previous finished exam on the same chapter.
     if attempt.submitted_at:
         data["previous_score"] = (
@@ -641,8 +645,8 @@ def _exam_detail(request, attempt):
     data["questions"] = [
         {
             "id": qid,
-            "stem": media_urls(request, q["stem"]),
-            "choices": [{"id": c["id"], "text": media_urls(request, c["text"])} for c in q["choices"]],
+            "stem": media_urls(request, q["stem"], book=attempt_book),
+            "choices": [{"id": c["id"], "text": media_urls(request, c["text"], book=attempt_book)} for c in q["choices"]],
             "difficulty": q["difficulty"],
             "fixed_order": bool(q.get("fixed")),
         }
@@ -670,8 +674,8 @@ def _exam_detail(request, attempt):
                     "node_id": nodes.get(qid),
                     "picked_choice_id": picked["id"] if picked else None,
                     "correct_choice_id": correct["id"] if correct else None,
-                    "explanation": media_urls(request, resolve_refs(request, nodes.get(qid), q["explanation"])),
-                    "solutions": [{"title": x["title"], "body": media_urls(request, resolve_refs(request, nodes.get(qid), x["body"]))}
+                    "explanation": media_urls(request, resolve_refs(request, nodes.get(qid), q["explanation"]), book=attempt_book),
+                    "solutions": [{"title": x["title"], "body": media_urls(request, resolve_refs(request, nodes.get(qid), x["body"]), book=attempt_book)}
                                   for x in _snapshot_solutions(q)],
                     # The answer key was corrected after this exam began; the exam keeps the key it was taken with.
                     "corrected": (
@@ -1391,24 +1395,112 @@ OFFLINE_VALID_DAYS = 30
 
 @api_view(["GET"])
 def offline_bundle(request, slug):
-    """All sections of a book the user may read, for encrypted offline storage on the device."""
+    """All chapters (intros) and sections of a book the user may read, plus deduplicated media, labels, macros, and numbering."""
     book = get_object_or_404(ContentNode, kind=ContentNode.Kind.BOOK, depth=1, slug=slug)
     access = AccessMap(request.user, book)
     if not access.visible(book.id):
         return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-    sections = []
-    for n in sorted(access.nodes.values(), key=lambda n: n.path):
-        if n.kind != ContentNode.Kind.SECTION or not access.readable(n.id):
-            continue
-        sections.append({"id": n.id, "title": n.title, "summary": media_urls(request, n.summary_body), "full": media_urls(request, n.full_body)})
-    if not sections:
+    order_ids = reading_order(access)
+    readable_ids = [nid for nid in order_ids if access.readable(nid)]
+    if not readable_ids:
         return Response(LOCKED, status=status.HTTP_403_FORBIDDEN)
+
+    refs = book_refs(access)
+    chapters_by_path: dict[str, ContentNode] = {}
+    starts_by_chapter: dict[int, dict[int, dict[str, int]]] = {}
+    for ch in access.children(book):
+        chapters_by_path[ch.path] = ch
+        starts_by_chapter[ch.id] = chapter_numbering(ch, access.children(ch))[0]
+
+    def _turn_title(nid: int | None) -> str | None:
+        if nid is None or nid not in access.nodes:
+            return None
+        target = access.nodes[nid]
+        if target.kind == ContentNode.Kind.CHAPTER:
+            return f"فصل {target.position}، {target.title}" if target.position else target.title
+        return target.title
+
+    sections = []
+    raw_texts: list[str] = []
+    for idx, nid in enumerate(readable_ids):
+        n = access.nodes[nid]
+        is_chapter = n.kind == ContentNode.Kind.CHAPTER
+        chapter = n if is_chapter else chapters_by_path.get(n.path[: book.depth * ContentNode.steplen + ContentNode.steplen])
+        if chapter is None and not is_chapter:
+            chapter = n.get_parent()
+        ch_id = chapter.id if chapter is not None else None
+        ch_pos = chapter.position if chapter is not None else None
+        starts = starts_by_chapter.get(ch_id, {}) if ch_id is not None else {}
+
+        summary_clean = "" if is_chapter else filter_authorized_media_refs(n.summary_body, book=book)
+        full_clean = filter_authorized_media_refs(n.full_body, book=book)
+        if summary_clean:
+            raw_texts.append(summary_clean)
+        if full_clean:
+            raw_texts.append(full_clean)
+
+        prev_id = readable_ids[idx - 1] if idx > 0 else None
+        next_id = readable_ids[idx + 1] if idx + 1 < len(readable_ids) else None
+        intro = None
+        if is_chapter:
+            ch_sections = access.children(n)
+            first_open = next((s for s in ch_sections if access.readable(s.id)), None)
+            intro = {
+                "number": n.position,
+                "sections": [
+                    {
+                        "id": s.id,
+                        "title": s.title,
+                        "locked": not access.readable(s.id),
+                        "state": "empty",
+                    }
+                    for s in ch_sections
+                ],
+                "questions": 0,
+                "flashcards": 0,
+                "continue_id": first_open.id if first_open else None,
+                "started": False,
+            }
+
+        sections.append(
+            {
+                "id": n.id,
+                "kind": n.kind,
+                "title": n.title,
+                "summary": summary_clean,
+                "full": full_clean,
+                "chapter_number": ch_pos,
+                "chapter_title": chapter.title if chapter is not None else "",
+                "numbering": {"chapter": ch_pos, "start": starts.get(n.id, {}), "refs": refs},
+                "previous_id": prev_id,
+                "next_id": next_id,
+                "previous_title": _turn_title(prev_id),
+                "next_title": _turn_title(next_id),
+                "intro": intro,
+            }
+        )
+
     valid_until = timezone.now() + timedelta(days=OFFLINE_VALID_DAYS)
     # A subscription-only reader keeps offline access no longer than the subscription.
     ends = access_until(request.user, book)
     if ends and ends < valid_until:
         valid_until = ends
-    return Response({"book": {"slug": book.slug, "title": book.title}, "sections": sections, "downloaded_at": timezone.now(), "valid_until": valid_until})
+    return Response(
+        {
+            "version": 2,
+            "book": {
+                "slug": book.slug,
+                "title": book.title,
+                "updated_on": book_updated_on(book),
+            },
+            "labels": all_labels(),
+            "macros": formula_macros(),
+            "media": extract_content_media(request, raw_texts, book=book),
+            "sections": sections,
+            "downloaded_at": timezone.now(),
+            "valid_until": valid_until,
+        }
+    )
 
 
 @api_view(["GET", "POST"])

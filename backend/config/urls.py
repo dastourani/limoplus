@@ -7,6 +7,7 @@ from django.urls import include, path, re_path
 
 from apps.accounts import views as accounts_views
 from apps.accounts.admin_login import admin_login
+from apps.catalog import media as catalog_media
 from apps.catalog import search as catalog_search
 from apps.catalog import views as catalog
 from apps.commerce import views as commerce
@@ -46,7 +47,7 @@ api = [
     path("nodes/<int:node_id>/flashcards/", learning.node_flashcards),
     path("questions/<int:question_id>/answer/", learning.answer),
     path("app/version/", releases.app_version),
-    path("api/releases/sync-github/", releases.sync_github_webhook),
+    path("releases/sync-github/", releases.sync_github_webhook),
     path("app/pages/", website_api.app_pages),
     path("app/pages/<str:slug>/", website_api.site_page),
     path("app/help/<int:page_id>/", website_api.help_page),
@@ -112,6 +113,7 @@ shared = [
     path(f"{settings.ADMIN_URL}login/", admin_login, name="admin-login"),
     path(settings.ADMIN_URL, admin.site.urls),
     path("api/v1/", include(api)),
+    re_path(rf"^{re.escape(settings.MEDIA_URL.lstrip('/'))}content/(?P<path>.*)$", catalog_media.serve_content_media),
 ]
 
 if settings.DEBUG:

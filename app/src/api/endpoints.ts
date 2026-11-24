@@ -1,3 +1,4 @@
+import { APP_CHANNEL } from '../config';
 import type { Label } from '../lib/labels';
 import type { Numbering, RefTarget } from '../lib/numbering';
 import { api } from './client';
@@ -546,9 +547,37 @@ export type Purchases = {
   active: { id: number; kind: 'book' | 'subscription'; title: string; book_slug: string | null; major_slug: string | null; starts_at: string; ends_at: string | null }[];
   orders: { id: number; title: string; amount: number; regular_amount: number; discount_amount: number; campaign_title: string; paid_at: string; ref_number: string }[];
 };
+export type OfflineMediaItem = {
+  ref: string;
+  id: string;
+  url: string;
+  mime: string;
+  expires_at?: number;
+};
+
+export type OfflineSectionPayload = {
+  id: number;
+  kind?: NodeSummary['kind'];
+  title: string;
+  summary: string;
+  full: string;
+  chapter_number?: number | null;
+  chapter_title?: string;
+  numbering?: Numbering | null;
+  previous_id?: number | null;
+  next_id?: number | null;
+  previous_title?: string | null;
+  next_title?: string | null;
+  intro?: ChapterIntro | null;
+};
+
 export type OfflineBundle = {
-  book: { slug: string; title: string };
-  sections: { id: number; title: string; summary: string; full: string }[];
+  version?: number;
+  book: { slug: string; title: string; updated_on?: string | null };
+  labels?: Label[];
+  macros?: Record<string, string>;
+  media?: OfflineMediaItem[];
+  sections: OfflineSectionPayload[];
   downloaded_at: string;
   valid_until: string;
 };
@@ -672,7 +701,8 @@ export const endpoints = {
   helpPage: (id: number) => api<{ id: number; title: string; body: string; updated_at: string }>(`app/help/${id}/`),
   formulaCommands: () => api<{ macros: Record<string, string> }>('formula-commands/'),
   bookChanges: (slug: string) => api<BookChanges>(`books/${slug}/changes/`),
-  appVersion: (platform: string, build: number) => api<AppVersion>(`app/version/?platform=${platform}&build=${build}`),
+  appVersion: (platform: string, build: number) =>
+    api<AppVersion>(`app/version/?platform=${encodeURIComponent(platform)}&build=${build}&channel=${encodeURIComponent(APP_CHANNEL)}`),
   stats: () => api<Stats>('me/stats/'),
   offline: (slug: string) => api<OfflineBundle>(`books/${encodeURIComponent(slug)}/offline/`, { timeoutMs: 90_000 }),
 

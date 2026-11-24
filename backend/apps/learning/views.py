@@ -8,8 +8,9 @@ from rest_framework.response import Response
 from apps.catalog.numbering import resolve as resolve_refs
 from apps.catalog.places import chapter_number
 from apps.catalog.access import AccessMap
+from apps.catalog.media import media_urls
 from apps.catalog.models import ContentNode
-from apps.catalog.views import NOT_FOUND, media_urls
+from apps.catalog.views import NOT_FOUND
 
 from apps.study.models import StudyDay
 
@@ -74,9 +75,9 @@ def node_questions(request, node_id):
                 "shareable": q.is_sample,
                 # Printed on the shared picture: the book and chapter it comes from.
                 "share_place": _share_place(access, q) if q.is_sample else None,
-                "stem": media_urls(request, q.stem),
+                "stem": media_urls(request, q.stem, book=access.book),
                 # Correct answers are never sent before the learner answers.
-                "choices": [{"id": c.id, "text": media_urls(request, c.text)} for c in q.choices.all()],
+                "choices": [{"id": c.id, "text": media_urls(request, c.text, book=access.book)} for c in q.choices.all()],
                 "difficulty": q.difficulty,
                 "measured_difficulty": q.measured_difficulty,
                 "domain": q.domain,
@@ -172,9 +173,9 @@ def answer(request, question_id):
             "is_correct": picked.is_correct,
             "correct_choice_id": correct.id,
             # «[[#sin-hamarz]]» → «مثال ۳-۵», a tap opens it in the notes (apps/catalog/numbering.py).
-            "explanation": media_urls(request, resolve_refs(request, question.node, question.explanation)),
+            "explanation": media_urls(request, resolve_refs(request, question.node, question.explanation), book=access.book),
             # Extra solutions, each under its own title («راه‌حل تستی», «حل دیگر», …).
-            "solutions": [{"title": x.get("title", ""), "body": media_urls(request, resolve_refs(request, question.node, x.get("body", "")))}
+            "solutions": [{"title": x.get("title", ""), "body": media_urls(request, resolve_refs(request, question.node, x.get("body", "")), book=access.book)}
                           for x in question.solutions or []],
             # Tapping one opens the book's cards at it (a link never leaves the book).
             "flashcards": [{"id": f.id, "title": f.title} for f in related],
@@ -218,7 +219,7 @@ def node_flashcards(request, node_id):
         if not _usable(access, f):
             locked += 1
             continue
-        items.append({"id": f.id, "badge": badges.get(f.id), "title": f.title, "point": media_urls(request, f.point), "formula": f.formula,
+        items.append({"id": f.id, "badge": badges.get(f.id), "title": f.title, "point": media_urls(request, f.point, book=access.book), "formula": f.formula,
                       "node_id": f.node_id, "node_title": access.nodes[f.node_id].title if f.node_id in access.nodes else "",
                       "chapter_number": chapter_number(request, access.nodes.get(f.node_id)),
                       # «تست‌های این نکته»: the linked tests the learner may practise.
@@ -241,7 +242,7 @@ def book_samples(request, slug):
     )
     from apps.study.mistakes import _practice_payload
 
-    out = [{**_practice_payload(request, q), "shareable": True, "share_place": _share_place(access, q)} for q in questions if _usable(access, q)]
+    out = [{**_practice_payload(request, q, book_slug=book.slug), "shareable": True, "share_place": _share_place(access, q)} for q in questions if _usable(access, q)]
     return Response({"book": book.title, "questions": out})
 
 
@@ -351,7 +352,7 @@ def book_past_repeats(request, slug):
     for n, group in enumerate(_repeat_groups(pool, names), start=1):
         for q in group:
             where = "، ".join(f"{qs.source.name} {fa(qs.source.year)}" for qs in q.questionsource_set.all() if qs.source.year)
-            out.append({**_practice_payload(request, q), "group": n, "group_note": f"گروه {fa(n)}: {where}"})
+            out.append({**_practice_payload(request, q, book_slug=book.slug), "group": n, "group_note": f"گروه {fa(n)}: {where}"})
     return Response({"questions": out, "locked_count": 0, "groups": len(set(x["group"] for x in out)),
                      "title": "تکراری‌ها و مشابه‌ها", "macros": formula_macros()})
 
@@ -374,7 +375,7 @@ def book_past_questions(request, slug):
     rows = (QuestionSource.objects.filter(source=source, question__node_id__in=access.visible_ids_under(book), question__is_archived=False)
             .select_related("question__node").prefetch_related("question__choices", "question__questionsource_set__source"))
     ordered = sorted(rows, key=lambda r: (r.number or 10_000, r.question.node.path, r.question.order))
-    questions = [_practice_payload(request, r.question) for r in ordered if _usable(access, r.question)]
+    questions = [_practice_payload(request, r.question, book_slug=book.slug) for r in ordered if _usable(access, r.question)]
     from apps.catalog.fresh import formula_macros
 
     return Response({"questions": questions, "locked_count": len(ordered) - len(questions), "title": f"{source.name} {source.year}",
