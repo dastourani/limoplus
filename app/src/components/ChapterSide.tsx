@@ -209,7 +209,7 @@ export function ChapterSide({
 
 const styles = StyleSheet.create({
   subSectionsBox: { paddingRight: 24, paddingLeft: 8, paddingVertical: 4, gap: 2, borderRightWidth: 2, borderRightColor: colors.lemon, marginRight: 12 },
-  subRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 6, borderRadius: radius.xs },
+  subRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 6, borderRadius: 8 },
   subRowText: { flex: 1, fontSize: 12.5, color: colors.ink, lineHeight: 18 },
   lemonSlicePart: { width: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
   chevronMini: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },

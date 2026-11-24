@@ -1327,7 +1327,7 @@ const styles = StyleSheet.create({
   reviewStatDivider: { width: 1, height: 44, backgroundColor: colors.line },
   reviewHighlightRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   reviewHighlightText: { fontSize: 12, color: colors.ink },
-  reviewTextInput: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 12, minHeight: 90, textAlignVertical: 'top', fontSize: 14, color: colors.ink },
+  reviewTextInput: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 12, minHeight: 90, textAlignVertical: 'top', fontSize: 14, color: colors.ink },
   cancelReviewButton: { paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.line },
   cancelReviewText: { fontSize: 13, color: colors.muted, fontWeight: '700' },
   writeReviewButton: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 12, backgroundColor: colors.ground, borderWidth: 1, borderColor: colors.line },

@@ -26,7 +26,8 @@ try { ({ JSDOM, VirtualConsole } = require(process.env.JSDOM_DIR || 'jsdom')); }
 
 const root = path.resolve(__dirname, '..', '..');
 const backend = path.join(root, 'backend');
-const python = process.env.PYTHON || path.join(backend, 'venv', 'bin', 'python');
+const venvPython = path.join(backend, 'venv', 'bin', 'python');
+const python = process.env.PYTHON || (fs.existsSync(venvPython) ? venvPython : 'python3');
 
 // The page and the API's state, made by Django itself: the same HTML the admin serves and the same JSON panel.js gets.
 const dump = `
@@ -79,7 +80,7 @@ const dom = new JSDOM(html, {
 });
 
 const staticDir = path.join(backend, 'apps/catalog/static/catalog');
-for (const file of ['limo-preview.js', 'limo-editor.js', 'panel.js']) {
+for (const file of ['limo-preview.js', 'preview-pane.js', 'limo-editor.js', 'panel.js']) {
   const s = dom.window.document.createElement('script');
   s.textContent = fs.readFileSync(path.join(staticDir, file), 'utf8');
   dom.window.document.head.appendChild(s);

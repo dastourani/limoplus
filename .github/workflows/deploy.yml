@@ -1,7 +1,6 @@
-# What the real server runs. On every change to main: run the backend tests, build the web version of the app, and
-# put main + that build (backend/webapp) on the branch «deploy». ParsPack deploys from «deploy» (its webhook), so
-# the server shows the web app at its root, talking to the server it came from (no second app, no CORS).
-# A failed test or build leaves «deploy» as it was, so the server keeps running the last good version.
+# What the real server runs. On every change to main: run backend tests (PostgreSQL), app checks (typecheck, unit
+# tests, plot checks), and panel JS checks; only if ALL pass, build the web version and push to «deploy».
+# A failed check leaves «deploy» as it was, so the server keeps running the last good version.
 name: Deploy branch
 
 on:
@@ -17,26 +16,93 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  backend-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: limoplus
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SECRET_KEY: test-only
+      DEBUG: "True"
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/limoplus
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py test apps
 
-      - name: Verify migrations
-        working-directory: backend
-        env:
-          SECRET_KEY: test-only
-          DEBUG: "True"
+  app-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:plots
+
+  panel-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install backend and jsdom dependencies
         run: |
-          pip install -r requirements.txt
-          python manage.py makemigrations --check --dry-run
+          pip install -r backend/requirements.txt
+          npm --prefix app install --no-save jsdom
+      - name: Prepare isolated sample database and run panel checks
+        env:
+          SECRET_KEY: panel-check
+          DEBUG: "True"
+          ALLOWED_HOSTS: "*"
+        run: |
+          cd backend
+          python manage.py migrate --noinput
+          python manage.py load_samples
+          python manage.py shell -c "from apps.accounts.models import User; User.objects.filter(phone='09120000001').exists() or User.objects.create_superuser('09120000001', 'ci-pass')"
+          cd ../app
+          PYTHON=python3 node scripts/panel-check.js
+          PYTHON=python3 node scripts/file-editor-check.js
+
+  deploy:
+    needs: [backend-tests, app-checks, panel-checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:

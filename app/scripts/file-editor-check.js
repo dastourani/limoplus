@@ -35,7 +35,8 @@ try { ({ JSDOM, VirtualConsole } = require(process.env.JSDOM_DIR || 'jsdom')); }
 
 const root = path.resolve(__dirname, '..', '..');
 const backend = path.join(root, 'backend');
-const python = process.env.PYTHON || path.join(backend, 'venv', 'bin', 'python');
+const venvPython = path.join(backend, 'venv', 'bin', 'python');
+const python = process.env.PYTHON || (fs.existsSync(venvPython) ? venvPython : 'python3');
 
 const dump = `
 import json
