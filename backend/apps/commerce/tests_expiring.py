@@ -80,3 +80,35 @@ class CheckExpiringEntitlementsTests(TestCase):
         res = check_and_notify_expiring_entitlements(now=now)
         self.assertEqual(res["notified_count"], 0)
         mock_sms.assert_not_called()
+
+    @patch("apps.commerce.management.commands.check_expiring_entitlements.send_sms")
+    @patch("apps.commerce.management.commands.check_expiring_entitlements.notify_bale")
+    def test_renewed_or_covered_user_gets_no_false_expiry_warning(self, mock_bale, mock_sms):
+        now = timezone.now()
+        # Current all-books subscription ends in 2 days...
+        Entitlement.objects.create(
+            user=self.user,
+            all_majors=True,
+            starts_at=now - timedelta(days=28),
+            ends_at=now + timedelta(days=2),
+        )
+        # ...but learner already bought a stacked renewal starting when the first ends.
+        Entitlement.objects.create(
+            user=self.user,
+            all_majors=True,
+            starts_at=now + timedelta(days=2),
+            ends_at=now + timedelta(days=32),
+        )
+        # Also a major-specific entitlement ending in 1 day is already covered by the all-majors renewal.
+        Entitlement.objects.create(
+            user=self.user,
+            major=self.major,
+            starts_at=now - timedelta(days=29),
+            ends_at=now + timedelta(days=1),
+        )
+
+        res = check_and_notify_expiring_entitlements(now=now)
+        self.assertEqual(res["notified_count"], 0)
+        self.assertEqual(res["skipped_count"], 2)
+        mock_sms.assert_not_called()
+        mock_bale.assert_not_called()

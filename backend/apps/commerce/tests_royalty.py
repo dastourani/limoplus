@@ -633,6 +633,32 @@ class BookRoyaltyAndSplitTests(TestCase):
         self.assertEqual(wallet.available_balance, 300_000)
         self.assertEqual(wallet.total_earned, 300_000)
 
+    def test_reconcile_missing_royalties_heals_missing_wallet_tx(self):
+        from apps.commerce.models import TeacherWallet, WalletTransaction
+        from apps.commerce.royalty import reconcile_missing_royalties
+
+        BookEditor.objects.create(book=self.book, user=self.teacher1)
+        order = Order.objects.create(
+            user=self.buyer,
+            book=self.book,
+            title=f"خرید {self.book.title}",
+            amount=100_000,
+            status=Order.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        # Paid order without snapshot yet
+        res1 = reconcile_missing_royalties()
+        self.assertEqual(res1["snapshots_created"], 1)
+        self.assertEqual(res1["errors"], 0)
+        wallet = TeacherWallet.objects.get(teacher=self.teacher1)
+        self.assertEqual(wallet.pending_balance, 70_000)
+
+        # Second run is a no-op
+        res2 = reconcile_missing_royalties()
+        self.assertEqual(res2["snapshots_created"], 0)
+        self.assertEqual(res2["wallets_credited"], 0)
+        self.assertEqual(WalletTransaction.objects.filter(wallet=wallet).count(), 1)
+
 
 
 

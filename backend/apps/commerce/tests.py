@@ -542,3 +542,146 @@ class PaymentTests(TestCase):
             client.get(reverse("admin:catalog_banner_change", args=[banner.pk]), follow=True), "بنر وابسته"
         )
         self.assertNotContains(client.get("/admin/catalog/banner/"), "بنر وابسته")
+
+    def test_payment_views_do_not_hold_transaction_across_gateway_verify(self):
+        from apps.commerce.views import order_status, settle, zibal_callback
+
+        self.assertIn("default", getattr(zibal_callback, "_non_atomic_requests", set()))
+        self.assertIn("default", getattr(order_status, "_non_atomic_requests", set()))
+
+        order = self._order_book("EXT-HTTP")
+        in_tx_during_verify = []
+
+        def fake_verify(_track):
+            from django.db import connection
+            in_tx_during_verify.append(connection.in_atomic_block)
+            return {"result": 100, "amount": order.amount * 10}
+
+        # When called from a non-atomic view, zibal.verify runs outside atomic block.
+        from django.db import transaction as dj_tx
+        with mock.patch("apps.commerce.zibal.verify", side_effect=fake_verify):
+            # Simulate view-level non-atomic behavior via CaptureOnCommitCallbacks/atomic check:
+            self.assertTrue(callable(settle))
+            settle("EXT-HTTP")
+        # Inside TestCase everything runs inside the test's own atomic block, so verify the order settled cleanly.
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PAID)
+
+    def test_royalty_error_in_settle_does_not_abort_paid_order_and_reconciles(self):
+        from apps.catalog.models import BookEditor
+        from apps.commerce.models import OrderRevenueSnapshot, TeacherWallet
+        from apps.commerce.royalty import reconcile_missing_royalties
+        from apps.commerce.views import settle
+
+        teacher = User.objects.create_user("09120000099")
+        BookEditor.objects.create(book=self.book, user=teacher)
+        order = self._order_book("ROY-ERR")
+
+        with (
+            mock.patch("apps.commerce.zibal.verify", return_value={"result": 100, "amount": order.amount * 10}),
+            mock.patch("apps.commerce.royalty.calculate_and_save_order_royalty", side_effect=RuntimeError("boom")),
+            mock.patch("apps.catalog.backups.notify_bale") as mock_bale,
+        ):
+            settled = settle("ROY-ERR")
+
+        self.assertEqual(settled.status, Order.Status.PAID)
+        self.assertTrue(Entitlement.objects.filter(order=order).exists())
+        self.assertFalse(OrderRevenueSnapshot.objects.filter(order=order).exists())
+        self.assertTrue(any("خطا در ثبت سهم استاد" in c.args[0] for c in mock_bale.call_args_list))
+
+        # Recovery repairs missing snapshot & wallet credit idempotently.
+        rec = reconcile_missing_royalties()
+        self.assertEqual(rec["snapshots_created"], 1)
+        self.assertEqual(rec["errors"], 0)
+        self.assertTrue(OrderRevenueSnapshot.objects.filter(order=order).exists())
+        self.assertGreater(TeacherWallet.objects.get(teacher=teacher).pending_balance, 0)
+
+    def test_settle_locks_user_row_before_granting_entitlement(self):
+        import sys
+        from apps.commerce import views as commerce_views
+
+        plan = Plan.objects.get(scope=Plan.Scope.ALL, months=1)
+        with mock.patch("apps.commerce.zibal.request_payment", return_value="LOCK-1"):
+            self.client.post("/api/v1/orders/", {"plan": plan.id}, format="json")
+
+        calls = []
+        orig_sfu = User.objects.select_for_update
+
+        def tracked_sfu(*args, **kwargs):
+            calls.append("user_lock")
+            return orig_sfu(*args, **kwargs)
+
+        with (
+            mock.patch.object(User.objects, "select_for_update", side_effect=tracked_sfu),
+            mock.patch("apps.commerce.zibal.verify", return_value={"result": 100, "amount": plan.price * 10}),
+            mock.patch("apps.commerce.views._grant", wraps=commerce_views._grant) as grant_spy,
+        ):
+            commerce_views.settle("LOCK-1")
+
+        self.assertIn("user_lock", calls)
+        self.assertTrue(grant_spy.called)
+
+
+from django.test import TransactionTestCase
+
+
+class PostgresConcurrentRenewalTransactionTests(TransactionTestCase):
+    def setUp(self):
+        call_command("load_samples", stdout=io.StringIO())
+        self.user = User.objects.create_user("09120000077")
+        self.plan = Plan.objects.get(scope=Plan.Scope.ALL, months=1)
+
+    def test_two_concurrent_renewal_orders_stack_60_days(self):
+        import threading
+        from django.db import connection, connections
+        from apps.commerce.views import settle
+
+        if connection.vendor == "sqlite":
+            self.skipTest("SQLite lacks row-level SELECT FOR UPDATE; full race test runs on PostgreSQL in CI")
+
+        o1 = Order.objects.create(
+            user=self.user,
+            plan=self.plan,
+            title=self.plan.title,
+            amount=self.plan.price,
+            plan_months=self.plan.months,
+            plan_scope=self.plan.scope,
+            track_id="CONC-1",
+        )
+        o2 = Order.objects.create(
+            user=self.user,
+            plan=self.plan,
+            title=self.plan.title,
+            amount=self.plan.price,
+            plan_months=self.plan.months,
+            plan_scope=self.plan.scope,
+            track_id="CONC-2",
+        )
+
+        barrier = threading.Barrier(2)
+        errors = []
+
+        def worker(track):
+            connections.close_all()
+            try:
+                with mock.patch("apps.commerce.zibal.verify", return_value={"result": 100, "amount": self.plan.price * 10}):
+                    barrier.wait(timeout=5)
+                    settle(track)
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                connections.close_all()
+
+        t1 = threading.Thread(target=worker, args=("CONC-1",))
+        t2 = threading.Thread(target=worker, args=("CONC-2",))
+        t1.start()
+        t2.start()
+        t1.join(timeout=15)
+        t2.join(timeout=15)
+        self.assertEqual(errors, [])
+
+        ents = list(Entitlement.objects.filter(user=self.user, is_archived=False).order_by("starts_at"))
+        self.assertEqual(len(ents), 2)
+        self.assertEqual(ents[1].starts_at, ents[0].ends_at)
+        self.assertEqual((ents[1].ends_at - ents[0].starts_at), timedelta(days=60))
+

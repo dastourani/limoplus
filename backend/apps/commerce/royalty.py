@@ -1,7 +1,7 @@
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import logging
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from apps.catalog.models import BookEditor
@@ -15,6 +15,10 @@ from .models import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def _round_toman(amount: int, pct: Decimal) -> int:
+    return int((Decimal(amount) * pct / Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def get_active_plan_for_book(book, now=None) -> tuple[RevenuePlan | None, Decimal, Decimal]:
@@ -34,11 +38,14 @@ def get_active_plan_for_book(book, now=None) -> tuple[RevenuePlan | None, Decima
     # ۲. اگر طرح خاصی به این کتاب وصل شده باشد
     plan = rule.revenue_plan if rule else None
     if plan and plan.is_valid_now(now):
-        # بررسی سقف فروش تعدادی
+        # بررسی سقف فروش تعدادی (با قفل ردیف طرح درون تراکنش برای جلوگیری از رقابت هم‌زمان)
         if plan.max_sales_count:
-            current_sales = OrderRevenueSnapshot.objects.filter(book=book, revenue_plan=plan).count()
-            if current_sales >= plan.max_sales_count:
-                plan = None  # منقضی شد، به طرح پیش‌فرض رجوع می‌شود
+            if connection.in_atomic_block:
+                plan = RevenuePlan.objects.select_for_update().filter(pk=plan.pk).first()
+            if plan and plan.is_valid_now(now) and plan.max_sales_count:
+                current_sales = OrderRevenueSnapshot.objects.filter(book=book, revenue_plan=plan).count()
+                if current_sales >= plan.max_sales_count:
+                    plan = None  # منقضی شد، به طرح پیش‌فرض رجوع می‌شود
 
     # ۳. اگر طرح پیدا نشد، طرح پیش‌فرض سامانه
     if not plan or not plan.is_valid_now(now):
@@ -59,68 +66,70 @@ def calculate_and_save_order_royalty(order: Order) -> OrderRevenueSnapshot | Non
     if not order.book_id or order.status != Order.Status.PAID:
         return None
 
-    # جلوگیری از ثبت مکرر
-    existing = OrderRevenueSnapshot.objects.filter(order=order).first()
-    if existing:
-        return existing
-
-    book = order.book
-    total_amount = order.amount
-    now = order.paid_at or timezone.now()
-
-    plan, total_author_pct, platform_pct = get_active_plan_for_book(book, now=now)
-
-    # تعیین مؤلفان و سهم هرکدام
-    rule = BookRoyaltyRule.objects.filter(book=book).first()
-    author_shares = list(rule.author_shares.filter(is_active=True).select_related("author")) if rule else []
-
-    shares_to_record = []
-    if author_shares:
-        # اگر چندمؤلفی به صراحت تعریف شده باشد
-        # مقیاس‌بندی نسبت‌ها در صورتی که جمع درصدهای مؤلفان با total_author_pct متفاوت باشد
-        defined_author_sum = sum(s.share_percent for s in author_shares)
-        for s in author_shares:
-            if defined_author_sum > 0:
-                effective_pct = (s.share_percent / defined_author_sum) * total_author_pct
-            else:
-                effective_pct = total_author_pct / len(author_shares)
-            shares_to_record.append((s.author, effective_pct))
-    else:
-        # اگر هنوز سهم اختصاصی ثبت نشده، به تمام استادان ثبت‌شده در BookEditor به نسبت مساوی تعلق می‌گیرد
-        editors = list(BookEditor.objects.filter(book=book).select_related("user"))
-        if editors:
-            split_pct = total_author_pct / Decimal(len(editors))
-            for ed in editors:
-                shares_to_record.append((ed.user, split_pct))
-        elif getattr(book, "author_id", None):
-            # در صورتی که فیلد author به User اشاره داشت
-            shares_to_record.append((book.author, total_author_pct))
-
-    # محاسبه مبالغ ریالی با گرد کردن استاندارد به نزدیک‌ترین تومان
-    total_authors_amount = 0
-    author_revenues_data = []
-
-    if shares_to_record:
-        for author, pct in shares_to_record:
-            amt = int(round(float(total_amount) * float(pct) / 100.0))
-            total_authors_amount += amt
-            author_revenues_data.append({
-                "author": author,
-                "share_percent": pct,
-                "amount": amt,
-            })
-        platform_amount = max(0, total_amount - total_authors_amount)
-    else:
-        # اگر هنوز هیچ استادی تعریف نشده، سهم مؤلفان محاسبه شده و به عنوان طلب ذخیره می‌شود
-        authors_theoretical_pct = total_author_pct
-        total_authors_amount = int(round(float(total_amount) * float(authors_theoretical_pct) / 100.0))
-        platform_amount = max(0, total_amount - total_authors_amount)
-
-    # دوره گارانتی اعمال‌شده از روی طرح یا پیش‌فرض ۷ روز
-    hold_days = plan.pending_hold_days if plan else 7
-    available_at = now + timedelta(days=hold_days) if hold_days > 0 else now
-
     with transaction.atomic():
+        # قفل سفارش برای جلوگیری از محاسبه و ثبت تکراری و هم‌گام‌سازی سقف طرح‌ها
+        Order.objects.select_for_update(of=("self",)).filter(pk=order.pk).first()
+        existing = OrderRevenueSnapshot.objects.filter(order=order).first()
+        if existing:
+            return existing
+
+        book = order.book
+        total_amount = order.amount
+        now = order.paid_at or timezone.now()
+
+        plan, total_author_pct, platform_pct = get_active_plan_for_book(book, now=now)
+
+        # تعیین مؤلفان و سهم هرکدام
+        rule = BookRoyaltyRule.objects.filter(book=book).first()
+        author_shares = list(rule.author_shares.filter(is_active=True).select_related("author")) if rule else []
+
+        shares_to_record = []
+        if author_shares:
+            # اگر چندمؤلفی به صراحت تعریف شده باشد
+            # مقیاس‌بندی نسبت‌ها در صورتی که جمع درصدهای مؤلفان با total_author_pct متفاوت باشد
+            defined_author_sum = sum(s.share_percent for s in author_shares)
+            for s in author_shares:
+                if defined_author_sum > 0:
+                    effective_pct = (s.share_percent / defined_author_sum) * total_author_pct
+                else:
+                    effective_pct = total_author_pct / Decimal(len(author_shares))
+                shares_to_record.append((s.author, effective_pct))
+        else:
+            # اگر هنوز سهم اختصاصی ثبت نشده، به تمام استادان ثبت‌شده در BookEditor به نسبت مساوی تعلق می‌گیرد
+            editors = list(BookEditor.objects.filter(book=book).select_related("user"))
+            if editors:
+                split_pct = total_author_pct / Decimal(len(editors))
+                for ed in editors:
+                    shares_to_record.append((ed.user, split_pct))
+            elif getattr(book, "author_id", None):
+                # در صورتی که فیلد author به User اشاره داشت
+                shares_to_record.append((book.author, total_author_pct))
+
+        # محاسبه دقیق مبالغ با Decimal و گرد کردن HALF_UP به نزدیک‌ترین تومان
+        total_authors_amount = 0
+        author_revenues_data = []
+
+        if shares_to_record:
+            for author, pct in shares_to_record:
+                amt = _round_toman(total_amount, pct)
+                if total_authors_amount + amt > total_amount:
+                    amt = max(0, total_amount - total_authors_amount)
+                total_authors_amount += amt
+                author_revenues_data.append({
+                    "author": author,
+                    "share_percent": pct,
+                    "amount": amt,
+                })
+            platform_amount = max(0, total_amount - total_authors_amount)
+        else:
+            # اگر هنوز هیچ استادی تعریف نشده، سهم مؤلفان محاسبه شده و به عنوان طلب ذخیره می‌شود
+            total_authors_amount = min(total_amount, _round_toman(total_amount, total_author_pct))
+            platform_amount = max(0, total_amount - total_authors_amount)
+
+        # دوره گارانتی اعمال‌شده از روی طرح یا پیش‌فرض ۷ روز
+        hold_days = plan.pending_hold_days if plan else 7
+        available_at = now + timedelta(days=hold_days) if hold_days > 0 else now
+
         snapshot = OrderRevenueSnapshot.objects.create(
             order=order,
             book=book,
@@ -150,7 +159,7 @@ def calculate_and_save_order_royalty(order: Order) -> OrderRevenueSnapshot | Non
                 released_at=now if hold_days == 0 else None,
             )
 
-            # شارژ خودکار کیف پول استاد در دفترکل
+            # شارژ خودکار کیف پول استاد در دفترکل (در savepoint خودش)
             try:
                 from .wallet import credit_teacher_pending_royalty
                 credit_teacher_pending_royalty(order_author_rev)
@@ -162,3 +171,57 @@ def calculate_and_save_order_royalty(order: Order) -> OrderRevenueSnapshot | Non
         order.id, platform_amount, total_authors_amount, len(author_revenues_data)
     )
     return snapshot
+
+
+def reconcile_missing_royalties() -> dict[str, int]:
+    """
+    جبران خودکار اسنپ‌شات‌های مالی یا تراکنش‌های کیف پول که به‌علت خطای موقت در زمان تسویه ثبت نشده‌اند.
+    کاملاً Idempotent.
+    """
+    from .wallet import credit_teacher_pending_royalty
+
+    snapshots_created = 0
+    wallets_credited = 0
+    errors = 0
+
+    missing_orders = (
+        Order.objects.filter(
+            status=Order.Status.PAID,
+            book__isnull=False,
+            revenue_snapshot__isnull=True,
+        )
+        .select_related("book")
+        .order_by("id")
+    )
+    for order in missing_orders:
+        try:
+            snap = calculate_and_save_order_royalty(order)
+            if snap is not None:
+                snapshots_created += 1
+        except Exception:
+            errors += 1
+            log.exception("Failed to reconcile royalty snapshot for order %s", order.id)
+
+    missing_credits = (
+        OrderAuthorRevenue.objects.filter(
+            amount__gt=0,
+            wallet_transactions__isnull=True,
+        )
+        .exclude(release_status=OrderAuthorRevenue.ReleaseStatus.REFUNDED)
+        .select_related("author", "snapshot__order", "snapshot__book")
+        .order_by("id")
+    )
+    for rev in missing_credits:
+        try:
+            tx = credit_teacher_pending_royalty(rev)
+            if tx is not None:
+                wallets_credited += 1
+        except Exception:
+            errors += 1
+            log.exception("Failed to reconcile wallet credit for OrderAuthorRevenue %s", rev.id)
+
+    return {
+        "snapshots_created": snapshots_created,
+        "wallets_credited": wallets_credited,
+        "errors": errors,
+    }
