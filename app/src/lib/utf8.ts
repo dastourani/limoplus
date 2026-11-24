@@ -39,3 +39,23 @@ export function utf8Decode(bytes: Uint8Array): string {
   parts.push(String.fromCodePoint(...chunk));
   return parts.join('');
 }
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+export function bytesToBase64(bytes: Uint8Array): string {
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i];
+    const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    const triple = (a << 16) | (b << 8) | c;
+    parts.push(
+      B64[(triple >> 18) & 63],
+      B64[(triple >> 12) & 63],
+      i + 1 < bytes.length ? B64[(triple >> 6) & 63] : '=',
+      i + 2 < bytes.length ? B64[triple & 63] : '=',
+    );
+  }
+  return parts.join('');
+}
+

@@ -13,18 +13,11 @@ from .fresh import book_updated_on, formula_macros, section_badges
 from .drawing import loads as loads_drawing
 from .importer import MEDIA_PREFIX
 from .labels import all_labels
+from .media import media_urls
 from .numbering import fa, numbering_for
 from .models import Banner, ContentNode, Major, ShareSettings
 
 NOT_FOUND = {"code": "not_found", "message": "پیدا نشد."}
-
-
-def media_urls(request, text: str) -> str:
-    """Turn stored image references (media:content/…) into full URLs for this server."""
-    if not text or MEDIA_PREFIX not in text:
-        return text
-    base = request.build_absolute_uri("/" + settings.MEDIA_URL.lstrip("/"))
-    return text.replace(f"]({MEDIA_PREFIX}", f"]({base}")
 
 
 def locked_response(book):
@@ -282,7 +275,7 @@ def book_detail(request, slug):
     return Response(
         {
             **book_card(request, book, access),
-            "about": media_urls(request, book.about),
+            "about": media_urls(request, book.about, book=book, access=access, allow_locked_chapters=False),
             "majors": list(book.majors.values_list("slug", flat=True)),
             "chapters": chapters,
             # «تمام شد» (green tick) and «خوانده شد» (read, questions still to do).
@@ -435,8 +428,8 @@ def node_detail(request, node_id):
             # A chapter's number is its place in the book (kept in step when chapters are reordered in the panel).
             "breadcrumb": [{"id": a.id, "kind": a.kind, "slug": a.slug, "title": a.title, "number": a.position} for a in ancestors],
             # A chapter's page is its introduction only: no summary of its own.
-            "summary": "" if is_chapter else media_urls(request, node.summary_body),
-            "full": media_urls(request, node.full_body),
+            "summary": "" if is_chapter else media_urls(request, node.summary_body, book=access.book),
+            "full": media_urls(request, node.full_body, book=access.book),
             # The panel's labels: boxes in the notes and parts of the summary (app/src/lib/labels.ts).
             "labels": all_labels(),
             # «مثال ۳-۵»: where this section's numbered boxes start, and the book's [[#names]] (apps/catalog/numbering.py).
@@ -717,7 +710,7 @@ def node_boxes(request, node_id):
                 n = seen[label["name"]]
                 number = (f"{fa(chapter.position)}-{fa(n)}" if chapter.position else fa(n)) if label["name"] in numbered else ""
                 boxes.append({"label": label["name"], "title": f"{label['name']} {number}".strip(), "name": b["name"],
-                              "body": media_urls(request, b["body"]), "section_id": part.id, "section_title": part.title if part.kind == ContentNode.Kind.SECTION else chapter.title,
+                              "body": media_urls(request, b["body"], book=access.book), "section_id": part.id, "section_title": part.title if part.kind == ContentNode.Kind.SECTION else chapter.title,
                               "chapter_number": chapter.position})
     labels = [{"name": l["name"], "style": l["style"], "count": counts[l["name"]]} for l in all_labels() if l["name"] in counts]
     # all_labels and refs: what the app's renderer needs to draw the boxes and their [[#name]] links.

@@ -154,15 +154,30 @@ export default function Section() {
           const book = (await offlineBooks()).find((b) => b.slug === copy.bookSlug);
           const ids = book?.sectionIds ?? [];
           const at = ids.indexOf(nodeId);
+          const isChapter = copy.kind === 'chapter';
+          const breadcrumb = isChapter
+            ? [{ id: 0, kind: 'book' as const, slug: copy.bookSlug, title: copy.bookTitle }]
+            : [
+                { id: 0, kind: 'book' as const, slug: copy.bookSlug, title: copy.bookTitle },
+                ...(copy.chapter_title
+                  ? [{ id: 0, kind: 'chapter' as const, slug: '', title: copy.chapter_title, number: copy.chapter_number ?? undefined }]
+                  : []),
+              ];
           setNode({
             id: copy.id,
-            kind: 'section',
+            kind: copy.kind ?? 'section',
             title: copy.title,
-            breadcrumb: [{ id: 0, kind: 'book', slug: copy.bookSlug, title: copy.bookTitle }],
+            breadcrumb,
             summary: copy.summary,
             full: copy.full,
-            previous_id: at > 0 ? ids[at - 1] : null,
-            next_id: at >= 0 && at + 1 < ids.length ? ids[at + 1] : null,
+            numbering: copy.numbering ?? undefined,
+            labels: copy.labels,
+            macros: copy.macros,
+            previous_id: copy.previous_id !== undefined ? copy.previous_id : at > 0 ? ids[at - 1] : null,
+            next_id: copy.next_id !== undefined ? copy.next_id : at >= 0 && at + 1 < ids.length ? ids[at + 1] : null,
+            previous_title: copy.previous_title ?? null,
+            next_title: copy.next_title ?? null,
+            intro: copy.intro ?? null,
           });
           setOffline(true);
         } else setError(err);

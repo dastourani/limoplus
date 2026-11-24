@@ -20,7 +20,7 @@ import { Button, Chip, ErrorState, Header, Loading, Screen, usePullRefresh } fro
 import { requireLogin, useAuth } from '../../lib/auth';
 import { coverByline } from '../../lib/cover';
 import { jalaliDate } from '../../lib/jalali';
-import { offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
+import { offlineBookDetail, offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
 import { storage, type LastSection } from '../../lib/storage';
 import { useApi } from '../../lib/useApi';
 import { useAppearance } from '../../lib/coverTheme';
@@ -95,7 +95,16 @@ export default function Book() {
   const { data, error, loading, retry } = useApi(
     async () => {
       await flushStudyTime();
-      return endpoints.book(String(slug));
+      try {
+        return await endpoints.book(String(slug));
+      } catch (e) {
+        const err = e instanceof ApiError ? e : null;
+        if (err?.status === 0) {
+          const cached = await offlineBookDetail(String(slug));
+          if (cached) return cached;
+        }
+        throw e;
+      }
     },
     [slug, user?.id],
   );
@@ -582,7 +591,13 @@ export default function Book() {
                 <Pressable onPress={download} disabled={downloading} style={styles.shortcut} accessibilityRole="button">
                   <Icon name={offline ? 'circle-check' : 'download'} size={18} color={offline ? colors.greenDark : colors.ink} />
                   <Text style={styles.shortcutText}>
-                    {downloading ? 'در حال دانلود…' : offline ? `آفلاین تا ${jalaliDate(offline.validUntil)}` : 'دانلود آفلاین'}
+                    {downloading
+                      ? 'در حال دانلود…'
+                      : offline
+                        ? book.updated_on && Date.parse(book.updated_on) > Date.parse(offline.bookUpdatedOn ?? offline.downloadedAt)
+                          ? 'نسخه‌ی تازه موجود است · به‌روزرسانی'
+                          : `آفلاین تا ${jalaliDate(offline.validUntil)}`
+                        : 'دانلود آفلاین'}
                   </Text>
                 </Pressable>
               )}

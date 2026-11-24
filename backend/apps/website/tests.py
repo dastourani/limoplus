@@ -438,3 +438,40 @@ class AppPagesTests(TestCase):
         self.assertContains(r, "درگاه اساتید")
         self.assertContains(r, "ورود اساتید و مؤلفان")
         self.assertContains(r, reverse("admin:login"))
+
+    def test_public_book_page_signs_authorized_media_and_blocks_cross_book_and_locked(self):
+        import shutil
+        import tempfile
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+        from django.core.management import call_command
+        from django.test import override_settings
+        from apps.catalog.models import ContentNode
+        from apps.learning.models import Choice, Question
+
+        media_dir = tempfile.mkdtemp()
+        try:
+            with override_settings(MEDIA_ROOT=media_dir):
+                call_command("load_samples", stdout=io.StringIO())
+                free_img = default_storage.save("content/math-1/limits/444444444444444444444444.png", ContentFile(b"PNG"))
+                locked_img = default_storage.save("content/math-1/derivatives/555555555555555555555555.png", ContentFile(b"PNG"))
+                other_img = default_storage.save("content/other-book/ch/666666666666666666666666.png", ContentFile(b"PNG"))
+
+                book = ContentNode.objects.get(slug="math-1")
+                book.about = f"![ok](media:{free_img}) ![locked](media:{locked_img}) ![other](media:{other_img})"
+                book.save(update_fields=["about"])
+
+                sec = ContentNode.objects.get(slug="limit-idea")
+                q = Question.objects.create(node=sec, slug="site-img-q", stem=f"متن ![q](media:{free_img})", is_sample=True)
+                Choice.objects.create(question=q, order=1, text="یک", is_correct=True)
+                Choice.objects.create(question=q, order=2, text="دو", is_correct=False)
+
+                r = Client().get("/site/books/math-1/")
+                self.assertEqual(r.status_code, 200)
+                body = r.content.decode("utf-8")
+                self.assertIn(f"/media/{free_img}?exp=", body)
+                self.assertNotIn(f"/media/{locked_img}?exp=", body)
+                self.assertNotIn(f"/media/{other_img}?exp=", body)
+        finally:
+            shutil.rmtree(media_dir, ignore_errors=True)
+

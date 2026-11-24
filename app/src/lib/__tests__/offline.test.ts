@@ -305,4 +305,107 @@ describe('offline atomic writes & hybrid revocation sync', () => {
     expect((await offlineSection(101))?.title).toBe('الف');
     expect((await offlineSection(202))?.title).toBe('ب');
   });
+
+  it('downloads deduplicated media once, serves data: URIs after signed URL expiry, and keeps previous version if media fails on update', async () => {
+    const future = new Date(Date.now() + 10 * 86400 * 1000).toISOString();
+    const svgBytes = new TextEncoder().encode('<svg><circle r="5"/></svg>');
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('shared.svg')) return new Response(svgBytes, { status: 200 });
+      if (url.includes('second.png')) return new Response(pngBytes, { status: 200 });
+      return new Response(null, { status: 403 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const bundleV1: OfflineBundle = {
+        version: 2,
+        book: { slug: 'math-1', title: 'ریاضی ۱', updated_on: '2026-11-20T00:00:00Z' },
+        labels: [{ name: 'مثال', style: 'formal', numbered: true, icon: 'bookmark' }],
+        macros: { '\\R': '\\mathbb{R}' },
+        media: [
+          { ref: 'media:content/math-1/ch1/shared.svg', id: 'shared', url: 'https://cdn.example/shared.svg?exp=1&sig=ok', mime: 'image/svg+xml' },
+          { ref: 'media:content/math-1/ch1/second.png', id: 'second', url: 'https://cdn.example/second.png?exp=1&sig=ok', mime: 'image/png' },
+        ],
+        sections: [
+          {
+            id: 10,
+            kind: 'chapter',
+            title: 'حد و پیوستگی',
+            summary: '',
+            full: 'مقدمه فصل:\n![نمودار](media:content/math-1/ch1/shared.svg)',
+            chapter_number: 1,
+            chapter_title: 'حد و پیوستگی',
+            numbering: { chapter: 1, start: {}, refs: { ex1: { text: 'مثال ۱-۱', node: 11 } } },
+            previous_id: null,
+            next_id: 11,
+            intro: { number: 1, sections: [{ id: 11, title: 'مفهوم حد', locked: false, state: 'empty' }], questions: 0, flashcards: 0, continue_id: 11, started: false },
+          },
+          {
+            id: 11,
+            kind: 'section',
+            title: 'مفهوم حد',
+            summary: 'خلاصه ![تکرار](media:content/math-1/ch1/shared.svg)',
+            full: 'متن ![دوم](media:content/math-1/ch1/second.png) و [[#ex1]]',
+            chapter_number: 1,
+            chapter_title: 'حد و پیوستگی',
+            numbering: { chapter: 1, start: {}, refs: { ex1: { text: 'مثال ۱-۱', node: 11 } } },
+            previous_id: 10,
+            next_id: null,
+          },
+        ],
+        downloaded_at: '2026-11-20T10:00:00Z',
+        valid_until: future,
+      };
+
+      const saved = await saveOfflineBook(bundleV1);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(saved.mediaFiles?.length).toBe(2);
+
+      // Simulate expired URLs & airplane mode (fetch throws).
+      fetchMock.mockRejectedValue(new Error('Network request failed'));
+      const introSec = await offlineSection(10);
+      expect(introSec?.kind).toBe('chapter');
+      expect(introSec?.full).toContain('data:image/svg+xml;base64,');
+      expect(introSec?.macros?.['\\R']).toBe('\\mathbb{R}');
+      expect(introSec?.labels?.[0]?.name).toBe('مثال');
+      expect(introSec?.numbering?.refs?.ex1?.text).toBe('مثال ۱-۱');
+
+      const sec11 = await offlineSection(11);
+      expect(sec11?.summary).toContain('data:image/svg+xml;base64,');
+      expect(sec11?.full).toContain('data:image/png;base64,');
+
+      // Re-download fails on 403 media -> previous v1 bundle + its media files remain intact!
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 403 }));
+      const bundleV2Fail: OfflineBundle = {
+        ...bundleV1,
+        media: [{ ref: 'media:content/math-1/ch1/shared.svg', id: 'shared', url: 'https://cdn.example/expired.svg', mime: 'image/svg+xml' }],
+        sections: [{ ...bundleV1.sections[0], title: 'نسخه خراب' }],
+        downloaded_at: '2026-11-24T10:00:00Z',
+      };
+      await expect(saveOfflineBook(bundleV2Fail)).rejects.toThrow();
+      expect((await offlineSection(10))?.title).toBe('حد و پیوستگی');
+      expect((await offlineSection(10))?.full).toContain('data:image/svg+xml;base64,');
+      expect(Array.from(files.keys()).filter((k) => k.endsWith('.media')).length).toBe(2);
+
+      // Successful re-download removes old media files and keeps only the new ones.
+      fetchMock.mockResolvedValueOnce(new Response(svgBytes, { status: 200 }));
+      const bundleV2Ok: OfflineBundle = {
+        ...bundleV1,
+        media: [{ ref: 'media:content/math-1/ch1/shared.svg', id: 'shared', url: 'https://cdn.example/shared.svg?exp=2&sig=ok', mime: 'image/svg+xml' }],
+        sections: [{ ...bundleV1.sections[0], title: 'حد و پیوستگی (جدید)' }],
+        downloaded_at: '2026-11-24T12:00:00Z',
+      };
+      const updated = await saveOfflineBook(bundleV2Ok);
+      expect(updated.mediaFiles?.length).toBe(1);
+      expect(Array.from(files.keys()).filter((k) => k.endsWith('.media')).length).toBe(1);
+      expect((await offlineSection(10))?.title).toBe('حد و پیوستگی (جدید)');
+
+      await removeOfflineBook('math-1');
+      expect(Array.from(files.keys()).filter((k) => k.endsWith('.media')).length).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
