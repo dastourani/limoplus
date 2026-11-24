@@ -46,7 +46,7 @@ api = [
     path("nodes/<int:node_id>/flashcards/", learning.node_flashcards),
     path("questions/<int:question_id>/answer/", learning.answer),
     path("app/version/", releases.app_version),
-    path("api/releases/sync-github/", releases.sync_github_webhook),
+    path("releases/sync-github/", releases.sync_github_webhook),
     path("app/pages/", website_api.app_pages),
     path("app/pages/<str:slug>/", website_api.site_page),
     path("app/help/<int:page_id>/", website_api.help_page),

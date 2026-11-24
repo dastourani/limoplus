@@ -1,5 +1,5 @@
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 
 from .models import AppRelease
@@ -114,3 +114,61 @@ class ThreeFilesTests(TestCase):
         self.assertContains(page, "https://x.ir/all.apk")
         self.assertContains(page, "https://x.ir/64.apk")
         self.assertContains(page, "https://x.ir/32.apk")
+
+
+class SyncGithubWebhookTests(TransactionTestCase):
+    ENDPOINT = "/api/v1/releases/sync-github/"
+
+    def test_unconfigured_secret_rejects_even_with_django_secret_key(self):
+        from django.test import override_settings
+
+        with override_settings(RELEASE_WEBHOOK_SECRET=""):
+            res = APIClient().post(self.ENDPOINT, HTTP_X_RELEASE_SECRET="test-only")
+            self.assertEqual(res.status_code, 503)
+
+    def test_query_secret_is_ignored_and_header_is_required(self):
+        from django.test import override_settings
+
+        with override_settings(RELEASE_WEBHOOK_SECRET="whsec-123"):
+            res_qs = APIClient().post(f"{self.ENDPOINT}?secret=whsec-123")
+            self.assertEqual(res_qs.status_code, 403)
+            res_bad = APIClient().post(self.ENDPOINT, HTTP_X_RELEASE_SECRET="wrong")
+            self.assertEqual(res_bad.status_code, 403)
+
+    def test_valid_header_syncs_and_downloads_outside_transaction(self):
+        import shutil
+        import tempfile
+        from unittest import mock
+
+        from django.db import connection
+        from django.test import override_settings
+
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, True)
+        sample_rel = {
+            "tag_name": "apk-105",
+            "body": "- بهبود سرعت\n- `limookhan-test-105.apk`",
+            "assets": [
+                {"name": "limookhan-test-105.apk", "browser_download_url": "https://example.com/u.apk"},
+                {"name": "limookhan-test-105-arm64.apk", "browser_download_url": "https://example.com/64.apk"},
+            ],
+        }
+        in_atomic_during_fetch = []
+
+        def fake_fetch(url, field_name):
+            in_atomic_during_fetch.append(connection.in_atomic_block)
+            return b"PK\x03\x04apk"
+
+        with (
+            override_settings(RELEASE_WEBHOOK_SECRET="whsec-123", MEDIA_ROOT=media),
+            mock.patch("apps.releases.github_sync.fetch_latest_github_release", return_value=sample_rel),
+            mock.patch("apps.releases.github_sync._fetch_asset_bytes", side_effect=fake_fetch),
+        ):
+            res = APIClient().post(f"{self.ENDPOINT}?download=1", HTTP_X_RELEASE_SECRET="whsec-123")
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["build"], 105)
+        self.assertEqual(in_atomic_during_fetch, [False, False])
+        rel = AppRelease.objects.get(build=105)
+        self.assertTrue(rel.apk.name.endswith(".apk"))
+        self.assertTrue(rel.apk_arm64.name.endswith(".apk"))

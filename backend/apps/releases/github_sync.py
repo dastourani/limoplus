@@ -92,6 +92,7 @@ def sync_release_from_github(download_files: bool = False, repo: str = GITHUB_RE
             notes_lines.append(clean_line)
     notes = "\n".join(notes_lines) or "بهبود کارایی و حل مشکلات گزارش‌شده"
 
+    pending_downloads: list[tuple[str, str, str]] = []
     with transaction.atomic():
         release, created = AppRelease.objects.get_or_create(
             platform=AppRelease.ANDROID,
@@ -116,26 +117,49 @@ def sync_release_from_github(download_files: bool = False, repo: str = GITHUB_RE
                 release.notes = notes
             release.save()
 
-        # If file download was requested, download into media storage
         if download_files:
-            _download_asset_to_field(universal_url, release, "apk", f"limookhan-{build_num}.apk")
-            if arm64_url:
-                _download_asset_to_field(arm64_url, release, "apk_arm64", f"limookhan-{build_num}-arm64.apk")
-            if bit32_url:
-                _download_asset_to_field(bit32_url, release, "apk_32", f"limookhan-{build_num}-32bit.apk")
-            release.save()
+            for field_name, url, filename in (
+                ("apk", universal_url, f"limookhan-{build_num}.apk"),
+                ("apk_arm64", arm64_url, f"limookhan-{build_num}-arm64.apk"),
+                ("apk_32", bit32_url, f"limookhan-{build_num}-32bit.apk"),
+            ):
+                existing = getattr(release, field_name)
+                if url and not (existing and existing.name):
+                    pending_downloads.append((field_name, url, filename))
 
         clear_cache()
 
-    # Send Bale alert
+    # Perform external APK file downloads outside any DB transaction/locks.
+    downloaded: list[tuple[str, str, bytes]] = []
+    for field_name, url, filename in pending_downloads:
+        content = _fetch_asset_bytes(url, field_name)
+        if content is not None:
+            downloaded.append((field_name, filename, content))
+
+    if downloaded:
+        with transaction.atomic():
+            release = AppRelease.objects.select_for_update().get(pk=release.pk)
+            changed = False
+            for field_name, filename, content in downloaded:
+                existing = getattr(release, field_name)
+                if not (existing and existing.name):
+                    getattr(release, field_name).save(filename, ContentFile(content), save=False)
+                    changed = True
+            if changed:
+                release.save()
+                clear_cache()
+
+    # Send Bale alert asynchronously after DB work commits (never inside a DB transaction).
     try:
-        from apps.catalog.backups import notify_bale
+        from apps.catalog.backups import notify_bale_after_commit
         from apps.catalog.panel_display import fa_number
-        notify_bale(
+
+        notify_bale_after_commit(
             f"🚀 نسخه جدید اپلیکیشن همگام‌سازی شد\n"
             f"شماره ساخت: {fa_number(build_num)} (نسخه {version_name})\n"
             f"فایل‌ها: {'دانلود مستقیم در سرور پارس‌پک' if download_files else 'لینک‌های مستقیم گیت‌هاب'}\n"
-            f"تغییرات: {notes[:100]}"
+            f"تغییرات: {notes[:100]}",
+            log_label=f"Bale release sync alert for build {build_num}",
         )
     except Exception:
         pass
@@ -144,19 +168,16 @@ def sync_release_from_github(download_files: bool = False, repo: str = GITHUB_RE
     return release, f"نسخه {build_num} ({version_name}) با موفقیت {action_text}."
 
 
-def _download_asset_to_field(url: str, instance: AppRelease, field_name: str, filename: str):
-    """Downloads a file from url and saves it into the FileField."""
+def _fetch_asset_bytes(url: str, field_name: str) -> bytes | None:
+    """Download an APK asset over HTTP outside a DB transaction."""
     if not url:
-        return
-    existing = getattr(instance, field_name)
-    if existing and existing.name:
-        return  # already has a file
-
+        return None
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Limoplus-Downloader"})
         with urllib.request.urlopen(req, timeout=120) as resp:
             content = resp.read()
-            getattr(instance, field_name).save(filename, ContentFile(content), save=False)
-            log.info("Saved %s to %s (%d bytes)", url, field_name, len(content))
+            log.info("Downloaded %s for %s (%d bytes)", url, field_name, len(content))
+            return content
     except Exception as exc:
-        log.warning("Failed to download %s to %s: %s", url, field_name, exc)
+        log.warning("Failed to download %s for %s: %s", url, field_name, exc)
+        return None

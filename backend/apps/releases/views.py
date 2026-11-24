@@ -1,3 +1,6 @@
+import hmac
+
+from django.db import transaction
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -23,6 +26,7 @@ def app_version(request):
     return Response({"status": status, "min_build": floor, "latest": describe(newest, abis_of(request))})
 
 
+@transaction.non_atomic_requests
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -31,9 +35,12 @@ def sync_github_webhook(request):
     from django.conf import settings
     from .github_sync import sync_release_from_github
 
-    secret = request.headers.get("X-Release-Secret") or request.query_params.get("secret")
-    expected_secret = getattr(settings, "RELEASE_WEBHOOK_SECRET", None) or settings.SECRET_KEY
-    if not secret or secret != expected_secret:
+    expected_secret = (getattr(settings, "RELEASE_WEBHOOK_SECRET", "") or "").strip()
+    if not expected_secret:
+        return Response({"error": "webhook_not_configured"}, status=503)
+
+    secret = (request.headers.get("X-Release-Secret") or "").strip()
+    if not secret or not hmac.compare_digest(secret, expected_secret):
         return Response({"error": "unauthorized"}, status=403)
 
     download_files = request.query_params.get("download") in ("1", "true", "True")

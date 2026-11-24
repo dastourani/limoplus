@@ -20,10 +20,16 @@ class AppReleaseAdmin(admin.ModelAdmin):
     change_list_template = "admin/releases/apprelease/change_list.html"
 
     def get_urls(self):
+        from django.db import transaction
         from django.urls import path
+
         urls = super().get_urls()
         custom_urls = [
-            path("sync-github/", self.admin_site.admin_view(self.sync_github_view), name="releases_apprelease_sync_github"),
+            path(
+                "sync-github/",
+                transaction.non_atomic_requests(self.admin_site.admin_view(self.sync_github_view)),
+                name="releases_apprelease_sync_github",
+            ),
         ]
         return custom_urls + urls
 
