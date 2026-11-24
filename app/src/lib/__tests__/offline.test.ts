@@ -408,4 +408,103 @@ describe('offline atomic writes & hybrid revocation sync', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('waits for all parallel image workers to settle/abort on failure and leaves zero orphan .media files', async () => {
+    const future = new Date(Date.now() + 10 * 86400 * 1000).toISOString();
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+
+    let releaseSecondFetch!: () => void;
+    const secondFetchGate = new Promise<void>((resolve) => {
+      releaseSecondFetch = resolve;
+    });
+    let secondStarted!: () => void;
+    const secondStartedPromise = new Promise<void>((resolve) => {
+      secondStarted = resolve;
+    });
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('img-2.png')) {
+        secondStarted();
+        // Keep img-2 slightly slower so img-1 fails while img-2 is finishing its fetch/write.
+        await secondFetchGate;
+        return new Response(pngBytes, { status: 200 });
+      }
+      await secondStartedPromise;
+      // Fail img-1 right as img-2 finishes its response so img-2 tests the settle+cleanup race.
+      releaseSecondFetch();
+      return new Response(null, { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const bundle: OfflineBundle = {
+        ...sampleBundle('math-1', '2026-11-24T10:00:00Z', future),
+        media: [
+          { ref: 'media:content/math-1/ch1/img-1.png', id: 'img-1', url: 'https://cdn.example/img-1.png', mime: 'image/png' },
+          { ref: 'media:content/math-1/ch1/img-2.png', id: 'img-2', url: 'https://cdn.example/img-2.png', mime: 'image/png' },
+        ],
+      };
+
+      await expect(saveOfflineBook(bundle)).rejects.toThrow();
+      // Give any stray microtask a tick to prove no background worker writes an orphan file after rejection.
+      await new Promise((r) => setTimeout(r, 15));
+      expect(Array.from(files.keys())).toEqual([]);
+      expect(storage.get('limo.offlineIndex')).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('retries failed .media deletions on next wipe and cleans up expired books + their .media files', async () => {
+    const future = new Date(Date.now() + 10 * 86400 * 1000).toISOString();
+    const svgBytes = new TextEncoder().encode('<svg/>');
+    const fetchMock = vi.fn(async () => new Response(svgBytes, { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const bundle1: OfflineBundle = {
+        ...sampleBundle('book-1', '2026-11-20T10:00:00Z', future),
+        media: [
+          { ref: 'media:content/book-1/ch1/a.svg', id: 'a', url: 'https://cdn.example/a.svg', mime: 'image/svg+xml' },
+          { ref: 'media:content/book-1/ch1/b.svg', id: 'b', url: 'https://cdn.example/b.svg', mime: 'image/svg+xml' },
+        ],
+      };
+      const saved1 = await saveOfflineBook(bundle1);
+      const firstMediaName = saved1.mediaFiles![0];
+
+      // Fail deleting the first .media file during wipe -> next reconcile must finish deleting BOTH .media and .bin + clear index.
+      failNextDeleteUri = `offline/${firstMediaName}`;
+      const revocations = [{ slug: 'book-1', revoked_at: '2026-11-24T11:00:00Z' }];
+      await reconcileOfflineRevocations(revocations);
+      expect(files.has(`offline/${firstMediaName}`)).toBe(true);
+
+      await reconcileOfflineRevocations(revocations);
+      expect(JSON.parse(storage.get('limo.offlineIndex') ?? '[]')).toEqual([]);
+      expect(Array.from(files.keys())).toEqual([]);
+
+      // Expired book scenario: save with future date, then advance time past validUntil, and fail deleting its .media once.
+      const expBundle: OfflineBundle = {
+        ...sampleBundle('book-exp', '2026-11-20T10:00:00Z', future),
+        media: [{ ref: 'media:content/book-exp/ch1/c.svg', id: 'c', url: 'https://cdn.example/c.svg', mime: 'image/svg+xml' }],
+      };
+      const savedExp = await saveOfflineBook(expBundle);
+      const expMedia = savedExp.mediaFiles![0];
+
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(Date.now() + 20 * 86400 * 1000));
+      failNextDeleteUri = `offline/${expMedia}`;
+      await reconcileOfflineRevocations([]);
+      // Index has pruned expired book; pending media remains until retry.
+      expect(JSON.parse(storage.get('limo.offlineIndex') ?? '[]')).toEqual([]);
+      expect(files.has('offline/book-exp.bin')).toBe(false);
+      expect(files.has(`offline/${expMedia}`)).toBe(true);
+
+      // Next cleanup drains pending media file too -> disk is completely clean.
+      await reconcileOfflineRevocations([]);
+      expect(Array.from(files.keys())).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
 });

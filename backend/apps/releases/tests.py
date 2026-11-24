@@ -238,6 +238,10 @@ class AppReleaseChannelIsolationTests(TestCase):
         ]).encode("utf-8")
 
         class FakeResp(BytesIO):
+            def __init__(self, body, link=""):
+                super().__init__(body)
+                self.headers = {"Link": link} if link else {}
+
             def __enter__(self):
                 return self
 
@@ -250,4 +254,86 @@ class AppReleaseChannelIsolationTests(TestCase):
 
         self.assertEqual((off_rel.channel, off_rel.build), (AppRelease.CHANNEL_OFFICIAL, 3))
         self.assertEqual((test_rel.channel, test_rel.build), (AppRelease.CHANNEL_TEST, 25))
+
+    def test_github_sync_never_falls_back_to_other_channel_and_paginates(self):
+        import json
+        from io import BytesIO
+        from unittest import mock
+        from apps.releases.github_sync import sync_release_from_github
+
+        class FakeResp(BytesIO):
+            def __init__(self, body, link=""):
+                super().__init__(body)
+                self.headers = {"Link": link} if link else {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        # Page 1 has only official-42 and no next page -> test sync must return None and create no row.
+        only_official = json.dumps([
+            {
+                "tag_name": "official-42",
+                "prerelease": False,
+                "body": "- official only",
+                "assets": [{"name": "limookhan-42.apk", "browser_download_url": "https://example.com/off-42.apk"}],
+            },
+        ]).encode("utf-8")
+        with mock.patch("urllib.request.urlopen", side_effect=lambda *a, **kw: FakeResp(only_official)):
+            rel, _ = sync_release_from_github(channel=AppRelease.CHANNEL_TEST)
+        self.assertIsNone(rel)
+        self.assertFalse(AppRelease.objects.filter(channel=AppRelease.CHANNEL_TEST, build=42).exists())
+
+        # Paginated responses: page 1 has official-42, page 2 has apk-77 -> test sync finds apk-77 across Link rel="next".
+        page2_url = "https://api.github.com/repos/dastourani/limoplus/releases?per_page=100&page=2"
+        page2_test = json.dumps([
+            {
+                "tag_name": "apk-77",
+                "prerelease": True,
+                "body": "- test 77",
+                "assets": [{"name": "limookhan-test-77.apk", "browser_download_url": "https://example.com/test-77.apk"}],
+            },
+        ]).encode("utf-8")
+
+        def paged_fetch(req, timeout=20):
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            if "page=2" in url:
+                return FakeResp(page2_test)
+            return FakeResp(only_official, link=f'<{page2_url}>; rel="next"')
+
+        with mock.patch("urllib.request.urlopen", side_effect=paged_fetch):
+            rel_test, _ = sync_release_from_github(channel=AppRelease.CHANNEL_TEST)
+        self.assertIsNotNone(rel_test)
+        self.assertEqual((rel_test.channel, rel_test.build), (AppRelease.CHANNEL_TEST, 77))
+
+        # Conversely, page 1 has apk-* and page 2 has official-12 -> official sync finds official-12.
+        only_test = json.dumps([
+            {
+                "tag_name": "apk-88",
+                "prerelease": True,
+                "body": "- test 88",
+                "assets": [{"name": "limookhan-test-88.apk", "browser_download_url": "https://example.com/test-88.apk"}],
+            },
+        ]).encode("utf-8")
+        page2_official = json.dumps([
+            {
+                "tag_name": "official-12",
+                "prerelease": False,
+                "body": "- official 12",
+                "assets": [{"name": "limookhan-12.apk", "browser_download_url": "https://example.com/off-12.apk"}],
+            },
+        ]).encode("utf-8")
+
+        def paged_fetch_rev(req, timeout=20):
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            if "page=2" in url:
+                return FakeResp(page2_official)
+            return FakeResp(only_test, link=f'<{page2_url}>; rel="next"')
+
+        with mock.patch("urllib.request.urlopen", side_effect=paged_fetch_rev):
+            rel_off, _ = sync_release_from_github(channel=AppRelease.CHANNEL_OFFICIAL)
+        self.assertIsNotNone(rel_off)
+        self.assertEqual((rel_off.channel, rel_off.build), (AppRelease.CHANNEL_OFFICIAL, 12))
 

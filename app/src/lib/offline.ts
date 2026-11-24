@@ -22,6 +22,7 @@ import { secure } from './secure';
 
 const KEY_NAME = 'limo.offlineKey';
 const INDEX_KEY = 'limo.offlineIndex';
+const PENDING_CLEANUP_KEY = 'limo.offlinePendingCleanup';
 const MEDIA_CONCURRENCY = 4;
 const MEDIA_REF_RE = /!\[([^\]]*)\]\((media:content\/[^)\s]+)\)/g;
 
@@ -163,8 +164,12 @@ async function readIndex(): Promise<OfflineBook[]> {
 
 export async function offlineBooks(): Promise<OfflineBook[]> {
   try {
-    const valid = await readIndex();
-    return valid.filter((b) => fileFor(b.slug).exists);
+    return await withIndexLock(async () => {
+      await drainPendingCleanupLocked();
+      await pruneExpiredOfflineBooksLocked();
+      const valid = await readIndex();
+      return valid.filter((b) => fileFor(b.slug).exists);
+    });
   } catch {
     return [];
   }
@@ -174,16 +179,73 @@ async function saveIndex(books: OfflineBook[]) {
   await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(books));
 }
 
-function deleteMediaFiles(fileNames?: string[]) {
-  if (!fileNames?.length) return;
+async function readPendingCleanup(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_CLEANUP_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string' && !!x) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writePendingCleanup(names: string[]) {
+  const unique = Array.from(new Set(names));
+  if (!unique.length) await AsyncStorage.removeItem(PENDING_CLEANUP_KEY).catch(() => undefined);
+  else await AsyncStorage.setItem(PENDING_CLEANUP_KEY, JSON.stringify(unique)).catch(() => undefined);
+}
+
+async function enqueuePendingCleanup(names: string[]) {
+  if (!names.length) return;
+  const existing = await readPendingCleanup();
+  await writePendingCleanup([...existing, ...names]);
+}
+
+function deleteMediaFiles(fileNames?: string[]): { failed: string[]; error: unknown | null } {
+  const failed: string[] = [];
+  let firstError: unknown | null = null;
+  if (!fileNames?.length) return { failed, error: null };
   for (const name of fileNames) {
     try {
       const mf = mediaFileByName(name);
       if (mf.exists) mf.delete();
-    } catch {
-      // best-effort cleanup
+    } catch (e) {
+      failed.push(name);
+      if (firstError === null) firstError = e;
     }
   }
+  return { failed, error: firstError };
+}
+
+async function drainPendingCleanupLocked() {
+  const pending = await readPendingCleanup();
+  if (!pending.length) return;
+  const res = deleteMediaFiles(pending);
+  await writePendingCleanup(res.failed);
+}
+
+async function pruneExpiredOfflineBooksLocked() {
+  const all = await readIndexRaw();
+  const now = Date.now();
+  const expired = all.filter((b) => new Date(b.validUntil).getTime() <= now);
+  if (!expired.length) return;
+
+  const active = all.filter((b) => new Date(b.validUntil).getTime() > now);
+  await saveIndex(active);
+
+  const failedFiles: string[] = [];
+  for (const book of expired) {
+    const mediaRes = deleteMediaFiles(book.mediaFiles);
+    if (mediaRes.failed.length) failedFiles.push(...mediaRes.failed);
+    for (const f of [fileFor(book.slug), backupFileFor(book.slug)]) {
+      try {
+        if (f.exists) f.delete();
+      } catch {
+        failedFiles.push(f.name);
+      }
+    }
+  }
+  if (failedFiles.length) await enqueuePendingCleanup(failedFiles);
 }
 
 async function downloadMediaAssets(
@@ -208,33 +270,51 @@ async function downloadMediaAssets(
     unique.push(item);
   }
 
+  const controller = new AbortController();
+  let failedError: unknown = null;
   let cursor = 0;
+
   const worker = async () => {
-    while (cursor < unique.length) {
+    while (true) {
+      if (controller.signal.aborted) return;
       const idx = cursor++;
+      if (idx >= unique.length) return;
       const item = unique[idx];
-      const res = await fetch(item.url);
-      if (!res.ok) {
-        throw new ApiError(res.status, 'media_download_failed', 'دانلود یکی از تصاویر کتاب ممکن نشد.');
+      let fileName: string | null = null;
+      try {
+        const res = await fetch(item.url, { signal: controller.signal });
+        if (!res.ok) {
+          throw new ApiError(res.status, 'media_download_failed', 'دانلود یکی از تصاویر کتاب ممکن نشد.');
+        }
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (controller.signal.aborted) return;
+        fileName = mediaFileName(slug, versionTag, item.id || String(idx));
+        const f = mediaFileByName(fileName);
+        f.create({ intermediates: true, overwrite: true });
+        await f.write(sealBytes(k, bytes));
+        writtenFiles.push(fileName);
+        manifest[item.ref] = { file: fileName, mime: item.mime || 'application/octet-stream' };
+      } catch (e) {
+        if (fileName && mediaFileByName(fileName).exists && !writtenFiles.includes(fileName)) {
+          writtenFiles.push(fileName);
+        }
+        if (failedError === null) failedError = e;
+        controller.abort();
+        return;
       }
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      const fileName = mediaFileName(slug, versionTag, item.id || String(idx));
-      const f = mediaFileByName(fileName);
-      f.create({ intermediates: true, overwrite: true });
-      await f.write(sealBytes(k, bytes));
-      writtenFiles.push(fileName);
-      manifest[item.ref] = { file: fileName, mime: item.mime || 'application/octet-stream' };
     }
   };
 
-  try {
-    const workers = Array.from({ length: Math.min(MEDIA_CONCURRENCY, unique.length) }, () => worker());
-    await Promise.all(workers);
-    return { manifest, files: writtenFiles };
-  } catch (e) {
-    deleteMediaFiles(writtenFiles);
-    throw e;
+  const workers = Array.from({ length: Math.min(MEDIA_CONCURRENCY, unique.length) }, () => worker());
+  await Promise.allSettled(workers);
+  if (failedError !== null || controller.signal.aborted) {
+    const res = deleteMediaFiles(writtenFiles);
+    if (res.failed.length) {
+      await withIndexLock(() => enqueuePendingCleanup(res.failed)).catch(() => undefined);
+    }
+    throw failedError ?? new ApiError(0, 'media_download_failed', 'دانلود یکی از تصاویر کتاب ممکن نشد.');
   }
+  return { manifest, files: writtenFiles };
 }
 
 export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBook> {
@@ -272,7 +352,10 @@ export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBoo
       }
       await tempFileFor(slug).move(fileFor(slug), { overwrite: true });
     } catch (e) {
-      deleteMediaFiles(newMediaFiles);
+      const rollbackMedia = deleteMediaFiles(newMediaFiles);
+      if (rollbackMedia.failed.length) {
+        await withIndexLock(() => enqueuePendingCleanup(rollbackMedia.failed)).catch(() => undefined);
+      }
       const leftoverTmp = tempFileFor(slug);
       if (leftoverTmp.exists) leftoverTmp.delete();
       const bak = backupFileFor(slug);
@@ -303,7 +386,10 @@ export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBoo
         await saveIndex([...books, entry]);
       });
     } catch (e) {
-      deleteMediaFiles(newMediaFiles);
+      const rollbackMedia = deleteMediaFiles(newMediaFiles);
+      if (rollbackMedia.failed.length) {
+        await withIndexLock(() => enqueuePendingCleanup(rollbackMedia.failed)).catch(() => undefined);
+      }
       const written = fileFor(slug);
       if (written.exists) written.delete();
       const bak = backupFileFor(slug);
@@ -322,7 +408,10 @@ export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBoo
         // backup cleanup is best-effort after durable index commit
       }
     }
-    deleteMediaFiles(oldMediaFiles);
+    const oldMediaRes = deleteMediaFiles(oldMediaFiles);
+    if (oldMediaRes.failed.length) {
+      await withIndexLock(() => enqueuePendingCleanup(oldMediaRes.failed)).catch(() => undefined);
+    }
     return entry;
   });
 }
@@ -488,25 +577,41 @@ export async function offlineBookDetail(slug: string): Promise<BookDetail | null
 export async function removeOfflineBook(slug: string) {
   return withSlugLock(slug, () =>
     withIndexLock(async () => {
-      const existing = await readIndex();
+      const existing = await readIndexRaw();
       const target = existing.find((b) => b.slug === slug);
       await saveIndex(existing.filter((b) => b.slug !== slug));
+
+      const mediaRes = deleteMediaFiles(target?.mediaFiles);
+      if (mediaRes.failed.length) {
+        await saveIndex(
+          existing.map((b) => (b.slug === slug ? { ...b, mediaFiles: mediaRes.failed } : b)),
+        ).catch(() => undefined);
+        await enqueuePendingCleanup(mediaRes.failed);
+        throw mediaRes.error ?? new Error('Failed to delete offline media files');
+      }
+
       try {
         const f = fileFor(slug);
         if (f.exists) f.delete();
         const bak = backupFileFor(slug);
         if (bak.exists) bak.delete();
-        deleteMediaFiles(target?.mediaFiles);
       } catch (e) {
-        await saveIndex(existing).catch(() => undefined);
+        await saveIndex(
+          existing.map((b) => (b.slug === slug ? { ...b, mediaFiles: undefined } : b)),
+        ).catch(() => undefined);
         throw e;
       }
     }),
   );
 }
 
-/** Remove downloaded offline books that an admin explicitly wiped on revocation. */
+/** Remove downloaded offline books that an admin explicitly wiped on revocation, plus expired books and pending deletes. */
 export async function reconcileOfflineRevocations(revocations?: OfflineRevocation[]) {
+  await withIndexLock(async () => {
+    await drainPendingCleanupLocked();
+    await pruneExpiredOfflineBooksLocked();
+  }).catch(() => undefined);
+
   if (!revocations?.length) return;
   const bySlug = new Map(revocations.map((r) => [r.slug, Date.parse(r.revoked_at)]));
   const books = await offlineBooks();
@@ -535,6 +640,7 @@ export async function clearOffline() {
         // nothing stored
       }
       await AsyncStorage.removeItem(INDEX_KEY).catch(() => undefined);
+      await AsyncStorage.removeItem(PENDING_CLEANUP_KEY).catch(() => undefined);
       await secure.set(KEY_NAME, null);
     }),
   );
