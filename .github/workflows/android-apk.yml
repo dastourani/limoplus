@@ -42,6 +42,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Typecheck and tests
+        run: |
+          npm run typecheck
+          npm test
+          npm run test:plots
+
       - name: Default server address for test builds
         # Can be changed later in the app (Settings). Set a repository variable EXPO_PUBLIC_API_URL to change the default.
         run: |

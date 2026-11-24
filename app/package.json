@@ -48,7 +48,8 @@
     "@types/katex": "^0.16.8",
     "@types/markdown-it": "^14.2.0",
     "@types/react": "~19.3.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.1"
   },
   "scripts": {
     "start": "expo start",
@@ -56,6 +57,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:plots": "npx --yes esbuild@0.28.2 scripts/plot-check.ts --bundle --platform=node --outfile=/tmp/plot-check.cjs && node /tmp/plot-check.cjs",
     "build:admin-preview": "npx --yes esbuild@0.28.2 admin-preview/entry.ts --bundle --minify --format=iife --target=es2019 --legal-comments=none --outfile=../backend/apps/catalog/static/catalog/limo-preview.js",
     "build:admin-editor": "npx --yes esbuild@0.28.2 admin-preview/editor.ts --bundle --minify --format=iife --target=es2019 --legal-comments=none --outfile=../backend/apps/catalog/static/catalog/limo-editor.js"
   },
