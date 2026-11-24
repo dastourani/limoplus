@@ -2,6 +2,7 @@ from datetime import timedelta
 import logging
 
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.sms import send_sms
@@ -10,6 +11,32 @@ from apps.catalog.jalali import fa_digits, jalali_date
 from apps.commerce.models import Entitlement
 
 log = logging.getLogger(__name__)
+
+
+def _has_extended_coverage(ent: Entitlement, three_days_later) -> bool:
+    """
+    True when the learner already has another non-archived entitlement covering the same scope that starts
+    before or at `ent.ends_at` (active now or stacked seamlessly) and ends strictly after `ent.ends_at`
+    (either a queued renewal or a broader/permanent entitlement).
+    """
+    base = Entitlement.objects.filter(user_id=ent.user_id, is_archived=False).exclude(pk=ent.pk)
+    if ent.all_majors and ent.book_id is None:
+        scope_q = Q(all_majors=True, book__isnull=True)
+    elif ent.major_id and ent.book_id is None:
+        scope_q = Q(all_majors=True, book__isnull=True) | Q(major_id=ent.major_id, book__isnull=True)
+    elif ent.book_id:
+        book_major_ids = list(ent.book.majors.values_list("id", flat=True))
+        scope_q = Q(book_id=ent.book_id) | Q(all_majors=True, book__isnull=True)
+        if book_major_ids:
+            scope_q |= Q(major_id__in=book_major_ids, book__isnull=True)
+    else:
+        return False
+
+    return (
+        base.filter(scope_q, starts_at__lte=ent.ends_at)
+        .filter(Q(ends_at__isnull=True) | Q(ends_at__gt=ent.ends_at))
+        .exists()
+    )
 
 
 def check_and_notify_expiring_entitlements(now=None, dry_run=False):
@@ -37,6 +64,11 @@ def check_and_notify_expiring_entitlements(now=None, dry_run=False):
     for ent in expiring_qs:
         # Prevent duplicate notifications sent today
         if ent.expiry_warning_sent_at and ent.expiry_warning_sent_at >= today_start:
+            skipped_count += 1
+            continue
+
+        # Do not warn when the user already renewed or holds a longer/permanent covering entitlement.
+        if _has_extended_coverage(ent, three_days_later):
             skipped_count += 1
             continue
 

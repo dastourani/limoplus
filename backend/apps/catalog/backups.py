@@ -370,6 +370,14 @@ def run_due(now=None, force=False) -> list[str]:
     except Exception as exc:  # noqa: BLE001
         log.error("expiring entitlements check failed: %s", _safe(exc))
     try:
+        from apps.commerce.royalty import reconcile_missing_royalties
+
+        rec_res = reconcile_missing_royalties()
+        if rec_res["snapshots_created"] or rec_res["wallets_credited"]:
+            done.append(f"royalty-reconcile({rec_res['snapshots_created']},{rec_res['wallets_credited']})")
+    except Exception as exc:  # noqa: BLE001
+        log.error("royalty reconciliation failed: %s", _safe(exc))
+    try:
         from apps.commerce.wallet import release_pending_balances
 
         released_count = release_pending_balances(now=now)

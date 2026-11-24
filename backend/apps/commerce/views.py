@@ -100,6 +100,8 @@ def create_order(request):
         book = _book(book_slug)
         if book is None:
             return _err("این کتاب برای خرید پیدا نشد.", "not_for_sale")
+        # Serialize concurrent book checkout attempts for the same buyer before checking permanent ownership.
+        type(user).objects.select_for_update().only("pk").get(pk=user.pk)
         # A timed gift doesn't stop buying the book for good. The live campaign, if any, is re-read here;
         # a client-sent amount is never accepted and the quote is frozen into the order.
         if Entitlement.active_for(user).filter(book=book, ends_at__isnull=True).exists():
@@ -159,8 +161,10 @@ def create_order(request):
 
 
 def _grant(order: Order):
-    """Creates the access an order pays for. Called inside the transaction that marks the order paid."""
+    """Creates the access an order pays for. Called inside the transaction with the user row locked."""
     if order.book_id:
+        if Entitlement.active_for(order.user).filter(book_id=order.book_id, ends_at__isnull=True).exists():
+            log.warning("Duplicate permanent book payment settled for user=%s book=%s order=%s", order.user_id, order.book_id, order.id)
         return Entitlement.objects.create(user=order.user, book=order.book, order=order)
     now = timezone.now()
     # What was bought, as it was when the order was made (older orders: the plan as it is now).
@@ -193,16 +197,26 @@ def settle(track_id: str) -> Order | None:
     if not settings.PAYMENTS_ENABLED:
         # Switched off (possibly with Zibal's test merchant set): never verify or grant anything.
         return Order.objects.filter(track_id=track_id).first()
+    preview = Order.objects.filter(track_id=track_id).values("id", "user_id", "status").first()
+    if preview is None:
+        return None
+    if preview["status"] == Order.Status.PAID:
+        return Order.objects.get(pk=preview["id"])
+
+    # External gateway HTTP call must run outside the DB transaction/locks.
+    try:
+        result = zibal.verify(track_id)
+    except zibal.GatewayError:
+        log.exception("Zibal verify failed for order %s", preview["id"])
+        return Order.objects.filter(pk=preview["id"]).first()  # stays pending; the user can retry the check
+
     with transaction.atomic():
-        # Lock only the order row: PostgreSQL refuses FOR UPDATE on the nullable side of the joins (book, plan, major).
-        order = Order.objects.select_for_update(of=("self",)).select_related("plan", "book", "major", "user").filter(track_id=track_id).first()
+        # Lock the buyer BEFORE the order (consistent lock order: User -> Order) so two concurrent renewals for
+        # the same learner serialize cleanly and stack end-to-end instead of reading the same Max(ends_at).
+        Order._meta.get_field("user").related_model.objects.select_for_update().only("pk").get(pk=preview["user_id"])
+        order = Order.objects.select_for_update(of=("self",)).select_related("plan", "book", "major", "user").filter(pk=preview["id"]).first()
         if order is None or order.status == Order.Status.PAID:
             return order
-        try:
-            result = zibal.verify(track_id)
-        except zibal.GatewayError:
-            log.exception("Zibal verify failed for order %s", order.id)
-            return order  # stays pending; the user can retry the check
         order.gateway_response = result
         paid = result.get("result") in (100, 201) and int(result.get("amount") or 0) == order.amount * 10
         if result.get("result") in (100, 201) and not paid:
@@ -215,10 +229,17 @@ def settle(track_id: str) -> Order | None:
             order.save()
             _grant(order)
             try:
-                from .royalty import calculate_and_save_order_royalty
-                calculate_and_save_order_royalty(order)
+                # Isolate royalty errors in an inner savepoint so a failure never aborts the paid order transaction.
+                with transaction.atomic():
+                    from .royalty import calculate_and_save_order_royalty
+                    calculate_and_save_order_royalty(order)
             except Exception:
                 log.exception("Failed to calculate royalty snapshot for order %s", order.id)
+                try:
+                    from apps.catalog.backups import notify_bale
+                    notify_bale(f"⚠️ خطا در ثبت سهم استاد سفارش #{order.id} (مبلغ: {order.amount} ت)؛ نیاز به بررسی/جبران")
+                except Exception:
+                    log.warning("Failed to send Bale royalty alert for order %s", order.id)
             try:
                 from apps.catalog.backups import notify_bale
                 from apps.catalog.panel_display import fa_number
@@ -233,7 +254,7 @@ def settle(track_id: str) -> Order | None:
                 )
                 notify_bale(msg)
             except Exception:
-                pass
+                log.warning("Failed to send Bale purchase alert for order %s", order.id)
         else:
             verified = result.get("result") in (100, 201)
             # Verified but without an amount to compare: stay pending (re-checkable) instead of failing a real payment.
@@ -246,6 +267,7 @@ def settle(track_id: str) -> Order | None:
         return order
 
 
+@transaction.non_atomic_requests
 @require_GET
 def zibal_callback(request):
     """Zibal sends the browser here after payment. We verify on the server, then send the user back to the app."""
@@ -257,6 +279,7 @@ def zibal_callback(request):
     return render(request, "commerce/payment_result.html", {"paid": paid, "return_url": return_url})
 
 
+@transaction.non_atomic_requests
 @api_view(["GET"])
 def order_status(request, order_id):
     order = get_object_or_404(Order, pk=order_id, user=request.user)
