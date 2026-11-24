@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const remember = useCallback((u: User) => {
     signedInRef.current = true;
     setOutboxOwner(u.id);
-    setStudyOwner(u.id);
+    setStudyOwner(u.id, u.phone);
     setUser(u);
     AsyncStorage.setItem(USER_KEY, JSON.stringify(u)).catch(() => undefined);
     void reconcileOfflineRevocations(u.offline_revocations);
@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cached) {
           const u = JSON.parse(cached) as User;
           setOutboxOwner(u.id);
-          setStudyOwner(u.id);
+          setStudyOwner(u.id, u.phone);
           setUser(u);
         }
       }
