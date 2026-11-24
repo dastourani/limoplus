@@ -132,11 +132,39 @@ class GroupAccessRenewForm(forms.Form):
 
 
 class GroupAccessRevokeForm(forms.Form):
+    OFFLINE_KEEP = "keep"
+    OFFLINE_WIPE = "wipe"
+    OFFLINE_CHOICES = (
+        (
+            OFFLINE_KEEP,
+            "نگهداری نسخه آفلاین تا پایان مهلت قبلی (validUntil) — فقط دسترسی آنلاین قطع شود",
+        ),
+        (
+            OFFLINE_WIPE,
+            "حذف فوری نسخه آفلاین — با اولین اتصال بعدی دانشجو به اینترنت، فایل آفلاین از گوشی پاک شود",
+        ),
+    )
+
     reason = forms.CharField(
         label="دلیل لغو",
         max_length=500,
         widget=forms.Textarea(attrs={"rows": 3, "maxlength": 500}),
     )
+    offline_policy = forms.ChoiceField(
+        label="وضعیت فایل آفلاین (در صورت دانلود قبلی)",
+        choices=OFFLINE_CHOICES,
+        initial=OFFLINE_KEEP,
+        required=False,
+        widget=forms.RadioSelect,
+        help_text=(
+            "راهنما: اگر دانشجو پیش از لغو دسترسی، کتاب را برای مطالعه آفلاین دانلود کرده باشد: "
+            "در گزینه اول دسترسی آنلاین بلافاصله قطع می‌شود اما فایل دانلودشده تا پایان مهلت قبلی (حداکثر ۳۰ روز) روی گوشی باقی می‌ماند؛ "
+            "در گزینه دوم به محض اتصال بعدی برنامه به اینترنت، فایل آفلاین نیز از دستگاه او حذف خواهد شد."
+        ),
+    )
+
+    def clean_offline_policy(self):
+        return self.cleaned_data.get("offline_policy") or self.OFFLINE_KEEP
 
     def clean_reason(self):
         value = self.cleaned_data["reason"].strip()

@@ -365,7 +365,16 @@ export type Banner = {
   book?: (import('../components/BookCover').CoverBook & { major: { name: string; color: string } | null }) | null;
 };
 
-export type User = { id: number; phone: string; email: string; first_name: string; last_name: string; is_staff?: boolean };
+export type OfflineRevocation = { slug: string; revoked_at: string };
+export type User = {
+  id: number;
+  phone: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  is_staff?: boolean;
+  offline_revocations?: OfflineRevocation[];
+};
 export type DeviceSessionInfo = { id: number; device_name: string; platform: string; created_at: string; last_seen_at: string; is_current: boolean };
 export type VerifyResult = { token: string; session_id: number; user: User };
 export type Note = { id: number; node_id: number; mode: 'full' | 'summary'; quote: string; body: string; color: string; created_at: string; updated_at: string };

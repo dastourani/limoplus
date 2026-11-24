@@ -43,17 +43,51 @@ function add(nodeId: number, kind: StudyKind, seconds: number) {
 // It is kept per account: time counted by one account is never sent by another (a session that expired, then someone
 // else signing in on the same phone). The account's own time waits until it signs in again.
 type Entry = { node_id: number; kind: StudyKind; day: string; seconds: number };
+type InflightBatch = { id: string; entries: Entry[] };
 let owner: number | null = null;
 let restored = false;
 const keyOf = (id: number) => `limo.studytime.pending.${id}`;
+const inflightKeyOf = (id: number) => `limo.studytime.inflight.${id}`;
 // Version 25 kept it without an account: it cannot be told whose it was, so it is dropped.
 AsyncStorage.removeItem('limo.studytime.pending').catch(() => undefined);
+
+let inflightChain: Promise<unknown> = Promise.resolve();
+function updateInflight(accountId: number, change: (batches: InflightBatch[]) => InflightBatch[]): Promise<void> {
+  const next = inflightChain.then(async () => {
+    let cur: InflightBatch[] = [];
+    try {
+      cur = JSON.parse((await AsyncStorage.getItem(inflightKeyOf(accountId))) ?? '[]') as InflightBatch[];
+    } catch {
+      cur = [];
+    }
+    const updated = change(cur);
+    if (updated.length) {
+      await AsyncStorage.setItem(inflightKeyOf(accountId), JSON.stringify(updated)).catch(() => undefined);
+    } else {
+      await AsyncStorage.removeItem(inflightKeyOf(accountId)).catch(() => undefined);
+    }
+  });
+  inflightChain = next.catch(() => undefined);
+  return next;
+}
 
 function keep() {
   if (!restored || owner == null) return; // not before what an earlier run kept has been read back
   AsyncStorage.setItem(keyOf(owner), JSON.stringify([...pending.values()])).catch(() => undefined);
 }
 async function restore(id: number) {
+  try {
+    const rawInflight = await AsyncStorage.getItem(inflightKeyOf(id));
+    if (owner !== id) return;
+    const inflight = rawInflight ? (JSON.parse(rawInflight) as InflightBatch[]) : [];
+    for (const batch of inflight) {
+      if (owner !== id) return;
+      await sendOrQueue('me/time/', batch);
+      await updateInflight(id, (all) => all.filter((b) => b.id !== batch.id));
+    }
+  } catch {
+    // nothing inflight
+  }
   try {
     const saved = JSON.parse((await AsyncStorage.getItem(keyOf(id))) ?? '[]') as Entry[];
     if (owner !== id) return; // the account changed meanwhile
@@ -68,7 +102,7 @@ async function restore(id: number) {
   }
   if (owner !== id) return;
   restored = true;
-  flushStudyTime();
+  await flushStudyTime();
 }
 
 /** Who is signed in (null: nobody). Called by the auth state together with the outbox's owner. */
@@ -84,21 +118,47 @@ export function setStudyOwner(id: number | null) {
   if (id != null) restore(id);
 }
 
-/** Sends what was counted, exactly. Each report has its own id: if it is sent again (the outbox retries it after a lost
- * answer), the server adds it only once. */
-export function flushStudyTime() {
-  if (owner == null || !restored) return;
-  const entries = [...pending.values()].filter((e) => e.seconds >= 1).map((e) => ({ ...e, seconds: Math.round(e.seconds) }));
-  pending.clear();
+/** Records study seconds locally (exposed for tests and timer ticks). */
+export function recordStudySeconds(nodeId: number, kind: StudyKind, seconds: number) {
+  add(nodeId, kind, seconds);
   keep();
-  if (!entries.length) return;
+}
+
+/** Sends what was counted, keeping sub-second remainders and persisting inflight batches until queued or sent. */
+export async function flushStudyTime(): Promise<void> {
+  const mine = owner;
+  if (mine == null || !restored) return;
+  const entries: Entry[] = [];
+  for (const [key, entry] of [...pending.entries()]) {
+    const whole = Math.floor(entry.seconds);
+    if (whole >= 1) {
+      entries.push({ ...entry, seconds: whole });
+      const remainder = entry.seconds - whole;
+      if (remainder > 0.001) {
+        pending.set(key, { ...entry, seconds: remainder });
+      } else {
+        pending.delete(key);
+      }
+    }
+  }
+  if (!entries.length) {
+    keep();
+    return;
+  }
   const id = `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
-  sendOrQueue('me/time/', { id, entries }).catch(() => undefined);
+  const batch: InflightBatch = { id, entries };
+  await updateInflight(mine, (all) => [...all, batch]);
+  keep();
+  await sendOrQueue('me/time/', batch).catch(() => undefined);
+  await updateInflight(mine, (all) => all.filter((b) => b.id !== id));
 }
 
 /** On sign-out (after flushStudyTime): nothing of the leaving account stays on the phone. */
 export function forgetStudyTime() {
-  if (owner != null) AsyncStorage.removeItem(keyOf(owner)).catch(() => undefined);
+  if (owner != null) {
+    AsyncStorage.removeItem(keyOf(owner)).catch(() => undefined);
+    AsyncStorage.removeItem(inflightKeyOf(owner)).catch(() => undefined);
+  }
   pending.clear();
 }
 

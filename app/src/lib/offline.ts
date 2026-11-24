@@ -12,7 +12,7 @@ import * as Device from 'expo-device';
 import { Directory, File, Paths } from 'expo-file-system';
 
 import { ApiError } from '../api/client';
-import type { OfflineBundle } from '../api/endpoints';
+import type { OfflineBundle, OfflineRevocation } from '../api/endpoints';
 import { secure } from './secure';
 import { utf8Decode, utf8Encode } from './utf8';
 
@@ -31,6 +31,10 @@ function dir() {
 
 function fileFor(slug: string) {
   return new File(dir(), `${slug.replace(/[^\w-]/g, '_')}.bin`);
+}
+
+function tempFileFor(slug: string) {
+  return new File(dir(), `${slug.replace(/[^\w-]/g, '_')}.bin.tmp`);
 }
 
 function toHex(bytes: Uint8Array) {
@@ -77,9 +81,15 @@ export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBoo
   const d = dir();
   if (!d.exists) d.create({ intermediates: true });
   const f = fileFor(bundle.book.slug);
-  if (f.exists) f.delete();
-  f.create();
-  await f.write(out);
+  const tmp = tempFileFor(bundle.book.slug);
+  try {
+    tmp.create({ intermediates: true, overwrite: true });
+    await tmp.write(out);
+    await tmp.move(f, { overwrite: true });
+  } catch (e) {
+    if (tmp.exists) tmp.delete();
+    throw e;
+  }
   const entry: OfflineBook = {
     slug: bundle.book.slug,
     title: bundle.book.title,
@@ -119,6 +129,21 @@ export async function removeOfflineBook(slug: string) {
   const f = fileFor(slug);
   if (f.exists) f.delete();
   await saveIndex((await offlineBooks()).filter((b) => b.slug !== slug));
+}
+
+/** Remove downloaded offline books that an admin explicitly wiped on revocation. */
+export async function reconcileOfflineRevocations(revocations?: OfflineRevocation[]) {
+  if (!revocations?.length) return;
+  const bySlug = new Map(revocations.map((r) => [r.slug, Date.parse(r.revoked_at)]));
+  const books = await offlineBooks();
+  for (const book of books) {
+    const revokedAt = bySlug.get(book.slug);
+    if (revokedAt === undefined || Number.isNaN(revokedAt)) continue;
+    const downloadedAt = Date.parse(book.downloadedAt);
+    if (Number.isNaN(downloadedAt) || revokedAt >= downloadedAt) {
+      await removeOfflineBook(book.slug);
+    }
+  }
 }
 
 export async function clearOffline() {

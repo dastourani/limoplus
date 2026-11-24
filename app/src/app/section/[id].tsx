@@ -252,7 +252,9 @@ export default function Section() {
     if (!node) return;
     const target = dir > 0 ? node.next_id : node.previous_id;
     if (!target) return;
-    if (dir > 0 && user && !offline && !progress.current.done) sendOrQueue(`nodes/${node.id}/progress/`, { percent: 100, done: true });
+    if (dir > 0 && user && !offline && !progress.current.done) {
+      sendOrQueue(`nodes/${node.id}/progress/`, { percent: 100, done: true, at: Date.now() });
+    }
     router.replace({ pathname: `/section/${target}`, params: { from: String(dir), title: (dir > 0 ? node.next_title : node.previous_title) ?? '' } });
   };
   const turnBy = async (dir: 1 | -1) => {
@@ -295,7 +297,7 @@ export default function Section() {
     const last = lastSpotSent.current;
     if (user && !offline && (last.mode !== mode || Math.abs(last.percent - percent) >= 10)) {
       lastSpotSent.current = { percent, mode };
-      sendOrQueue(`nodes/${node.id}/progress/`, { percent: mode === 'full' ? percent : 0, done: false, position: percent, mode });
+      sendOrQueue(`nodes/${node.id}/progress/`, { percent: mode === 'full' ? percent : 0, done: false, position: percent, mode, at: Date.now() });
     }
   };
   useEffect(() => {
@@ -345,7 +347,9 @@ export default function Section() {
       else if (e.to === 'book' && (end?.book_slug || book)) router.push(`/book/${end?.book_slug ?? book!.slug}`);
       else if (e.to === 'next-chapter' && end?.next_chapter) {
         const next = end.next_chapter;
-        if (user && !offline && !progress.current.done) sendOrQueue(`nodes/${node.id}/progress/`, { percent: 100, done: true });
+        if (user && !offline && !progress.current.done) {
+          sendOrQueue(`nodes/${node.id}/progress/`, { percent: 100, done: true, at: Date.now() });
+        }
         if (next.locked) router.push(`/book/${end.book_slug}`);
         else router.replace({ pathname: `/section/${next.id}`, params: { from: '1', title: next.title } });
       }
@@ -400,7 +404,7 @@ export default function Section() {
       if (e.percent >= p.sent + 10 || (e.percent >= 90 && !p.done)) {
         p.sent = Math.max(p.sent, e.percent);
         p.done = p.done || e.percent >= 90;
-        sendOrQueue(`nodes/${node.id}/progress/`, { percent: e.percent, done: false, position: e.percent, mode });
+        sendOrQueue(`nodes/${node.id}/progress/`, { percent: e.percent, done: false, position: e.percent, mode, at: Date.now() });
         lastSpotSent.current = { percent: e.percent, mode };
       }
     }

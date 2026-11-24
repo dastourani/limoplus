@@ -7,14 +7,35 @@
 <section class="sec wrap narrow" style="max-width: 580px; margin: 40px auto; padding: 0 16px;">
   <div class="page-card" style="background: #ffffff; border-radius: 16px; padding: 32px 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); text-align: center;">
 
-    {% if error_state == 'inactive' %}
-      <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
-      <h1 class="h2" style="color: #dc2626; margin-bottom: 12px;">لینک دعوت غیرفعال است</h1>
+    {% if error_state %}
+      <div style="font-size: 48px; margin-bottom: 16px;">
+        {% if error_state == 'expired' %}⏰{% elif error_state == 'full' %}👥{% else %}🔒{% endif %}
+      </div>
+      <h1 class="h2" style="color: #dc2626; margin-bottom: 12px;">
+        {% if error_state == 'expired' %}
+          مهلت کلاس به پایان رسیده است
+        {% elif error_state == 'full' %}
+          ظرفیت کلاس تکمیل است
+        {% elif error_state == 'revoked' %}
+          دسترسی لغو شده است
+        {% else %}
+          لینک دعوت غیرفعال است
+        {% endif %}
+      </h1>
       <p class="mut" style="color: #6b7280; line-height: 1.7;">{{ message }}</p>
       <div style="margin-top: 24px;">
         <a href="/site/" class="btn dark" style="padding: 10px 24px; text-decoration: none;">بازگشت به صفحه اصلی</a>
       </div>
     {% else %}
+      {% if messages %}
+        <div style="margin-bottom: 16px; text-align: right;">
+          {% for m in messages %}
+            <div style="padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; background: {% if 'error' in m.tags %}#fef2f2; color: #b91c1c; border: 1px solid #fecaca{% else %}#ecfdf5; color: #065f46; border: 1px solid #a7f3d0{% endif %};">
+              {{ m }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
       <div style="display: inline-block; background: #e0f2fe; color: #0284c7; padding: 6px 14px; border-radius: 999px; font-weight: bold; font-size: 13px; margin-bottom: 16px;">
         🎓 دعوت اختصاصی به کلاس درس
       </div>
@@ -73,6 +94,7 @@
       {% else %}
         <!-- OTP Login directly inside invitation card -->
         <div id="join-otp-box" style="text-align: right;">
+          {% csrf_token %}
           <p style="color: #4b5563; font-size: 14px; margin-bottom: 16px; text-align: center;">
             برای دریافت رایگان این کتاب در حساب خود، شماره موبایلتان را وارد کنید:
           </p>
@@ -150,11 +172,16 @@
     }, 1000);
   }
 
-  async function postJson(url, body) {
+  async function postJson(url, body, withCsrf = false) {
+    const headers = {'Content-Type': 'application/json'};
+    if (withCsrf) {
+      const csrf = document.querySelector('#join-otp-box input[name="csrfmiddlewaretoken"]')?.value;
+      if (csrf) headers['X-CSRFToken'] = csrf;
+    }
     const res = await fetch(url, {
       method: 'POST',
       credentials: 'same-origin',
-      headers: {'Content-Type': 'application/json'},
+      headers,
       body: JSON.stringify(body)
     });
     let data = {};
@@ -216,19 +243,18 @@
     message.style.color = '#4b5563';
 
     try {
-      const res = await postJson('/api/v1/auth/verify-otp/', {
+      const res = await postJson(window.location.pathname, {
+        action: 'verify_otp',
         phone,
-        code,
-        device_name: 'مرورگر کلاس ' + classroomCode,
-        platform: 'web'
-      });
-      if (!res.ok || !res.data.token) {
+        code
+      }, true);
+      if (!res.ok || !res.data.ok) {
         message.textContent = res.data.message || 'کد واردشده نامعتبر است.';
         message.style.color = '#dc2626';
         verifyBtn.disabled = false;
         return;
       }
-      // Successfully authenticated! Now register membership via POST to current page
+      // Web session cookie is now set and membership is active; reload to show active book & app links.
       message.textContent = 'ورود موفقیت‌آمیز بود. در حال افزودن کتاب به کتابخانه…';
       message.style.color = '#10b981';
       window.location.reload();

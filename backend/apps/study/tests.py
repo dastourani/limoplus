@@ -1047,3 +1047,56 @@ class KnownWordsTests(TestCase):
         c = APIClient()
         c.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
         self.assertEqual(c.get(url).data["known"], [])
+
+    def test_known_words_ignores_stale_out_of_order_toggle(self):
+        from .models import WordKnown
+
+        url = "/api/v1/books/math-1/words/me/"
+        self.client.post(url, {"term": "حد", "known": False, "at": 2000}, format="json")
+        # Stale queued toggle from earlier offline state (at=1000) must not overwrite newer False
+        self.client.post(url, {"term": "حد", "known": True, "at": 1000}, format="json")
+        self.assertNotIn("حد", self.client.get(url).data["known"])
+        self.assertEqual(WordKnown.objects.get(user=self.user, term="حد").client_updated_ms, 2000)
+
+
+class OfflineResilienceBackendTests(TestCase):
+    setUp = StudyTests.setUp
+    tearDown = StudyTests.tearDown
+
+    def test_study_time_clamps_one_day_clock_skew_and_rejects_far_future(self):
+        from datetime import timedelta
+        from .models import StudyTime
+
+        today = timezone.localdate()
+        tomorrow = (today + timedelta(days=1)).isoformat()
+        far_future = (today + timedelta(days=2)).isoformat()
+
+        r = self.client.post(
+            "/api/v1/me/time/",
+            {
+                "id": "skewtest123",
+                "entries": [
+                    {"node_id": self.section.id, "kind": "read", "day": tomorrow, "seconds": 35},
+                    {"node_id": self.section.id, "kind": "read", "day": far_future, "seconds": 99},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["added"], 35)
+        self.assertEqual(StudyTime.objects.get(user=self.user, node=self.section, day=today, kind="read").seconds, 35)
+
+    def test_progress_ignores_stale_position_while_keeping_max_percent(self):
+        from .models import SectionProgress
+
+        url = f"/api/v1/nodes/{self.section.id}/progress/"
+        self.client.post(url, {"percent": 40, "done": False, "position": 80, "mode": "summary", "at": 2000}, format="json")
+        # Stale offline scroll update (at=1000) arrives late with higher percent (95) but older position (20)
+        r = self.client.post(url, {"percent": 95, "done": False, "position": 20, "mode": "full", "at": 1000}, format="json")
+        self.assertEqual(r.status_code, 200)
+        p = SectionProgress.objects.get(user=self.user, node=self.section)
+        self.assertEqual(p.percent, 95)
+        self.assertTrue(p.is_done)
+        self.assertEqual(p.position, 80)
+        self.assertEqual(p.mode, "summary")
+        self.assertEqual(p.client_updated_ms, 2000)

@@ -1,4 +1,4 @@
-"""Time-bounded book access for manager-approved, privately proposed student lists."""
+"""Time-bounded book access for manager-approved lists and teacher classrooms."""
 
 from datetime import datetime, time, timedelta
 
@@ -12,19 +12,55 @@ from apps.commerce.models import Entitlement
 from .models import BookAccessEvent, BookAccessMember, BookAccessRequest
 
 
+def is_valid_cohort_book(book: ContentNode | None) -> bool:
+    """True when the target ContentNode is an active, non-archived, non-inbox book root."""
+    return bool(
+        book is not None
+        and book.kind == ContentNode.Kind.BOOK
+        and book.depth == 1
+        and not book.is_archived
+        and not book.is_inbox
+    )
+
+
+def inclusive_date_end(ends_on):
+    """Inclusive date boundary: `ends_on` lasts through 23:59:59, so Entitlement.ends_at is next day 00:00."""
+    if not ends_on:
+        return None
+    exclusive_date = ends_on + timedelta(days=1)
+    return timezone.make_aware(datetime.combine(exclusive_date, time.min))
+
+
+def calculate_cohort_end_time(*, expiry_policy: str, ends_on=None, duration_days=None, now=None):
+    """Shared expiry calculation across BookAccessRequest and Classroom."""
+    now = now or timezone.now()
+    if expiry_policy == "unlimited":
+        return None
+    if expiry_policy == "fixed_date":
+        return inclusive_date_end(ends_on)
+    if expiry_policy in ("from_activation", "from_join") and duration_days:
+        return now + timedelta(days=duration_days)
+    return None
+
+
+def is_entitlement_active_now(entitlement: Entitlement | None, now=None) -> bool:
+    """True when an entitlement row currently grants live access."""
+    if entitlement is None or entitlement.is_archived:
+        return False
+    now = now or timezone.now()
+    return bool(entitlement.starts_at <= now and (entitlement.ends_at is None or entitlement.ends_at > now))
+
+
 def _approved_end(member: BookAccessMember, activated_at):
     request = member.request
     if request.status != BookAccessRequest.Status.APPROVED:
         return None
-    if request.expiry_policy == BookAccessRequest.ExpiryPolicy.FIXED_DATE:
-        if not request.ends_on:
-            return None
-        # The manager's selected date is inclusive; Entitlement.ends_at is an exclusive instant.
-        exclusive_date = request.ends_on + timedelta(days=1)
-        return timezone.make_aware(datetime.combine(exclusive_date, time.min))
-    if request.expiry_policy == BookAccessRequest.ExpiryPolicy.FROM_ACTIVATION and request.duration_days:
-        return activated_at + timedelta(days=request.duration_days)
-    return None
+    return calculate_cohort_end_time(
+        expiry_policy=request.expiry_policy,
+        ends_on=request.ends_on,
+        duration_days=request.duration_days,
+        now=activated_at,
+    )
 
 
 def activate_approved_members(user, *, now=None) -> int:
@@ -52,13 +88,7 @@ def activate_approved_members(user, *, now=None) -> int:
         )
         for member in members:
             request = member.request
-            if (
-                member.book_id != request.book_id
-                or member.book.kind != ContentNode.Kind.BOOK
-                or member.book.depth != 1
-                or member.book.is_archived
-                or member.book.is_inbox
-            ):
+            if member.book_id != request.book_id or not is_valid_cohort_book(member.book):
                 member.status = BookAccessMember.Status.EXPIRED
                 member.save(update_fields=["status"])
                 continue
@@ -97,21 +127,21 @@ def activate_approved_members(user, *, now=None) -> int:
     return activated
 
 
-def activate_classroom_members(user, *, now=None) -> int:
+def activate_classroom_members(user, *, now=None, classroom_id=None) -> int:
     """Attach matching classroom memberships to this OTP-authenticated account and grant entitlement.
 
-    Called during OTP login or invite link redemption. Both the membership and the entitlement
-    are written atomically.
+    Called during OTP login or invite link redemption. Enforces classroom expiry, book validity, and
+    capacity atomically under row locks.
     """
     if not user or not user.pk or not user.is_active or not user.phone:
         return 0
-    from .models import Classroom, ClassroomMember
+    from .models import ClassroomMember
 
     now = now or timezone.now()
     activated = 0
 
     with transaction.atomic():
-        members = list(
+        qs = (
             ClassroomMember.objects.select_for_update(of=("self", "classroom"))
             .filter(
                 phone=user.phone,
@@ -122,15 +152,13 @@ def activate_classroom_members(user, *, now=None) -> int:
             .select_related("classroom", "classroom__book", "classroom__teacher")
             .order_by("pk")
         )
+        if classroom_id is not None:
+            qs = qs.filter(classroom_id=classroom_id)
+        members = list(qs)
+
         for member in members:
             classroom = member.classroom
-            book = classroom.book
-            if (
-                book.kind != ContentNode.Kind.BOOK
-                or book.depth != 1
-                or book.is_archived
-                or book.is_inbox
-            ):
+            if not is_valid_cohort_book(classroom.book):
                 member.status = ClassroomMember.Status.EXPIRED
                 member.save(update_fields=["status"])
                 continue
@@ -141,9 +169,13 @@ def activate_classroom_members(user, *, now=None) -> int:
                 member.save(update_fields=["status"])
                 continue
 
+            if not classroom.has_capacity:
+                # Capacity reached: do not grant an entitlement over the classroom limit.
+                continue
+
             entitlement = Entitlement.objects.create(
                 user=user,
-                book=book,
+                book=classroom.book,
                 starts_at=now,
                 ends_at=end_at,
                 granted_by=classroom.teacher,

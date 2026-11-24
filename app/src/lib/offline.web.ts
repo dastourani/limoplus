@@ -1,5 +1,5 @@
 /** The web app reads online only; encrypted offline storage is a phone-app feature. */
-import type { OfflineBundle } from '../api/endpoints';
+import type { OfflineBundle, OfflineRevocation } from '../api/endpoints';
 
 export type OfflineBook = { slug: string; title: string; sectionIds: number[]; downloadedAt: string; validUntil: string };
 export type OfflineSection = OfflineBundle['sections'][number] & { bookSlug: string; bookTitle: string };
@@ -11,4 +11,5 @@ export const saveOfflineBook = async (_bundle: OfflineBundle): Promise<OfflineBo
 };
 export const offlineSection = async (_id: number): Promise<OfflineSection | null> => null;
 export const removeOfflineBook = async (_slug: string) => undefined;
+export const reconcileOfflineRevocations = async (_revocations?: OfflineRevocation[]) => undefined;
 export const clearOffline = async () => undefined;

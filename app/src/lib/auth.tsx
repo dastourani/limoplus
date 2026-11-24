@@ -1,14 +1,14 @@
-import { flushOutbox, setOutboxOwner } from './network';
+import { flushOutbox, setOutboxOwner, setReconnectHandler } from './network';
 import * as Device from 'expo-device';
 import { router } from 'expo-router';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
 import { setAuthToken, setUnauthorizedHandler } from '../api/client';
 import { endpoints, type User } from '../api/endpoints';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { clearOffline } from './offline';
+import { clearOffline, reconcileOfflineRevocations } from './offline';
 import { secure } from './secure';
 import { flushStudyTime, forgetStudyTime, setStudyOwner } from './studyTime';
 
@@ -39,15 +39,19 @@ export function deviceName(): string {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  const signedInRef = useRef(false);
 
   const remember = useCallback((u: User) => {
+    signedInRef.current = true;
     setOutboxOwner(u.id);
     setStudyOwner(u.id);
     setUser(u);
     AsyncStorage.setItem(USER_KEY, JSON.stringify(u)).catch(() => undefined);
+    void reconcileOfflineRevocations(u.offline_revocations);
   }, []);
 
   const forget = useCallback(async () => {
+    signedInRef.current = false;
     setOutboxOwner(null);
     setStudyOwner(null);
     setAuthToken(null);
@@ -62,11 +66,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUnauthorizedHandler(() => {
       forget();
     });
+    setReconnectHandler(() => {
+      if (signedInRef.current) endpoints.me().then(remember).catch(() => undefined);
+    });
     (async () => {
       // Never wait for the server here: the app opens at once with what the phone knows, then refreshes in the
       // background. (Waiting made the app sit on a blank screen while an unreachable server timed out.)
       const token = await secure.get(TOKEN_KEY);
       if (token) {
+        signedInRef.current = true;
         setAuthToken(token);
         const cached = await AsyncStorage.getItem(USER_KEY).catch(() => null);
         if (cached) {
@@ -82,7 +90,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         endpoints.me().then(remember).catch(() => undefined);
       }
     })();
-    return () => setUnauthorizedHandler(null);
+    return () => {
+      setUnauthorizedHandler(null);
+      setReconnectHandler(null);
+    };
   }, [forget, remember]);
 
   const value = useMemo<AuthState>(
@@ -98,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut: async ({ remote = true } = {}) => {
         // Send what is still waiting from this account while it is still signed in.
         if (remote) {
-          flushStudyTime();
+          await flushStudyTime();
           await flushOutbox().catch(() => undefined);
         }
         forgetStudyTime();
