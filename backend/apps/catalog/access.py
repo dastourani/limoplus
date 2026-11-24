@@ -231,26 +231,35 @@ _UNSET = object()
 
 
 class AccessMap:
-    def __init__(self, user, node: ContentNode, light=False, kind=_UNSET):
+    def __init__(self, user, node: ContentNode, light=False, kind=_UNSET, defer_full_body=False):
         """light: without the lesson texts (a shelf needs only the tree). kind: the access already worked out."""
         self.book = book_of(node)
         nodes = ContentNode.objects.filter(path__startswith=self.book.path)
         if light:
             nodes = nodes.defer("full_body", "summary_body", "about", "cover_drawing")
-        self.nodes = {n.id: n for n in nodes}
-        self.access = access_kind(user, self.book) if kind is _UNSET else kind
-        # A manager-granted book entitlement is private, person-specific access, not a public release. If the
-        # book itself is still unpublished, let only this entitled reader see its tree; archived/inbox nodes
-        # remain hidden, and an unpublished chapter in an already-published book is still withheld.
-        private_unpublished_book = self.access == "gift" and not self.book.is_published
-        if self.access is not None and not self.book.is_published and not private_unpublished_book and user.is_authenticated:
+        elif defer_full_body:
+            nodes = nodes.defer("full_body")
+        access = access_kind(user, self.book) if kind is _UNSET else kind
+        private_unpublished_book = self._resolve_private_unpublished(user, self.book, access)
+        self._init_from_nodes(nodes, access, private_unpublished_book)
+
+    @staticmethod
+    def _resolve_private_unpublished(user, book: ContentNode, access) -> bool:
+        if access == "gift" and not book.is_published:
+            return True
+        if access is not None and not book.is_published and user and user.is_authenticated:
             from apps.commerce.models import Entitlement
 
             # Purchase access outranks a simultaneous gift in the card label; the private-grant check is still
             # independent so a group member with both entitlement kinds can open an unpublished group book.
-            private_unpublished_book = Entitlement.active_for(user).filter(
-                book=self.book, order__isnull=True, granted_by__isnull=False
+            return Entitlement.active_for(user).filter(
+                book=book, order__isnull=True, granted_by__isnull=False
             ).exists()
+        return False
+
+    def _init_from_nodes(self, nodes, access, private_unpublished_book: bool) -> None:
+        self.nodes = {n.id: n for n in nodes}
+        self.access = access
         hidden = [
             n.path for n in self.nodes.values()
             if (not n.is_published and not private_unpublished_book) or n.is_archived or n.is_inbox
@@ -262,6 +271,90 @@ class AccessMap:
             visible = not any(n.path.startswith(h) for h in hidden)
             self._visible[n.id] = visible
             self._readable[n.id] = visible and (self.owned or any(n.path.startswith(f) for f in free))
+
+    @classmethod
+    def bulk_for_books(cls, user, books, *, entitlements=None, light=True, card_only=False) -> dict[int, "AccessMap"]:
+        """Build AccessMap instances for many books in one tree query instead of one query per book."""
+        unique_books = []
+        seen_ids = set()
+        for b in books:
+            if b.pk not in seen_ids:
+                seen_ids.add(b.pk)
+                unique_books.append(b)
+        if not unique_books:
+            return {}
+
+        from django.db.models.functions import Substr
+
+        is_authed = bool(user and user.is_authenticated)
+        is_global_staff = is_authed and acts_as_staff(user)
+        editor_books: set[int] = set()
+        if is_authed and not is_global_staff and is_book_teacher(user) and not getattr(user, "view_as_learner", False):
+            from .models import BookEditor
+
+            editor_books = set(
+                BookEditor.objects.filter(
+                    user_id=user.pk, book_id__in=seen_ids, can_edit_content=True
+                ).values_list("book_id", flat=True)
+            )
+        rows = active_rows(user) if (entitlements is None and is_authed and not is_global_staff) else (entitlements or [])
+
+        kinds: dict[int, str | None] = {}
+        for b in unique_books:
+            if not is_authed:
+                kinds[b.pk] = None
+            elif is_global_staff:
+                kinds[b.pk] = "staff"
+            elif b.pk in editor_books:
+                kinds[b.pk] = "editor"
+            else:
+                major_ids = {m.pk for m in b.majors.all()}
+                own = [r for r in rows if r[0] == b.pk]
+                if any(r[3] for r in own):
+                    kinds[b.pk] = "purchase"
+                elif own:
+                    kinds[b.pk] = "gift"
+                elif any(r[2] or (r[0] is None and r[1] in major_ids) for r in rows):
+                    kinds[b.pk] = "subscription"
+                else:
+                    kinds[b.pk] = None
+
+        private_ids: set[int] = set()
+        need_private_check = [
+            b.pk for b in unique_books if not b.is_published and kinds[b.pk] not in (None, "gift")
+        ]
+        if need_private_check and is_authed:
+            from apps.commerce.models import Entitlement
+
+            private_ids = set(
+                Entitlement.active_for(user)
+                .filter(book_id__in=need_private_check, order__isnull=True, granted_by__isnull=False)
+                .values_list("book_id", flat=True)
+            )
+
+        step = ContentNode.steplen
+        roots = [b.path for b in unique_books]
+        qs = ContentNode.objects.annotate(_root=Substr("path", 1, step)).filter(_root__in=roots)
+        if card_only:
+            qs = qs.only("id", "path", "depth", "kind", "is_free", "is_published", "is_archived", "is_inbox", "title", "position")
+        elif light:
+            qs = qs.defer("full_body", "summary_body", "about", "cover_drawing")
+
+        by_root: dict[str, list[ContentNode]] = {r: [] for r in roots}
+        books_by_id = {b.pk: b for b in unique_books}
+        for n in qs:
+            node = books_by_id[n.id] if n.id in books_by_id else n
+            by_root.setdefault(n.path[:step], []).append(node)
+
+        maps: dict[int, AccessMap] = {}
+        for b in unique_books:
+            am = cls.__new__(cls)
+            am.book = b
+            access = kinds[b.pk]
+            priv = (access == "gift" and not b.is_published) or (b.pk in private_ids)
+            am._init_from_nodes(by_root.get(b.path, [b]), access, priv)
+            maps[b.pk] = am
+        return maps
 
     def visible(self, node_id) -> bool:
         return self._visible.get(node_id, False)

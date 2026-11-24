@@ -182,7 +182,11 @@ export async function reconcileOfflineRevocations(revocations?: OfflineRevocatio
     if (revokedAt === undefined || Number.isNaN(revokedAt)) continue;
     const downloadedAt = Date.parse(book.downloadedAt);
     if (Number.isNaN(downloadedAt) || revokedAt >= downloadedAt) {
-      await removeOfflineBook(book.slug);
+      try {
+        await removeOfflineBook(book.slug);
+      } catch {
+        // continue reconciling remaining books if one removal fails
+      }
     }
   }
 }

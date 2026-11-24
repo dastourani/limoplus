@@ -62,6 +62,7 @@ def _offline_revocations_for(user):
     if not user or not user.is_authenticated:
         return []
     from apps.catalog.access import access_kind_from, active_rows
+    from apps.catalog.models import ContentNode
     from apps.commerce.models import Entitlement
 
     since = timezone.now() - timedelta(days=40)
@@ -71,7 +72,6 @@ def _offline_revocations_for(user):
             is_archived=True,
             offline_revoked_at__isnull=False,
             offline_revoked_at__gte=since,
-            book__isnull=False,
         )
         .select_related("book")
         .prefetch_related("book__majors")
@@ -81,14 +81,49 @@ def _offline_revocations_for(user):
 
     entitlements = active_rows(user)
     latest_by_slug = {}
-    for ent in revoked:
-        book = ent.book
+
+    def record(book, revoked_at):
+        if book is None or book.is_free:
+            return
         major_ids = {major.pk for major in book.majors.all()}
-        if book.is_free or access_kind_from(entitlements, user, book.pk, major_ids):
-            continue
+        if access_kind_from(entitlements, user, book.pk, major_ids):
+            return
         prev = latest_by_slug.get(book.slug)
-        if prev is None or ent.offline_revoked_at > prev:
-            latest_by_slug[book.slug] = ent.offline_revoked_at
+        if prev is None or revoked_at > prev:
+            latest_by_slug[book.slug] = revoked_at
+
+    all_majors_ts = None
+    major_ts = {}
+    for ent in revoked:
+        if ent.book_id is not None:
+            record(ent.book, ent.offline_revoked_at)
+        elif ent.all_majors:
+            if all_majors_ts is None or ent.offline_revoked_at > all_majors_ts:
+                all_majors_ts = ent.offline_revoked_at
+        elif ent.major_id is not None:
+            prev = major_ts.get(ent.major_id)
+            if prev is None or ent.offline_revoked_at > prev:
+                major_ts[ent.major_id] = ent.offline_revoked_at
+
+    if all_majors_ts is not None or major_ts:
+        qs = ContentNode.objects.filter(
+            kind=ContentNode.Kind.BOOK,
+            depth=1,
+            is_archived=False,
+            is_inbox=False,
+            is_free=False,
+        ).prefetch_related("majors")
+        if all_majors_ts is None:
+            qs = qs.filter(majors__id__in=list(major_ts)).distinct()
+        for book in qs:
+            ts = all_majors_ts
+            for m in book.majors.all():
+                mts = major_ts.get(m.pk)
+                if mts is not None and (ts is None or mts > ts):
+                    ts = mts
+            if ts is not None:
+                record(book, ts)
+
     return [{"slug": slug, "revoked_at": ts.isoformat()} for slug, ts in sorted(latest_by_slug.items())]
 
 

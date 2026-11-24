@@ -153,3 +153,67 @@ def word_counts(user, access, book) -> dict | None:
     if user.is_authenticated:
         learned = FlashcardReview.objects.filter(user=user, flashcard__in=cards, box__gte=FlashcardReview.MASTERED_BOX).count()
     return {"learned": learned, "total": total}
+
+
+def word_counts_for_books(user, books) -> list[dict]:
+    """Batched «N از M لغت» counts across many books in constant queries without fetching lesson bodies."""
+    if not books:
+        return []
+    from django.db.models import Count
+    from django.db.models.functions import Substr
+
+    from apps.catalog.access import AccessMap
+    from apps.catalog.models import ContentNode
+    from apps.learning.models import Flashcard
+
+    from .models import FlashcardReview
+
+    maps = AccessMap.bulk_for_books(user, books, card_only=True)
+    visible_books = [b for b in books if maps[b.pk].visible(b.pk)]
+    if not visible_books:
+        return []
+
+    visible_sections = [
+        n.id
+        for b in visible_books
+        for n in maps[b.pk].nodes.values()
+        if n.kind == ContentNode.Kind.SECTION and maps[b.pk].visible(n.id)
+    ]
+    if not visible_sections:
+        return []
+
+    step = ContentNode.steplen
+    totals = dict(
+        Flashcard.objects.filter(node_id__in=visible_sections, is_archived=False, slug__startswith=WORD_PREFIX)
+        .annotate(root=Substr("node__path", 1, step))
+        .order_by()
+        .values("root")
+        .annotate(n=Count("id"))
+        .values_list("root", "n")
+    )
+    if not totals:
+        return []
+
+    learned_by_root: dict[str, int] = {}
+    if user.is_authenticated:
+        learned_by_root = dict(
+            FlashcardReview.objects.filter(
+                user=user,
+                box__gte=FlashcardReview.MASTERED_BOX,
+                flashcard__node_id__in=visible_sections,
+                flashcard__is_archived=False,
+                flashcard__slug__startswith=WORD_PREFIX,
+            )
+            .annotate(root=Substr("flashcard__node__path", 1, step))
+            .order_by()
+            .values("root")
+            .annotate(n=Count("id"))
+            .values_list("root", "n")
+        )
+
+    out = []
+    for book in visible_books:
+        total = totals.get(book.path, 0)
+        if total:
+            out.append({"slug": book.slug, "title": book.title, "learned": learned_by_root.get(book.path, 0), "total": total})
+    return out

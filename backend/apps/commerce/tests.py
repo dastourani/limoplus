@@ -685,3 +685,96 @@ class PostgresConcurrentRenewalTransactionTests(TransactionTestCase):
         self.assertEqual(ents[1].starts_at, ents[0].ends_at)
         self.assertEqual((ents[1].ends_at - ents[0].starts_at), timedelta(days=60))
 
+
+class EntitlementAdminOfflinePolicyTests(TestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_superuser("09120009901", password="StrongPass!123")
+        self.learner = User.objects.create_user("09120009902")
+        self.major = Major.objects.create(slug="eng", name="فنی", order=1)
+        self.book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title="کتاب آفلاین ادمین",
+            slug="admin-offline-book",
+            price=40000,
+            is_published=True,
+        )
+        self.book.majors.add(self.major)
+        self.free_book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title="کتاب رایگان",
+            slug="free-book",
+            price=0,
+            is_free=True,
+            is_published=True,
+        )
+        self.free_book.majors.add(self.major)
+        self.admin_client = Client()
+        self.admin_client.force_login(self.admin_user)
+
+    def test_entitlement_admin_revoke_keep_vs_wipe_and_subscription_wipe(self):
+        from apps.accounts.models import DeviceSession
+        from rest_framework.test import APIClient
+
+        ent = Entitlement.objects.create(user=self.learner, book=self.book, note="دستی")
+        _, token = DeviceSession.start(self.learner, "گوشی", "android")
+        api = APIClient(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        # 1. Change form renders both policy options and help text
+        change_url = f"/admin/commerce/entitlement/{ent.pk}/change/"
+        page = self.admin_client.get(change_url)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "نگهداری نسخه آفلاین تا پایان مهلت قبلی")
+        self.assertContains(page, "حذف فوری نسخه آفلاین")
+
+        # 2. Bulk action: keep -> archives without setting offline_revoked_at
+        changelist_url = "/admin/commerce/entitlement/"
+        r_keep = self.admin_client.post(
+            changelist_url,
+            {"action": "revoke_keep_offline", "_selected_action": [str(ent.pk)]},
+        )
+        self.assertEqual(r_keep.status_code, 302)
+        ent.refresh_from_db()
+        self.assertTrue(ent.is_archived)
+        self.assertIsNone(ent.offline_revoked_at)
+        self.assertEqual(api.get("/api/v1/me/").data["offline_revocations"], [])
+
+        # 3. Un-archiving clears any wipe timestamp; saving with wipe sets offline_revoked_at
+        self.admin_client.post(
+            change_url,
+            {
+                "user": str(self.learner.pk),
+                "book": str(self.book.pk),
+                "starts_at_0": ent.starts_at.strftime("%Y-%m-%d"),
+                "starts_at_1": ent.starts_at.strftime("%H:%M:%S"),
+                "note": "دستی",
+                "is_archived": "on",
+                "offline_policy": "wipe",
+            },
+        )
+        ent.refresh_from_db()
+        self.assertTrue(ent.is_archived)
+        self.assertIsNotNone(ent.offline_revoked_at)
+        revs = api.get("/api/v1/me/").data["offline_revocations"]
+        self.assertEqual([r["slug"] for r in revs], [self.book.slug])
+
+        # 4. Revoking a major subscription with wipe also reports non-free books in that major
+        ent.is_archived = False
+        ent.offline_revoked_at = None
+        ent.save()
+        sub = Entitlement.objects.create(user=self.learner, major=self.major, ends_at=timezone.now() + timedelta(days=30))
+        self.admin_client.post(
+            changelist_url,
+            {"action": "revoke_wipe_offline", "_selected_action": [str(sub.pk)]},
+        )
+        sub.refresh_from_db()
+        self.assertTrue(sub.is_archived)
+        self.assertIsNotNone(sub.offline_revoked_at)
+        # Still owns book via `ent`, so not reported yet:
+        self.assertEqual(api.get("/api/v1/me/").data["offline_revocations"], [])
+        # Once book-level access is archived (keep), subscription wipe surfaces the paid book (never free books):
+        ent.is_archived = True
+        ent.save(update_fields=["is_archived"])
+        revs_after = api.get("/api/v1/me/").data["offline_revocations"]
+        self.assertEqual([r["slug"] for r in revs_after], [self.book.slug])
+
+
