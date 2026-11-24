@@ -547,7 +547,7 @@ export default function Section() {
 
   const nudgeGuest = useGuestNudge();
   // «زمان مطالعه»: reading this section while the screen is open (two minutes without a touch stops it).
-  useStudyTimer(node ? nodeId : null, 'read', !!user);
+  useStudyTimer(node ? nodeId : null, 'read');
   const bookSlug = node?.breadcrumb.find((b) => b.kind === 'book')?.slug;
   const { data: book } = useApi(() => (bookSlug && !offline ? endpoints.book(bookSlug) : Promise.resolve(null)), [bookSlug, offline]);
 

@@ -26,6 +26,7 @@ import { useApi } from '../../lib/useApi';
 import { useAppearance } from '../../lib/coverTheme';
 import { celebrateProgress } from '../../lib/milestones';
 import { studyDuration } from '../../lib/duration';
+import { flushStudyTime, useLocalStudySeconds } from '../../lib/studyTime';
 import { currentPrice, percentLabel } from '../../lib/pricing';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -90,7 +91,14 @@ export default function Book() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
   const wide = useWide();
-  const { data, error, loading, retry } = useApi(() => endpoints.book(String(slug)), [slug, user?.id]);
+  const localStudy = useLocalStudySeconds();
+  const { data, error, loading, retry } = useApi(
+    async () => {
+      await flushStudyTime();
+      return endpoints.book(String(slug));
+    },
+    [slug, user?.id],
+  );
   const celebrate = useCelebrate();
   // Coming back with a section, a chapter or the whole book newly finished: celebrated here, once each.
   useEffect(() => {
@@ -220,6 +228,17 @@ export default function Book() {
   if (error || !data) return <Screen><Header subtitle="کتاب" /><ErrorState message={error?.message ?? ''} onRetry={retry} /></Screen>;
 
   const book = data;
+  const localChapterSeconds: Record<string, number> = {};
+  let localBookSeconds = 0;
+  for (const ch of book.chapters) {
+    let sum = localStudy[ch.id] ?? 0;
+    for (const s of ch.sections) sum += localStudy[s.id] ?? 0;
+    if (sum > 0) {
+      localChapterSeconds[String(ch.id)] = sum;
+      localBookSeconds += sum;
+    }
+  }
+  const totalBookSeconds = (book.mine?.time_seconds ?? 0) + localBookSeconds;
   const bookPrice = currentPrice(book);
   // The cover is the width of the page (less its margins) divided by the golden ratio, in its 2:3 book shape: about a
   // fifth larger than before on a phone, and still leaving the counts under it in view on a small screen.
@@ -421,7 +440,7 @@ export default function Book() {
               />
             </View>
           ) : fullAccess ? (
-            <View style={[styles.cta, styles.ctaRow, !!book.mine?.time_seconds && book.mine.time_seconds >= 60 && { marginBottom: 16 }]}>
+            <View style={[styles.cta, styles.ctaRow, totalBookSeconds >= 60 && { marginBottom: 16 }]}>
               <HelpTip
                 size={54}
                 title="لیموی پیشرفت کتاب"
@@ -441,16 +460,16 @@ export default function Book() {
               <Pressable onPress={() => (last ? router.push(`/section/${last.id}`) : startFree())} style={styles.ctaButton} accessibilityRole="button">
                 <Text style={styles.ctaButtonText}>{last ? 'ادامه بده' : 'شروع'}</Text>
               </Pressable>
-              {!!book.mine?.time_seconds && book.mine.time_seconds >= 60 && (
+              {totalBookSeconds >= 60 && (
                 <View style={styles.badgeWrapper} pointerEvents="none">
                   <View style={styles.floatingTimeBadge}>
-                    <Text style={styles.floatingTimeBadgeText}>⏱️ {studyDuration(book.mine.time_seconds)} زمان صرف شده برای کل کتاب</Text>
+                    <Text style={styles.floatingTimeBadgeText}>⏱️ {studyDuration(totalBookSeconds)} زمان صرف شده برای کل کتاب</Text>
                   </View>
                 </View>
               )}
             </View>
           ) : (
-            <View style={styles.cta}>
+            <View style={[styles.cta, totalBookSeconds >= 60 && { marginBottom: 16 }]}>
               {!!firstPreview && (
                 <View style={styles.ctaHead}>
                   <IconBadge name="gift" size={30} />
@@ -502,6 +521,13 @@ export default function Book() {
               )}
               {book.product_status.state === 'unpriced' && <Text style={[styles.ctaSmall, rtl]}>قیمت نسخه‌ی کامل هنوز تعیین نشده است.</Text>}
               {book.product_status.state === 'unavailable' && <Text style={[styles.ctaSmall, rtl]}>این کتاب فعلاً برای خرید در دسترس نیست.</Text>}
+              {totalBookSeconds >= 60 && (
+                <View style={styles.badgeWrapper} pointerEvents="none">
+                  <View style={styles.floatingTimeBadge}>
+                    <Text style={styles.floatingTimeBadgeText}>⏱️ {studyDuration(totalBookSeconds)} زمان صرف شده برای کل کتاب</Text>
+                  </View>
+                </View>
+              )}
             </View>
           )}
 
@@ -975,7 +1001,7 @@ export default function Book() {
               read={read}
               owned={book.owned}
               bookSlug={book.slug}
-              seconds={book.mine?.chapter_seconds?.[String(chapter.id)] ?? 0}
+              seconds={(book.mine?.chapter_seconds?.[String(chapter.id)] ?? 0) + (localChapterSeconds[String(chapter.id)] ?? 0)}
               review={book.reviews?.chapters[String(chapter.id)] ?? null}
               canFinish={!!user && !!book.reviews}
               onFinish={async () => {

@@ -107,7 +107,7 @@ export function FlashcardDeck({
   const card = done ? null : byId.get(queue[pos])!;
   const hints = card ? (boxes[card.id]?.hints ?? newHints) : newHints;
   // «زمان مطالعه»: counted on the section the card belongs to.
-  useStudyTimer(card?.node_id, 'cards', !!user);
+  useStudyTimer(card?.node_id, 'cards');
 
   const turn = (to: 0 | 1) => {
     setFlipped(to === 1);

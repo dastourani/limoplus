@@ -210,7 +210,7 @@ export default function Quiz() {
   }, [user, showSummary, answeredHere, questions.length, nudgeGuest]);
 
   // «زمان مطالعه»: counted on the section of the question on screen (a review counts as review).
-  useStudyTimer(questions[Math.min(index, questions.length - 1)]?.node_id, review ? 'review' : 'quiz', !!user && !showSummary);
+  useStudyTimer(questions[Math.min(index, questions.length - 1)]?.node_id, review ? 'review' : 'quiz', !showSummary);
 
   if (loading || !order) return <Screen><Header title="تست" /><Loading /></Screen>;
   if (error) return <Screen><Header title="تست" /><ErrorState message={error.message} onRetry={retry} /></Screen>;
