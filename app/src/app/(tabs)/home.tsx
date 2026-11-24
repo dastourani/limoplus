@@ -10,7 +10,7 @@ import { changedPages } from '../../lib/pages';
 import { studyDuration } from '../../lib/duration';
 import { BannerCarousel } from '../../components/BannerCarousel';
 import { BookCover } from '../../components/BookCover';
-import { Icon } from '../../components/Icon';
+import { Icon, IconBadge } from '../../components/Icon';
 import { LemonProgress } from '../../components/LemonProgress';
 import { LemonSlice } from '../../components/LemonSlice';
 import { Text } from '../../components/Text';
@@ -23,6 +23,7 @@ import { SectionHeader } from '../../components/home/SectionHeader';
 import { TodayTiles } from '../../components/home/TodayTiles';
 import { BookPill } from '../../components/home/BookPill';
 import { storage, type ReadingSpot } from '../../lib/storage';
+import { useLocalStudySeconds } from '../../lib/studyTime';
 import { keepIfSame, useApi } from '../../lib/useApi';
 import { colors, radius, rtl, toPersianDigits } from '../../theme';
 
@@ -34,6 +35,11 @@ export default function Home() {
   const { width } = useWindowDimensions();
   const asLearner = useViewAsLearner();
   const { toast } = useFeedback();
+  const localStudy = useLocalStudySeconds();
+  const guestSeconds = useMemo(
+    () => (!user ? Object.values(localStudy).reduce((sum, s) => sum + s, 0) : 0),
+    [user, localStudy],
+  );
   // While the page is being scrolled the banners don't turn by themselves (a turn mid-scroll made it jump).
   const pageScrolling = useRef(false);
   const [idle, setIdle] = useState(false);
@@ -347,16 +353,28 @@ export default function Home() {
         </View>
       ),
     });
-  if (!user)
+  if (!user && (reading.length === 0 || guestSeconds >= 60))
     blocks.push({
       key: 'welcome',
-      el: (
-        // A guest: no plan or progress yet; one friendly way in instead.
+      el: guestSeconds >= 60 ? (
+        // A guest who already spent time reading: invite them to keep their study time and progress everywhere.
         <View style={[styles.planCard, styles.welcome]}>
-          <LemonSlice size={40} />
+          <IconBadge name="time-spent" size={40} />
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={[styles.welcomeTitle, rtl]}>خوش آمدی! یک بخش رایگان را بخوان.</Text>
-            <Text style={[styles.needsSub, rtl]}>با ورود، برنامه‌ی روزانه، مرورها و پیشرفتت این‌جا می‌آید.</Text>
+            <Text style={[styles.welcomeTitle, rtl]}>تا الان {studyDuration(guestSeconds)} خوانده‌ای!</Text>
+            <Text style={[styles.needsSub, rtl]}>با ورود، زمان مطالعه‌ات، مرورهای دوره‌ای و پیشرفتت همیشه ذخیره می‌ماند.</Text>
+            <Pressable onPress={() => router.push('/login')} accessibilityRole="link">
+              <Text style={[styles.guestLinkText, rtl]}>ورود و ذخیره‌ی پیشرفت ←</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        // A guest who hasn't started yet: explain they can try free sections right away, or sign in for full tracking.
+        <View style={[styles.planCard, styles.welcome]}>
+          <IconBadge name="sparkles" size={40} />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={[styles.welcomeTitle, rtl]}>بدون ثبت‌نام هم می‌توانی امتحان کنی!</Text>
+            <Text style={[styles.needsSub, rtl]}>با ورود، مرورهای دوره‌ای، اشتباه‌هایت و زمان مطالعه‌ات ذخیره می‌شود و هر روز برنامه‌ی اختصاصی می‌گیری.</Text>
             <Pressable onPress={() => router.push('/login')} accessibilityRole="link">
               <Text style={[styles.guestLinkText, rtl]}>ورود یا ثبت‌نام ←</Text>
             </Pressable>
