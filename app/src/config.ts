@@ -5,8 +5,15 @@ import { storage } from './lib/storage';
 
 export type AppChannel = 'official' | 'test';
 
-/** Release channel baked into this binary at build time (`official` vs `test`). */
-export const APP_CHANNEL: AppChannel = process.env.EXPO_PUBLIC_APP_CHANNEL === 'official' ? 'official' : 'test';
+/** Release channel baked into this binary/bundle (`official` vs `test`; web defaults to `official`). */
+export const APP_CHANNEL: AppChannel =
+  process.env.EXPO_PUBLIC_APP_CHANNEL === 'official'
+    ? 'official'
+    : process.env.EXPO_PUBLIC_APP_CHANNEL === 'test'
+      ? 'test'
+      : Platform.OS === 'web'
+        ? 'official'
+        : 'test';
 export const APP_SCHEME = APP_CHANNEL === 'official' ? 'limookhan' : 'limookhan-test';
 
 /** Build number of this app (set by the APK build from its run number; 0 in development and on the web). */

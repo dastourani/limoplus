@@ -44,8 +44,11 @@ jobs:
 
       - name: Build the web version
         # No server address: served by the laptop's server, the app talks to the server it came from.
+        env:
+          EXPO_PUBLIC_APP_CHANNEL: official
         run: |
           echo "EXPO_PUBLIC_API_URL=" > .env
+          echo "EXPO_PUBLIC_APP_CHANNEL=official" >> .env
           npx expo export -p web --output-dir dist
 
       - name: Keep it on the branch «web-build» (only the latest build)
