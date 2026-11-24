@@ -216,6 +216,7 @@ class Entitlement(models.Model):
         help_text="برای هدیه‌ی مدیر؛ خالی یعنی خرید یا دسترسی دستی قدیمی",
     )
     is_archived = models.BooleanField("لغو شده", default=False)
+    offline_revoked_at = models.DateTimeField("زمان ابطال نسخه آفلاین", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expiry_warning_sent_at = models.DateTimeField("زمان ارسال هشدار انقضا", null=True, blank=True)
 

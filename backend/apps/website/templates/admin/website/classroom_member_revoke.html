@@ -1,12 +1,12 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
-<div class="card" style="max-width: 500px; margin: 20px auto; padding: 24px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+<div class="card" style="max-width: 560px; margin: 20px auto; padding: 24px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
   <h2 style="color: #dc2626;">{{ title }}</h2>
   <p style="margin-bottom: 16px;">
     آیا از لغو دسترسی دانشجو با شماره <b>{{ member.phone }}</b> از کلاس <b>«{{ member.classroom.title }}»</b> اطمینان دارید؟
   </p>
-  <p style="color: #6b7280; font-size: 13px; margin-bottom: 20px;">
-    با لغو دسترسی، کتاب بلافاصله از حساب دانشجو خارج شده و دیگر قادر به مطالعه آن نخواهد بود.
+  <p style="color: #6b7280; font-size: 13px; margin-bottom: 16px;">
+    با لغو دسترسی، دسترسی آنلاین دانشجو بلافاصله قطع شده و دیگر قادر به باز کردن بخش‌های آنلاین یا دانلود دوباره نخواهد بود.
   </p>
   <form method="post">
     {% csrf_token %}
@@ -14,6 +14,25 @@
       <label for="id_reason" style="display:block; margin-bottom: 6px; font-weight: bold;">علت لغو:</label>
       <input type="text" id="id_reason" name="reason" value="لغو توسط مدرس" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px;">
     </div>
+
+    <div style="margin-bottom: 16px; padding: 14px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
+      <div style="font-weight: bold; margin-bottom: 8px;">وضعیت فایل آفلاین (اگر دانشجو قبلاً کتاب را دانلود کرده باشد):</div>
+      <label style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; cursor: pointer;">
+        <input type="radio" name="offline_policy" value="keep" checked style="margin-top: 3px;">
+        <span>
+          <strong>ابقا تا پایان مهلت قبلی</strong><br>
+          <span style="color: #6b7280; font-size: 12px;">فقط دسترسی آنلاین و دانلود مجدد قطع می‌شود؛ اگر کتاب قبلاً روی گوشی دانلود شده باشد، تا پایان اعتبار قبلی (حداکثر ۳۰ روز) باز می‌ماند.</span>
+        </span>
+      </label>
+      <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+        <input type="radio" name="offline_policy" value="wipe" style="margin-top: 3px;">
+        <span>
+          <strong>حذف فوری نسخه آفلاین در اتصال بعدی</strong><br>
+          <span style="color: #6b7280; font-size: 12px;">علاوه بر قطع دسترسی آنلاین، به محض اتصال بعدی اپلیکیشن دانشجو به اینترنت (حتی اگر از حساب خود خارج نشده باشد)، فایل آفلاین کتاب از گوشی او پاک می‌شود.</span>
+        </span>
+      </label>
+    </div>
+
     <div style="display: flex; gap: 12px; margin-top: 24px;">
       <button type="submit" class="button danger" style="background: #dc2626; color: white; padding: 8px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer;">
         بله، لغو شود

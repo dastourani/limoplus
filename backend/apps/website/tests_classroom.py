@@ -345,3 +345,103 @@ class ClassroomJoinLandingTests(TestCase):
         )
         bam = BookAccessMember.objects.create(request=req, book=self.book, phone="09129990001")
         self.assertEqual(cls.calculate_end_time(), _approved_end(bam, timezone.now()))
+
+    def test_revoke_hybrid_offline_policy_keep_vs_wipe(self):
+        from django.urls import reverse
+        from rest_framework.test import APIClient
+        from apps.accounts.models import DeviceSession
+        from apps.commerce.models import Entitlement
+
+        student = User.objects.create(phone="09128880001")
+        self.client.force_login(student)
+        self.client.post(f"/join/{self.classroom.code}/")
+        member = ClassroomMember.objects.get(classroom=self.classroom, phone=student.phone)
+
+        # Teacher revokes with default "keep" policy -> entitlement archived, offline_revoked_at stays None
+        self.teacher.is_superuser = True
+        self.teacher.save(update_fields=["is_superuser"])
+        self.client.force_login(self.teacher)
+        revoke_url = reverse("admin:website_classroommember_revoke", args=[member.pk])
+        res = self.client.post(revoke_url, {"reason": "لغو آزمایشی", "offline_policy": "keep"})
+        self.assertEqual(res.status_code, 302)
+        member.refresh_from_db()
+        member.entitlement.refresh_from_db()
+        self.assertEqual(member.status, ClassroomMember.Status.REVOKED)
+        self.assertTrue(member.entitlement.is_archived)
+        self.assertIsNone(member.entitlement.offline_revoked_at)
+
+        _, token = DeviceSession.start(student, "android")
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(api.get("/api/v1/me/").data["offline_revocations"], [])
+
+        # Second student revoked with "wipe" -> reported in /api/v1/me/ offline_revocations
+        student2 = User.objects.create(phone="09128880002")
+        self.client.force_login(student2)
+        self.client.post(f"/join/{self.classroom.code}/")
+        member2 = ClassroomMember.objects.get(classroom=self.classroom, phone=student2.phone)
+
+        self.client.force_login(self.teacher)
+        res2 = self.client.post(
+            reverse("admin:website_classroommember_revoke", args=[member2.pk]),
+            {"reason": "حذف فوری", "offline_policy": "wipe"},
+        )
+        self.assertEqual(res2.status_code, 302)
+        member2.entitlement.refresh_from_db()
+        self.assertIsNotNone(member2.entitlement.offline_revoked_at)
+
+        _, token2 = DeviceSession.start(student2, "android")
+        api2 = APIClient()
+        api2.credentials(HTTP_AUTHORIZATION=f"Bearer {token2}")
+        revs = api2.get("/api/v1/me/").data["offline_revocations"]
+        self.assertEqual(len(revs), 1)
+        self.assertEqual(revs[0]["slug"], self.book.slug)
+
+        # If student2 acquires a new active entitlement for the same book, offline_revocations stops listing it
+        Entitlement.objects.create(user=student2, book=self.book)
+        self.assertEqual(api2.get("/api/v1/me/").data["offline_revocations"], [])
+
+    def test_group_access_revoke_hybrid_offline_policy(self):
+        from django.urls import reverse
+        from apps.accounts.models import DeviceSession
+        from apps.website.models import BookAccessMember, BookAccessRequest
+        from rest_framework.test import APIClient
+
+        self.teacher.is_superuser = True
+        self.teacher.save(update_fields=["is_superuser"])
+        student = User.objects.create(phone="09128880003")
+        req = BookAccessRequest.objects.create(
+            book=self.book,
+            requested_by=self.teacher,
+            status=BookAccessRequest.Status.APPROVED,
+            expiry_policy=BookAccessRequest.ExpiryPolicy.FROM_ACTIVATION,
+            duration_days=30,
+            reviewed_by=self.teacher,
+            reviewed_at=timezone.now(),
+            review_note="ok",
+        )
+        bam = BookAccessMember.objects.create(
+            request=req,
+            book=self.book,
+            phone=student.phone,
+            status=BookAccessMember.Status.WAITING_OTP,
+        )
+        from apps.website.group_access import activate_approved_members
+
+        activate_approved_members(student)
+        bam.refresh_from_db()
+
+        self.client.force_login(self.teacher)
+        res = self.client.post(
+            reverse("admin:website_bookaccessmember_revoke", args=[bam.pk]),
+            {"reason": "انصراف از دوره", "offline_policy": "wipe"},
+        )
+        self.assertEqual(res.status_code, 302)
+        bam.entitlement.refresh_from_db()
+        self.assertIsNotNone(bam.entitlement.offline_revoked_at)
+
+        _, token = DeviceSession.start(student, "android")
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        revs = api.get("/api/v1/me/").data["offline_revocations"]
+        self.assertEqual([r["slug"] for r in revs], [self.book.slug])

@@ -50,8 +50,10 @@ def add_time(request):
                 day = date.fromisoformat(str(e.get("day"))) if e.get("day") else today
             except (TypeError, ValueError):
                 continue
-            if node is None or kind not in StudyTime.Kind.values or seconds <= 0 or day > today or day < today - timedelta(days=OLDEST_DAYS):
+            if node is None or kind not in StudyTime.Kind.values or seconds <= 0 or day > today + timedelta(days=1) or day < today - timedelta(days=OLDEST_DAYS):
                 continue
+            if day > today:
+                day = today
             book_path = node.path[: ContentNode.steplen]
             if book_path not in maps:
                 maps[book_path] = AccessMap(request.user, node, light=True)

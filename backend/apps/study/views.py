@@ -72,6 +72,16 @@ def node_state(request, node_id):
     )
 
 
+def _parse_client_ms(value):
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        ms = int(value)
+    except (TypeError, ValueError):
+        return None
+    return ms if ms >= 0 else None
+
+
 @api_view(["POST"])
 def save_progress(request, node_id):
     node, _, error = _readable_node(request, node_id)
@@ -82,29 +92,45 @@ def save_progress(request, node_id):
     except (TypeError, ValueError):
         percent = 0
     done = bool(request.data.get("done")) or percent >= 90
-    progress, created = SectionProgress.objects.get_or_create(user=request.user, node=node, defaults={"book": book_of(node)})
-    became_done = done and not progress.is_done
-    # A section finished long ago and opened again leaves «نیاز به مرور» (apps/study/needs.py) at once.
+    client_ms = _parse_client_ms(request.data.get("at"))
     from .needs import OLD_DAYS
 
-    reopened = not created and progress.is_done and progress.updated_at < timezone.now() - timedelta(days=OLD_DAYS)
-    progress.percent = max(progress.percent, percent)
-    # The reader's current place and mode (optional; older app versions don't send them).
-    if "position" in request.data:
+    with transaction.atomic():
         try:
-            progress.position = max(0, min(100, int(request.data.get("position"))))
-        except (TypeError, ValueError):
-            pass
-    if request.data.get("mode") in ("full", "summary"):
-        progress.mode = request.data["mode"]
-    progress.is_done = progress.is_done or done
-    progress.save()
-    if created or became_done:
-        StudyDay.touch(request.user, "sections")
-    if became_done or reopened:
-        from .reviews import recheck
+            with transaction.atomic():
+                progress, created = SectionProgress.objects.get_or_create(
+                    user=request.user,
+                    node=node,
+                    defaults={"book": book_of(node)},
+                )
+        except IntegrityError:
+            created = False
+            progress = SectionProgress.objects.get(user=request.user, node=node)
+        progress = SectionProgress.objects.select_for_update().get(pk=progress.pk)
 
-        recheck(request.user)
+        became_done = done and not progress.is_done
+        # A section finished long ago and opened again leaves «نیاز به مرور» (apps/study/needs.py) at once.
+        reopened = not created and progress.is_done and progress.updated_at < timezone.now() - timedelta(days=OLD_DAYS)
+        progress.percent = max(progress.percent, percent)
+        progress.is_done = progress.is_done or done
+        # Only apply position/mode when the update is not older than an already-applied client update.
+        if client_ms is None or client_ms >= progress.client_updated_ms:
+            if "position" in request.data:
+                try:
+                    progress.position = max(0, min(100, int(request.data.get("position"))))
+                except (TypeError, ValueError):
+                    pass
+            if request.data.get("mode") in ("full", "summary"):
+                progress.mode = request.data["mode"]
+            if client_ms is not None:
+                progress.client_updated_ms = client_ms
+        progress.save()
+        if created or became_done:
+            StudyDay.touch(request.user, "sections")
+        if became_done or reopened:
+            from .reviews import recheck
+
+            recheck(request.user)
     return Response({"percent": progress.percent, "is_done": progress.is_done})
 
 
@@ -1367,9 +1393,34 @@ def known_words(request, slug):
         if not isinstance(terms, list):
             return Response({"code": "invalid", "message": "واژه نامعتبر است."}, status=status.HTTP_400_BAD_REQUEST)
         known = bool(request.data.get("known", True))
-        for term in terms[:500]:
-            term = str(term or "").strip()[:120]
-            if term:
-                WordKnown.objects.update_or_create(user=request.user, book=book, term=term, defaults={"known": known})
+        client_ms = _parse_client_ms(request.data.get("at"))
+        clean_terms = []
+        seen = set()
+        for raw in terms[:500]:
+            term = str(raw or "").strip()[:120]
+            if term and term not in seen:
+                seen.add(term)
+                clean_terms.append(term)
+        with transaction.atomic():
+            for term in clean_terms:
+                try:
+                    with transaction.atomic():
+                        row, created = WordKnown.objects.get_or_create(
+                            user=request.user,
+                            book=book,
+                            term=term,
+                            defaults={"known": known, "client_updated_ms": client_ms or 0},
+                        )
+                except IntegrityError:
+                    created = False
+                    row = WordKnown.objects.get(user=request.user, book=book, term=term)
+                if created:
+                    continue
+                row = WordKnown.objects.select_for_update().get(pk=row.pk)
+                if client_ms is None or client_ms >= row.client_updated_ms:
+                    row.known = known
+                    if client_ms is not None:
+                        row.client_updated_ms = client_ms
+                    row.save(update_fields=["known", "client_updated_ms", "updated_at"])
     words = list(WordKnown.objects.filter(user=request.user, book=book, known=True).values_list("term", flat=True))
     return Response({"known": words})

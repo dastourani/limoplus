@@ -770,15 +770,23 @@ class BookAccessMemberAdmin(BookAccessActionAdminMixin, admin.ModelAdmin):
                     form.add_error(None, "این ردیف قبلاً لغو یا رد شده است.")
                 else:
                     previous_end = None
+                    now = timezone.now()
+                    wipe_offline = form.cleaned_data.get("offline_policy") == GroupAccessRevokeForm.OFFLINE_WIPE
                     if member.entitlement_id:
                         entitlement = Entitlement.objects.select_for_update().get(pk=member.entitlement_id)
                         previous_end = entitlement.ends_at
+                        update_fields = []
                         if not entitlement.is_archived:
                             entitlement.is_archived = True
-                            entitlement.save(update_fields=["is_archived"])
+                            update_fields.append("is_archived")
+                        if wipe_offline and not entitlement.offline_revoked_at:
+                            entitlement.offline_revoked_at = now
+                            update_fields.append("offline_revoked_at")
+                        if update_fields:
+                            entitlement.save(update_fields=update_fields)
                     member.status = BookAccessMember.Status.REVOKED
                     member.revoked_by = request.user
-                    member.revoked_at = timezone.now()
+                    member.revoked_at = now
                     member.revocation_reason = form.cleaned_data["reason"]
                     member.save(update_fields=["status", "revoked_by", "revoked_at", "revocation_reason"])
                     BookAccessEvent.objects.create(
@@ -1086,6 +1094,8 @@ class ClassroomMemberAdmin(admin.ModelAdmin):
             raise PermissionDenied("شما دسترسی به لغو این عضویت را ندارید.")
 
         if request.method == "POST":
+            now = timezone.now()
+            wipe_offline = request.POST.get("offline_policy") == "wipe"
             with transaction.atomic():
                 member = (
                     ClassroomMember.objects.select_for_update(of=("self",))
@@ -1094,14 +1104,22 @@ class ClassroomMemberAdmin(admin.ModelAdmin):
                 )
                 if member.status != ClassroomMember.Status.REVOKED:
                     member.status = ClassroomMember.Status.REVOKED
-                    member.revoked_at = timezone.now()
+                    member.revoked_at = now
                     member.revoked_by = request.user
                     member.revocation_reason = request.POST.get("reason", "لغو توسط استاد")
                     member.save(update_fields=["status", "revoked_at", "revoked_by", "revocation_reason"])
 
-                if member.entitlement_id and not member.entitlement.is_archived:
-                    member.entitlement.is_archived = True
-                    member.entitlement.save(update_fields=["is_archived"])
+                if member.entitlement_id:
+                    entitlement = Entitlement.objects.select_for_update().get(pk=member.entitlement_id)
+                    update_fields = []
+                    if not entitlement.is_archived:
+                        entitlement.is_archived = True
+                        update_fields.append("is_archived")
+                    if wipe_offline and not entitlement.offline_revoked_at:
+                        entitlement.offline_revoked_at = now
+                        update_fields.append("offline_revoked_at")
+                    if update_fields:
+                        entitlement.save(update_fields=update_fields)
 
             messages.success(request, f"دسترسی دانشجو با شماره {member.phone} لغو شد.")
             return redirect(reverse("admin:website_classroommember_changelist") + f"?classroom_id={member.classroom_id}")

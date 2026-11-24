@@ -26,6 +26,7 @@ class SectionProgress(models.Model):
     # Where the reader is now (not the furthest point): for «ادامه بده» on any device.
     position = models.PositiveSmallIntegerField("جای فعلی (درصد)", default=0)
     mode = models.CharField("حالت", max_length=10, default="full")
+    client_updated_ms = models.BigIntegerField(default=0)
     first_opened_at = models.DateTimeField(auto_now_add=True, verbose_name="اولین باز شدن")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین تغییر")
 
@@ -347,6 +348,7 @@ class WordKnown(models.Model):
     book = models.ForeignKey(ContentNode, on_delete=models.PROTECT, related_name="+")
     term = models.CharField("واژه", max_length=120)
     known = models.BooleanField("بلد است", default=True)
+    client_updated_ms = models.BigIntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

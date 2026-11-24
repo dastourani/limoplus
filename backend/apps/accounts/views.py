@@ -57,6 +57,41 @@ def _session_payload(session, current=None):
     }
 
 
+def _offline_revocations_for(user):
+    """Books whose downloaded offline bundle must be wiped on the client's next online sync."""
+    if not user or not user.is_authenticated:
+        return []
+    from apps.catalog.access import access_kind_from, active_rows
+    from apps.commerce.models import Entitlement
+
+    since = timezone.now() - timedelta(days=40)
+    revoked = list(
+        Entitlement.objects.filter(
+            user=user,
+            is_archived=True,
+            offline_revoked_at__isnull=False,
+            offline_revoked_at__gte=since,
+            book__isnull=False,
+        )
+        .select_related("book")
+        .prefetch_related("book__majors")
+    )
+    if not revoked:
+        return []
+
+    entitlements = active_rows(user)
+    latest_by_slug = {}
+    for ent in revoked:
+        book = ent.book
+        major_ids = {major.pk for major in book.majors.all()}
+        if book.is_free or access_kind_from(entitlements, user, book.pk, major_ids):
+            continue
+        prev = latest_by_slug.get(book.slug)
+        if prev is None or ent.offline_revoked_at > prev:
+            latest_by_slug[book.slug] = ent.offline_revoked_at
+    return [{"slug": slug, "revoked_at": ts.isoformat()} for slug, ts in sorted(latest_by_slug.items())]
+
+
 def _user_payload(user):
     return {
         "id": user.id,
@@ -65,6 +100,7 @@ def _user_payload(user):
         "first_name": user.first_name,
         "last_name": user.last_name,
         "is_staff": user.is_staff,
+        "offline_revocations": _offline_revocations_for(user),
     }
 
 

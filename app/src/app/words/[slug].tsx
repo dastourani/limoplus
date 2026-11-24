@@ -84,7 +84,7 @@ export default function Words() {
   const save = (next: Set<string>, term: string, ok: boolean) => {
     setKnown(next);
     AsyncStorage.setItem(KNOWN_KEY(String(slug)), JSON.stringify([...next])).catch(() => undefined);
-    if (user) sendOrQueue(`books/${encodeURIComponent(String(slug))}/words/me/`, { term, known: ok });
+    if (user) sendOrQueue(`books/${encodeURIComponent(String(slug))}/words/me/`, { term, known: ok, at: Date.now() });
   };
   const turn = () => {
     setOpen(true);

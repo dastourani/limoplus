@@ -26,6 +26,17 @@ export function setOutboxOwner(id: number | null) {
   if (id != null) flushOutbox();
 }
 
+let onReconnect: (() => void) | null = null;
+/** Called whenever the device transitions from offline to online. */
+export function setReconnectHandler(handler: (() => void) | null) {
+  onReconnect = handler;
+}
+
+/** Network failures, 429 rate-limits, and 5xx server/proxy errors are transient and stay in the outbox. */
+export function isRetryableStatus(status: number): boolean {
+  return status === 0 || status === 429 || status >= 500;
+}
+
 const OnlineContext = createContext(true);
 export const useOnline = () => useContext(OnlineContext);
 
@@ -48,14 +59,14 @@ function update(change: (jobs: Job[]) => Job[]): Promise<void> {
   return next;
 }
 
-/** POST that is retried later if there is no connection. Use only for requests that are safe to send late. */
+/** POST that is retried later if there is no connection or a transient server error (429 / 5xx). */
 export async function sendOrQueue(path: string, body: unknown): Promise<void> {
   if (owner == null) return;
   const mine = owner;
   try {
     await api(path, { body });
   } catch (e) {
-    if (e instanceof ApiError && e.status === 0) {
+    if (e instanceof ApiError && (isRetryableStatus(e.status) || e.status === 401)) {
       const job: Job = { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, path, body, at: Date.now(), owner: mine };
       await update((jobs) => [...jobs, job]);
     }
@@ -86,10 +97,11 @@ async function flush() {
       await api(job.path, { body: job.body });
       done.add(job.id);
     } catch (e) {
-      if (!(e instanceof ApiError)) continue;
-      // Offline: try later. Session ended (401): keep it for when this account signs in again. Other refusals drop it.
-      if (e.status !== 0 && e.status !== 401) done.add(job.id);
-      if (e.status === 0 || e.status === 401) break;
+      if (!(e instanceof ApiError)) break;
+      // Transient (offline, 429, 5xx) or expired session (401): keep in outbox and stop flushing for now.
+      // Permanent 4xx refusals (400, 403, 404, 409, ...) are dropped.
+      if (isRetryableStatus(e.status) || e.status === 401) break;
+      done.add(job.id);
     }
   }
   // Remove only what was handled; anything queued meanwhile stays.
@@ -110,6 +122,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     if (online === wasOnline.current) return;
     wasOnline.current = online;
     setBanner(online ? 'back' : 'offline');
+    if (online) onReconnect?.();
     const t = setTimeout(() => setBanner(null), (online ? 2.5 : BANNER_SECONDS) * 1000);
     return () => clearTimeout(t);
   }, [online]);
