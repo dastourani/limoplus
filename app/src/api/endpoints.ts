@@ -1,3 +1,4 @@
+import { APP_CHANNEL } from '../config';
 import type { Label } from '../lib/labels';
 import type { Numbering, RefTarget } from '../lib/numbering';
 import { api } from './client';
@@ -700,7 +701,8 @@ export const endpoints = {
   helpPage: (id: number) => api<{ id: number; title: string; body: string; updated_at: string }>(`app/help/${id}/`),
   formulaCommands: () => api<{ macros: Record<string, string> }>('formula-commands/'),
   bookChanges: (slug: string) => api<BookChanges>(`books/${slug}/changes/`),
-  appVersion: (platform: string, build: number) => api<AppVersion>(`app/version/?platform=${platform}&build=${build}`),
+  appVersion: (platform: string, build: number) =>
+    api<AppVersion>(`app/version/?platform=${encodeURIComponent(platform)}&build=${build}&channel=${encodeURIComponent(APP_CHANNEL)}`),
   stats: () => api<Stats>('me/stats/'),
   offline: (slug: string) => api<OfflineBundle>(`books/${encodeURIComponent(slug)}/offline/`, { timeoutMs: 90_000 }),
 

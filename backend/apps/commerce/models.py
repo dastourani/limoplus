@@ -172,6 +172,7 @@ class Order(models.Model):
     # The plan's terms when the order was made: a later change to the plan doesn't change what was bought.
     plan_months = models.PositiveSmallIntegerField("مدت خریده‌شده (ماه)", null=True, blank=True)
     plan_scope = models.CharField("دامنه‌ی خریده‌شده", max_length=10, blank=True)
+    return_channel = models.CharField("کانال بازگشت اپ", max_length=20, blank=True, default="")
     status = models.CharField("وضعیت", max_length=10, choices=Status.choices, default=Status.PENDING)
     track_id = models.CharField("شناسه‌ی زیبال", max_length=40, unique=True, null=True, blank=True)
     ref_number = models.CharField("شماره‌ی پیگیری", max_length=40, blank=True)

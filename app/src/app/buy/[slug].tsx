@@ -5,6 +5,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 
 import { ApiError } from '../../api/client';
 import { endpoints, type Plan, type PriceDiscount, type ProductStatus } from '../../api/endpoints';
+import { APP_SCHEME } from '../../config';
 import { BookCover } from '../../components/BookCover';
 import { Text } from '../../components/Text';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
@@ -58,7 +59,7 @@ export default function Buy() {
         window.open(order.pay_url, '_blank');
         setMessage('بعد از پرداخت در صفحه‌ی باز‌شده، اینجا «بررسی پرداخت» را بزنید.');
       } else {
-        await WebBrowser.openAuthSessionAsync(order.pay_url, 'limookhan://payment-result');
+        await WebBrowser.openAuthSessionAsync(order.pay_url, `${APP_SCHEME}://payment-result`);
         await check(order.order_id);
       }
     } catch (e) {

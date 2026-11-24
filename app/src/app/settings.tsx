@@ -7,11 +7,13 @@ import { Text, TextInput } from '../components/Text';
 import { ApiError } from '../api/client';
 import { endpoints } from '../api/endpoints';
 import { Button, Header, Screen } from '../components/ui';
-import { APP_BUILD, getApiUrl, getDefaultApiUrl, setApiUrlOverride } from '../config';
+import { APP_BUILD, APP_CHANNEL, getApiUrl, getDefaultApiUrl, normalizeServerUrl, setApiUrlOverride } from '../config';
+import { useAuth } from '../lib/auth';
 import { colors, radius, rtl, toPersianDigits } from '../theme';
 
-/** Test builds: point the app at a server, e.g. the laptop running the backend on the same Wi-Fi. */
+/** Staff/test emergency override: point the app at another server (official builds strictly require https://). */
 export default function Settings() {
+  const { user } = useAuth();
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -20,10 +22,19 @@ export default function Settings() {
     getApiUrl().then(setUrl).catch(() => setUrl(getDefaultApiUrl()));
   }, []);
 
-  const clean = (value: string) => {
-    const trimmed = value.trim().replace(/\/+$/, '');
-    return /^https?:\/\//.test(trimmed) ? trimmed : `http://${trimmed}`;
-  };
+  if (APP_CHANNEL === 'official' && !user?.is_staff) {
+    return (
+      <Screen>
+        <Header title="تنظیمات سرور" />
+        <View style={styles.page}>
+          <Text style={[styles.help, rtl]}>تنظیم آدرس سرور فقط برای مدیر در شرایط اضطراری مجاز است.</Text>
+          <Button label="بازگشت" variant="outline" onPress={() => router.back()} />
+        </View>
+      </Screen>
+    );
+  }
+
+  const clean = (value: string) => normalizeServerUrl(value, APP_CHANNEL);
 
   const test = async () => {
     setBusy(true);
@@ -32,15 +43,20 @@ export default function Settings() {
       await endpoints.health(clean(url));
       setStatus({ ok: true, text: 'سرور در دسترس است.' });
     } catch (e) {
-      setStatus({ ok: false, text: e instanceof ApiError ? e.message : 'اتصال ممکن نشد.' });
+      setStatus({ ok: false, text: e instanceof ApiError || e instanceof Error ? e.message : 'اتصال ممکن نشد.' });
     } finally {
       setBusy(false);
     }
   };
 
   const save = async () => {
-    await setApiUrlOverride(clean(url));
-    router.replace('/');
+    setStatus(null);
+    try {
+      await setApiUrlOverride(clean(url));
+      router.replace('/');
+    } catch (e) {
+      setStatus({ ok: false, text: e instanceof Error ? e.message : 'آدرس نامعتبر است.' });
+    }
   };
 
   const reset = async () => {
@@ -60,18 +76,20 @@ export default function Settings() {
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
-          placeholder={getDefaultApiUrl() || 'https://'}
+          placeholder={getDefaultApiUrl() || (APP_CHANNEL === 'official' ? 'https://' : 'http://')}
           style={styles.input}
         />
         <Text style={[styles.help, rtl]}>
           نشانی سرور اپ. به‌طور پیش‌فرض سرور اصلی لیموخوان است ({getDefaultApiUrl() || '—'}) و لازم نیست چیزی را عوض کنید.
-          فقط برای آزمایش یک سرور دیگر است؛ با تغییر آن از حسابتان خارج می‌شوید.
+          {APP_CHANNEL === 'official' ? ' در نسخه‌ی رسمی فقط آدرس‌های https:// پذیرفته می‌شوند.' : ' فقط برای آزمایش یک سرور دیگر است.'}
         </Text>
         {status && <Text style={[styles.status, rtl, { color: status.ok ? colors.greenDark : colors.redDark }]}>{status.text}</Text>}
         <Button label="آزمایش اتصال" variant="outline" onPress={test} loading={busy} />
         <Button label="ذخیره" onPress={save} />
         <Button label="برگشت به آدرس پیش‌فرض" variant="outline" onPress={reset} />
-        <Text style={[styles.help, { textAlign: 'center' }]}>نسخه‌ی برنامه: {APP_BUILD ? toPersianDigits(APP_BUILD) : 'آزمایشی'}</Text>
+        <Text style={[styles.help, { textAlign: 'center' }]}>
+          نسخه‌ی برنامه: {APP_BUILD ? toPersianDigits(APP_BUILD) : 'توسعه'} ({APP_CHANNEL === 'official' ? 'رسمی' : 'آزمایشی'})
+        </Text>
       </View>
     </Screen>
   );

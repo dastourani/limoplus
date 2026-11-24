@@ -254,6 +254,7 @@ if not DEBUG and not TESTING and PAYMENTS_ENABLED and ZIBAL_MERCHANT == "zibal":
     raise ImproperlyConfigured("ZIBAL_MERCHANT=zibal is Zibal's test merchant. Set the real merchant code on the server, or PAYMENTS_ENABLED=False.")
 # Where the payment result page sends the user afterwards: the app's deep link (or the web app's address).
 APP_RETURN_URL = env("APP_RETURN_URL", default="limookhan://payment-result")
+TEST_APP_RETURN_URL = env("TEST_APP_RETURN_URL", default="limookhan-test://payment-result")
 
 # --- Security on the real server --------------------------------------------
 

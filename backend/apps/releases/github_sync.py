@@ -13,15 +13,16 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 
 from .models import AppRelease
-from .service import clear_cache
+from .service import clear_cache, normalize_channel
 
 log = logging.getLogger(__name__)
 
 GITHUB_REPO = getattr(settings, "GITHUB_REPOSITORY", "dastourani/limoplus")
 
 
-def fetch_latest_github_release(repo: str = GITHUB_REPO) -> dict | None:
-    """Fetch the newest release metadata from GitHub API."""
+def fetch_latest_github_release(repo: str = GITHUB_REPO, channel: str = AppRelease.CHANNEL_TEST) -> dict | None:
+    """Fetch the newest release metadata for `channel` (`official` or `test`) from GitHub API."""
+    ch = normalize_channel(channel)
     url = f"https://api.github.com/repos/{repo}/releases"
     headers = {"User-Agent": "Limoplus-AppRelease-Sync", "Accept": "application/vnd.github.v3+json"}
     token = getattr(settings, "GITHUB_TOKEN", None)
@@ -36,29 +37,38 @@ def fetch_latest_github_release(repo: str = GITHUB_REPO) -> dict | None:
                 return None
             for rel in data:
                 tag = rel.get("tag_name", "")
-                if tag.startswith("apk-"):
-                    return rel
-            return data[0]
+                if ch == AppRelease.CHANNEL_OFFICIAL:
+                    if (tag.startswith("official-") or tag.startswith("v")) and not rel.get("prerelease"):
+                        return rel
+                else:
+                    if tag.startswith("apk-") or tag.startswith("test-"):
+                        return rel
+            return None if ch == AppRelease.CHANNEL_OFFICIAL else data[0]
     except Exception as exc:
         log.warning("Failed to fetch GitHub releases: %s", exc)
         return None
 
 
-def sync_release_from_github(download_files: bool = False, repo: str = GITHUB_REPO) -> tuple[AppRelease | None, str]:
+def sync_release_from_github(
+    download_files: bool = False,
+    repo: str = GITHUB_REPO,
+    channel: str = AppRelease.CHANNEL_TEST,
+) -> tuple[AppRelease | None, str]:
     """
-    Reads the latest GitHub APK release and creates or updates the corresponding AppRelease row.
-    If download_files is True, downloads the APK assets into the server's media storage.
+    Reads the latest GitHub APK release for `channel` and creates or updates the corresponding AppRelease row.
+    If download_files is True, downloads the APK assets into the server's media storage outside any DB transaction.
     """
-    rel = fetch_latest_github_release(repo)
+    ch = normalize_channel(channel)
+    rel = fetch_latest_github_release(repo, channel=ch)
     if not rel:
         return None, "هیچ نسخه‌ای در Releases گیت‌هاب یافت نشد یا ارتباط برقرار نشد."
 
     tag = rel.get("tag_name", "")
-    match = re.search(r"(\d+)", tag)
-    if not match:
+    nums = re.findall(r"\d+", tag)
+    if not nums:
         return None, f"تگ نسخه ({tag}) فاقد شماره ساخت معتبر است."
 
-    build_num = int(match.group(1))
+    build_num = int(nums[-1])
     version_name = f"1.0.{build_num}"
 
     # Extract assets
@@ -96,6 +106,7 @@ def sync_release_from_github(download_files: bool = False, repo: str = GITHUB_RE
     with transaction.atomic():
         release, created = AppRelease.objects.get_or_create(
             platform=AppRelease.ANDROID,
+            channel=ch,
             build=build_num,
             defaults={
                 "version_name": version_name,
@@ -118,10 +129,11 @@ def sync_release_from_github(download_files: bool = False, repo: str = GITHUB_RE
             release.save()
 
         if download_files:
+            prefix = "limookhan" if ch == AppRelease.CHANNEL_OFFICIAL else "limookhan-test"
             for field_name, url, filename in (
-                ("apk", universal_url, f"limookhan-{build_num}.apk"),
-                ("apk_arm64", arm64_url, f"limookhan-{build_num}-arm64.apk"),
-                ("apk_32", bit32_url, f"limookhan-{build_num}-32bit.apk"),
+                ("apk", universal_url, f"{prefix}-{build_num}.apk"),
+                ("apk_arm64", arm64_url, f"{prefix}-{build_num}-arm64.apk"),
+                ("apk_32", bit32_url, f"{prefix}-{build_num}-32bit.apk"),
             ):
                 existing = getattr(release, field_name)
                 if url and not (existing and existing.name):

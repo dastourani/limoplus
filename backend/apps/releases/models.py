@@ -9,9 +9,13 @@ class AppRelease(models.Model):
 
     ANDROID = "android"
     PLATFORMS = [(ANDROID, "اندروید")]
+    CHANNEL_OFFICIAL = "official"
+    CHANNEL_TEST = "test"
+    CHANNELS = [(CHANNEL_OFFICIAL, "رسمی"), (CHANNEL_TEST, "آزمایشی")]
 
     platform = models.CharField("سیستم", max_length=20, choices=PLATFORMS, default=ANDROID)
-    build = models.PositiveIntegerField("شماره‌ی ساخت", help_text="همان عدد نسخه‌ی آزمایشی، مثلاً ۱۰ برای limoplus-test-10")
+    channel = models.CharField("کانال انتشار", max_length=20, choices=CHANNELS, default=CHANNEL_TEST)
+    build = models.PositiveIntegerField("شماره‌ی ساخت", help_text="همان عدد نسخه‌ی ساخت، مثلاً ۱۰ برای build=10")
     version_name = models.CharField("نام نسخه", max_length=40, blank=True, help_text="اختیاری؛ مثلاً ۱٫۰٫۳")
     notes = models.TextField("تغییرات این نسخه", blank=True, help_text="هر خط یک مورد؛ به کاربر نشان داده می‌شود")
     download_url = models.URLField("لینک دانلود (همه‌کاره)", max_length=500, blank=True, help_text="اگر فایل APK را همین‌جا آپلود کنید، خالی بگذارید.")
@@ -37,7 +41,7 @@ class AppRelease(models.Model):
         verbose_name = "نسخه‌ی اپ"
         verbose_name_plural = "نسخه‌های اپ"
         ordering = ["-build"]
-        constraints = [models.UniqueConstraint(fields=["platform", "build"], name="unique_release_build")]
+        constraints = [models.UniqueConstraint(fields=["platform", "channel", "build"], name="unique_release_build")]
 
     def clean(self):
         from django.core.exceptions import ValidationError
@@ -80,4 +84,4 @@ class AppRelease(models.Model):
         return self.link or self.link_arm64 or self.link_32
 
     def __str__(self):
-        return f"{self.get_platform_display()} {self.build}" + (" (اجباری)" if self.is_required else "")
+        return f"{self.get_platform_display()} ({self.get_channel_display()}) {self.build}" + (" (اجباری)" if self.is_required else "")

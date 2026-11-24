@@ -52,11 +52,14 @@ jobs:
         # Can be changed later in the app (Settings). Set a repository variable EXPO_PUBLIC_API_URL to change the default.
         run: |
           echo "EXPO_PUBLIC_API_URL=${{ vars.EXPO_PUBLIC_API_URL || 'http://192.168.1.100:8000' }}" > .env
+          echo "EXPO_PUBLIC_APP_CHANNEL=test" >> .env
           # The build number lets the server offer newer versions and turn away versions marked as too old.
           echo "EXPO_PUBLIC_APP_BUILD=${{ github.run_number }}" >> .env
           node -e "const f='app.json',j=require('./'+f);j.expo.android=j.expo.android||{};j.expo.android.versionCode=${{ github.run_number }};j.expo.version='1.0.${{ github.run_number }}';require('fs').writeFileSync(f,JSON.stringify(j,null,2))"
 
       - name: Generate the Android project
+        env:
+          EXPO_PUBLIC_APP_CHANNEL: test
         run: npx expo prebuild --platform android --no-install
 
       - name: One APK for every phone, plus one per processor type
@@ -112,7 +115,9 @@ jobs:
           SECRET: ${{ secrets.RELEASE_WEBHOOK_SECRET }}
         run: |
           if [ -n "$SECRET" ]; then
-            curl --fail-with-body -sS -X POST "$SYNC_URL" \
+            SEP="?"
+            case "$SYNC_URL" in *"?"*) SEP="&" ;; esac
+            curl --fail-with-body -sS -X POST "${SYNC_URL}${SEP}channel=test" \
               -H "X-Release-Secret: $SECRET" \
               -H "Content-Type: application/json"
           fi

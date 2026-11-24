@@ -6,10 +6,10 @@ from .service import clear_cache
 
 @admin.register(AppRelease)
 class AppReleaseAdmin(admin.ModelAdmin):
-    list_display = ("build", "version_name", "platform", "is_required", "is_published", "created_at")
-    list_filter = ("platform", "is_required", "is_published")
+    list_display = ("build", "channel", "version_name", "platform", "is_required", "is_published", "created_at")
+    list_filter = ("channel", "platform", "is_required", "is_published")
     fieldsets = (
-        (None, {"fields": ("platform", "build", "version_name", "notes")}),
+        (None, {"fields": ("platform", "channel", "build", "version_name", "notes")}),
         ("فایل همه‌کاره (لازم)", {"fields": ("apk", "download_url"),
                                    "description": "روی همه‌ی گوشی‌ها نصب می‌شود. دکمه‌ی اصلی دانلود سایت همین است."}),
         ("دو فایل سبک‌تر (اختیاری)", {"fields": ("apk_arm64", "url_arm64", "apk_32", "url_32"),

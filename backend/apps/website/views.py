@@ -215,7 +215,7 @@ def _base(request, **extra) -> dict:
 def _apk(s: SiteSettings) -> dict | None:
     from apps.releases.models import AppRelease
 
-    r = AppRelease.objects.filter(is_published=True).order_by("-build").first()
+    r = AppRelease.objects.filter(channel=AppRelease.CHANNEL_OFFICIAL, is_published=True).order_by("-build").first()
     if not r:
         if s.apk_url:
             return {"url": s.apk_url, "version": "", "date": None, "date_fa": "", "notes": []}

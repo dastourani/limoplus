@@ -5,25 +5,26 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from .service import abis_of, describe, latest, min_build
+from .service import abis_of, describe, latest, min_build, normalize_channel
 
 
 @api_view(["GET"])
 @authentication_classes([])
 @permission_classes([AllowAny])
 def app_version(request):
-    """What the app at ?platform=android&build=N should do: ok, optional (newer build) or required."""
+    """What the app at ?platform=android&build=N&channel=... should do: ok, optional (newer build) or required."""
     platform = request.query_params.get("platform", "android")
     build = request.query_params.get("build", "")
-    newest = latest(platform)
-    floor = min_build(platform)
+    channel = normalize_channel(request.query_params.get("channel") or request.headers.get("X-App-Channel"))
+    newest = latest(platform, channel)
+    floor = min_build(platform, channel)
     status = "ok"
     if build.isdigit():
         if int(build) < floor:
             status = "required"
         elif newest and int(build) < newest.build:
             status = "optional"
-    return Response({"status": status, "min_build": floor, "latest": describe(newest, abis_of(request))})
+    return Response({"status": status, "channel": channel, "min_build": floor, "latest": describe(newest, abis_of(request))})
 
 
 @transaction.non_atomic_requests
@@ -44,13 +45,15 @@ def sync_github_webhook(request):
         return Response({"error": "unauthorized"}, status=403)
 
     download_files = request.query_params.get("download") in ("1", "true", "True")
-    rel, msg = sync_release_from_github(download_files=download_files)
+    channel = normalize_channel(request.query_params.get("channel"))
+    rel, msg = sync_release_from_github(download_files=download_files, channel=channel)
     if not rel:
         return Response({"ok": False, "message": msg}, status=400)
 
     return Response({
         "ok": True,
         "message": msg,
+        "channel": rel.channel,
         "build": rel.build,
         "version_name": rel.version_name,
         "download_url": rel.download_url,
