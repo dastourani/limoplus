@@ -112,9 +112,12 @@ jobs:
 
       - name: Build the web version
         working-directory: app
+        env:
+          EXPO_PUBLIC_APP_CHANNEL: official
         run: |
           npm ci
           echo "EXPO_PUBLIC_API_URL=" > .env
+          echo "EXPO_PUBLIC_APP_CHANNEL=official" >> .env
           npx expo export -p web --output-dir dist
 
       - name: Put main + the web build on «deploy» (one commit, replaced each time)

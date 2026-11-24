@@ -5,7 +5,16 @@
  * - `EXPO_PUBLIC_APP_CHANNEL=test` (or unset): «لیموخوان آزمایشی», package `ir.limookhan.app.test`, scheme `limookhan-test://`, `usesCleartextTraffic: true`.
  */
 module.exports = ({ config }) => {
-  const channel = process.env.EXPO_PUBLIC_APP_CHANNEL === 'official' ? 'official' : 'test';
+  const explicit = process.env.EXPO_PUBLIC_APP_CHANNEL;
+  const isWebExport = process.argv.includes('web');
+  const channel =
+    explicit === 'official'
+      ? 'official'
+      : explicit === 'test'
+        ? 'test'
+        : isWebExport
+          ? 'official'
+          : 'test';
   const isOfficial = channel === 'official';
 
   const plugins = (config.plugins || []).map((entry) => {

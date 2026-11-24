@@ -83,4 +83,11 @@ describe('dual Android channel config & HTTPS enforcement', () => {
     await cfg.setApiUrlOverride('192.168.1.200:8000');
     await expect(cfg.getApiUrl()).resolves.toBe('http://192.168.1.200:8000');
   });
+
+  it('defaults web builds to the official channel when EXPO_PUBLIC_APP_CHANNEL is unset', async () => {
+    vi.doMock('react-native', () => ({ Platform: { OS: 'web' } }));
+    const cfg = await import('../../config');
+    expect(cfg.APP_CHANNEL).toBe('official');
+    expect(cfg.APP_SCHEME).toBe('limookhan');
+  });
 });
