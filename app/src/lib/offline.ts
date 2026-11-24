@@ -37,6 +37,10 @@ function tempFileFor(slug: string) {
   return new File(dir(), `${slug.replace(/[^\w-]/g, '_')}.bin.tmp`);
 }
 
+function backupFileFor(slug: string) {
+  return new File(dir(), `${slug.replace(/[^\w-]/g, '_')}.bin.bak`);
+}
+
 function toHex(bytes: Uint8Array) {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -54,51 +58,85 @@ async function key(create: boolean): Promise<Uint8Array | null> {
   return fresh;
 }
 
+async function readIndex(): Promise<OfflineBook[]> {
+  const raw = await AsyncStorage.getItem(INDEX_KEY);
+  const all = raw ? (JSON.parse(raw) as OfflineBook[]) : [];
+  return all.filter((b) => new Date(b.validUntil).getTime() > Date.now());
+}
+
 export async function offlineBooks(): Promise<OfflineBook[]> {
   try {
-    const raw = await AsyncStorage.getItem(INDEX_KEY);
-    const all = raw ? (JSON.parse(raw) as OfflineBook[]) : [];
-    return all.filter((b) => new Date(b.validUntil).getTime() > Date.now());
+    const valid = await readIndex();
+    return valid.filter((b) => fileFor(b.slug).exists);
   } catch {
     return [];
   }
 }
 
 async function saveIndex(books: OfflineBook[]) {
-  await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(books)).catch(() => undefined);
+  await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(books));
 }
 
 export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBook> {
   if (await Device.isRootedExperimentalAsync().catch(() => false)) {
     throw new ApiError(403, 'rooted', 'دانلود آفلاین روی دستگاه‌های روت‌شده برای حفاظت از محتوا غیرفعال است.');
   }
+  const existing = await readIndex();
   const k = (await key(true))!;
   const nonce = getRandomBytes(12);
   const sealed = gcm(k, nonce).encrypt(utf8Encode(JSON.stringify(bundle)));
   const out = new Uint8Array(nonce.length + sealed.length);
   out.set(nonce);
   out.set(sealed, nonce.length);
+  const slug = bundle.book.slug;
   const d = dir();
   if (!d.exists) d.create({ intermediates: true });
-  const f = fileFor(bundle.book.slug);
-  const tmp = tempFileFor(bundle.book.slug);
+  const tmp = tempFileFor(slug);
+  const hadExisting = fileFor(slug).exists;
   try {
     tmp.create({ intermediates: true, overwrite: true });
     await tmp.write(out);
-    await tmp.move(f, { overwrite: true });
+    if (hadExisting) {
+      await fileFor(slug).move(backupFileFor(slug), { overwrite: true });
+    }
+    await tempFileFor(slug).move(fileFor(slug), { overwrite: true });
   } catch (e) {
-    if (tmp.exists) tmp.delete();
+    const leftoverTmp = tempFileFor(slug);
+    if (leftoverTmp.exists) leftoverTmp.delete();
+    const bak = backupFileFor(slug);
+    if (bak.exists && !fileFor(slug).exists) {
+      await bak.move(fileFor(slug), { overwrite: true }).catch(() => undefined);
+    }
     throw e;
   }
+
   const entry: OfflineBook = {
-    slug: bundle.book.slug,
+    slug,
     title: bundle.book.title,
     sectionIds: bundle.sections.map((s) => s.id),
     downloadedAt: bundle.downloaded_at,
     validUntil: bundle.valid_until,
   };
-  const books = (await offlineBooks()).filter((b) => b.slug !== entry.slug);
-  await saveIndex([...books, entry]);
+  const books = existing.filter((b) => b.slug !== entry.slug);
+  try {
+    await saveIndex([...books, entry]);
+  } catch (e) {
+    const written = fileFor(slug);
+    if (written.exists) written.delete();
+    const bak = backupFileFor(slug);
+    if (bak.exists) {
+      await bak.move(fileFor(slug), { overwrite: true }).catch(() => undefined);
+    }
+    throw e;
+  }
+  const bak = backupFileFor(slug);
+  if (bak.exists) {
+    try {
+      bak.delete();
+    } catch {
+      // backup cleanup is best-effort after durable index commit
+    }
+  }
   return entry;
 }
 
@@ -126,9 +164,12 @@ export async function offlineSection(id: number): Promise<OfflineSection | null>
 }
 
 export async function removeOfflineBook(slug: string) {
+  const existing = await readIndex();
+  await saveIndex(existing.filter((b) => b.slug !== slug));
   const f = fileFor(slug);
   if (f.exists) f.delete();
-  await saveIndex((await offlineBooks()).filter((b) => b.slug !== slug));
+  const bak = backupFileFor(slug);
+  if (bak.exists) bak.delete();
 }
 
 /** Remove downloaded offline books that an admin explicitly wiped on revocation. */

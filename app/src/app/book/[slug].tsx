@@ -599,10 +599,12 @@ export default function Book() {
           )}
           {!!offline && offlineSupported && (
             <Pressable
-              onPress={async () =>
-                (await confirm({ title: 'نسخه‌ی آفلاین حذف شود؟', message: 'بعداً می‌توانید دوباره دانلودش کنید.', confirmLabel: 'حذف', destructive: true, icon: 'trash' })) &&
-                removeOfflineBook(book.slug).then(() => setOffline(null))
-              }
+              onPress={async () => {
+                if (!(await confirm({ title: 'نسخه‌ی آفلاین حذف شود؟', message: 'بعداً می‌توانید دوباره دانلودش کنید.', confirmLabel: 'حذف', destructive: true, icon: 'trash' }))) return;
+                removeOfflineBook(book.slug)
+                  .then(() => setOffline(null))
+                  .catch(() => toast('حذف نسخه‌ی آفلاین ممکن نشد.'));
+              }}
               accessibilityRole="button"
             >
               <Text style={[styles.smallLink, rtl]}>حذف نسخه‌ی آفلاین</Text>
