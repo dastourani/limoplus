@@ -116,8 +116,6 @@ class LimoAdminSite(AdminSite):
         _AI_KEYS = [
             ("catalog", "AIProvider"),
             ("catalog", "BookAssistantAuditLog"),
-    ("catalog", "TeacherProfile"),
-    ("catalog", "BookOpinion"),
         ]
         for key in _AI_KEYS:
             if key in all_models:

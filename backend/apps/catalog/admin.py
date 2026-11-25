@@ -3,10 +3,12 @@ import os
 from django import forms
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, Q
 from django.shortcuts import redirect
 from django.urls import path, reverse
+from django.utils import timezone
 from django.utils.html import format_html
 
 from . import access, bookpanel, panel
@@ -14,6 +16,7 @@ from .drawing import DrawingError, clean_svg
 from .drawing import dumps as dumps_drawing
 from .drawing import loads as loads_drawing
 from .filters import BookFilter, BookFKFilter, ChapterFilter, YesNoFilter
+from .jalali import fa_digits
 from .panel_display import badges
 from .models import (
     TeacherProfile,
@@ -1628,16 +1631,68 @@ def _admin_kpis_payload():
     rev_month = paid.filter(paid_at__date__gte=month_start).aggregate(s=Sum("amount"))["s"] or 0
     rev_total = paid.aggregate(s=Sum("amount"))["s"] or 0
 
-    from apps.catalog.models import ContentNode, BookEditor
+    from django.contrib.admin.models import LogEntry
+    from apps.catalog.access import BOOK_EDITOR_GROUP
+    from apps.catalog.models import (
+        BookBoxMapping,
+        BookEditor,
+        BookOpinion,
+        BookTeamTask,
+        ChapterRevision,
+        ContentNode,
+    )
     from apps.website.models import Classroom, PublicationRequest, TeacherApplication
 
-    # آمار جامعه اساتید و تألیف
-    all_teachers_count = User.objects.filter(groups__name="استاد کتاب").count()
-    active_teachers_recent = ContentNode.objects.filter(
-        kind=ContentNode.Kind.BOOK,
-        updated_at__gte=now - timedelta(days=30),
-    ).values_list("editors__user_id", flat=True).distinct().count()
-    inactive_teachers_count = max(0, all_teachers_count - active_teachers_recent)
+    since_30d = now - timedelta(days=30)
+
+    # آمار جامعه اساتید و تألیف: فقط فعالیت‌های دارای هویت ثبت‌شده برای همان استاد محاسبه می‌شود
+    teacher_ids = set(
+        User.objects.filter(groups__name=BOOK_EDITOR_GROUP, is_active=True, is_superuser=False)
+        .values_list("id", flat=True)
+        .distinct()
+    )
+    active_teacher_ids = set()
+    if teacher_ids:
+        active_teacher_ids.update(
+            ChapterRevision.objects.filter(updated_at__gte=since_30d, user_id__in=teacher_ids)
+            .values_list("user_id", flat=True)
+        )
+        active_teacher_ids.update(
+            LogEntry.objects.filter(
+                action_time__gte=since_30d,
+                user_id__in=teacher_ids,
+                content_type__model__in=(
+                    "contentnode",
+                    "question",
+                    "flashcard",
+                    "label",
+                    "examsource",
+                    "teacherprofile",
+                    "bookopinion",
+                ),
+            ).values_list("user_id", flat=True)
+        )
+        active_teacher_ids.update(
+            BookTeamTask.objects.filter(created_at__gte=since_30d, author_id__in=teacher_ids)
+            .values_list("author_id", flat=True)
+        )
+        active_teacher_ids.update(
+            BookOpinion.objects.filter(teacher_replied_at__gte=since_30d, teacher_replied_by_id__in=teacher_ids)
+            .values_list("teacher_replied_by_id", flat=True)
+        )
+        active_teacher_ids.update(
+            BookBoxMapping.objects.filter(updated_at__gte=since_30d, created_by_id__in=teacher_ids)
+            .values_list("created_by_id", flat=True)
+        )
+        active_teacher_ids &= teacher_ids
+
+    all_teachers_count = len(teacher_ids)
+    inactive_teachers_count = len(teacher_ids - active_teacher_ids)
+    unattributed_edits_count = (
+        ChapterRevision.objects.filter(updated_at__gte=since_30d, user__isnull=True)
+        .exclude(note="نسخه‌ی پیش از اولین ویرایش در پنل")
+        .count()
+    )
 
     # وضعیت کتب تألیفی
     draft_books_count = ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, is_published=False, is_inbox=False, is_archived=False).count()
@@ -1663,6 +1718,8 @@ def _admin_kpis_payload():
         # شاخص‌های اساتید و خط تولید محتوا
         "kpi_teachers_total": fa_number(all_teachers_count),
         "kpi_teachers_inactive": fa_number(inactive_teachers_count),
+        "kpi_unattributed_edits": fa_number(unattributed_edits_count),
+        "kpi_unattributed_edits_count": unattributed_edits_count,
         "kpi_draft_books": fa_number(draft_books_count),
         "kpi_published_books": fa_number(published_books_count),
         "kpi_active_classes": fa_number(active_classrooms_count),
@@ -2125,10 +2182,57 @@ class TeacherProfileAdmin(admin.ModelAdmin):
             return qs
         return qs.filter(user=request.user)
 
+    def get_fields(self, request, obj=None):
+        fields = ["user", "academic_title", "avatar", "bio", "contact_email", "social_links", "created_at", "updated_at"]
+        if not request.user.is_superuser and obj is None:
+            fields.remove("user")
+        return fields
+
+    def get_readonly_fields(self, request, obj=None):
+        ro = ["created_at", "updated_at"]
+        if obj is not None:
+            ro.append("user")
+        return tuple(ro)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "user":
+            from django.db.models import Q
+            UserModel = get_user_model()
+            kwargs["queryset"] = (
+                UserModel.objects.filter(teacher_profile__isnull=True)
+                .filter(Q(edited_books__isnull=False) | Q(groups__name=access.BOOK_EDITOR_GROUP) | Q(is_staff=True))
+                .distinct()
+                .order_by("phone")
+            )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if not request.user.is_superuser:
+            if not access.is_book_teacher(request.user):
+                raise PermissionDenied
+            if change:
+                orig = TeacherProfile.objects.get(pk=obj.pk)
+                if orig.user_id != request.user.id:
+                    raise PermissionDenied
+                obj.user_id = orig.user_id
+            else:
+                if TeacherProfile.objects.filter(user=request.user).exists():
+                    raise PermissionDenied
+                obj.user = request.user
+        super().save_model(request, obj, form, change)
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and (request.user.is_superuser or access.is_book_teacher(request.user)))
+
+    def has_add_permission(self, request):
+        if request.user.is_superuser:
+            return True
+        return access.is_book_teacher(request.user) and not TeacherProfile.objects.filter(user=request.user).exists()
+
     def has_change_permission(self, request, obj=None):
         if request.user.is_superuser:
             return True
-        if obj is not None and obj.user != request.user:
+        if obj is not None and obj.user_id != request.user.id:
             return False
         return access.is_book_teacher(request.user)
 
@@ -2144,7 +2248,25 @@ class BookOpinionAdmin(admin.ModelAdmin):
     list_display = ("book", "display_user", "rating_badge", "satisfaction_display", "study_percent_display", "status", "has_reply", "is_pinned", "created_at")
     list_filter = ("status", "rating", "is_pinned", "created_at")
     search_fields = ("book__title", "user__phone", "user__first_name", "user__last_name", "body", "teacher_reply")
-    readonly_fields = ("created_at", "updated_at", "study_percent", "test_percent", "reported_by", "reported_at", "teacher_replied_at", "teacher_replied_by")
+    _ADMIN_READONLY = ("created_at", "updated_at", "study_percent", "test_percent", "reported_by", "reported_at", "teacher_replied_at", "teacher_replied_by")
+    _TEACHER_PROTECTED = (
+        "book",
+        "user",
+        "display_user",
+        "rating",
+        "satisfaction_percent",
+        "body",
+        "study_percent",
+        "test_percent",
+        "status",
+        "is_pinned",
+        "reported_by",
+        "reported_at",
+        "teacher_replied_at",
+        "teacher_replied_by",
+        "created_at",
+        "updated_at",
+    )
 
     def get_queryset(self, request):
         qs = super().get_queryset(request).select_related("book", "user", "teacher_replied_by")
@@ -2152,6 +2274,32 @@ class BookOpinionAdmin(admin.ModelAdmin):
             return qs
         my_book_ids = access.book_editor_ids(request.user).values_list("book_id", flat=True)
         return qs.filter(book_id__in=my_book_ids)
+
+    def get_fields(self, request, obj=None):
+        if request.user.is_superuser:
+            return super().get_fields(request, obj)
+        return (
+            "book",
+            "display_user",
+            "rating",
+            "satisfaction_percent",
+            "body",
+            "study_percent",
+            "test_percent",
+            "status",
+            "is_pinned",
+            "teacher_reply",
+            "teacher_replied_at",
+            "report_reason",
+            "reported_at",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_readonly_fields(self, request, obj=None):
+        if request.user.is_superuser:
+            return self._ADMIN_READONLY
+        return self._TEACHER_PROTECTED
 
     def display_user(self, obj):
         name = f"{obj.user.first_name} {obj.user.last_name}".strip()
@@ -2179,6 +2327,19 @@ class BookOpinionAdmin(admin.ModelAdmin):
     has_reply.boolean = True
     has_reply.short_description = "پاسخ استاد"
 
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and (request.user.is_superuser or access.is_book_teacher(request.user)))
+
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+        if obj is not None:
+            return access.can_edit_book(request.user, obj.book)
+        return access.is_book_teacher(request.user)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_superuser)
+
     def has_change_permission(self, request, obj=None):
         if request.user.is_superuser:
             return True
@@ -2187,13 +2348,48 @@ class BookOpinionAdmin(admin.ModelAdmin):
         return access.is_book_teacher(request.user)
 
     def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser
+        return bool(request.user.is_superuser)
 
     def save_model(self, request, obj, form, change):
-        if not request.user.is_superuser and not access.is_book_teacher(request.user):
-            raise PermissionDenied
-        # اگر استاد پاسخ داد، اطلاعات پاسخ‌دهنده را ثبت کن
-        if "teacher_reply" in form.changed_data and obj.teacher_reply:
+        if not request.user.is_superuser:
+            if not access.is_book_teacher(request.user) or not change or not obj.pk:
+                raise PermissionDenied
+            orig = BookOpinion.objects.select_related("book").get(pk=obj.pk)
+            if not access.can_edit_book(request.user, orig.book):
+                raise PermissionDenied
+            # Server-side lock: teachers may only reply or report abuse; student rating/text/moderation stay immutable.
+            obj.book_id = orig.book_id
+            obj.user_id = orig.user_id
+            obj.rating = orig.rating
+            obj.satisfaction_percent = orig.satisfaction_percent
+            obj.body = orig.body
+            obj.status = orig.status
+            obj.is_pinned = orig.is_pinned
+            obj.study_percent = orig.study_percent
+            obj.test_percent = orig.test_percent
+
+            if (obj.teacher_reply or "") != (orig.teacher_reply or ""):
+                if (obj.teacher_reply or "").strip():
+                    obj.teacher_replied_at = timezone.now()
+                    obj.teacher_replied_by = request.user
+                else:
+                    obj.teacher_replied_at = None
+                    obj.teacher_replied_by = None
+            else:
+                obj.teacher_replied_at = orig.teacher_replied_at
+                obj.teacher_replied_by_id = orig.teacher_replied_by_id
+
+            if (obj.report_reason or "") != (orig.report_reason or ""):
+                if (obj.report_reason or "").strip():
+                    obj.reported_at = timezone.now()
+                    obj.reported_by = request.user
+                else:
+                    obj.reported_at = None
+                    obj.reported_by = None
+            else:
+                obj.reported_at = orig.reported_at
+                obj.reported_by_id = orig.reported_by_id
+        elif "teacher_reply" in form.changed_data and obj.teacher_reply:
             obj.teacher_replied_at = timezone.now()
             obj.teacher_replied_by = request.user
         super().save_model(request, obj, form, change)
