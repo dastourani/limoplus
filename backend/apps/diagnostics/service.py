@@ -15,6 +15,7 @@ from .models import ErrorAffectedActor, ErrorEvent, ErrorEventReceipt, ErrorGrou
 from .sanitize import (
     format_build_label,
     make_fingerprint,
+    normalize_operation,
     normalize_route,
     sanitize_breadcrumbs,
     sanitize_context,
@@ -123,7 +124,7 @@ def record_event(
         clean_title = scrub_text(title or clean_code, 240) or clean_code
         clean_observed = scrub_text(observed, 1500)
     clean_route = normalize_route(route)
-    clean_operation = scrub_text(operation, 80)
+    clean_operation = normalize_operation(operation)
     clean_expected = scrub_text(expected, 1500)
     clean_platform = scrub_text(platform, 20).lower()
     clean_channel = scrub_text(channel, 20).lower()

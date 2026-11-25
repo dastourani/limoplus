@@ -12,13 +12,15 @@ interface HarnessOptions {
   platform?: string;
   channel?: string;
   build?: string;
+  sessionTag?: string;
   pathname?: string;
   onLine?: boolean;
+  initialStorage?: Map<string, string>;
   fetchImpl?: (input: unknown, init?: RequestInit) => Promise<unknown>;
 }
 
 function loadBrowserDiag(opts: HarnessOptions = {}) {
-  const storage = new Map<string, string>();
+  const storage = opts.initialStorage ?? new Map<string, string>();
   const listeners = new Map<string, Array<(ev: unknown) => void>>();
   const fetchCalls: Array<{ input: unknown; init?: RequestInit }> = [];
 
@@ -38,6 +40,7 @@ function loadBrowserDiag(opts: HarnessOptions = {}) {
     'data-platform': opts.platform ?? 'panel',
     'data-channel': opts.channel ?? 'teacher',
     'data-build': opts.build ?? '1732500',
+    'data-session-tag': opts.sessionTag ?? '',
   };
 
   const navigatorObj = { onLine: opts.onLine ?? true };
@@ -252,5 +255,139 @@ describe('browser-diag.js', () => {
     await flushAsync();
     expect(h.fetchCalls).toHaveLength(2);
     expect(h.win.__limoBrowserDiag.pendingCount()).toBe(0);
+  });
+
+  it('scrubs invite and verify-email path tokens before writing route, operation, and breadcrumbs to localStorage', async () => {
+    const h = loadBrowserDiag({
+      platform: 'website',
+      channel: 'public',
+      pathname: '/join/SECRET_JOIN_TOKEN_99/',
+      onLine: false,
+      fetchImpl: async () => ({ ok: false, status: 500, headers: new Headers() }),
+    });
+
+    h.emit('error', { error: new TypeError('join page err') });
+    await h.win.fetch('/site/verify-email/SECRET_EMAIL_TOKEN_42/?token=extra', { method: 'POST' });
+
+    const rawOutbox = h.storage.get('limo.browserDiagOutbox') || '';
+    expect(rawOutbox).not.toContain('SECRET_JOIN_TOKEN_99');
+    expect(rawOutbox).not.toContain('SECRET_EMAIL_TOKEN_42');
+    expect(rawOutbox).not.toContain('extra');
+
+    const queued = JSON.parse(rawOutbox);
+    expect(queued).toHaveLength(2);
+    expect(queued[0].route).toBe('/join/<token>/');
+    expect(queued[0].breadcrumbs[0].name).toBe('/join/<token>/');
+    expect(queued[1].route).toBe('/site/verify-email/<token>/');
+    expect(queued[1].operation).toBe('POST /site/verify-email/<token>/');
+    expect(queued[1].breadcrumbs.some((b: { name: string }) => b.name === 'POST /site/verify-email/<token>/')).toBe(true);
+  });
+
+  it('uses credentials=omit when flushing queued events from a guest or different session', async () => {
+    const sharedStorage = new Map<string, string>();
+    // 1. Guest queues an event while offline.
+    const guest = loadBrowserDiag({
+      platform: 'website',
+      channel: 'public',
+      sessionTag: '',
+      pathname: '/site/',
+      onLine: false,
+      initialStorage: sharedStorage,
+    });
+    guest.emit('error', { error: new TypeError('guest err') });
+    expect(guest.win.__limoBrowserDiag.pendingCount()).toBe(1);
+
+    // 2. Teacher A logs in -> guest event must flush with credentials='omit' so cookies are never sent.
+    const teacherA = loadBrowserDiag({
+      platform: 'panel',
+      channel: 'teacher',
+      sessionTag: 's-teacherA',
+      pathname: '/admin/',
+      onLine: true,
+      initialStorage: sharedStorage,
+    });
+    await flushAsync();
+    const guestFlush = teacherA.fetchCalls.find((c) => c.input === '/api/v1/diagnostics/events/');
+    expect(guestFlush?.init?.credentials).toBe('omit');
+    expect(JSON.parse(String(guestFlush?.init?.body)).events[0].session_tag).toBe('');
+
+    // 3. Teacher A queues an offline event, then Teacher B opens the panel -> must flush with credentials='omit'.
+    teacherA.navigatorObj.onLine = false;
+    teacherA.emit('error', { error: new ReferenceError('teacherA offline err') });
+    expect(teacherA.win.__limoBrowserDiag.pendingCount()).toBe(1);
+
+    const teacherB = loadBrowserDiag({
+      platform: 'panel',
+      channel: 'teacher',
+      sessionTag: 's-teacherB',
+      pathname: '/admin/',
+      onLine: true,
+      initialStorage: sharedStorage,
+    });
+    await flushAsync();
+    const crossFlush = teacherB.fetchCalls.find((c) => c.input === '/api/v1/diagnostics/events/');
+    expect(crossFlush?.init?.credentials).toBe('omit');
+    expect(JSON.parse(String(crossFlush?.init?.body)).events[0].session_tag).toBe('s-teacherA');
+
+    // 4. Same-session event flushes with credentials='same-origin'.
+    teacherB.emit('error', { error: new RangeError('teacherB online err') });
+    await flushAsync();
+    const sameFlush = teacherB.fetchCalls.filter((c) => c.input === '/api/v1/diagnostics/events/').pop();
+    expect(sameFlush?.init?.credentials).toBe('same-origin');
+    expect(JSON.parse(String(sameFlush?.init?.body)).events[0].session_tag).toBe('s-teacherB');
+  });
+
+  it('handles string, URL, and Request inputs with init.headers without stripping form headers or leaking to external URLs', async () => {
+    const h = loadBrowserDiag({ platform: 'panel', channel: 'teacher' });
+
+    // 1. string + init.headers
+    await h.win.fetch('/admin/catalog/save/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': 'csrf_str', 'Content-Type': 'application/json' },
+    });
+    const strCall = h.fetchCalls.find((c) => c.input === '/admin/catalog/save/');
+    const strHeaders = new Headers(strCall!.init?.headers);
+    expect(strHeaders.get('X-CSRFToken')).toBe('csrf_str');
+    expect(strHeaders.get('Content-Type')).toBe('application/json');
+    expect(strHeaders.get('X-Request-Id')).toMatch(/^req_/);
+    expect(strHeaders.get('X-App-Platform')).toBe('panel');
+
+    // 2. URL same-origin + URL external
+    await h.win.fetch(new URL('https://panel.example.com/admin/catalog/url-save/'), {
+      method: 'POST',
+      headers: { 'X-CSRFToken': 'csrf_url' },
+    });
+    const urlCall = h.fetchCalls.find((c) => c.input instanceof URL && c.input.pathname === '/admin/catalog/url-save/');
+    expect(urlCall).toBeDefined();
+    const urlHeaders = new Headers(urlCall!.init?.headers);
+    expect(urlHeaders.get('X-CSRFToken')).toBe('csrf_url');
+    expect(urlHeaders.get('X-Request-Id')).toMatch(/^req_/);
+    expect(urlHeaders.get('X-App-Platform')).toBe('panel');
+
+    await h.win.fetch(new URL('https://external.example.com/webhook'), {
+      method: 'POST',
+      headers: { 'X-External-Only': 'keep' },
+    });
+    const extUrlCall = h.fetchCalls.find((c) => c.input instanceof URL && c.input.origin === 'https://external.example.com');
+    expect(extUrlCall).toBeDefined();
+    const extUrlHeaders = new Headers(extUrlCall!.init?.headers);
+    expect(extUrlHeaders.get('X-External-Only')).toBe('keep');
+    expect(extUrlHeaders.get('X-App-Platform')).toBeNull();
+    expect(extUrlHeaders.get('X-Request-Id')).toBeNull();
+
+    // 3. Request + init.headers (both Request headers and init.headers must survive alongside diagnostic headers)
+    const req = new Request('https://panel.example.com/admin/catalog/req-save/', {
+      method: 'POST',
+      headers: { 'X-From-Request': 'req_val' },
+    });
+    await h.win.fetch(req, { headers: { 'X-CSRFToken': 'csrf_req' } });
+    const reqCall = h.fetchCalls.find((c) => c.input instanceof Request && c.input.url.endsWith('/admin/catalog/req-save/'));
+    expect(reqCall).toBeDefined();
+    const sentReq = reqCall!.input as Request;
+    expect(sentReq.headers.get('X-From-Request')).toBe('req_val');
+    expect(sentReq.headers.get('X-CSRFToken')).toBe('csrf_req');
+    expect(sentReq.headers.get('X-Request-Id')).toMatch(/^req_/);
+    expect(sentReq.headers.get('X-App-Platform')).toBe('panel');
+    expect(reqCall!.init?.headers).toBeUndefined();
   });
 });

@@ -14,6 +14,7 @@
   var PLATFORM = (scriptEl && scriptEl.getAttribute('data-platform')) || 'website';
   var CHANNEL = (scriptEl && scriptEl.getAttribute('data-channel')) || 'public';
   var APP_BUILD = (scriptEl && scriptEl.getAttribute('data-build')) || '';
+  var SESSION_TAG = (scriptEl && scriptEl.getAttribute('data-session-tag')) || '';
 
   var ENDPOINT = '/api/v1/diagnostics/events/';
   var INSTALL_KEY = 'limo.browserInstallId';
@@ -103,6 +104,27 @@
       .slice(0, maxLen || 300);
   }
 
+  function normalizeRoute(raw) {
+    if (!raw) return '';
+    var path = String(raw).split('?')[0].split('#')[0].trim();
+    path = path.replace(/\/[0-9a-f]{16,}(?=\/|$)/gi, '/<hex>');
+    path = path.replace(/\/\d+(?=\/|$)/g, '/<id>');
+    path = path.replace(/^((?:\/site)?(?:\/api\/v1\/books\/|\/books\/|\/book\/))([^/]+)/, '$1<slug>');
+    path = path.replace(/^((?:\/site)?(?:\/join\/|\/verify-email\/|\/invite\/))([^/]+)/, '$1<token>');
+    return cleanString(path, 200);
+  }
+
+  function normalizeOperation(raw) {
+    var s = cleanString(raw, 120);
+    if (!s) return '';
+    var spaceIdx = s.indexOf(' ');
+    if (spaceIdx > 0 && s.charAt(spaceIdx + 1) === '/') {
+      return (s.slice(0, spaceIdx) + ' ' + normalizeRoute(s.slice(spaceIdx + 1))).slice(0, 80);
+    }
+    if (s.charAt(0) === '/') return normalizeRoute(s).slice(0, 80);
+    return s.slice(0, 80);
+  }
+
   function sanitizeErrorName(value) {
     var s = String(value == null ? '' : value).trim();
     return /^[A-Za-z_][A-Za-z0-9_.]{0,60}$/.test(s) ? s : 'Error';
@@ -176,7 +198,9 @@
             ? sanitizeStack(v)
             : k === 'error_name'
               ? sanitizeErrorName(v)
-              : cleanString(v, 300);
+              : k === 'location'
+                ? normalizeRoute(v)
+                : cleanString(v, 300);
         if (cleaned) {
           out[k] = cleaned;
           hasKeys = true;
@@ -187,6 +211,8 @@
   }
 
   function addBreadcrumb(type, name, detail) {
+    var normType = cleanString(type, 30);
+    var normName = normType === 'route' || normType === 'api' ? normalizeOperation(name) : cleanString(name, 80);
     var cleanedDetail = detail ? cleanString(detail, 120) : '';
     var safeDetail = '';
     if (cleanedDetail) {
@@ -196,8 +222,8 @@
     }
     var item = {
       at: new Date().toISOString(),
-      type: cleanString(type, 30),
-      name: cleanString(name, 80),
+      type: normType,
+      name: normName,
     };
     if (safeDetail) item.detail = safeDetail;
     breadcrumbs.push(item);
@@ -294,8 +320,8 @@
         severity: input.severity || 'error',
         code: code,
         title: copy.title,
-        route: cleanString(input.route || (window.location && window.location.pathname) || '/', 200),
-        operation: cleanString(input.operation || '', 80),
+        route: normalizeRoute(input.route || (window.location && window.location.pathname) || '/'),
+        operation: normalizeOperation(input.operation || ''),
         expected: copy.expected,
         observed: copy.observed,
         request_id: cleanString(input.request_id || '', 64),
@@ -303,6 +329,7 @@
         platform: PLATFORM,
         channel: CHANNEL,
         app_build: APP_BUILD || undefined,
+        session_tag: SESSION_TAG,
         is_offline: typeof navigator !== 'undefined' && navigator.onLine === false,
         breadcrumbs: breadcrumbs.length ? breadcrumbs.slice() : undefined,
         context: ctx,
@@ -320,6 +347,10 @@
     }
   }
 
+  function isMatchingSessionEvent(ev) {
+    return Boolean(SESSION_TAG && ev && (ev.session_tag || '') === SESSION_TAG);
+  }
+
   function flush() {
     if (flushing || !origFetch) return;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
@@ -327,10 +358,17 @@
     if (!items.length) return;
 
     flushing = true;
-    var batch = items.slice(0, 20);
+    var batchMatchesSession = isMatchingSessionEvent(items[0]);
+    var batch = [];
     var sentIds = Object.create(null);
-    for (var i = 0; i < batch.length; i++) sentIds[batch[i].event_id] = true;
+    for (var i = 0; i < items.length && batch.length < 20; i++) {
+      if (isMatchingSessionEvent(items[i]) === batchMatchesSession) {
+        batch.push(items[i]);
+        sentIds[items[i].event_id] = true;
+      }
+    }
 
+    var shouldRetryRemaining = false;
     origFetch(ENDPOINT, {
       method: 'POST',
       headers: {
@@ -339,7 +377,8 @@
         'X-App-Channel': CHANNEL,
         'X-App-Install-Id': getInstallId(),
       },
-      credentials: 'same-origin',
+      // Never attach session cookies to queued events whose capture-time session does not match the current page.
+      credentials: batchMatchesSession ? 'same-origin' : 'omit',
       keepalive: true,
       body: JSON.stringify({ events: batch }),
     })
@@ -347,17 +386,19 @@
         if (resp.ok || (resp.status >= 400 && resp.status < 500 && resp.status !== 429 && resp.status !== 401 && resp.status !== 408)) {
           var remaining = readQueue().filter(function (x) { return !sentIds[x.event_id]; });
           writeQueue(remaining);
+          shouldRetryRemaining = remaining.length > 0;
         }
       })
       .catch(function () {
         /* keep queued with fixed event_id; never spawn secondary diagnostics */
       })
-      .finally(function () {
+      .then(function () {
         flushing = false;
+        if (shouldRetryRemaining) window.setTimeout(flush, 0);
       });
   }
 
-  // Initial route breadcrumb
+  // Initial normalized route breadcrumb
   try {
     addBreadcrumb('route', (window.location && window.location.pathname) || '/');
   } catch (e) { /* ignore */ }
@@ -375,7 +416,7 @@
             if (!assetUrl) return;
             var parsed = new URL(assetUrl, window.location.href);
             if (parsed.origin !== window.location.origin) return;
-            var loc = cleanString(parsed.pathname, 200);
+            var loc = normalizeRoute(parsed.pathname);
             if (shouldSkipDuplicate('asset:' + loc)) return;
             report({
               kind: 'client_error',
@@ -423,21 +464,29 @@
     } catch (e) { /* ignore */ }
   });
 
-  // Wrap same-origin fetch to attach correlation headers and capture 5xx / unexpected network drops.
+  // Wrap same-origin fetch (string, URL, or Request) to attach correlation headers and capture 5xx / network drops.
   if (origFetch) {
     window.fetch = function (input, init) {
       var parsed = null;
       var isSameOrigin = false;
       var isDiag = false;
+      var isRequest = typeof Request !== 'undefined' && input instanceof Request;
       var method = 'GET';
       var reqId = '';
 
       try {
-        var rawUrl = typeof input === 'string' ? input : input && input.url ? input.url : '';
+        var rawUrl =
+          typeof input === 'string'
+            ? input
+            : input && typeof input.url === 'string'
+              ? input.url
+              : input && typeof input.href === 'string'
+                ? input.href
+                : String(input || '');
         parsed = new URL(rawUrl, window.location.href);
         isSameOrigin = parsed.origin === window.location.origin;
         isDiag = parsed.pathname.indexOf('/api/v1/diagnostics/') === 0;
-        method = String((init && init.method) || (typeof input !== 'string' && input && input.method) || 'GET').toUpperCase();
+        method = String((init && init.method) || (isRequest && input.method) || 'GET').toUpperCase();
       } catch (e) {
         isSameOrigin = false;
       }
@@ -450,33 +499,42 @@
       var callInput = input;
       var callInit = init;
       try {
-        var hdrs = new Headers((init && init.headers) || (typeof input !== 'string' && input && input.headers) || undefined);
+        var hdrs = new Headers(isRequest ? input.headers : undefined);
+        if (init && init.headers) {
+          new Headers(init.headers).forEach(function (val, key) {
+            hdrs.set(key, val);
+          });
+        }
         if (hdrs.has('X-Request-Id')) reqId = hdrs.get('X-Request-Id') || reqId;
         else hdrs.set('X-Request-Id', reqId);
         if (!hdrs.has('X-App-Platform')) hdrs.set('X-App-Platform', PLATFORM);
         if (!hdrs.has('X-App-Channel')) hdrs.set('X-App-Channel', CHANNEL);
         if (!hdrs.has('X-App-Install-Id')) hdrs.set('X-App-Install-Id', getInstallId());
 
-        if (typeof Request !== 'undefined' && input instanceof Request) {
+        if (isRequest) {
           callInput = new Request(input, { headers: hdrs });
+          if (init) {
+            callInit = Object.assign({}, init);
+            delete callInit.headers;
+          }
         } else {
           callInit = Object.assign({}, init || {}, { headers: hdrs });
         }
       } catch (e) { /* fall back to original args */ }
 
-      var pathname = cleanString(parsed.pathname, 200);
+      var normPath = normalizeRoute(parsed.pathname);
       return origFetch(callInput, callInit).then(
         function (resp) {
-          addBreadcrumb('api', method + ' ' + pathname, String(resp.status));
+          addBreadcrumb('api', method + ' ' + normPath, String(resp.status));
           if (resp.status >= 500) {
             var srvReqId = (resp.headers && resp.headers.get('X-Request-Id')) || reqId;
-            if (!shouldSkipDuplicate('5xx:' + resp.status + ':' + pathname)) {
+            if (!shouldSkipDuplicate('5xx:' + resp.status + ':' + normPath)) {
               report({
                 kind: 'network',
                 severity: 'error',
                 code: 'api_5xx',
-                route: pathname,
-                operation: method + ' ' + pathname,
+                route: normPath,
+                operation: method + ' ' + normPath,
                 request_id: srvReqId,
                 context: { status_code: resp.status, method: method },
               });
@@ -485,16 +543,16 @@
           return resp;
         },
         function (err) {
-          addBreadcrumb('api', method + ' ' + pathname, 'network_error');
+          addBreadcrumb('api', method + ' ' + normPath, 'network_error');
           var errName = sanitizeErrorName(err && err.name);
           if (errName !== 'AbortError' && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
-            if (!shouldSkipDuplicate('net:' + method + ':' + pathname)) {
+            if (!shouldSkipDuplicate('net:' + method + ':' + normPath)) {
               report({
                 kind: 'network',
                 severity: 'warning',
                 code: 'fetch_network_error',
-                route: pathname,
-                operation: method + ' ' + pathname,
+                route: normPath,
+                operation: method + ' ' + normPath,
                 request_id: reqId,
                 context: { method: method, error_name: errName },
               });

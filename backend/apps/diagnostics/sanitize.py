@@ -64,7 +64,7 @@ _STACK_FRAME_LINE_RE = re.compile(r"^\s*(?:at\s+.+|File\s+\"[^\"]+\",\s+line\s+\
 _UUID_OR_HEX_RE = re.compile(r"/[0-9a-fA-F]{16,}(?=/|$)")
 _INT_SEGMENT_RE = re.compile(r"/\d+(?=/|$)")
 _BOOK_SLUG_SEGMENT_RE = re.compile(r"^((?:/site)?(?:/api/v1/books/|/books/|/book/))([^/]+)")
-_TOKEN_SEGMENT_RE = re.compile(r"^((?:/site)?(?:/join/|/verify-email/))([^/]+)")
+_TOKEN_SEGMENT_RE = re.compile(r"^((?:/site)?(?:/join/|/verify-email/|/invite/))([^/]+)")
 
 _WEB_COMMIT_CACHE: dict[str, str] = {}
 
@@ -96,6 +96,18 @@ def user_ref_for(user_id: int | None) -> str:
         hashlib.sha256,
     ).hexdigest()[:12]
     return f"u-{digest}"
+
+
+def diag_session_tag(user_id: int | None, session_key: str | None) -> str:
+    """Opaque session-bound HMAC proving capture-time and send-time share the same authenticated session."""
+    if not user_id or not session_key:
+        return ""
+    digest = hmac.new(
+        str(settings.HASH_KEY).encode("utf-8"),
+        f"diag-sess:{user_id}:{session_key}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:12]
+    return f"s-{digest}"
 
 
 def scrub_text(raw: object, max_len: int = 1000) -> str:
@@ -227,6 +239,18 @@ def normalize_route(raw: object) -> str:
     return scrub_text(path, 200)
 
 
+def normalize_operation(raw: object) -> str:
+    s = scrub_text(raw, 120)
+    if not s:
+        return ""
+    parts = s.split(" ", 1)
+    if len(parts) == 2 and parts[1].startswith("/"):
+        return f"{parts[0]} {normalize_route(parts[1])}"[:80]
+    if s.startswith("/"):
+        return normalize_route(s)[:80]
+    return s[:80]
+
+
 def sanitize_scalar(value: object, max_len: int = 500):
     if value is None or isinstance(value, (bool, int, float)):
         return value
@@ -272,6 +296,8 @@ def sanitize_breadcrumbs(raw: object) -> list[dict]:
                     )
                 else:
                     entry[key] = sanitize_scalar(item[key], max_len=160)
+        if entry.get("type") in ("route", "api") and isinstance(entry.get("name"), str):
+            entry["name"] = normalize_operation(entry["name"])
         if entry:
             out.append(entry)
     return out

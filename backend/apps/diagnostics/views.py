@@ -11,7 +11,7 @@ from apps.accounts import ratelimit
 from apps.accounts.views import _client_ip
 
 from .models import ErrorGroup
-from .sanitize import scrub_text
+from .sanitize import diag_session_tag, scrub_text
 from .service import record_event
 
 EVENTS_PER_IP_PER_HOUR = 90
@@ -56,14 +56,18 @@ def ingest_events(request):
     header_install = (request.headers.get("X-App-Install-Id") or "").strip()
     header_req_id = getattr(request, "diagnostics_request_id", "") or (request.headers.get("X-Request-Id") or "").strip()
 
-    user_id = None
+    bearer_user_id = None
+    session_user_id = None
+    expected_session_tag = ""
     if getattr(request, "user", None) and request.user.is_authenticated:
-        user_id = request.user.pk
+        # Per-request Bearer DeviceSession token (mobile / web app).
+        bearer_user_id = request.user.pk
     elif getattr(request, "_request", None) is not None and hasattr(request._request, "session"):
-        # Panel/website pages authenticate via Django session cookies, which DRF's DeviceSessionAuthentication clears on request.user.
+        # Panel/website pages authenticate via Django session cookies; verify capture-time == send-time session.
         django_user = get_user(request._request)
         if getattr(django_user, "is_authenticated", False):
-            user_id = django_user.pk
+            session_user_id = django_user.pk
+            expected_session_tag = diag_session_tag(session_user_id, request._request.session.session_key)
 
     accepted = 0
     duplicates = 0
@@ -92,6 +96,14 @@ def ingest_events(request):
         channel = scrub_text(item.get("channel") or header_channel, 20).lower()
         app_build = scrub_text(item.get("app_build") or header_build, 40)
         web_commit = scrub_text(item.get("web_commit") or header_web_commit, 40)
+
+        if bearer_user_id is not None:
+            user_id = bearer_user_id
+        elif session_user_id is not None:
+            item_tag = scrub_text(item.get("session_tag"), 32)
+            user_id = session_user_id if (expected_session_tag and item_tag == expected_session_tag) else None
+        else:
+            user_id = None
 
         _, created = record_event(
             source=ErrorGroup.Source.CLIENT,

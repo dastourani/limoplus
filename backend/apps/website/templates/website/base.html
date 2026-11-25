@@ -1,4 +1,4 @@
-{% load static site_icons %}<!doctype html>
+{% load static site_icons diagnostics_tags %}<!doctype html>
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8">
@@ -53,9 +53,10 @@
   </div>
 </footer>
 <script
-  src="{% static 'diagnostics/browser-diag.js' %}?v=1"
+  src="{% static 'diagnostics/browser-diag.js' %}?v=2"
   data-platform="website"
   data-channel="public"
+  data-session-tag="{% diagnostics_session_tag %}"
   defer></script>
 {% block scripts %}{% endblock %}
 </body>
