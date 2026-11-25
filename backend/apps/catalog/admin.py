@@ -19,9 +19,28 @@ from .filters import BookFilter, BookFKFilter, ChapterFilter, YesNoFilter
 from .jalali import fa_digits
 from .panel_display import badges
 from .models import (
+    AIProvider,
+    Banner,
+    Book,
+    BookAssistantAuditLog,
+    BookBoxMapping,
+    BookChange,
+    BookEditor,
+    BookOpinion,
+    BookTeamTask,
+    BookWaitlist,
+    ChapterRevision,
+    CleanupRun,
+    ContentNode,
+    FormulaCommand,
+    Label,
+    Major,
+    Section,
+    ShareSettings,
+    Shelf,
+    ShelfBook,
     TeacherProfile,
-    BookOpinion,AIProvider, Banner, Book, BookAssistantAuditLog, BookChange, BookEditor, BookWaitlist, ChapterRevision, CleanupRun, ContentNode, FormulaCommand, Label, Major, Section,
-                     ShareSettings, Shelf, ShelfBook)
+)
 
 
 class ShelfBookInline(admin.TabularInline):
@@ -1634,10 +1653,7 @@ def _admin_kpis_payload():
     from django.contrib.admin.models import LogEntry
     from apps.catalog.access import BOOK_EDITOR_GROUP
     from apps.catalog.models import (
-        BookBoxMapping,
         BookEditor,
-        BookOpinion,
-        BookTeamTask,
         ChapterRevision,
         ContentNode,
     )
@@ -1645,7 +1661,7 @@ def _admin_kpis_payload():
 
     since_30d = now - timedelta(days=30)
 
-    # آمار جامعه اساتید و تألیف: فقط فعالیت‌های دارای هویت ثبت‌شده برای همان استاد محاسبه می‌شود
+    # آمار جامعه اساتید و تألیف: فقط ویرایش‌های واقعی روی کتاب، فصل، بخش، تست و فلش‌کارت با هویت ویرایشگر محاسبه می‌شود
     teacher_ids = set(
         User.objects.filter(groups__name=BOOK_EDITOR_GROUP, is_active=True, is_superuser=False)
         .values_list("id", flat=True)
@@ -1663,26 +1679,12 @@ def _admin_kpis_payload():
                 user_id__in=teacher_ids,
                 content_type__model__in=(
                     "contentnode",
+                    "book",
+                    "section",
                     "question",
                     "flashcard",
-                    "label",
-                    "examsource",
-                    "teacherprofile",
-                    "bookopinion",
                 ),
             ).values_list("user_id", flat=True)
-        )
-        active_teacher_ids.update(
-            BookTeamTask.objects.filter(created_at__gte=since_30d, author_id__in=teacher_ids)
-            .values_list("author_id", flat=True)
-        )
-        active_teacher_ids.update(
-            BookOpinion.objects.filter(teacher_replied_at__gte=since_30d, teacher_replied_by_id__in=teacher_ids)
-            .values_list("teacher_replied_by_id", flat=True)
-        )
-        active_teacher_ids.update(
-            BookBoxMapping.objects.filter(updated_at__gte=since_30d, created_by_id__in=teacher_ids)
-            .values_list("created_by_id", flat=True)
         )
         active_teacher_ids &= teacher_ids
 
@@ -2200,7 +2202,7 @@ class TeacherProfileAdmin(admin.ModelAdmin):
             UserModel = get_user_model()
             kwargs["queryset"] = (
                 UserModel.objects.filter(teacher_profile__isnull=True)
-                .filter(Q(edited_books__isnull=False) | Q(groups__name=access.BOOK_EDITOR_GROUP) | Q(is_staff=True))
+                .filter(Q(edited_books__isnull=False) | Q(groups__name=access.BOOK_EDITOR_GROUP))
                 .distinct()
                 .order_by("phone")
             )
@@ -2357,39 +2359,180 @@ class BookOpinionAdmin(admin.ModelAdmin):
             orig = BookOpinion.objects.select_related("book").get(pk=obj.pk)
             if not access.can_edit_book(request.user, orig.book):
                 raise PermissionDenied
-            # Server-side lock: teachers may only reply or report abuse; student rating/text/moderation stay immutable.
-            obj.book_id = orig.book_id
-            obj.user_id = orig.user_id
-            obj.rating = orig.rating
-            obj.satisfaction_percent = orig.satisfaction_percent
-            obj.body = orig.body
-            obj.status = orig.status
-            obj.is_pinned = orig.is_pinned
-            obj.study_percent = orig.study_percent
-            obj.test_percent = orig.test_percent
-
+            # Update only reply/report fields in SQL so concurrent manager/student edits (e.g. status) are never overwritten.
+            update_fields = []
             if (obj.teacher_reply or "") != (orig.teacher_reply or ""):
+                update_fields.extend(["teacher_reply", "teacher_replied_at", "teacher_replied_by"])
                 if (obj.teacher_reply or "").strip():
                     obj.teacher_replied_at = timezone.now()
                     obj.teacher_replied_by = request.user
                 else:
                     obj.teacher_replied_at = None
                     obj.teacher_replied_by = None
-            else:
-                obj.teacher_replied_at = orig.teacher_replied_at
-                obj.teacher_replied_by_id = orig.teacher_replied_by_id
 
             if (obj.report_reason or "") != (orig.report_reason or ""):
+                update_fields.extend(["report_reason", "reported_at", "reported_by"])
                 if (obj.report_reason or "").strip():
                     obj.reported_at = timezone.now()
                     obj.reported_by = request.user
                 else:
                     obj.reported_at = None
                     obj.reported_by = None
-            else:
-                obj.reported_at = orig.reported_at
-                obj.reported_by_id = orig.reported_by_id
-        elif "teacher_reply" in form.changed_data and obj.teacher_reply:
+
+            if update_fields:
+                obj.save(update_fields=update_fields + ["updated_at"])
+            obj.refresh_from_db()
+            return
+        if "teacher_reply" in form.changed_data and obj.teacher_reply:
             obj.teacher_replied_at = timezone.now()
             obj.teacher_replied_by = request.user
         super().save_model(request, obj, form, change)
+
+
+@admin.register(BookTeamTask)
+class BookTeamTaskAdmin(admin.ModelAdmin):
+    """نمای متمرکز همهٔ یادداشت‌ها و وظایف هماهنگی تیم‌های تألیف کتاب‌ها برای مدیر کل."""
+
+    list_display = ("book", "text_preview", "author_col", "status_badge", "is_done", "created_at_fa")
+    list_display_links = ("text_preview",)
+    list_editable = ("is_done",)
+    list_filter = ("is_done", BookFKFilter, "created_at")
+    search_fields = ("book__title", "author__phone", "author__first_name", "author__last_name", "text")
+    list_select_related = ("book", "author")
+    readonly_fields = ("author", "created_at")
+
+    @admin.display(description="متن یادداشت / وظیفه")
+    def text_preview(self, obj):
+        return obj.text
+
+    @admin.display(description="نویسنده", ordering="author__phone")
+    def author_col(self, obj):
+        name = f"{obj.author.first_name} {obj.author.last_name}".strip()
+        return f"{name} ({obj.author.phone})" if name else obj.author.phone
+
+    @admin.display(description="وضعیت", ordering="is_done")
+    def status_badge(self, obj):
+        return badges(("انجام‌شده", "green")) if obj.is_done else badges(("باز", "yellow"))
+
+    @admin.display(description="زمان ثبت", ordering="created_at")
+    def created_at_fa(self, obj):
+        from .jalali import jalali_datetime
+
+        return jalali_datetime(obj.created_at)
+
+    def get_fields(self, request, obj=None):
+        if obj is None:
+            return ("book", "text", "is_done")
+        return ("book", "author", "text", "is_done", "created_at")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "book":
+            kwargs["queryset"] = ContentNode.objects.filter(
+                kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False
+            ).order_by("title")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.author = request.user
+        else:
+            obj.author_id = BookTeamTask.objects.values_list("author_id", flat=True).get(pk=obj.pk)
+        super().save_model(request, obj, form, change)
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+
+class BookBoxMappingForm(forms.ModelForm):
+    class Meta:
+        model = BookBoxMapping
+        fields = ("book", "environment_name", "label_name")
+
+    def clean(self):
+        cleaned = super().clean()
+        env, lbl = BookBoxMapping.normalize(cleaned.get("environment_name"), cleaned.get("label_name"))
+        cleaned["environment_name"] = env
+        cleaned["label_name"] = lbl
+        book = cleaned.get("book")
+        if book and env:
+            dup = BookBoxMapping.objects.filter(book=book, environment_name=env)
+            if self.instance.pk:
+                dup = dup.exclude(pk=self.instance.pk)
+            if dup.exists():
+                self.add_error("environment_name", "برای این کتاب قبلاً نگاشتی با همین نام محیط ثبت شده است.")
+        return cleaned
+
+
+@admin.register(BookBoxMapping)
+class BookBoxMappingAdmin(admin.ModelAdmin):
+    """مدیریت حافظهٔ نگاشت محیط‌های LaTeX به کادرهای لیموخوان برای هر کتاب."""
+
+    form = BookBoxMappingForm
+    list_display = ("book", "env_code", "label_name", "creator_col", "updated_at_fa")
+    list_filter = (BookFKFilter, "updated_at")
+    search_fields = ("book__title", "environment_name", "label_name", "created_by__phone")
+    list_select_related = ("book", "created_by")
+    readonly_fields = ("created_by", "created_at", "updated_at")
+
+    @admin.display(description="محیط LaTeX", ordering="environment_name")
+    def env_code(self, obj):
+        return format_html('<code style="direction:ltr;unicode-bidi:isolate">\\begin{{{}}}</code>', obj.environment_name)
+
+    @admin.display(description="ثبت‌کننده", ordering="created_by__phone")
+    def creator_col(self, obj):
+        if not obj.created_by:
+            return "—"
+        name = f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+        return f"{name} ({obj.created_by.phone})" if name else obj.created_by.phone
+
+    @admin.display(description="آخرین ویرایش", ordering="updated_at")
+    def updated_at_fa(self, obj):
+        from .jalali import jalali_datetime
+
+        return jalali_datetime(obj.updated_at)
+
+    def get_fields(self, request, obj=None):
+        if obj is None:
+            return ("book", "environment_name", "label_name")
+        return ("book", "environment_name", "label_name", "created_by", "created_at", "updated_at")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "book":
+            kwargs["queryset"] = ContentNode.objects.filter(
+                kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False
+            ).order_by("title")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        else:
+            obj.created_by_id = BookBoxMapping.objects.values_list("created_by_id", flat=True).get(pk=obj.pk)
+        super().save_model(request, obj, form, change)
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)

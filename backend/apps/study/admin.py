@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.contrib import admin
+from django.contrib.admin.views.main import ChangeList
 from django.db.models import Count, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Substr
 from django.template.response import TemplateResponse
@@ -9,10 +10,10 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from apps.accounts.models import User
-from apps.catalog.filters import BookFKFilter, NodeBookFilter, NodeChapterFilter, YesNoFilter
+from apps.catalog.filters import BookFilter, BookFKFilter, ChapterFilter, NodeBookFilter, NodeChapterFilter, YesNoFilter
 from apps.catalog.models import ContentNode
 
-from .models import Dashboard, ExamAttempt, LibraryBook, Note, SectionProgress
+from .models import Dashboard, ExamAttempt, LibraryBook, MistakeNote, Note, SectionProgress
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):
@@ -338,3 +339,114 @@ def models_max(field):
     from django.db.models import Max
 
     return Max(field)
+
+
+class MistakeBookFilter(BookFilter):
+    path_field = "question__node__path"
+    with_inbox = True
+
+
+class MistakeChapterFilter(ChapterFilter):
+    path_field = "question__node__path"
+
+
+class _MistakeChangeList(ChangeList):
+    def get_results(self, request):
+        super().get_results(request)
+        query_tpl = self.get_query_string({"user__id__exact": "__UID__"}, remove=["p"])
+        for obj in self.result_list:
+            obj._lp_user_filter_tpl = query_tpl
+
+
+@admin.register(MistakeNote)
+class MistakeNoteAdmin(ReadOnlyAdmin):
+    """علت‌های اشتباه ثبت‌شده توسط کاربران در دفتر اشتباهات (فقط‌خواندنی برای مدیر کل)."""
+
+    change_list_template = "admin/lp_tex_change_list.html"
+    list_display = ("question_col", "place_col", "reason_col", "who_col")
+    list_filter = (MistakeBookFilter, MistakeChapterFilter, "reason", "updated_at")
+    search_fields = ("user__phone", "user__first_name", "user__last_name", "question__stem", "question__slug", "question__node__title")
+    list_select_related = ("user", "question", "question__node")
+    readonly_fields = ("user", "question", "reason", "updated_at")
+    list_per_page = 40
+
+    class Media:
+        js = ("catalog/limo-preview.js", "catalog/lists.js")
+
+    def get_changelist(self, request, **kwargs):
+        return _MistakeChangeList
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def get_queryset(self, request):
+        step = ContentNode.steplen
+        book = ContentNode.objects.filter(path=Substr(OuterRef("question__node__path"), 1, step))
+        chapter = ContentNode.objects.filter(
+            path=Substr(OuterRef("question__node__path"), 1, 2 * step), kind=ContentNode.Kind.CHAPTER
+        )
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("user", "question", "question__node")
+            .annotate(
+                p_book=Subquery(book.values("title")[:1]),
+                p_chapter_pos=Subquery(chapter.values("position")[:1]),
+                p_chapter_title=Subquery(chapter.values("title")[:1]),
+            )
+            .order_by("-updated_at", "-id")
+        )
+
+    @admin.display(description="سؤال")
+    def question_col(self, obj):
+        from apps.catalog.panel_display import tex
+
+        q_url = reverse("admin:learning_question_change", args=[obj.question_id])
+        return format_html('<div style="min-width:240px;max-width:460px"><a href="{}">{}</a></div>', q_url, tex(obj.question.stem, 180))
+
+    @admin.display(description="جا (کتاب › فصل › بخش)")
+    def place_col(self, obj):
+        from apps.catalog.jalali import fa_digits
+
+        book = obj.p_book or "بدون کتاب"
+        chapter = f"فصل {fa_digits(obj.p_chapter_pos)}" if obj.p_chapter_pos else (obj.p_chapter_title or "")
+        section = obj.question.node.title
+        return format_html('<div class="lp-quiet">{} › {}</div><div><b>{}</b></div>', book, chapter, section)
+
+    @admin.display(description="علت اشتباه", ordering="reason")
+    def reason_col(self, obj):
+        from apps.catalog.panel_display import badges
+
+        colors = {
+            MistakeNote.Reason.UNKNOWN: "red",
+            MistakeNote.Reason.FORGOT: "yellow",
+            MistakeNote.Reason.CARELESS: "blue",
+            MistakeNote.Reason.TIME: "grey",
+        }
+        if not obj.reason:
+            return badges(("ثبت‌نشده", "grey"))
+        return badges((obj.get_reason_display(), colors.get(obj.reason, "grey")))
+
+    @admin.display(description="کاربر و زمان", ordering="updated_at")
+    def who_col(self, obj):
+        from apps.catalog.jalali import jalali_datetime
+
+        user_url = reverse("admin:accounts_user_change", args=[obj.user_id])
+        tpl = getattr(obj, "_lp_user_filter_tpl", "")
+        filter_url = tpl.replace("__UID__", str(obj.user_id)) if tpl else f"?user__id__exact={obj.user_id}"
+        return format_html(
+            '<div><a href="{}"><b>{}</b></a> · <a href="{}" class="lp-quiet">فیلتر کاربر</a></div>'
+            '<div class="lp-quiet" style="white-space:nowrap">{}</div>',
+            user_url,
+            obj.user.phone,
+            filter_url,
+            jalali_datetime(obj.updated_at),
+        )
+
+    def changelist_view(self, request, extra_context=None):
+        from apps.catalog.fresh import formula_macros
+
+        return super().changelist_view(request, extra_context={**(extra_context or {}), "lp_macros": formula_macros()})
