@@ -231,6 +231,7 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 /* The cover ribbon rides on the top-left of every cover, matching CoverRibbon in the app. */
 .bk-ribbon { position: absolute; top: 12px; left: -4px; z-index: 2; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: var(--lemon); color: var(--ink); border-radius: 6px 6px 6px 0; font-size: 11px; font-weight: 800; line-height: 1.6; white-space: nowrap; }
 .bk-ribbon-soon { background: #8A938C; color: #FFFFFF; }
+.bk-ribbon-access { background: #3FB8A9; color: #FFFFFF; }
 .bk-ribbon-planning { background: #56655B; color: #FFFFFF; }
 .bk-ribbon-locked { background: var(--ink); color: var(--ground); border: 1px solid rgba(245, 197, 24, .38); }
 .bk.hide { display: none; }

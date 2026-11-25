@@ -533,6 +533,111 @@ class WebsiteTests(TestCase):
         self.assertEqual(book_admin.status_code, 200)
         self.assertContains(book_admin, "id_release_note")
 
+    def test_cover_ribbon_matches_app_across_guest_purchase_subscription_editor_and_staff(self):
+        from django.contrib.auth.models import Group, Permission
+        from rest_framework.test import APIClient
+        from apps.accounts.models import User
+        from apps.catalog.access import BOOK_EDITOR_GROUP
+        from apps.catalog.models import BookEditor, ContentNode, Major
+        from apps.commerce.models import Entitlement
+
+        major = Major.objects.create(slug="parity-major", name="رشته همسانی")
+        paid_book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK, title="کتاب پولی با نمونه", slug="parity-paid",
+            is_published=True, price=200_000,
+        )
+        paid_book.majors.add(major)
+        paid_book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل اول", slug="p-ch1", is_published=True, is_free=True)
+        paid_book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل دوم", slug="p-ch2", is_published=True, is_free=False)
+
+        free_book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK, title="کتاب کاملاً رایگان", slug="parity-free",
+            is_published=True, is_free=True,
+        )
+        free_book.majors.add(major)
+        free_book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل اول", slug="f-ch1", is_published=True, is_free=True)
+
+        preparing_book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK, title="کتاب در حال برنامه‌ریزی", slug="parity-preparing",
+            is_published=True, is_coming_soon=False,
+        )
+        preparing_book.majors.add(major)
+
+        def assert_book_ribbon(client: Client, slug: str, expected_text: str, expected_kind: str):
+            home_card = next(c for c in client.get("/site/").context["books"] if c["book"].slug == slug)
+            list_card = next(c for c in client.get("/site/books/").context["books"] if c["book"].slug == slug)
+            detail_r = client.get(f"/site/books/{slug}/")
+            for ribbon in (home_card["cover_ribbon"], list_card["cover_ribbon"], detail_r.context["cover_ribbon"]):
+                self.assertEqual(ribbon["text"], expected_text)
+                self.assertEqual(ribbon["kind"], expected_kind)
+            self.assertContains(detail_r, expected_text)
+            if expected_kind != "free":
+                self.assertContains(detail_r, f"bk-ribbon-{expected_kind}")
+
+        def api_for(user=None):
+            ac = APIClient()
+            if user is not None:
+                ac.force_authenticate(user=user)
+            return ac
+
+        # 1. Guest: paid+sample shows sample ribbon; whole-free shows کل کتاب رایگان; preparing shows در حال برنامه‌ریزی.
+        guest = Client()
+        assert_book_ribbon(guest, paid_book.slug, "فصل اول رایگان", "free")
+        assert_book_ribbon(guest, free_book.slug, "کل کتاب رایگان", "free")
+        assert_book_ribbon(guest, preparing_book.slug, "در حال برنامه‌ریزی", "planning")
+        api_guest = api_for().get(f"/api/v1/books/{paid_book.slug}/").json()
+        self.assertFalse(api_guest["owned"])
+        self.assertIsNone(api_guest["access"])
+
+        # 2. Buyer (purchase): paid+sample switches to خریداری شده; whole-free stays کل کتاب رایگان.
+        buyer = User.objects.create_user("09128880001")
+        Entitlement.objects.create(user=buyer, book=paid_book, ends_at=None)
+        buyer_client = Client()
+        buyer_client.force_login(buyer)
+        assert_book_ribbon(buyer_client, paid_book.slug, "خریداری شده", "access")
+        assert_book_ribbon(buyer_client, free_book.slug, "کل کتاب رایگان", "free")
+        api_buyer = api_for(buyer).get(f"/api/v1/books/{paid_book.slug}/").json()
+        self.assertTrue(api_buyer["owned"])
+        self.assertEqual(api_buyer["access"], "purchase")
+
+        # 3. Subscriber (active major subscription): paid+sample switches to با اشتراک; whole-free stays کل کتاب رایگان.
+        subscriber = User.objects.create_user("09128880002")
+        Entitlement.objects.create(user=subscriber, major=major, ends_at=timezone.now() + timedelta(days=30))
+        sub_client = Client()
+        sub_client.force_login(subscriber)
+        assert_book_ribbon(sub_client, paid_book.slug, "با اشتراک", "access")
+        assert_book_ribbon(sub_client, free_book.slug, "کل کتاب رایگان", "free")
+        api_sub = api_for(subscriber).get(f"/api/v1/books/{paid_book.slug}/").json()
+        self.assertTrue(api_sub["owned"])
+        self.assertEqual(api_sub["access"], "subscription")
+
+        # 4. Book editor on their assigned books: paid+sample shows دسترسی تألیف; whole-free stays کل کتاب رایگان; preparing stays در حال برنامه‌ریزی.
+        editor = User.objects.create_user("09128880003", is_staff=True)
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        editor.groups.add(group)
+        perm = Permission.objects.get(codename="change_contentnode", content_type__app_label="catalog")
+        editor.user_permissions.add(perm)
+        for b in (paid_book, free_book, preparing_book):
+            BookEditor.objects.create(user=editor, book=b, can_edit_content=True)
+        ed_client = Client()
+        ed_client.force_login(editor)
+        assert_book_ribbon(ed_client, paid_book.slug, "دسترسی تألیف", "access")
+        assert_book_ribbon(ed_client, free_book.slug, "کل کتاب رایگان", "free")
+        assert_book_ribbon(ed_client, preparing_book.slug, "در حال برنامه‌ریزی", "planning")
+        api_ed = api_for(editor).get(f"/api/v1/books/{paid_book.slug}/").json()
+        self.assertEqual(api_ed["access"], "editor")
+
+        # 5. Superuser/staff: paid+sample shows دسترسی مدیر; whole-free stays کل کتاب رایگان; preparing stays در حال برنامه‌ریزی.
+        staff = User.objects.create_superuser("09128880004")
+        staff_client = Client()
+        staff_client.force_login(staff)
+        assert_book_ribbon(staff_client, paid_book.slug, "دسترسی مدیر", "access")
+        assert_book_ribbon(staff_client, free_book.slug, "کل کتاب رایگان", "free")
+        assert_book_ribbon(staff_client, preparing_book.slug, "در حال برنامه‌ریزی", "planning")
+        api_staff = api_for(staff).get(f"/api/v1/books/{paid_book.slug}/").json()
+        self.assertTrue(api_staff["owned"])
+        self.assertEqual(api_staff["access"], "staff")
+
     @override_settings(WEBSITE_HOSTS=["limookhan.ir"], ALLOWED_HOSTS=["limookhan.ir", "testserver"], APP_URL="https://app.example")
     def test_own_host_serves_site_at_root(self):
         c = Client(HTTP_HOST="limookhan.ir")

@@ -79,19 +79,37 @@ def free_preview_label(free_chapter: int | None, free_chapters: int, partial_fre
     return "بخشی رایگان"
 
 
+def _access_ribbon_label(access: AccessMap) -> str | None:
+    """Personal whole-book access ribbon label, matching the app's `accessLabel`."""
+    if not access.owned and access.access != "editor":
+        return None
+    if access.access == "editor":
+        return "دسترسی تألیف"
+    if access.access == "subscription":
+        return "با اشتراک"
+    if access.access == "staff":
+        return "دسترسی مدیر"
+    if access.access == "gift":
+        return "دوره اختصاصی"
+    return "خریداری شده"
+
+
 def _cover_ribbon(book, state: str, preview: str, chapters, access: AccessMap) -> dict:
-    """Top-left cover ribbon matching the app/web-app `CoverRibbon` (`shelfLabel`) for every product state."""
+    """Top-left cover ribbon matching the app/web-app `CoverRibbon` (`shelfLabel`) for every state and user."""
     from apps.commerce.pricing import ProductStatus
 
     if state == ProductStatus.COMING_SOON:
         return {"text": "به‌زودی", "kind": "soon", "icon": ""}
+    if state == ProductStatus.PREPARING:
+        return {"text": "در حال برنامه‌ریزی", "kind": "planning", "icon": "calendar"}
     if state == ProductStatus.FREE:
         return {"text": "کل کتاب رایگان", "kind": "free", "icon": "gift"}
+    access_text = _access_ribbon_label(access)
+    if access_text:
+        return {"text": access_text, "kind": "access", "icon": "circle-check"}
     if preview == "sample":
         free_chapter, free_chapters, partial_free_chapter = free_chapter_summary(book, chapters, access)
         return {"text": free_preview_label(free_chapter, free_chapters, partial_free_chapter), "kind": "free", "icon": "gift"}
-    if state == ProductStatus.PREPARING:
-        return {"text": "در حال برنامه‌ریزی", "kind": "planning", "icon": "calendar"}
     if state == ProductStatus.UNPRICED:
         return {"text": "قیمت تعیین نشده", "kind": "locked", "icon": "lock"}
     if state == ProductStatus.UNAVAILABLE:
