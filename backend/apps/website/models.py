@@ -18,6 +18,15 @@ def default_teacher_invitation_expiry():
 class SiteSettings(models.Model):
     """One row: contact details, store links and the trust seal. Edited in the panel («تنظیمات سایت»)."""
 
+    DEFAULT_PREPARING_HOVER_NOTE = "در صف تولید محتوا قرار دارد."
+    DEFAULT_PREPARING_NOTE = (
+        "قرارداد تألیف این منبع ثبت شده و در صف تولید محتوا قرار دارد. به محض آماده شدن اولین فصل، "
+        "وضعیت آن به «به‌زودی» تغییر می‌کند و امکان ثبت اطلاع‌رسانی یا مطالعهٔ نمونهٔ رایگان فعال می‌شود."
+    )
+    DEFAULT_COMING_SOON_NOTE = (
+        "با ثبت «خبرم کن» در اپلیکیشن یا وب‌اپ لیموخوان، به محض انتشار فصل اول رایگان با پیامک به شما اطلاع می‌دهیم."
+    )
+
     tagline = models.CharField("جمله‌ی اصلی", max_length=120, default="منبع درسی‌ات را برش‌به‌برش بخوان، مرور کن و مسلط شو 🍋")
     intro = models.TextField(
         "معرفی کوتاه",
@@ -50,6 +59,25 @@ class SiteSettings(models.Model):
     telegram_url = models.URLField("لینک تلگرام", blank=True)
     instagram_url = models.URLField("لینک اینستاگرام", blank=True)
     enamad_html = models.TextField("کد نماد اینماد", blank=True, help_text="همان کدی که سایت اینماد می‌دهد؛ پایین همه‌ی صفحه‌ها نشان داده می‌شود.")
+    preparing_hover_note = models.CharField(
+        "متن کوتاه هاور «در حال برنامه‌ریزی»",
+        max_length=160,
+        blank=True,
+        default=DEFAULT_PREPARING_HOVER_NOTE,
+        help_text="متن کوتاه روی کارت کتاب‌های «در حال برنامه‌ریزی» هنگام هاور در صفحه‌ی اول و فهرست کتاب‌ها (برای کتاب‌هایی که توضیح اختصاصی ندارند).",
+    )
+    preparing_note = models.TextField(
+        "متن کامل صفحه‌ی کتاب «در حال برنامه‌ریزی»",
+        blank=True,
+        default=DEFAULT_PREPARING_NOTE,
+        help_text="در صفحه‌ی کتاب (سایت و اپ/وب‌اپ) نمایش داده می‌شود؛ اگر روی خود کتاب «توضیح اختصاصی وضعیت انتشار» بنویسید، متن همان کتاب جایگزین می‌شود.",
+    )
+    coming_soon_note = models.TextField(
+        "متن کامل صفحه‌ی کتاب «به‌زودی»",
+        blank=True,
+        default=DEFAULT_COMING_SOON_NOTE,
+        help_text="در صفحه‌ی کتاب (سایت و اپ/وب‌اپ) نمایش داده می‌شود؛ اگر روی خود کتاب «توضیح اختصاصی وضعیت انتشار» بنویسید، متن همان کتاب جایگزین می‌شود.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

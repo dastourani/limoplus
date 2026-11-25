@@ -168,12 +168,16 @@ class WebsiteTests(TestCase):
         soon_r = Client().get(f"/site/books/{soon.slug}/")
         self.assertEqual(soon_r.status_code, 200)
         self.assertContains(soon_r, "در حال برنامه‌ریزی")
+        self.assertContains(soon_r, 'class="bk-ribbon bk-ribbon-planning"')
         self.assertContains(soon_r, "آذر ۱۴۰۵")
+        self.assertContains(soon_r, "وضعیت آن به «به‌زودی» تغییر می‌کند")
         self.assertContains(soon_r, book.title)
         soon_list = Client().get("/site/books/")
         self.assertContains(soon_list, "در حال برنامه‌ریزی")
+        self.assertContains(soon_list, 'class="bk-ribbon bk-ribbon-planning"')
         self.assertContains(soon_list, "این کتاب در حال برنامه‌ریزی است")
-        self.assertContains(soon_list, "وضعیت آن به «به‌زودی» تغییر می‌کند")
+        self.assertContains(soon_list, "در صف تولید محتوا قرار دارد.")
+        self.assertNotContains(soon_list, "وضعیت آن به «به‌زودی» تغییر می‌کند")
 
         # Content protection page renders on the website and in the app API.
         prot_r = Client().get("/site/p/protection/")
@@ -449,6 +453,85 @@ class WebsiteTests(TestCase):
         detail_cover = json.loads(detail_ctx["cover"])
         self.assertEqual(detail_cover["rating"], 4.5)
         self.assertEqual(detail_cover["rating_count"], 2)
+
+    def test_cover_ribbon_and_two_layer_release_notes_across_site_and_api(self):
+        from apps.accounts.models import User
+        from apps.catalog.models import ContentNode, Major
+        from .models import SiteSettings
+
+        major = Major.objects.create(slug="ribbon-major", name="رشته تست")
+        preparing_default = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK, title="کتاب برنامه‌ریزی ۱", slug="prep-default",
+            is_published=True, is_coming_soon=False, release_estimate="دی ۱۴۰۵",
+        )
+        preparing_custom = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK, title="کتاب برنامه‌ریزی ۲", slug="prep-custom",
+            is_published=True, is_coming_soon=False, release_estimate="بهمن ۱۴۰۵",
+            release_note="توضیح اختصاصی همین کتاب برای برنامه‌ریزی.",
+        )
+        coming_soon_book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK, title="کتاب به‌زودی", slug="soon-book",
+            is_published=True, is_coming_soon=True, release_estimate="اسفند ۱۴۰۵",
+        )
+        paid_locked = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK, title="کتاب پولی بدون نمونه", slug="paid-locked",
+            is_published=True, price=250_000,
+        )
+        paid_locked.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل پولی", slug="paid-ch1", is_published=True, is_free=False)
+        for b in (preparing_default, preparing_custom, coming_soon_book, paid_locked):
+            b.majors.add(major)
+
+        # Layer 1: editing global defaults in SiteSettings applies across website cards, book detail, and app API.
+        s = SiteSettings.get()
+        s.preparing_hover_note = "متن کوتاه سراسری از پنل."
+        s.preparing_note = "متن کامل سراسری برنامه‌ریزی از پنل."
+        s.coming_soon_note = "متن کامل سراسری به‌زودی از پنل."
+        s.save()
+
+        c = Client()
+        home_html = c.get("/site/").content.decode("utf-8")
+        books_html = c.get("/site/books/").content.decode("utf-8")
+        for html in (home_html, books_html):
+            self.assertIn("bk-ribbon-planning", html)
+            self.assertIn("bk-ribbon-soon", html)
+            self.assertIn("bk-ribbon-locked", html)
+            self.assertIn("نسخه‌ی کامل", html)
+            self.assertIn("متن کوتاه سراسری از پنل.", html)
+            self.assertIn("توضیح اختصاصی همین کتاب برای برنامه‌ریزی.", html)
+            self.assertNotIn("متن کامل سراسری برنامه‌ریزی از پنل.", html)
+
+        # Book detail pages mirror cover ribbons and resolve Layer 2 override vs Layer 1 defaults.
+        r_default = c.get(f"/site/books/{preparing_default.slug}/")
+        self.assertContains(r_default, "bk-ribbon-planning")
+        self.assertContains(r_default, "متن کامل سراسری برنامه‌ریزی از پنل.")
+        r_custom = c.get(f"/site/books/{preparing_custom.slug}/")
+        self.assertContains(r_custom, "bk-ribbon-planning")
+        self.assertContains(r_custom, "توضیح اختصاصی همین کتاب برای برنامه‌ریزی.")
+        self.assertNotContains(r_custom, "متن کامل سراسری برنامه‌ریزی از پنل.")
+        r_soon = c.get(f"/site/books/{coming_soon_book.slug}/")
+        self.assertContains(r_soon, "bk-ribbon-soon")
+        self.assertContains(r_soon, "متن کامل سراسری به‌زودی از پنل.")
+        r_locked = c.get(f"/site/books/{paid_locked.slug}/")
+        self.assertContains(r_locked, "bk-ribbon-locked")
+        self.assertContains(r_locked, "نسخه‌ی کامل")
+
+        # App/web-app API exposes resolved release_note on both list and detail endpoints.
+        api_list = {row["slug"]: row for row in c.get("/api/v1/books/").json()}
+        self.assertEqual(api_list[preparing_default.slug]["release_note"], "متن کامل سراسری برنامه‌ریزی از پنل.")
+        self.assertEqual(api_list[preparing_custom.slug]["release_note"], "توضیح اختصاصی همین کتاب برای برنامه‌ریزی.")
+        self.assertEqual(api_list[coming_soon_book.slug]["release_note"], "متن کامل سراسری به‌زودی از پنل.")
+        self.assertEqual(c.get(f"/api/v1/books/{preparing_custom.slug}/").json()["release_note"], "توضیح اختصاصی همین کتاب برای برنامه‌ریزی.")
+
+        # Both layers are visibly exposed in the Django Admin panel.
+        admin_user = User.objects.create_superuser("09120009988")
+        c.force_login(admin_user)
+        site_admin = c.get(f"/admin/website/sitesettings/{s.pk}/change/")
+        self.assertEqual(site_admin.status_code, 200)
+        for field_name in ("id_preparing_hover_note", "id_preparing_note", "id_coming_soon_note"):
+            self.assertContains(site_admin, field_name)
+        book_admin = c.get(f"/admin/catalog/book/{preparing_default.pk}/change/")
+        self.assertEqual(book_admin.status_code, 200)
+        self.assertContains(book_admin, "id_release_note")
 
     @override_settings(WEBSITE_HOSTS=["limookhan.ir"], ALLOWED_HOSTS=["limookhan.ir", "testserver"], APP_URL="https://app.example")
     def test_own_host_serves_site_at_root(self):

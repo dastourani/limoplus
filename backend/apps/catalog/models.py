@@ -111,6 +111,11 @@ class ContentNode(MP_Node):
         blank=True,
         help_text="اختیاری؛ مثلاً «آذر ۱۴۰۵» یا «نیمسال دوم ۱۴۰۵». کنار دکمه‌ی «خبرم کن» در سایت و اپ نشان داده می‌شود.",
     )
+    release_note = models.TextField(
+        "توضیح اختصاصی وضعیت انتشار",
+        blank=True,
+        help_text="اختیاری؛ فقط برای کتاب‌های «در حال برنامه‌ریزی» یا «به‌زودی» در سایت و اپ نشان داده می‌شود. اگر خالی بماند، متن پیش‌فرض از «تنظیمات سایت» استفاده می‌شود.",
+    )
     is_published = models.BooleanField("منتشر شده", default=False)
     is_archived = models.BooleanField("بایگانی", default=False, help_text="به‌جای حذف؛ داده‌ی کاربران حفظ می‌شود")
     updated_at = models.DateTimeField(auto_now=True)

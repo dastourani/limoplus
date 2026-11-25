@@ -1,6 +1,6 @@
 {% load site_icons %}<a class="bk" href="{{ c.url }}" data-majors="{{ c.majors|join:' ' }}">
   <div class="cover" data-cover="{{ c.cover }}" data-w="{{ w|default:170 }}" style="width:{{ w|default:170 }}px"><div class="cover-ph"><b>{{ c.book.title }}</b></div></div>
-  {% if c.sample_label %}<span class="bk-ribbon">{% icon "gift" 12 %}{{ c.sample_label }}</span>{% endif %}
+  {% if c.cover_ribbon %}<span class="bk-ribbon{% if c.cover_ribbon.kind != 'free' %} bk-ribbon-{{ c.cover_ribbon.kind }}{% endif %}">{% if c.cover_ribbon.icon %}{% icon c.cover_ribbon.icon 12 %}{% endif %}{{ c.cover_ribbon.text }}</span>{% endif %}
   <b class="bk-title">{{ c.book.title }}</b>
   <span class="bk-meta">{% if c.chapters %}{{ c.chapters }} فصل{% if c.book.author %}، {{ c.book.author }}{% endif %}{% elif c.release_estimate %}انتشار: {{ c.release_estimate }}{% elif c.book.author %}{{ c.book.author }}{% else %}&nbsp;{% endif %}</span>
   <div class="bk-action">
@@ -18,7 +18,7 @@
       <span class="tip-bubble">
         <b>این کتاب در حال برنامه‌ریزی است</b>
         {% if c.release_estimate %}<span>پیش‌بینی انتشار: {{ c.release_estimate }}</span>{% endif %}
-        <span>قرارداد تألیف این منبع ثبت شده و در صف تولید محتوا قرار دارد. به محض آماده شدن اولین فصل، وضعیت آن به «به‌زودی» تغییر می‌کند و امکان ثبت اطلاع‌رسانی یا مطالعهٔ نمونهٔ رایگان فعال می‌شود.</span>
+        <span>{{ c.hover_note }}</span>
       </span>
     </span>
     {% elif c.discount %}

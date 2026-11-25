@@ -175,6 +175,46 @@ def free_chapter_summary(book, chapters, access) -> tuple[int | None, int, int |
     return free_chapter, free_chapters, partial_free_chapter
 
 
+def _site_settings(request=None):
+    if request is not None:
+        cached = getattr(request, "_limo_site_settings", None)
+        if cached is not None:
+            return cached
+    from apps.website.models import SiteSettings
+
+    s = SiteSettings.get()
+    if request is not None:
+        request._limo_site_settings = s
+    return s
+
+
+def resolve_release_notes(book, state: str, request=None, site_settings=None) -> tuple[str, str]:
+    """Return `(detail_note, hover_note)` for `preparing` and `coming_soon` books.
+
+    Priority:
+    1) Book-level `book.release_note` (if filled in the book's panel form).
+    2) Global defaults on `SiteSettings` (`preparing_hover_note`, `preparing_note`, `coming_soon_note`).
+    3) Built-in model defaults.
+    """
+    from apps.commerce.pricing import ProductStatus
+    from apps.website.models import SiteSettings
+
+    if state not in (ProductStatus.PREPARING, ProductStatus.COMING_SOON):
+        return "", ""
+    custom = (getattr(book, "release_note", "") or "").strip()
+    if custom:
+        first_line = next((line.strip() for line in custom.splitlines() if line.strip()), custom)
+        hover = first_line if len(first_line) <= 110 else first_line[:107].rstrip() + "…"
+        return custom, hover
+    s = site_settings or _site_settings(request)
+    if state == ProductStatus.PREPARING:
+        detail = (s.preparing_note or "").strip() or SiteSettings.DEFAULT_PREPARING_NOTE
+        hover = (s.preparing_hover_note or "").strip() or SiteSettings.DEFAULT_PREPARING_HOVER_NOTE
+        return detail, hover
+    detail = (s.coming_soon_note or "").strip() or SiteSettings.DEFAULT_COMING_SOON_NOTE
+    return detail, detail
+
+
 def book_card(request, book, access, price_quote=None) -> dict:
     """What a shelf needs to draw a book: its cover, current campaign price and the reader's progress."""
     if price_quote is None:
@@ -188,6 +228,7 @@ def book_card(request, book, access, price_quote=None) -> dict:
 
     done = section_states(request.user, access, request)[1] & {s.id for s in sections}
     free_chapter, free_chapters, partial_free_chapter = free_chapter_summary(book, chapters, access)
+    release_note, _ = resolve_release_notes(book, price_quote.product_status, request=request)
     major = min(book.majors.all(), key=lambda m: (m.order, m.name), default=None)
     return {
         "slug": book.slug,
@@ -202,6 +243,7 @@ def book_card(request, book, access, price_quote=None) -> dict:
         "cover": request.build_absolute_uri(book.cover.url) if book.cover else None,
         "is_coming_soon": book.is_coming_soon,
         "release_estimate": book.release_estimate,
+        "release_note": release_note,
         **price_quote.payload(),
         "chapter_count": len(chapters),
         "section_count": len(sections),

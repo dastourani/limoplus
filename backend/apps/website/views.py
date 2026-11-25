@@ -25,7 +25,14 @@ from apps.catalog.jalali import jalali_date as fa_date
 from apps.catalog.labels import all_labels
 from apps.catalog.media import media_urls
 from apps.catalog.models import ContentNode, Major
-from apps.catalog.views import _book_rating, _book_reviews_data, _prefetch_book_ratings, _teacher_info, free_chapter_summary
+from apps.catalog.views import (
+    _book_rating,
+    _book_reviews_data,
+    _prefetch_book_ratings,
+    _teacher_info,
+    free_chapter_summary,
+    resolve_release_notes,
+)
 from config.links import app_base_url
 
 from .models import FaqItem, SiteNavItem, SitePage, SiteSettings
@@ -72,16 +79,24 @@ def free_preview_label(free_chapter: int | None, free_chapters: int, partial_fre
     return "بخشی رایگان"
 
 
-def _cover_free_label(book, state: str, preview: str, chapters, access: AccessMap) -> str | None:
-    """Free cover ribbon text matching the app/web-app `shelfLabel` for whole-free and preview books."""
+def _cover_ribbon(book, state: str, preview: str, chapters, access: AccessMap) -> dict:
+    """Top-left cover ribbon matching the app/web-app `CoverRibbon` (`shelfLabel`) for every product state."""
     from apps.commerce.pricing import ProductStatus
 
+    if state == ProductStatus.COMING_SOON:
+        return {"text": "به‌زودی", "kind": "soon", "icon": ""}
     if state == ProductStatus.FREE:
-        return "کل کتاب رایگان"
+        return {"text": "کل کتاب رایگان", "kind": "free", "icon": "gift"}
     if preview == "sample":
         free_chapter, free_chapters, partial_free_chapter = free_chapter_summary(book, chapters, access)
-        return free_preview_label(free_chapter, free_chapters, partial_free_chapter)
-    return None
+        return {"text": free_preview_label(free_chapter, free_chapters, partial_free_chapter), "kind": "free", "icon": "gift"}
+    if state == ProductStatus.PREPARING:
+        return {"text": "در حال برنامه‌ریزی", "kind": "planning", "icon": "calendar"}
+    if state == ProductStatus.UNPRICED:
+        return {"text": "قیمت تعیین نشده", "kind": "locked", "icon": "lock"}
+    if state == ProductStatus.UNAVAILABLE:
+        return {"text": "در دسترس نیست", "kind": "locked", "icon": "lock"}
+    return {"text": "نسخه‌ی کامل", "kind": "locked", "icon": "lock"}
 
 
 def toman(price: int | None) -> str:
@@ -145,7 +160,9 @@ def _card(request, book, price_quote=None) -> dict:
     else:
         label = {"kind": "unpriced", "icon": "lock", "text": "در دسترس نیست"}
 
-    sample_label = _cover_free_label(book, state, product_status["preview"], chapters, access)
+    cover_ribbon = _cover_ribbon(book, state, product_status["preview"], chapters, access)
+    sample_label = cover_ribbon["text"] if cover_ribbon["kind"] == "free" else None
+    release_note, hover_note = resolve_release_notes(book, state, request=request)
 
     discount = None
     if product_status["promotion"] == "discount":
@@ -157,11 +174,14 @@ def _card(request, book, price_quote=None) -> dict:
     return {
         "book": book, "cover": _cover(request, book), "label": label,
         "product_status": product_status,
+        "cover_ribbon": cover_ribbon,
         "sample_label": sample_label,
         "regular_price": toman(price_quote.regular_price) if state == ProductStatus.PAID else None,
         "discount": discount,
         "chapters": fa(len(chapters)) if chapters else "",
         "release_estimate": book.release_estimate,
+        "release_note": release_note,
+        "hover_note": hover_note,
         "url": reverse("website:book", args=[book.slug]), "majors": [m.slug for m in book.majors.all()],
     }
 
@@ -543,7 +563,9 @@ def book(request, slug):
     product_status = price_quote.product_status_payload
     state = product_status["state"]
     is_preparing = state in (ProductStatus.COMING_SOON, ProductStatus.PREPARING)
-    sample_label = _cover_free_label(b, state, product_status["preview"], raw_chapters, access)
+    cover_ribbon = _cover_ribbon(b, state, product_status["preview"], raw_chapters, access)
+    sample_label = cover_ribbon["text"] if cover_ribbon["kind"] == "free" else None
+    release_note, _ = resolve_release_notes(b, state, request=request)
     related_books = []
     if is_preparing:
         other = [x for x in _published() if x.id != b.id and not x.is_coming_soon][:6]
@@ -585,13 +607,14 @@ def book(request, slug):
         request, b=b, cover=_cover(request, b), majors=list(b.majors.all()), chapters=chapters, stats=[s for s in stats if s[0] != "۰"],
         samples=sample_list, samples_json=json.dumps(sample_list, ensure_ascii=False), first_free=first_free,
         product_status=product_status,
+        cover_ribbon=cover_ribbon,
         sample_label=sample_label,
         price=toman(price_quote.price) if state == ProductStatus.PAID else None,
         regular_price=toman(price_quote.regular_price) if state == ProductStatus.PAID else None,
         discount=book_discount,
         open_url=app_url(f"book/{b.slug}"), buy_url=app_url(f"buy/{b.slug}"),
         about=about_text, updated_on=fa_date(upd) if upd else "",
-        is_preparing=is_preparing, release_estimate=b.release_estimate, related_books=related_books,
+        is_preparing=is_preparing, release_estimate=b.release_estimate, release_note=release_note, related_books=related_books,
         author_profile=author_profile, community_reviews=community_reviews,
     ))
 
