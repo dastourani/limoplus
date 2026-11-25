@@ -264,12 +264,25 @@ class OrderRoyaltyFilter(admin.SimpleListFilter):
         return queryset
 
 
+class OrderTodayPaidFilter(admin.SimpleListFilter):
+    title = "صف روزانه"
+    parameter_name = "queue"
+
+    def lookups(self, request, model_admin):
+        return [("paid_today", "خریدهای موفق امروز")]
+
+    def queryset(self, request, queryset):
+        if self.value() == "paid_today":
+            return queryset.filter(Order.paid_today_q())
+        return queryset
+
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     """Orders are a financial record: viewable, never edited or deleted here."""
 
     list_display = ("buyer", "what", "price", "state", "made", "payment")
-    list_filter = ("status", OrderRoyaltyFilter, "created_at", OrderBookFilter, OrderPlanFilter)
+    list_filter = (OrderTodayPaidFilter, "status", OrderRoyaltyFilter, "created_at", OrderBookFilter, OrderPlanFilter)
     change_list_template = "admin/commerce/order/change_list.html"
 
     def get_urls(self):
@@ -1068,10 +1081,23 @@ class TeacherBankAccountAdmin(admin.ModelAdmin):
         return jalali_date(obj.updated_at)
 
 
+class PayoutQueueFilter(admin.SimpleListFilter):
+    title = "صف تسویه"
+    parameter_name = "queue"
+
+    def lookups(self, request, model_admin):
+        return [("pending", "منتظر اقدام مدیر (در انتظار / در حال واریز)")]
+
+    def queryset(self, request, queryset):
+        if self.value() == "pending":
+            return queryset.filter(PayoutRequest.pending_queue_q())
+        return queryset
+
+
 @admin.register(PayoutRequest)
 class PayoutRequestAdmin(admin.ModelAdmin):
     list_display = ("payout_id", "teacher_cell", "amount_toman", "account_holder_snapshot", "iban_snapshot", "status_chip", "tracking_code", "rejection_reason_display", "created_time")
-    list_filter = ("status", "created_at")
+    list_filter = (PayoutQueueFilter, "status", "created_at")
     date_hierarchy = "created_at"
 
     def changelist_view(self, request, extra_context=None):

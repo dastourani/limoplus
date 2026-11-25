@@ -345,6 +345,7 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/chapters/", site(panel.book_chapter_action), name="catalog_book_chapter_action"),
             path("<int:book_id>/assistants/", site(self.book_assistants_action), name="catalog_book_assistants_action"),
             path("<int:book_id>/team-tasks/", site(self.book_team_tasks_action), name="catalog_book_team_tasks_action"),
+            path("study-analytics/", site(self.study_analytics_index_view), name="catalog_book_study_analytics_index"),
             path("<int:book_id>/study-analytics/", site(self.book_study_analytics_view), name="catalog_book_study_analytics"),
             path("<int:book_id>/trace/", site(self.book_trace_view), name="catalog_book_trace"),
             path("<int:book_id>/request-publication/", site(self.book_request_publication_view), name="catalog_book_request_publication"),
@@ -616,6 +617,73 @@ class BookAdmin(admin.ModelAdmin):
                 messages.success(request, f"دسترسی دستیار با شماره {phone} از این کتاب حذف شد.")
 
         return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#assistants")
+
+    def study_analytics_index_view(self, request):
+        from django.core.exceptions import PermissionDenied
+        from django.db.models import Count
+        from django.db.models.functions import Substr
+        from django.shortcuts import get_object_or_404, render
+        from apps.catalog.panel_display import fa_number
+        from apps.study.models import SectionProgress
+        from .models import BookEditor
+
+        if not request.user.is_superuser and not access.is_book_teacher(request.user):
+            raise PermissionDenied("شما مجوز مشاهده گزارش مطالعهٔ کتاب‌ها را ندارید.")
+
+        if request.user.is_superuser:
+            books_qs = ContentNode.objects.filter(
+                kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False, is_archived=False
+            ).order_by("title")
+        else:
+            allowed_ids = BookEditor.objects.filter(
+                user=request.user, can_view_aggregate_study=True
+            ).values_list("book_id", flat=True)
+            books_qs = ContentNode.objects.filter(
+                pk__in=allowed_ids, kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False, is_archived=False
+            ).order_by("title")
+
+        selected_id = (request.GET.get("book_id") or "").strip()
+        if selected_id.isdigit():
+            chosen = get_object_or_404(books_qs, pk=int(selected_id))
+            return redirect(reverse("admin:catalog_book_study_analytics", args=[chosen.pk]))
+
+        books = list(books_qs)
+        book_ids = [b.pk for b in books]
+        readers_by_book = dict(
+            SectionProgress.objects.filter(book_id__in=book_ids)
+            .values("book_id")
+            .annotate(c=Count("user_id", distinct=True))
+            .values_list("book_id", "c")
+        ) if book_ids else {}
+        step = ContentNode.steplen
+        book_paths = [b.path for b in books]
+        chapters_by_path = dict(
+            ContentNode.objects.filter(depth=2, kind=ContentNode.Kind.CHAPTER, is_archived=False)
+            .annotate(root_path=Substr("path", 1, step))
+            .filter(root_path__in=book_paths)
+            .values("root_path")
+            .annotate(c=Count("pk"))
+            .values_list("root_path", "c")
+        ) if book_paths else {}
+
+        rows = [
+            {
+                "pk": b.pk,
+                "title": b.title,
+                "author": b.author,
+                "is_published": b.is_published,
+                "chapters_count": fa_number(chapters_by_path.get(b.path, 0)),
+                "readers_count": fa_number(readers_by_book.get(b.pk, 0)),
+            }
+            for b in books
+        ]
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "گزارش مطالعهٔ کتاب‌ها",
+            "books": rows,
+            "opts": self.model._meta,
+        }
+        return render(request, "admin/catalog/book/study_analytics_index.html", context)
 
     def book_study_analytics_view(self, request, book_id):
         from django.core.exceptions import PermissionDenied
@@ -1646,6 +1714,7 @@ def _admin_kpis_payload():
     from apps.catalog.access import BOOK_EDITOR_GROUP
     from apps.catalog.models import (
         BookEditor,
+        BookTeamTask,
         ChapterRevision,
         ContentNode,
     )
@@ -1697,8 +1766,9 @@ def _admin_kpis_payload():
     classroom_students_count = User.objects.filter(classroom_memberships__classroom__is_active=True, classroom_memberships__status="active").distinct().count()
 
     # گلوگاه‌ها و هشدارهای نیازمند اقدام مدیر
-    pending_pubs = PublicationRequest.objects.filter(status__in=(PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO)).count()
+    pending_pubs = PublicationRequest.objects.filter(PublicationRequest.pending_queue_q()).count()
     pending_teacher_apps = TeacherApplication.objects.filter(status=TeacherApplication.Status.PENDING).count()
+    open_team_tasks = BookTeamTask.objects.filter(BookTeamTask.pending_queue_q()).count()
 
     return {
         "kpi_users_today": fa_number(new_users_today),
@@ -1720,6 +1790,7 @@ def _admin_kpis_payload():
         "kpi_class_students": fa_number(classroom_students_count),
         "kpi_pending_pubs": fa_number(pending_pubs),
         "kpi_pending_teacher_apps": fa_number(pending_teacher_apps),
+        "kpi_open_team_tasks": fa_number(open_team_tasks),
     }
 
 
@@ -2237,10 +2308,23 @@ class TeacherProfileAdmin(admin.ModelAdmin):
         return request.user.is_superuser
 
 
+class BookOpinionQueueFilter(admin.SimpleListFilter):
+    title = "صف بازبینی"
+    parameter_name = "queue"
+
+    def lookups(self, request, model_admin):
+        return [("pending", "در انتظار بازبینی یا گزارش‌شده")]
+
+    def queryset(self, request, queryset):
+        if self.value() == "pending":
+            return queryset.filter(BookOpinion.pending_queue_q())
+        return queryset
+
+
 @admin.register(BookOpinion)
 class BookOpinionAdmin(admin.ModelAdmin):
     list_display = ("book", "display_user", "rating_badge", "satisfaction_display", "study_percent_display", "status", "has_reply", "is_pinned", "created_at")
-    list_filter = ("status", "rating", "is_pinned", "created_at")
+    list_filter = (BookOpinionQueueFilter, "status", "rating", "is_pinned", "created_at")
     search_fields = ("book__title", "user__phone", "user__first_name", "user__last_name", "body", "teacher_reply")
     _ADMIN_READONLY = ("created_at", "updated_at", "study_percent", "test_percent", "reported_by", "reported_at", "teacher_replied_at", "teacher_replied_by")
     _TEACHER_PROTECTED = (
@@ -2296,10 +2380,9 @@ class BookOpinionAdmin(admin.ModelAdmin):
         return self._TEACHER_PROTECTED
 
     def display_user(self, obj):
-        name = f"{obj.user.first_name} {obj.user.last_name}".strip()
-        phone = obj.user.phone
-        masked = phone[:4] + "***" + phone[-4:] if len(phone) >= 7 else phone
-        return f"{name} ({masked})" if name else masked
+        from apps.guard import core
+
+        return core.masked_user_label(obj.user)
     display_user.short_description = "کاربر / دانشجو"
 
     def rating_badge(self, obj):
@@ -2378,6 +2461,9 @@ class BookOpinionAdmin(admin.ModelAdmin):
         if "teacher_reply" in form.changed_data and obj.teacher_reply:
             obj.teacher_replied_at = timezone.now()
             obj.teacher_replied_by = request.user
+        if "report_reason" in form.changed_data and not (obj.report_reason or "").strip():
+            obj.reported_at = None
+            obj.reported_by = None
         super().save_model(request, obj, form, change)
 
 

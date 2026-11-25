@@ -3139,6 +3139,337 @@ class StepTwoAdminModelsTests(TestCase):
         self.assertFalse(BookBoxMapping.objects.filter(pk=mapping.pk).exists())
 
 
+class StepFourAdminPanelTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+
+        self.group, _ = Group.objects.get_or_create(name="استاد کتاب")
+        self.superuser = User.objects.create_superuser("09120002001", is_staff=True)
+        self.teacher = User.objects.create_user("09120002011", first_name="سهراب", last_name="مؤلف", is_staff=True)
+        self.teacher.groups.add(self.group)
+        self.student = User.objects.create_user("09120002022", first_name="مریم", last_name="دانشجو")
+        self.book = ContentNode.add_root(title="کتاب شیمی", kind=ContentNode.Kind.BOOK, slug="step4-chem", is_published=True)
+        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True)
+
+    def test_teacher_profile_moved_under_teacher_workflows_and_catalog_ordered(self):
+        from django.contrib import admin
+        from django.test import RequestFactory
+
+        rf = RequestFactory()
+        req = rf.get("/admin/")
+        req.user = self.superuser
+        req.session = {}
+        app_list = admin.site.get_app_list(req)
+
+        wf_app = next(a for a in app_list if a["app_label"] == "teacher_workflows")
+        wf_names = [m["object_name"] for m in wf_app["models"]]
+        self.assertIn("TeacherProfile", wf_names)
+        self.assertLess(wf_names.index("BookEditor"), wf_names.index("TeacherProfile"))
+        self.assertLess(wf_names.index("TeacherProfile"), wf_names.index("TeacherInvitation"))
+
+        cat_app = next(a for a in app_list if a["app_label"] == "catalog")
+        cat_names = [m["object_name"] for m in cat_app["models"]]
+        self.assertNotIn("TeacherProfile", cat_names)
+        expected_prefix = [
+            "Book",
+            "Section",
+            "Label",
+            "ChapterRevision",
+            "BookTeamTask",
+            "BookBoxMapping",
+            "BookOpinion",
+            "BookWaitlist",
+            "Major",
+            "Shelf",
+            "Banner",
+            "ShareSettings",
+            "FormulaCommand",
+            "AIProvider",
+            "BookAssistantAuditLog",
+            "BookChange",
+            "CleanupRun",
+        ]
+        self.assertEqual(cat_names, expected_prefix)
+
+        # Teacher workspace still sees TeacherProfile once inside authoring desk
+        req_t = rf.get("/admin/")
+        req_t.user = self.teacher
+        req_t.session = {}
+        t_apps = admin.site.get_app_list(req_t)
+        authoring = next(a for a in t_apps if a["app_label"] == "catalog")
+        self.assertEqual([m["object_name"] for m in authoring["models"]].count("TeacherProfile"), 1)
+
+    def test_manager_action_badges_on_payout_opinion_and_team_tasks(self):
+        from django.utils import timezone
+        from apps.catalog.models import BookOpinion, BookTeamTask
+        from apps.commerce.models import PayoutRequest
+
+        PayoutRequest.objects.create(
+            teacher=self.teacher, amount=100000, status=PayoutRequest.Status.PENDING,
+            account_holder_snapshot="سهراب", iban_snapshot="IR000000000000000000000001",
+        )
+        PayoutRequest.objects.create(
+            teacher=self.teacher, amount=200000, status=PayoutRequest.Status.PROCESSING,
+            account_holder_snapshot="سهراب", iban_snapshot="IR000000000000000000000001",
+        )
+        paid_payout = PayoutRequest.objects.create(
+            teacher=self.teacher, amount=50000, status=PayoutRequest.Status.PAID,
+            account_holder_snapshot="سهراب", iban_snapshot="IR000000000000000000000001",
+        )
+
+        other_student = User.objects.create_user("09120002033")
+        short_phone_user = User.objects.create_user("12345678")
+        fourth_student = User.objects.create_user("09120002044")
+        pending_op = BookOpinion.objects.create(book=self.book, user=self.student, rating=4, body="در انتظار", status=BookOpinion.Status.PENDING)
+        reported_op = BookOpinion.objects.create(
+            book=self.book, user=other_student, rating=2, body="گزارش شده",
+            status=BookOpinion.Status.APPROVED, report_reason="تبلیغات", reported_at=timezone.now(), reported_by=self.teacher,
+        )
+        approved_op = BookOpinion.objects.create(book=self.book, user=short_phone_user, rating=5, body="عالی", status=BookOpinion.Status.APPROVED)
+        hidden_op = BookOpinion.objects.create(
+            book=self.book, user=fourth_student, rating=1, body="پنهان",
+            status=BookOpinion.Status.HIDDEN, report_reason="اسپم", reported_at=timezone.now(), reported_by=self.teacher,
+        )
+
+        task1 = BookTeamTask.objects.create(book=self.book, author=self.teacher, text="یادداشت باز ۱", is_done=False)
+        task2 = BookTeamTask.objects.create(book=self.book, author=self.teacher, text="یادداشت باز ۲", is_done=False)
+        task3 = BookTeamTask.objects.create(book=self.book, author=self.superuser, text="یادداشت باز ۳", is_done=False)
+        done_task = BookTeamTask.objects.create(book=self.book, author=self.teacher, text="انجام‌شده", is_done=True)
+
+        self.client.force_login(self.superuser)
+        res = self.client.get("/admin/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, '<span class="lp-badge lp-b-yellow lp-menu-badge" title="درخواست تسویه باز">۲</span>', html=True)
+        self.assertContains(res, '<span class="lp-badge lp-b-yellow lp-menu-badge" title="نظر نیازمند بازبینی یا گزارش‌شده">۲</span>', html=True)
+        self.assertContains(res, '<span class="lp-badge lp-b-yellow lp-menu-badge" title="یادداشت‌های باز هماهنگی">۳</span>', html=True)
+
+        # Every menu badge URL rendered on /admin/ opens the exact filtered queue with matching count and records
+        menu_urls = {
+            (app["app_label"], m["object_name"]): m["admin_url"]
+            for app in res.context["app_list"]
+            for m in app["models"]
+        }
+        payout_url = menu_urls[("commerce", "PayoutRequest")]
+        self.assertIn("queue=pending", payout_url)
+        self.assertContains(res, f'href="{payout_url}"')
+        payout_res = self.client.get(payout_url)
+        self.assertEqual(payout_res.status_code, 200)
+        payout_ids = set(payout_res.context["cl"].result_list.values_list("pk", flat=True))
+        self.assertEqual(payout_res.context["cl"].result_count, 2)
+        self.assertNotIn(paid_payout.pk, payout_ids)
+
+        opinion_url = menu_urls[("catalog", "BookOpinion")]
+        self.assertIn("queue=pending", opinion_url)
+        self.assertContains(res, f'href="{opinion_url}"')
+        opinion_res = self.client.get(opinion_url)
+        self.assertEqual(opinion_res.status_code, 200)
+        opinion_ids = set(opinion_res.context["cl"].result_list.values_list("pk", flat=True))
+        self.assertEqual(opinion_ids, {pending_op.pk, reported_op.pk})
+        self.assertNotIn(approved_op.pk, opinion_ids)
+        self.assertNotIn(hidden_op.pk, opinion_ids)
+
+        task_url = menu_urls[("catalog", "BookTeamTask")]
+        self.assertIn("is_done__exact=0", task_url)
+        self.assertContains(res, f'href="{task_url}"')
+        task_res = self.client.get(task_url)
+        self.assertEqual(task_res.status_code, 200)
+        task_ids = set(task_res.context["cl"].result_list.values_list("pk", flat=True))
+        self.assertEqual(task_ids, {task1.pk, task2.pk, task3.pk})
+        self.assertNotIn(done_task.pk, task_ids)
+
+        # Short legacy phone on BookOpinionAdmin uses shared mask_phone fallback
+        op_list = self.client.get("/admin/catalog/bookopinion/")
+        self.assertEqual(op_list.status_code, 200)
+        self.assertNotContains(op_list, "12345678")
+        self.assertContains(op_list, "کاربر لیموخوان")
+
+        # Teacher viewing BookOpinionAdmin never sees raw student phones in __str__ / aria-label / changeform
+        self.client.force_login(self.teacher)
+        t_op_list = self.client.get("/admin/catalog/bookopinion/")
+        self.assertEqual(t_op_list.status_code, 200)
+        self.assertNotContains(t_op_list, "09120002033")
+        t_op_change = self.client.get(f"/admin/catalog/bookopinion/{reported_op.pk}/change/")
+        self.assertEqual(t_op_change.status_code, 200)
+        self.assertNotContains(t_op_change, "09120002033")
+        self.client.force_login(self.superuser)
+
+        # Manager clearing report_reason dismisses report and drops opinion badge count to 1
+        res_clear = self.client.post(f"/admin/catalog/bookopinion/{reported_op.pk}/change/", {
+            "book": self.book.pk,
+            "user": other_student.pk,
+            "rating": 2,
+            "satisfaction_percent": 100,
+            "body": "گزارش شده",
+            "status": BookOpinion.Status.APPROVED,
+            "teacher_reply": "",
+            "report_reason": "",
+        })
+        self.assertEqual(res_clear.status_code, 302)
+        reported_op.refresh_from_db()
+        self.assertIsNone(reported_op.reported_at)
+        self.assertIsNone(reported_op.reported_by)
+
+        res_after = self.client.get("/admin/")
+        self.assertContains(res_after, '<span class="lp-badge lp-b-yellow lp-menu-badge" title="نظر نیازمند بازبینی یا گزارش‌شده">۱</span>', html=True)
+
+    def test_dashboard_open_team_tasks_counter_matches_filtered_changelist(self):
+        from apps.catalog.models import BookTeamTask
+
+        t1 = BookTeamTask.objects.create(book=self.book, author=self.teacher, text="بررسی فصل اول", is_done=False)
+        t2 = BookTeamTask.objects.create(book=self.book, author=self.superuser, text="تنظیم جلد", is_done=False)
+        t3 = BookTeamTask.objects.create(book=self.book, author=self.teacher, text="کار بسته‌شده", is_done=True)
+
+        self.client.force_login(self.superuser)
+        dash = self.client.get("/admin/")
+        self.assertEqual(dash.status_code, 200)
+        self.assertEqual(dash.context["kpi_open_team_tasks"], "۲")
+        self.assertContains(dash, "/admin/catalog/bookteamtask/?is_done__exact=0")
+        self.assertContains(dash, "یادداشت‌های باز هماهنگی تیم‌ها")
+
+        filtered = self.client.get("/admin/catalog/bookteamtask/?is_done__exact=0")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual(filtered.context["cl"].result_count, 2)
+        self.assertContains(filtered, t1.text)
+        self.assertContains(filtered, t2.text)
+        self.assertNotContains(filtered, t3.text)
+
+    def test_guides_enabled_and_complete_for_superuser_and_teacher(self):
+        self.client.force_login(self.superuser)
+        res_admin = self.client.get("/admin/")
+        self.assertEqual(res_admin.status_code, 200)
+        self.assertContains(res_admin, 'id="lp-guide-toggle"')
+        self.assertContains(res_admin, 'id="lp-bubble"')
+        for key in (
+            "auth-group",
+            "teacher_workflows-teacherprofile",
+            "catalog-bookteamtask",
+            "catalog-bookboxmapping",
+            "catalog-bookopinion",
+            "guard-tracker",
+            "guard-tracehit",
+            "guard-copyevent",
+            "commerce-payoutrequest",
+            "releases-apprelease",
+            "website-sitesettings",
+        ):
+            self.assertContains(res_admin, f"'{key}'")
+
+        self.client.force_login(self.teacher)
+        res_teacher = self.client.get("/admin/")
+        self.assertEqual(res_teacher.status_code, 200)
+        self.assertContains(res_teacher, 'id="lp-guide-toggle"')
+        self.assertContains(res_teacher, 'id="lp-bubble"')
+        self.assertContains(res_teacher, "'guard-tracker'")
+        self.assertContains(res_teacher, "'teacher_workflows-teacherprofile'")
+
+    def test_all_queue_badges_and_dashboard_shortcuts_open_exact_records(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.commerce.models import Order
+        from apps.learning.models import Question, Report
+        from apps.website.models import BookAccessRequest, PublicationRequest, TeacherApplication
+
+        ch = self.book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل اول", slug="s4-ch1", position=1, is_published=True)
+        sec = ch.add_child(kind=ContentNode.Kind.SECTION, title="بخش اول", slug="s4-sec1", is_published=True)
+        q = Question.objects.create(node=sec, slug="s4-q1", stem="سوال؟", explanation="-", difficulty="easy")
+
+        open_rep = Report.objects.create(user=self.student, question=q, reason=Report.Reason.choices[0][0], status=Report.Status.OPEN)
+        fixed_rep = Report.objects.create(user=self.student, node=sec, reason=Report.Reason.choices[0][0], status=Report.Status.FIXED)
+
+        pub_pending = PublicationRequest.objects.create(
+            book=self.book, requested_by=self.teacher, content_digest="a" * 64, status=PublicationRequest.Status.PENDING
+        )
+        pub_needs = PublicationRequest.objects.create(
+            book=self.book, requested_by=self.teacher, content_digest="b" * 64, status=PublicationRequest.Status.NEEDS_INFO
+        )
+        pub_approved = PublicationRequest.objects.create(
+            book=self.book, requested_by=self.teacher, content_digest="c" * 64, status=PublicationRequest.Status.APPROVED
+        )
+
+        app_pending = TeacherApplication.objects.create(name="متقاضی باز", phone="09120003001", status=TeacherApplication.Status.PENDING)
+        app_approved = TeacherApplication.objects.create(name="متقاضی تایید", phone="09120003002", status=TeacherApplication.Status.APPROVED)
+
+        acc_pending = BookAccessRequest.objects.create(book=self.book, requested_by=self.teacher, status=BookAccessRequest.Status.PENDING)
+        acc_rejected = BookAccessRequest.objects.create(book=self.book, requested_by=self.teacher, status=BookAccessRequest.Status.REJECTED)
+
+        today_paid = Order.objects.create(
+            user=self.student, book=self.book, title="سفارش امروز", amount=150000,
+            status=Order.Status.PAID, paid_at=timezone.now(), track_id="s4-today",
+        )
+        old_paid = Order.objects.create(
+            user=self.student, book=self.book, title="سفارش قدیمی", amount=120000,
+            status=Order.Status.PAID, paid_at=timezone.now() - timedelta(days=3), track_id="s4-old",
+        )
+        failed_today = Order.objects.create(
+            user=self.student, book=self.book, title="ناموفق امروز", amount=100000,
+            status=Order.Status.FAILED, paid_at=timezone.now(), track_id="s4-fail",
+        )
+
+        self.client.force_login(self.superuser)
+        dash = self.client.get("/admin/")
+        self.assertEqual(dash.status_code, 200)
+        menu_urls = {
+            (app["app_label"], m["object_name"]): m["admin_url"]
+            for app in dash.context["app_list"]
+            for m in app["models"]
+        }
+
+        # Check remaining menu badge links open exact records
+        rep_res = self.client.get(menu_urls[("learning", "Report")])
+        self.assertEqual(set(rep_res.context["cl"].result_list.values_list("pk", flat=True)), {open_rep.pk})
+        self.assertNotIn(fixed_rep.pk, set(rep_res.context["cl"].result_list.values_list("pk", flat=True)))
+
+        pub_url = menu_urls[("teacher_workflows", "PublicationRequest")]
+        self.assertIn("queue=pending", pub_url)
+        pub_res = self.client.get(pub_url)
+        self.assertEqual(set(pub_res.context["cl"].result_list.values_list("pk", flat=True)), {pub_pending.pk, pub_needs.pk})
+        self.assertNotIn(pub_approved.pk, set(pub_res.context["cl"].result_list.values_list("pk", flat=True)))
+
+        app_res = self.client.get(menu_urls[("teacher_workflows", "TeacherApplication")])
+        self.assertEqual(set(app_res.context["cl"].result_list.values_list("pk", flat=True)), {app_pending.pk})
+        self.assertNotIn(app_approved.pk, set(app_res.context["cl"].result_list.values_list("pk", flat=True)))
+
+        acc_res = self.client.get(menu_urls[("teacher_workflows", "BookAccessRequest")])
+        self.assertEqual(set(acc_res.context["cl"].result_list.values_list("pk", flat=True)), {acc_pending.pk})
+        self.assertNotIn(acc_rejected.pk, set(acc_res.context["cl"].result_list.values_list("pk", flat=True)))
+
+        ord_res = self.client.get(menu_urls[("commerce", "Order")])
+        self.assertEqual(set(ord_res.context["cl"].result_list.values_list("pk", flat=True)), {today_paid.pk})
+        self.assertNotIn(old_paid.pk, set(ord_res.context["cl"].result_list.values_list("pk", flat=True)))
+        self.assertNotIn(failed_today.pk, set(ord_res.context["cl"].result_list.values_list("pk", flat=True)))
+
+        # Dashboard analytical shortcuts and clickable counters
+        self.assertContains(dash, "/admin/commerce/order/report/?range=30")
+        self.assertContains(dash, "/admin/commerce/order/report/csv/?range=30")
+        self.assertContains(dash, "/admin/catalog/book/study-analytics/")
+        self.assertContains(dash, "/admin/website/publicationrequest/?queue=pending")
+        self.assertContains(dash, "/admin/website/teacherapplication/?status__exact=pending")
+        self.assertEqual(dash.context["kpi_pending_pubs"], "۲")
+        self.assertEqual(dash.context["kpi_pending_teacher_apps"], "۱")
+
+        self.assertEqual(self.client.get("/admin/commerce/order/report/?range=30").status_code, 200)
+        csv_res = self.client.get("/admin/commerce/order/report/csv/?range=30")
+        self.assertEqual(csv_res.status_code, 200)
+        self.assertIn("text/csv", csv_res["Content-Type"])
+
+        # Book study analytics index opens book picker and redirects to chosen book report
+        inbox = ContentNode.add_root(title="صندوق تست", kind=ContentNode.Kind.BOOK, slug="s4-inbox", is_inbox=True)
+        picker = self.client.get("/admin/catalog/book/study-analytics/")
+        self.assertEqual(picker.status_code, 200)
+        self.assertContains(picker, self.book.title)
+        self.assertNotContains(picker, inbox.title)
+        self.assertContains(picker, f"/admin/catalog/book/{self.book.pk}/study-analytics/")
+
+        picked = self.client.get(f"/admin/catalog/book/study-analytics/?book_id={self.book.pk}")
+        self.assertRedirects(picked, f"/admin/catalog/book/{self.book.pk}/study-analytics/")
+
+        # Non-teacher staff cannot access study analytics picker
+        plain_staff = User.objects.create_user("09120003099", is_staff=True)
+        self.client.force_login(plain_staff)
+        self.assertEqual(self.client.get("/admin/catalog/book/study-analytics/").status_code, 403)
+
+
+
 
 
 

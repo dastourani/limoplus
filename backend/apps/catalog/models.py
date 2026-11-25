@@ -665,6 +665,10 @@ class BookTeamTask(models.Model):
     def __str__(self):
         return f"{self.book.title}: {self.text[:40]}"
 
+    @classmethod
+    def pending_queue_q(cls):
+        return models.Q(is_done=False)
+
 
 class BookAssistantAuditLog(models.Model):
     """Audit log for teaching assistant assignments and permission changes for a book."""
@@ -954,7 +958,11 @@ class BookOpinion(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.book.title} — {self.user.phone} ({self.rating}★)"
+        return f"{self.book.title} — {self.display_author_name} ({self.rating}★)"
+
+    @classmethod
+    def pending_queue_q(cls):
+        return models.Q(status=cls.Status.PENDING) | models.Q(status=cls.Status.APPROVED, reported_at__isnull=False)
 
     @property
     def display_author_name(self):
