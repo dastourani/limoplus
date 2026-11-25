@@ -25,7 +25,7 @@ from apps.catalog.jalali import jalali_date as fa_date
 from apps.catalog.labels import all_labels
 from apps.catalog.media import media_urls
 from apps.catalog.models import ContentNode, Major
-from apps.catalog.views import _book_rating, _prefetch_book_ratings
+from apps.catalog.views import _book_rating, _book_reviews_data, _prefetch_book_ratings, _teacher_info, free_chapter_summary
 from config.links import app_base_url
 
 from .models import FaqItem, SiteNavItem, SitePage, SiteSettings
@@ -59,16 +59,29 @@ def fa_ordinal(number: int) -> str:
     return ORDINALS.get(int(number), fa(number))
 
 
-def free_preview_label(free_chapters: list[int]) -> str:
-    """The book's free-preview label: one free chapter («فصل اول رایگان») or several («۲ فصل رایگان»).
-
-    A book whose free part is only a section inside a chapter has no chapter to name: «بخشی رایگان».
+def free_preview_label(free_chapter: int | None, free_chapters: int, partial_free_chapter: int | None = None) -> str:
+    """The book's free-preview label, matching the app's `shelfLabel`:
+    one free chapter («فصل اول رایگان»), several («۲ فصل رایگان»), or a section inside chapter N («بخشی از فصل ۱ رایگان»).
     """
-    if len(free_chapters) == 1:
-        return f"فصل {fa_ordinal(free_chapters[0])} رایگان"
-    if len(free_chapters) > 1:
-        return f"{fa(len(free_chapters))} فصل رایگان"
+    if free_chapters == 1 and free_chapter:
+        return f"فصل {fa_ordinal(free_chapter)} رایگان"
+    if free_chapters > 1:
+        return f"{fa(free_chapters)} فصل رایگان"
+    if partial_free_chapter:
+        return f"بخشی از فصل {fa(partial_free_chapter)} رایگان"
     return "بخشی رایگان"
+
+
+def _cover_free_label(book, state: str, preview: str, chapters, access: AccessMap) -> str | None:
+    """Free cover ribbon text matching the app/web-app `shelfLabel` for whole-free and preview books."""
+    from apps.commerce.pricing import ProductStatus
+
+    if state == ProductStatus.FREE:
+        return "کل کتاب رایگان"
+    if preview == "sample":
+        free_chapter, free_chapters, partial_free_chapter = free_chapter_summary(book, chapters, access)
+        return free_preview_label(free_chapter, free_chapters, partial_free_chapter)
+    return None
 
 
 def toman(price: int | None) -> str:
@@ -115,7 +128,6 @@ def _card(request, book, price_quote=None) -> dict:
     price_quote = price_quote or book_price_quote(book)
     access = AccessMap(request.user, book)
     chapters = access.children(book)
-    free_chapters = [chapter for chapter in chapters if chapter.is_free]
     product_status = price_quote.product_status_payload
     state = product_status["state"]
 
@@ -133,10 +145,7 @@ def _card(request, book, price_quote=None) -> dict:
     else:
         label = {"kind": "unpriced", "icon": "lock", "text": "در دسترس نیست"}
 
-    sample_label = None
-    if product_status["preview"] == "sample":
-        free_numbers = [chapters.index(chapter) + 1 for chapter in free_chapters]
-        sample_label = free_preview_label(free_numbers)
+    sample_label = _cover_free_label(book, state, product_status["preview"], chapters, access)
 
     discount = None
     if product_status["promotion"] == "discount":
@@ -481,8 +490,9 @@ def book(request, slug):
 
     q_by_node = dict(questions.values("node_id").annotate(n=Count("id")).values_list("node_id", "n"))
     f_by_node = dict(flashcards.values("node_id").annotate(n=Count("id")).values_list("node_id", "n"))
+    raw_chapters = access.children(b)
     chapters = []
-    for ch_idx, c in enumerate(access.children(b), start=1):
+    for ch_idx, c in enumerate(raw_chapters, start=1):
         sections = access.children(c)
         ids = [c.id, *[s.id for s in sections]]
         ch_tests = sum(q_by_node.get(i, 0) for i in ids)
@@ -533,10 +543,7 @@ def book(request, slug):
     product_status = price_quote.product_status_payload
     state = product_status["state"]
     is_preparing = state in (ProductStatus.COMING_SOON, ProductStatus.PREPARING)
-    sample_label = None
-    if product_status["preview"] == "sample":
-        free_chapters = [chapter for chapter in chapters if chapter["chapter_free"]]
-        sample_label = free_preview_label([chapter["order"] for chapter in free_chapters])
+    sample_label = _cover_free_label(b, state, product_status["preview"], raw_chapters, access)
     related_books = []
     if is_preparing:
         other = [x for x in _published() if x.id != b.id and not x.is_coming_soon][:6]
@@ -545,6 +552,27 @@ def book(request, slug):
         related_books = [_card(request, item, other_quotes[item.pk]) for item in other]
     else:
         _prefetch_book_ratings(request, [b])
+    author_profile = _teacher_info(b, request)
+    raw_reviews = _book_reviews_data(b, request.user)
+    community_reviews = {
+        "average_rating": raw_reviews["average_rating"],
+        "average_rating_fa": fa_percent(raw_reviews["average_rating"]) if raw_reviews["average_rating"] is not None else "",
+        "satisfaction_rate": raw_reviews["satisfaction_rate"],
+        "satisfaction_rate_fa": fa(raw_reviews["satisfaction_rate"]) if raw_reviews["satisfaction_rate"] is not None else "",
+        "serious_readers_rating": raw_reviews["serious_readers_rating"],
+        "serious_readers_rating_fa": fa_percent(raw_reviews["serious_readers_rating"]) if raw_reviews["serious_readers_rating"] is not None else "",
+        "total_count": raw_reviews["total_count"],
+        "total_count_fa": fa(raw_reviews["total_count"]),
+        "reviews": [
+            {
+                **item,
+                "study_percent_fa": fa(item["study_percent"]),
+                "test_percent_fa": fa(item["test_percent"]),
+                "created_at_fa": fa(item["created_at"]),
+            }
+            for item in raw_reviews["reviews"]
+        ],
+    }
     book_discount = None
     if product_status["promotion"] == "discount":
         book_discount = {
@@ -564,6 +592,7 @@ def book(request, slug):
         open_url=app_url(f"book/{b.slug}"), buy_url=app_url(f"buy/{b.slug}"),
         about=about_text, updated_on=fa_date(upd) if upd else "",
         is_preparing=is_preparing, release_estimate=b.release_estimate, related_books=related_books,
+        author_profile=author_profile, community_reviews=community_reviews,
     ))
 
 

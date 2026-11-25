@@ -1,4 +1,3 @@
-import { shelfLabel } from '../../lib/access';
 import { setViewAsLearner, useViewAsLearner } from '../../lib/viewAs';
 import { router, useFocusEffect } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
@@ -10,6 +9,7 @@ import { changedPages } from '../../lib/pages';
 import { studyDuration } from '../../lib/duration';
 import { BannerCarousel } from '../../components/BannerCarousel';
 import { BookCover } from '../../components/BookCover';
+import { CoverRibbon } from '../../components/CoverRibbon';
 import { Icon, IconBadge } from '../../components/Icon';
 import { LemonProgress } from '../../components/LemonProgress';
 import { LemonSlice } from '../../components/LemonSlice';
@@ -208,7 +208,6 @@ export default function Home() {
   const webBanner = Platform.OS === 'web' && list.length > 0;
 
   const bookTile = (book: BookListItem, tileWidth: number = coverWidth) => {
-    const label = shelfLabel(book);
     const { on: waiting, canCancel } = notifyState(book);
     const openBook = () => router.push({ pathname: '/book/[slug]', params: { slug: book.slug } });
     return (
@@ -220,10 +219,7 @@ export default function Home() {
           style={({ pressed }) => [{ opacity: book.product_status.state === 'coming_soon' ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
         >
           <BookCover book={book} major={book.major ?? null} width={tileWidth} />
-          <View style={[styles.ribbon, RIBBON[label.kind].box]}>
-            {RIBBON[label.kind].icon && <Icon name={RIBBON[label.kind].icon!} size={12} color={RIBBON[label.kind].color} />}
-            <Text style={[styles.ribbonText, { color: RIBBON[label.kind].color }]}>{label.text}</Text>
-          </View>
+          <CoverRibbon book={book} />
         </Pressable>
         <BookPill book={book} notify={{ on: waiting, canCancel }} onNotify={() => toggleNotify(book)} onPress={openBook} />
       </View>
@@ -580,16 +576,6 @@ export default function Home() {
   );
 }
 
-/** One look per kind of shelf label. */
-const RIBBON: Record<'soon' | 'access' | 'free' | 'planning' | 'locked', { box: object; color: string; icon?: 'circle-check' | 'lock' | 'gift' | 'calendar' }> = {
-  soon: { box: { backgroundColor: '#8A938C' }, color: '#FFFFFF' },
-  access: { box: { backgroundColor: '#3FB8A9' }, color: '#FFFFFF', icon: 'circle-check' },
-  free: { box: { backgroundColor: colors.lemon }, color: colors.ink, icon: 'gift' },
-  planning: { box: { backgroundColor: '#56655B' }, color: '#FFFFFF', icon: 'calendar' },
-  locked: { box: { backgroundColor: colors.ink }, color: colors.ground, icon: 'lock' },
-};
-
-
 const SIDE_WIDTH = 380;
 const SIDE_PAD = 16;
 const SIDE_INNER = SIDE_WIDTH - 2 * SIDE_PAD - 2;
@@ -653,12 +639,6 @@ const styles = StyleSheet.create({
   muted: { fontSize: 13, color: colors.muted },
   loginPill: { backgroundColor: colors.ink, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10 },
   loginText: { color: colors.lemon, fontWeight: '800' },
-  ribbon: { position: 'absolute', top: 12, left: -4, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
-  ribbonText: { fontSize: 11, fontWeight: '800' },
-  ribbonFree: { backgroundColor: colors.lemon, color: colors.ink },
-  ribbonSoon: { backgroundColor: colors.ink, color: colors.ground },
-  ribbonOwned: { backgroundColor: '#3FB8A9', flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
-  ribbonOwnedText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
   soon: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9C4BC', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
   soonText: { color: colors.muted, fontSize: 12 },
 });

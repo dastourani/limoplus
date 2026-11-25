@@ -24,6 +24,7 @@ export function shelfLabel(book: {
   product_status: ProductStatus;
   free_chapter: number | null;
   free_chapters?: number;
+  partial_free_chapter?: number | null;
 }): ShelfLabel {
   const status = book.product_status;
   if (status.state === 'coming_soon') return { text: 'به‌زودی', kind: 'soon' };
@@ -34,6 +35,7 @@ export function shelfLabel(book: {
     const n = book.free_chapters ?? (book.free_chapter ? 1 : 0);
     if (n === 1 && book.free_chapter) return { text: `فصل ${toPersianOrdinal(book.free_chapter)} رایگان`, kind: 'free' };
     if (n > 1) return { text: `${toPersianDigits(n)} فصل رایگان`, kind: 'free' };
+    if (book.partial_free_chapter) return { text: `بخشی از فصل ${toPersianDigits(book.partial_free_chapter)} رایگان`, kind: 'free' };
     return { text: 'بخشی رایگان', kind: 'free' };
   }
   if (status.state === 'preparing') return { text: 'در حال برنامه‌ریزی', kind: 'planning' };

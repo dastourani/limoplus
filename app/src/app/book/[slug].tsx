@@ -1,4 +1,3 @@
-import { accessLabel } from '../../lib/access';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Image, LayoutAnimation, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, UIManager, useWindowDimensions, View } from 'react-native';
@@ -8,6 +7,7 @@ import { ApiError } from '../../api/client';
 import { endpoints, type ChapterSummary, type NodeSummary, type ReviewItem } from '../../api/endpoints';
 import { openReview } from '../../lib/reviews';
 import { BookCover } from '../../components/BookCover';
+import { CoverRibbon } from '../../components/CoverRibbon';
 import { Pill } from '../../components/Pill';
 import { MarkdownView } from '../../components/MarkdownView';
 import { Text, TextInput } from '../../components/Text';
@@ -18,7 +18,7 @@ import { PageTurn } from '../../components/PageTurn';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Chip, ErrorState, Header, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
-import { isSectionAccessibleInBook } from '../../lib/bookAccess';
+import { isSectionAccessibleInBook, resolveBookCta } from '../../lib/bookAccess';
 import { coverByline } from '../../lib/cover';
 import { jalaliDate } from '../../lib/jalali';
 import { offlineBookDetail, offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
@@ -31,7 +31,7 @@ import { flushStudyTime, useLocalStudySeconds } from '../../lib/studyTime';
 import { currentPrice, percentLabel } from '../../lib/pricing';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
-import { colors, formatToman, radius, rtl, toPersianDigits, toPersianOrdinal } from '../../theme';
+import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
 import { BookSide } from '../../components/ChapterSide';
 import { HelpTip } from '../../components/HelpTip';
 import { useWide } from '../../lib/layout';
@@ -275,21 +275,6 @@ export default function Book() {
   const tests = book.chapters.reduce((n, c) => n + (c.question_count ?? 0), 0);
   const cards = book.chapters.reduce((n, c) => n + (c.flashcard_count ?? 0), 0);
   const readCount = sections.filter((x) => done.has(x.id)).length;
-  const firstOpen = book.chapters.find((chapter) => !chapter.is_locked || chapter.sections.some((section) => !section.is_locked));
-  const firstOpenIndex = firstOpen ? book.chapters.indexOf(firstOpen) + 1 : 0;
-  const firstPreview = book.product_status.preview === 'sample' ? firstOpen : undefined;
-  const previewLabel = firstPreview
-    ? !firstPreview.is_locked && firstPreview.sections.every((section) => !section.is_locked)
-      ? `فصل ${toPersianOrdinal(firstOpenIndex)} رایگان`
-      : 'بخشی رایگان'
-    : null;
-  const startFree = () => {
-    if (!firstPreview) return;
-    const target = firstPreview.has_overview ? firstPreview.id : firstPreview.sections.find((section) => !section.is_locked)?.id;
-    if (target) router.push(`/section/${target}`);
-  };
-  // Only the book-level is_free flag (reported as state=free) grants the whole book; a free chapter is a preview.
-  const fullAccess = book.owned || book.product_status.state === 'free';
   const now = notify ?? { on: book.notify, canCancel: !!book.notify_can_cancel };
   const waiting = now.on;
   const toggleNotify = async () => {
@@ -312,6 +297,7 @@ export default function Book() {
 
   const isPreparing = book.product_status.state === 'coming_soon' || book.product_status.state === 'preparing';
   const validLast = last && last.bookSlug === slug && isSectionAccessibleInBook(book, last.id) ? last : null;
+  const cta = resolveBookCta(book, { isAuthenticated: !!user, lastSection: validLast });
   const wideCta = width >= 560;
 
   return (
@@ -386,12 +372,7 @@ export default function Book() {
             {/* The cover carries the title (and author), so it is not written again under it; screen readers hear it here. */}
             <View accessible accessibilityRole="header" accessibilityLabel={[book.title, coverByline(book.author, book.edition)].filter(Boolean).join('، ')}>
               <BookCover book={book} major={book.major ?? null} width={coverW} edge />
-              {book.owned && (
-                <View style={styles.ownedRibbon}>
-                  <Icon name="circle-check" size={12} color="#FFFFFF" />
-                  <Text style={styles.ownedRibbonText}>{accessLabel(book)}</Text>
-                </View>
-              )}
+              <CoverRibbon book={book} />
             </View>
           </View>
           {/* An uploaded cover image may not show the title clearly: then it stays, small. */}
@@ -437,7 +418,7 @@ export default function Book() {
         </Animated.View>
         <View style={styles.sheet}>
         <View style={styles.page}>
-          {isPreparing ? (
+          {cta.kind === 'preparing' ? (
             <View style={styles.cta}>
               <View style={styles.ctaHead}>
                 <IconBadge name={book.product_status.state === 'preparing' ? 'calendar' : 'bell'} size={30} />
@@ -478,7 +459,7 @@ export default function Book() {
                 onPress={toggleNotify}
               />
             </View>
-          ) : fullAccess ? (
+          ) : cta.kind === 'full' ? (
             <View style={[styles.cta, styles.ctaRow, totalBookSeconds >= 60 && { marginBottom: 16 }]}>
               <HelpTip
                 size={54}
@@ -496,9 +477,15 @@ export default function Book() {
                 </View>
                 <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{validLast ? validLast.title : 'از اول کتاب شروع کن'}</Text>
               </View>
-              <Pressable onPress={() => (validLast ? router.push(`/section/${validLast.id}`) : startFree())} style={styles.ctaButton} accessibilityRole="button">
-                <Text style={styles.ctaButtonText}>{validLast ? 'ادامه بده' : 'شروع'}</Text>
-              </Pressable>
+              {cta.targetNodeId != null && (
+                <Pressable
+                  onPress={() => router.push(`/section/${cta.targetNodeId!}`)}
+                  style={styles.ctaButton}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.ctaButtonText}>{cta.buttonLabel}</Text>
+                </Pressable>
+              )}
               {totalBookSeconds >= 60 && (
                 <View style={styles.badgeWrapper} pointerEvents="none">
                   <View style={styles.floatingTimeBadge}>
@@ -509,46 +496,42 @@ export default function Book() {
             </View>
           ) : (
             <View style={[styles.cta, totalBookSeconds >= 60 && { marginBottom: 16 }]}>
-              {(!!validLast || !!firstPreview) && (
+              {!!cta.lastTitle && (
                 <View style={styles.ctaHead}>
-                  <IconBadge name={validLast ? 'book-open' : 'gift'} size={30} />
+                  <IconBadge name="book-open" size={30} />
                   <Text style={[styles.ctaTitle, rtl, { flex: 1 }]} numberOfLines={1}>
-                    {validLast
-                      ? `آخرین مطالعه (رایگان): «${validLast.title}»`
-                      : previewLabel === 'بخشی رایگان'
-                        ? 'بخشی از کتاب رایگان است؛ بدون خرید امتحان کن'
-                        : `${previewLabel} است؛ بدون خرید امتحان کن`}
+                    {`آخرین مطالعه: «${cta.lastTitle}»`}
                   </Text>
                 </View>
               )}
-              {(!!validLast || !!firstPreview || book.product_status.state === 'paid') && (
+              {(cta.buttonLabel != null || cta.showUnlock) && (
                 <View
                   style={[
                     styles.ctaActions,
-                    wideCta && (!!validLast || !!firstPreview) && book.product_status.state === 'paid' && styles.ctaActionsRow,
+                    wideCta && cta.buttonLabel != null && cta.showUnlock && styles.ctaActionsRow,
                   ]}
                 >
-                  {(!!validLast || !!firstPreview) && (
+                  {cta.buttonLabel != null && cta.targetNodeId != null && (
                     <Pressable
-                      onPress={() => (validLast ? router.push(`/section/${validLast.id}`) : startFree())}
+                      onPress={() => router.push(`/section/${cta.targetNodeId!}`)}
                       style={[
                         styles.startFreeBtn,
-                        wideCta && book.product_status.state === 'paid' && styles.ctaActionFlex,
+                        wideCta && cta.showUnlock && styles.ctaActionFlex,
                       ]}
                       accessibilityRole="button"
                     >
                       <Text style={styles.startFreeBtnText}>
-                        {validLast ? 'ادامه بده' : `خواندن رایگان فصل ${toPersianDigits(firstOpenIndex)}`}
+                        {cta.buttonLabel}
                       </Text>
                     </Pressable>
                   )}
-                  {book.product_status.state === 'paid' && (
+                  {cta.showUnlock && (
                     <Pressable
                       onPress={() => router.push(`/buy/${book.slug}`)}
                       style={[
                         styles.unlock,
-                        !(firstPreview || validLast) && styles.unlockMain,
-                        wideCta && (!!validLast || !!firstPreview) && styles.ctaActionFlex,
+                        cta.buttonLabel == null && styles.unlockMain,
+                        wideCta && cta.buttonLabel != null && styles.ctaActionFlex,
                       ]}
                       accessibilityRole="button"
                     >
@@ -586,7 +569,6 @@ export default function Book() {
                       <Text onPress={() => router.push('/subscribe')} style={styles.ctaSubLink}>
                         اشتراک ماهانه‌ی لیمو
                       </Text>
-                      {!firstPreview && !!previewLabel && <Text style={styles.samplePriceText}> · {previewLabel}</Text>}
                     </Text>
                   </View>
                 )
@@ -690,6 +672,7 @@ export default function Book() {
           {!!note && <Text style={[styles.note, rtl]}>{note}</Text>}
 
           {/* تب‌های سه‌گانه همگن با منوی اصلی: درباره کتاب | درباره نویسنده | نظرات */}
+          {!isPreparing && (
           <View style={styles.tabsContainer}>
             <View style={styles.tabHeader}>
               <Pressable
@@ -968,6 +951,7 @@ export default function Book() {
               </View>
             )}
           </View>
+          )}
 
           {!isPreparing && !!past?.exams.length && (
             <View style={styles.about}>
@@ -1409,8 +1393,6 @@ const styles = StyleSheet.create({
   stat: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.07)' },
   statValue: { fontSize: 18, fontWeight: '900', color: colors.lemon },
   statLabel: { fontSize: 12, color: '#C9D3CC' },
-  ownedRibbon: { position: 'absolute', top: 12, left: -6, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: '#3FB8A9', paddingHorizontal: 8, paddingVertical: 3, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
-  ownedRibbonText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
   badgeWrapper: { position: 'absolute', bottom: -13, left: 0, right: 0, width: '100%', alignItems: 'center', justifyContent: 'center', zIndex: 99, elevation: 6 },
   floatingTimeBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
   floatingTimeBadgeText: { fontSize: 11.5, lineHeight: 18, fontWeight: '800', color: '#166534' },
@@ -1427,7 +1409,6 @@ const styles = StyleSheet.create({
   salePrice: { color: colors.redDark, fontSize: 14, fontWeight: '900' },
   saleAmountLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   discountChip: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: colors.redDark, color: '#FFFFFF', fontSize: 10, fontWeight: '900', overflow: 'hidden' },
-  samplePriceText: { color: colors.greenDark, fontWeight: '800' },
   saving: { textAlign: 'center', fontSize: 11, fontWeight: '800', color: colors.redDark },
   ctaButton: { backgroundColor: colors.lemon, borderRadius: 12, paddingHorizontal: 18, minHeight: 46, justifyContent: 'center' },
   ctaButtonText: { color: colors.ink, fontWeight: '900', fontSize: 15 },

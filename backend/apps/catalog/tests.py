@@ -242,6 +242,27 @@ class ReadApiTests(TestCase):
         self.assertTrue(all(not s["is_locked"] for s in free_chapter["sections"]))
         self.assertTrue(paid_chapter["is_locked"])
 
+    def test_partial_free_chapter_in_card_and_detail(self):
+        # Lock chapter 1 and unlock only a single section inside chapter 2.
+        ContentNode.objects.filter(slug="limits").update(is_free=False)
+        ContentNode.objects.filter(slug="rules").update(is_free=True)
+        detail = self.client.get("/api/v1/books/math-1/").data
+        self.assertIsNone(detail["free_chapter"])
+        self.assertEqual(detail["free_chapters"], 0)
+        self.assertEqual(detail["partial_free_chapter"], 2)
+        self.assertEqual(detail["product_status"]["preview"], "sample")
+        self.assertTrue(detail["chapters"][0]["is_locked"])
+        self.assertTrue(detail["chapters"][1]["is_locked"])
+        rules_section = next(s for s in detail["chapters"][1]["sections"] if s["slug"] == "rules")
+        self.assertFalse(rules_section["is_locked"])
+
+        shelves = self.client.get("/api/v1/shelves/").data
+        shelf_books = [b for shelf in shelves for b in shelf["books"] if b["slug"] == "math-1"]
+        self.assertEqual(len(shelf_books), 1)
+        self.assertEqual(shelf_books[0]["partial_free_chapter"], 2)
+        self.assertIsNone(shelf_books[0]["free_chapter"])
+        self.assertEqual(shelf_books[0]["product_status"]["preview"], "sample")
+
     def test_free_section_readable_with_media_urls(self):
         node = ContentNode.objects.get(slug="limit-idea")
         data = self.client.get(f"/api/v1/nodes/{node.id}/").data
