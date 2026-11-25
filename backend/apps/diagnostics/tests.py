@@ -611,3 +611,109 @@ class DiagnosticsAdminTests(TestCase):
         self.ev.group.refresh_from_db()
         self.assertEqual(self.ev.group.status, ErrorGroup.Status.RESOLVED)
         self.assertIsNotNone(self.ev.group.resolved_at)
+
+
+class BrowserDiagnosticsTests(TestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(phone="09120003333", password="pass", is_staff=True, is_superuser=False)
+        self.super = User.objects.create_superuser(phone="09120004444", password="pass")
+
+    def test_panel_and_website_templates_include_browser_reporter(self):
+        login_res = self.client.get("/admin/login/")
+        self.assertEqual(login_res.status_code, 200)
+        self.assertContains(login_res, "diagnostics/browser-diag.js")
+        self.assertContains(login_res, 'data-platform="panel"')
+        self.assertContains(login_res, 'data-channel="login"')
+
+        self.client.force_login(self.teacher)
+        teacher_res = self.client.get("/admin/")
+        self.assertEqual(teacher_res.status_code, 200)
+        self.assertContains(teacher_res, 'data-platform="panel"')
+        self.assertContains(teacher_res, 'data-channel="teacher"')
+
+        self.client.force_login(self.super)
+        super_res = self.client.get("/admin/")
+        self.assertEqual(super_res.status_code, 200)
+        self.assertContains(super_res, 'data-platform="panel"')
+        self.assertContains(super_res, 'data-channel="superadmin"')
+
+        self.client.logout()
+        site_res = self.client.get("/site/")
+        self.assertEqual(site_res.status_code, 200)
+        self.assertContains(site_res, "diagnostics/browser-diag.js")
+        self.assertContains(site_res, 'data-platform="website"')
+        self.assertContains(site_res, 'data-channel="public"')
+
+    def test_session_authenticated_panel_ingest_and_platform_filter(self):
+        self.client.force_login(self.teacher)
+        res = self.client.post(
+            "/api/v1/diagnostics/events/",
+            data={
+                "events": [
+                    {
+                        "event_id": "evt_browser_panel_1",
+                        "kind": "client_error",
+                        "code": "asset_load_error",
+                        "title": "خطا در بارگذاری فایل اسکریپت",
+                        "route": "/admin/catalog/book/12/chapters/",
+                        "platform": "panel",
+                        "channel": "teacher",
+                        "app_build": "1732500000",
+                        "context": {
+                            "error_name": "SCRIPTLoadError",
+                            "location": "/static/catalog/panel.js",
+                        },
+                    }
+                ]
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json(), {"accepted": 1, "duplicates": 0})
+        ev = ErrorEvent.objects.get(event_id="evt_browser_panel_1")
+        self.assertEqual(ev.platform, "panel")
+        self.assertEqual(ev.channel, "teacher")
+        self.assertTrue(ev.user_ref.startswith("u-"))
+        self.assertEqual(ev.group.title, "خطا در بارگذاری فایل اسکریپت یا استایل صفحه")
+
+        record_event(
+            source=ErrorGroup.Source.CLIENT,
+            kind=ErrorGroup.Kind.CLIENT_ERROR,
+            code="js_error",
+            title="website err",
+            event_id="evt_browser_site_1",
+            platform="website",
+            channel="public",
+            route="/site/books/math-1/",
+            context={"error_name": "TypeError"},
+        )
+
+        self.client.force_login(self.super)
+        filtered = self.client.get("/admin/diagnostics/errorgroup/?platform=panel")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertContains(filtered, "خطا در بارگذاری فایل اسکریپت یا استایل صفحه")
+        self.assertNotContains(filtered, "/site/books/&lt;slug&gt;/")
+
+    def test_normalize_route_scrubs_website_slugs_and_tokens(self):
+        from apps.diagnostics.sanitize import normalize_route
+
+        self.assertEqual(normalize_route("/join/CLASS42/?next=/x"), "/join/<token>/")
+        self.assertEqual(normalize_route("/site/join/SECRET_CODE/"), "/site/join/<token>/")
+        self.assertEqual(normalize_route("/verify-email/abc-token-99/"), "/verify-email/<token>/")
+        self.assertEqual(normalize_route("/site/books/physics-10/"), "/site/books/<slug>/")
+        self.assertEqual(normalize_route("/books/chem-11/"), "/books/<slug>/")
+
+    def test_scrub_stack_preserves_line_and_col_when_url_has_query_string(self):
+        from apps.diagnostics.sanitize import scrub_stack
+
+        cleaned = scrub_stack(
+            "TypeError: secret message\n"
+            "    at renderNode (https://panel.example.com/static/catalog/panel.js?v=123:42:9)\n"
+            "    at https://panel.example.com/static/site.js?token=abc:18:3"
+        )
+        self.assertEqual(
+            cleaned,
+            "at renderNode (https://panel.example.com/static/catalog/panel.js:42:9)\n"
+            "at https://panel.example.com/static/site.js:18:3",
+        )
+

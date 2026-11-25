@@ -52,6 +52,11 @@
     {% if s.enamad_html %}<div class="enamad">{{ s.enamad_html|safe }}</div>{% endif %}
   </div>
 </footer>
+<script
+  src="{% static 'diagnostics/browser-diag.js' %}?v=1"
+  data-platform="website"
+  data-channel="public"
+  defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -188,7 +188,7 @@ function parseStackFrameLine(line: string): string | null {
   }
 
   // 2. React componentStack frame: at/in PascalCaseComponent [(created by Parent | at file:line[:col])]
-  const reactComp = /^(at|in)\s+([A-Z][A-Za-z0-9_$.]{0,60})(?:\s+\((?:created by\s+([A-Z][A-Za-z0-9_$.]{0,60})|at\s+([^()]+):(\d+)(?::(\d+))?)\))?\s*$/.exec(
+  const reactComp = /^(at|in)\s+([A-Z][A-Za-z0-9_$.]{0,60})(?:\s+\((?:created by\s+([A-Z][A-Za-z0-9_$.]{0,60})|at\s+([^()]+?):(\d+)(?::(\d+))?)\))?\s*$/.exec(
     trimmed,
   );
   if (reactComp) {
@@ -202,7 +202,7 @@ function parseStackFrameLine(line: string): string | null {
   }
 
   // 3. V8 / Node / Hermes frame with location: at [async|new] fn (file:line[:col])
-  const v8Paren = /^(?:at|in)\s+(?:(?:async|new)\s+)?([A-Za-z_$][\w$.<>]{0,80})\s+\(([^()]+):(\d+)(?::(\d+))?\)\s*$/.exec(trimmed);
+  const v8Paren = /^(?:at|in)\s+(?:(?:async|new)\s+)?([A-Za-z_$][\w$.<>]{0,80})\s+\(([^()]+?):(\d+)(?::(\d+))?\)\s*$/.exec(trimmed);
   if (v8Paren) {
     const file = cleanFrameFile(v8Paren[2]);
     const loc = v8Paren[4] ? `${file}:${v8Paren[3]}:${v8Paren[4]}` : `${file}:${v8Paren[3]}`;
@@ -210,14 +210,14 @@ function parseStackFrameLine(line: string): string | null {
   }
 
   // 4. Anonymous V8 / Hermes frame: at [async] file:line[:col]
-  const v8Anon = /^at\s+(?:async\s+)?([^\s()]+):(\d+)(?::(\d+))?\s*$/.exec(trimmed);
+  const v8Anon = /^at\s+(?:async\s+)?([^\s()]+?):(\d+)(?::(\d+))?\s*$/.exec(trimmed);
   if (v8Anon) {
     const file = cleanFrameFile(v8Anon[1]);
     return v8Anon[3] ? `at ${file}:${v8Anon[2]}:${v8Anon[3]}` : `at ${file}:${v8Anon[2]}`;
   }
 
   // 5. JSC / Safari / Firefox frame: [fn]@file:line[:col]
-  const jsc = /^([A-Za-z_$][\w$.<>]{0,80})?@([^\s@()]+):(\d+)(?::(\d+))?\s*$/.exec(trimmed);
+  const jsc = /^([A-Za-z_$][\w$.<>]{0,80})?@([^\s@()]+?):(\d+)(?::(\d+))?\s*$/.exec(trimmed);
   if (jsc) {
     const file = cleanFrameFile(jsc[2]);
     const loc = jsc[4] ? `${file}:${jsc[3]}:${jsc[4]}` : `${file}:${jsc[3]}`;

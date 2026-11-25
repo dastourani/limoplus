@@ -53,6 +53,8 @@ def _client_error_title(code: str, error_name: str) -> str:
         return f"خطای نمایش صفحه: {error_name}"
     if code == "unhandled_rejection":
         return f"وعدهٔ مدیریت‌نشده ({error_name})"
+    if code == "asset_load_error":
+        return "خطا در بارگذاری فایل اسکریپت یا استایل صفحه"
     return f"خطای اجرای جاوااسکریپت: {error_name}"
 
 
@@ -61,6 +63,8 @@ def _client_error_observed(code: str, error_name: str) -> str:
         return f"خطای رندر ({error_name}) در نمایش صفحه رخ داد."
     if code == "unhandled_rejection":
         return f"وعدهٔ ناهم‌زمان مدیریت‌نشده ({error_name}) رخ داد."
+    if code == "asset_load_error":
+        return "بارگذاری یکی از فایل‌های ایستا در مرورگر با شکست مواجه شد."
     return f"خطای مهارنشدهٔ جاوااسکریپت ({error_name}) رخ داد."
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.contrib.auth import get_user
 from django.db import transaction
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -55,7 +56,14 @@ def ingest_events(request):
     header_install = (request.headers.get("X-App-Install-Id") or "").strip()
     header_req_id = getattr(request, "diagnostics_request_id", "") or (request.headers.get("X-Request-Id") or "").strip()
 
-    user_id = request.user.pk if getattr(request, "user", None) and request.user.is_authenticated else None
+    user_id = None
+    if getattr(request, "user", None) and request.user.is_authenticated:
+        user_id = request.user.pk
+    elif getattr(request, "_request", None) is not None and hasattr(request._request, "session"):
+        # Panel/website pages authenticate via Django session cookies, which DRF's DeviceSessionAuthentication clears on request.user.
+        django_user = get_user(request._request)
+        if getattr(django_user, "is_authenticated", False):
+            user_id = django_user.pk
 
     accepted = 0
     duplicates = 0
