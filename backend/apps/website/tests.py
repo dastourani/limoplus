@@ -418,6 +418,11 @@ class WebsiteTests(TestCase):
         self.assertContains(r, "ممنون از نظر ارزشمند شما.")
         self.assertNotContains(r, "نظر تأییدنشده نباید دیده شود")
 
+        html = r.content.decode("utf-8")
+        self.assertRegex(html, r'<div class="book-tab-panel" role="tabpanel" data-tab-panel="book">')
+        self.assertRegex(html, r'<div class="book-tab-panel" role="tabpanel" data-tab-panel="author" hidden>')
+        self.assertRegex(html, r'<div class="book-tab-panel" role="tabpanel" data-tab-panel="reviews" hidden>')
+
         css = (Path(__file__).resolve().parent / "static/website/site.css").read_text(encoding="utf-8")
         self.assertIn(".book-tabs-body", css)
         self.assertIn("overflow-y: auto", css)

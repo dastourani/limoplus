@@ -244,18 +244,22 @@
       var buttons = card.querySelectorAll('[data-tab-btn]');
       var panels = card.querySelectorAll('[data-tab-panel]');
       if (!buttons.length || !panels.length) return;
-      card.addEventListener('click', function (e) {
-        var btn = e.target.closest('[data-tab-btn]');
-        if (!btn) return;
-        var target = btn.getAttribute('data-tab-btn');
+      function activate(target) {
         buttons.forEach(function (b) {
-          var active = b === btn;
+          var active = b.getAttribute('data-tab-btn') === target;
           b.classList.toggle('is-active', active);
           b.setAttribute('aria-selected', active ? 'true' : 'false');
         });
         panels.forEach(function (p) {
           p.hidden = p.getAttribute('data-tab-panel') !== target;
         });
+      }
+      var initial = card.querySelector('[data-tab-btn].is-active') || buttons[0];
+      if (initial) activate(initial.getAttribute('data-tab-btn'));
+      card.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-tab-btn]');
+        if (!btn) return;
+        activate(btn.getAttribute('data-tab-btn'));
       });
     });
   }

@@ -25,7 +25,7 @@ from apps.catalog.jalali import jalali_date as fa_date
 from apps.catalog.labels import all_labels
 from apps.catalog.media import media_urls
 from apps.catalog.models import ContentNode, Major
-from apps.catalog.views import _book_rating, _book_reviews_data, _prefetch_book_ratings, _teacher_info
+from apps.catalog.views import _book_rating, _book_reviews_data, _prefetch_book_ratings, _teacher_info, free_chapter_summary
 from config.links import app_base_url
 
 from .models import FaqItem, SiteNavItem, SitePage, SiteSettings
@@ -59,36 +59,28 @@ def fa_ordinal(number: int) -> str:
     return ORDINALS.get(int(number), fa(number))
 
 
-def free_preview_label(free_chapters: list[int], partial_free_chapter: int | None = None) -> str:
+def free_preview_label(free_chapter: int | None, free_chapters: int, partial_free_chapter: int | None = None) -> str:
     """The book's free-preview label, matching the app's `shelfLabel`:
     one free chapter («فصل اول رایگان»), several («۲ فصل رایگان»), or a section inside chapter N («بخشی از فصل ۱ رایگان»).
     """
-    if len(free_chapters) == 1:
-        return f"فصل {fa_ordinal(free_chapters[0])} رایگان"
-    if len(free_chapters) > 1:
-        return f"{fa(len(free_chapters))} فصل رایگان"
+    if free_chapters == 1 and free_chapter:
+        return f"فصل {fa_ordinal(free_chapter)} رایگان"
+    if free_chapters > 1:
+        return f"{fa(free_chapters)} فصل رایگان"
     if partial_free_chapter:
         return f"بخشی از فصل {fa(partial_free_chapter)} رایگان"
     return "بخشی رایگان"
 
 
-def _cover_free_label(state: str, preview: str, chapters, access: AccessMap) -> str | None:
+def _cover_free_label(book, state: str, preview: str, chapters, access: AccessMap) -> str | None:
     """Free cover ribbon text matching the app/web-app `shelfLabel` for whole-free and preview books."""
     from apps.commerce.pricing import ProductStatus
 
     if state == ProductStatus.FREE:
         return "کل کتاب رایگان"
     if preview == "sample":
-        free_numbers = [i for i, chapter in enumerate(chapters, start=1) if chapter.is_free]
-        partial = (
-            None
-            if free_numbers
-            else next(
-                (i for i, chapter in enumerate(chapters, start=1) if any(s.is_free for s in access.children(chapter))),
-                None,
-            )
-        )
-        return free_preview_label(free_numbers, partial)
+        free_chapter, free_chapters, partial_free_chapter = free_chapter_summary(book, chapters, access)
+        return free_preview_label(free_chapter, free_chapters, partial_free_chapter)
     return None
 
 
@@ -153,7 +145,7 @@ def _card(request, book, price_quote=None) -> dict:
     else:
         label = {"kind": "unpriced", "icon": "lock", "text": "در دسترس نیست"}
 
-    sample_label = _cover_free_label(state, product_status["preview"], chapters, access)
+    sample_label = _cover_free_label(book, state, product_status["preview"], chapters, access)
 
     discount = None
     if product_status["promotion"] == "discount":
@@ -551,7 +543,7 @@ def book(request, slug):
     product_status = price_quote.product_status_payload
     state = product_status["state"]
     is_preparing = state in (ProductStatus.COMING_SOON, ProductStatus.PREPARING)
-    sample_label = _cover_free_label(state, product_status["preview"], raw_chapters, access)
+    sample_label = _cover_free_label(b, state, product_status["preview"], raw_chapters, access)
     related_books = []
     if is_preparing:
         other = [x for x in _published() if x.id != b.id and not x.is_coming_soon][:6]

@@ -160,6 +160,21 @@ def shelves(request):
     return Response(rows)
 
 
+def free_chapter_summary(book, chapters, access) -> tuple[int | None, int, int | None]:
+    """Return `(free_chapter, free_chapters, partial_free_chapter)` using the visible tree in `access`."""
+    free_chapter = next((i for i, c in enumerate(chapters, start=1) if c.is_free), None)
+    free_chapters = len(chapters) if book.is_free else sum(1 for c in chapters if c.is_free)
+    partial_free_chapter = (
+        None
+        if book.is_free or free_chapter is not None
+        else next(
+            (i for i, c in enumerate(chapters, start=1) if any(s.is_free for s in access.children(c))),
+            None,
+        )
+    )
+    return free_chapter, free_chapters, partial_free_chapter
+
+
 def book_card(request, book, access, price_quote=None) -> dict:
     """What a shelf needs to draw a book: its cover, current campaign price and the reader's progress."""
     if price_quote is None:
@@ -172,16 +187,7 @@ def book_card(request, book, access, price_quote=None) -> dict:
     from apps.study.progress import section_states
 
     done = section_states(request.user, access, request)[1] & {s.id for s in sections}
-    free_chapter = next((i for i, c in enumerate(chapters, start=1) if c.is_free), None)
-    free_chapters = len(chapters) if book.is_free else sum(1 for c in chapters if c.is_free)
-    partial_free_chapter = (
-        None
-        if book.is_free or free_chapter is not None
-        else next(
-            (i for i, c in enumerate(chapters, start=1) if any(s.is_free for s in access.children(c))),
-            None,
-        )
-    )
+    free_chapter, free_chapters, partial_free_chapter = free_chapter_summary(book, chapters, access)
     major = min(book.majors.all(), key=lambda m: (m.order, m.name), default=None)
     return {
         "slug": book.slug,
