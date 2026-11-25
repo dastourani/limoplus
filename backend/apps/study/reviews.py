@@ -277,7 +277,7 @@ def _pick_book(
 
     recent_sessions = list(
         ReviewSession.objects.filter(book_review=book_review, finished_at__isnull=False, score__isnull=False)
-        .order_by("-finished_at", "-id")[:5]
+        .order_by("-finished_at", "-id")
         .values_list("served", flat=True)
     )
     if not recent_sessions and book_review.last_served:
@@ -310,8 +310,8 @@ def _pick_book(
             available,
             key=lambda c: (
                 session_counts[c] + picked_now[c],
-                recency_rank[c],
                 recent_hits[c],
+                recency_rank[c],
                 chapter_order[c],
             ),
         )
@@ -343,7 +343,14 @@ def _estimated_minutes(pool: list[Question], count: int, selected_ids: list[int]
         by_id = {q.id: q for q in pool}
         selected = [by_id[qid] for qid in selected_ids if qid in by_id]
         if selected:
-            return max(1, round(sum((q.estimated_seconds or DEFAULT_QUESTION_SECONDS) for q in selected) / 60))
+            total_seconds = float(sum((q.estimated_seconds or DEFAULT_QUESTION_SECONDS) for q in selected))
+            extra = count - len(selected)
+            if extra > 0:
+                selected_set = {q.id for q in selected}
+                remaining = [q for q in pool if q.id not in selected_set] or pool
+                avg_remaining = sum((q.estimated_seconds or DEFAULT_QUESTION_SECONDS) for q in remaining) / len(remaining)
+                total_seconds += avg_remaining * extra
+            return max(1, round(total_seconds / 60))
     avg_seconds = sum((q.estimated_seconds or DEFAULT_QUESTION_SECONDS) for q in pool) / len(pool)
     return max(1, round(avg_seconds * count / 60))
 
