@@ -2885,10 +2885,12 @@ class StepOneAdminHardeningTests(TestCase):
         opinion_admin = admin.site._registry[BookOpinion]
         req = RequestFactory().post("/")
         req.user = self.teacher_1
+        # Simulate manager concurrently approving the opinion in DB while teacher only submits a reply
+        BookOpinion.objects.filter(pk=opinion.pk).update(status=BookOpinion.Status.APPROVED, is_pinned=True)
+        opinion.status = BookOpinion.Status.PENDING
+        opinion.is_pinned = False
         opinion.rating = 5
         opinion.body = "تغییر مستقیم"
-        opinion.status = BookOpinion.Status.HIDDEN
-        opinion.is_pinned = True
         opinion.teacher_reply = "پاسخ دوم استاد"
         opinion_admin.save_model(req, opinion, None, change=True)
         opinion.refresh_from_db()
@@ -2896,13 +2898,14 @@ class StepOneAdminHardeningTests(TestCase):
         self.assertEqual(opinion.rating, 2)
         self.assertEqual(opinion.body, "نیاز به اصلاح مثال‌ها دارد.")
         self.assertEqual(opinion.status, BookOpinion.Status.APPROVED)
-        self.assertFalse(opinion.is_pinned)
+        self.assertTrue(opinion.is_pinned)
 
-    def test_teacher_profile_dropdown_excludes_existing_profiles(self):
+    def test_teacher_profile_dropdown_excludes_existing_profiles_and_non_teacher_staff(self):
         from django.contrib import admin
         from django.test import RequestFactory
         from apps.catalog.models import TeacherProfile
 
+        non_teacher_staff = User.objects.create_user("09120000088", is_staff=True)
         TeacherProfile.objects.create(user=self.teacher_1, academic_title="استادیار")
         profile_admin = admin.site._registry[TeacherProfile]
         req = RequestFactory().get("/admin/catalog/teacherprofile/add/")
@@ -2910,6 +2913,7 @@ class StepOneAdminHardeningTests(TestCase):
         field = profile_admin.formfield_for_foreignkey(TeacherProfile._meta.get_field("user"), req)
         user_ids = set(field.queryset.values_list("id", flat=True))
         self.assertNotIn(self.teacher_1.id, user_ids)
+        self.assertNotIn(non_teacher_staff.id, user_ids)
         self.assertIn(self.teacher_2.id, user_ids)
 
         # Teacher without profile can create their own once, and then add permission is False
@@ -2938,15 +2942,50 @@ class StepOneAdminHardeningTests(TestCase):
         self.assertEqual([m["object_name"] for m in ai_app["models"]], ["AIProvider", "BookAssistantAuditLog"])
 
     def test_shared_book_activity_tracks_individual_editor_and_flags_unattributed_edits(self):
+        from datetime import timedelta
+        from django.contrib.admin.models import CHANGE, LogEntry
+        from django.contrib.contenttypes.models import ContentType
+        from django.utils import timezone
         from apps.catalog import editing
         from apps.catalog.admin import _admin_kpis_payload
-        from apps.catalog.models import ChapterRevision
+        from apps.catalog.models import BookBoxMapping, ChapterRevision, TeacherProfile
 
         # Initially both teachers have no recorded activity
         kpi0 = _admin_kpis_payload()
         self.assertEqual(kpi0["kpi_teachers_total"], "۲")
         self.assertEqual(kpi0["kpi_teachers_inactive"], "۲")
         self.assertEqual(kpi0["kpi_unattributed_edits_count"], 0)
+
+        # Editing a TeacherProfile alone (or manager editing an old BookBoxMapping) must NOT count as authoring activity
+        prof = TeacherProfile.objects.create(user=self.teacher_1, academic_title="مدرس")
+        LogEntry.objects.create(
+            user=self.teacher_1,
+            content_type=ContentType.objects.get_for_model(TeacherProfile),
+            object_id=str(prof.pk),
+            object_repr=str(prof),
+            action_flag=CHANGE,
+        )
+        old_mapping = BookBoxMapping.objects.create(
+            book=self.shared_book,
+            environment_name="oldtip",
+            label_name="نکته",
+            created_by=self.teacher_2,
+        )
+        BookBoxMapping.objects.filter(pk=old_mapping.pk).update(
+            created_at=timezone.now() - timedelta(days=60),
+            updated_at=timezone.now() - timedelta(days=60),
+        )
+        self.client.force_login(self.superuser)
+        self.client.post(f"/admin/catalog/bookboxmapping/{old_mapping.pk}/change/", {
+            "book": self.shared_book.pk,
+            "environment_name": "oldtip",
+            "label_name": "نکته ویرایش مدیر",
+        })
+        old_mapping.refresh_from_db()
+        self.assertEqual(old_mapping.created_by_id, self.teacher_2.id)
+
+        kpi_after_profile_and_manager_edit = _admin_kpis_payload()
+        self.assertEqual(kpi_after_profile_and_manager_edit["kpi_teachers_inactive"], "۲")
 
         # Teacher 1 edits the shared book's chapter (including baseline creation)
         editing.ensure_baseline(self.chapter, self.teacher_1)
@@ -2964,9 +3003,9 @@ class StepOneAdminHardeningTests(TestCase):
         self.assertEqual(kpi2["kpi_teachers_inactive"], "۱")
         self.assertEqual(kpi2["kpi_unattributed_edits_count"], 1)
 
-        self.client.force_login(self.superuser)
         dashboard = self.client.get("/admin/")
         self.assertEqual(dashboard.status_code, 200)
+        self.assertContains(dashboard, "بدون ویرایش تألیفیِ ثبت‌شده در ۳۰ روز اخیر")
         self.assertContains(dashboard, "سوابق بدون هویت ویرایشگر")
 
 
@@ -3011,13 +3050,24 @@ class StepTwoAdminModelsTests(TestCase):
         task = BookTeamTask.objects.get(book=self.book_a)
         res_edit = self.client.post(f"/admin/catalog/bookteamtask/{task.pk}/change/", {
             "book": self.book_a.pk,
-            "author": self.teacher.pk,
+            "author": self.superuser.pk,
             "text": task.text,
             "is_done": "on",
         })
         self.assertEqual(res_edit.status_code, 302)
         task.refresh_from_db()
         self.assertTrue(task.is_done)
+        # Author stays locked to original teacher who created the task
+        self.assertEqual(task.author_id, self.teacher.pk)
+
+        # Manager adding a task via admin sets author to current manager automatically
+        res_mgr_add = self.client.post("/admin/catalog/bookteamtask/add/", {
+            "book": self.book_b.pk,
+            "text": "یادداشت جدید مدیر",
+        })
+        self.assertEqual(res_mgr_add.status_code, 302)
+        mgr_task = BookTeamTask.objects.get(book=self.book_b, text="یادداشت جدید مدیر")
+        self.assertEqual(mgr_task.author_id, self.superuser.pk)
 
     def test_book_box_mapping_admin_crud_normalization_and_uniqueness(self):
         from apps.catalog.models import BookBoxMapping
@@ -3046,26 +3096,42 @@ class StepTwoAdminModelsTests(TestCase):
         self.assertContains(res_list, "clinictip")
         self.assertContains(res_list, "نکته بالینی")
 
-        # Duplicate check after normalization returns 200 with validation error (never 500 IntegrityError)
+        # Duplicate check after normalization returns 200 with Persian field error and leaves original intact
         res_dup = self.client.post(f"/admin/catalog/bookboxmapping/{mapping.pk}/change/", {
             "book": self.book_a.pk,
             "environment_name": "  WarningBox ",
             "label_name": "هشدار",
-            "created_by": self.teacher.pk,
         })
         self.assertEqual(res_dup.status_code, 200)
+        self.assertContains(res_dup, "برای این کتاب قبلاً نگاشتی با همین نام محیط ثبت شده است.")
+        self.assertIn("environment_name", res_dup.context["adminform"].form.errors)
+        mapping.refresh_from_db()
+        self.assertEqual(mapping.environment_name, "clinictip")
+        self.assertEqual(mapping.label_name, "نکته بالینی")
 
-        # Valid edit normalizes whitespace & lowercase
+        # Valid edit normalizes whitespace & lowercase, and keeps created_by locked to original teacher
         res_edit = self.client.post(f"/admin/catalog/bookboxmapping/{mapping.pk}/change/", {
             "book": self.book_a.pk,
             "environment_name": "  ClinicNote ",
             "label_name": " نکته تکمیلی ",
-            "created_by": self.teacher.pk,
+            "created_by": self.superuser.pk,
         })
         self.assertEqual(res_edit.status_code, 302)
         mapping.refresh_from_db()
         self.assertEqual(mapping.environment_name, "clinicnote")
         self.assertEqual(mapping.label_name, "نکته تکمیلی")
+        self.assertEqual(mapping.created_by_id, self.teacher.pk)
+
+        # Manager adding a mapping via admin sets created_by to current manager automatically
+        res_mgr_add = self.client.post("/admin/catalog/bookboxmapping/add/", {
+            "book": self.book_b.pk,
+            "environment_name": "  KeyPoint ",
+            "label_name": " نکته کلیدی ",
+        })
+        self.assertEqual(res_mgr_add.status_code, 302)
+        mgr_map = BookBoxMapping.objects.get(book=self.book_b, environment_name="keypoint")
+        self.assertEqual(mgr_map.created_by_id, self.superuser.pk)
+        self.assertEqual(mgr_map.label_name, "نکته کلیدی")
 
         # Manager can delete stale mapping
         res_del = self.client.post(f"/admin/catalog/bookboxmapping/{mapping.pk}/delete/", {"post": "yes"})

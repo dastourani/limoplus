@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.contrib import admin
+from django.contrib.admin.views.main import ChangeList
 from django.db.models import Count, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Substr
 from django.template.response import TemplateResponse
@@ -349,6 +350,14 @@ class MistakeChapterFilter(ChapterFilter):
     path_field = "question__node__path"
 
 
+class _MistakeChangeList(ChangeList):
+    def get_results(self, request):
+        super().get_results(request)
+        query_tpl = self.get_query_string({"user__id__exact": "__UID__"}, remove=["p"])
+        for obj in self.result_list:
+            obj._lp_user_filter_tpl = query_tpl
+
+
 @admin.register(MistakeNote)
 class MistakeNoteAdmin(ReadOnlyAdmin):
     """علت‌های اشتباه ثبت‌شده توسط کاربران در دفتر اشتباهات (فقط‌خواندنی برای مدیر کل)."""
@@ -363,6 +372,9 @@ class MistakeNoteAdmin(ReadOnlyAdmin):
 
     class Media:
         js = ("catalog/limo-preview.js", "catalog/lists.js")
+
+    def get_changelist(self, request, **kwargs):
+        return _MistakeChangeList
 
     def has_module_permission(self, request):
         return bool(request.user.is_active and request.user.is_superuser)
@@ -423,7 +435,8 @@ class MistakeNoteAdmin(ReadOnlyAdmin):
         from apps.catalog.jalali import jalali_datetime
 
         user_url = reverse("admin:accounts_user_change", args=[obj.user_id])
-        filter_url = f"?user__id__exact={obj.user_id}"
+        tpl = getattr(obj, "_lp_user_filter_tpl", "")
+        filter_url = tpl.replace("__UID__", str(obj.user_id)) if tpl else f"?user__id__exact={obj.user_id}"
         return format_html(
             '<div><a href="{}"><b>{}</b></a> · <a href="{}" class="lp-quiet">فیلتر کاربر</a></div>'
             '<div class="lp-quiet" style="white-space:nowrap">{}</div>',

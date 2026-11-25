@@ -1248,8 +1248,15 @@ class MistakeNoteAdminTests(TestCase):
         self.wrong_choice = Choice.objects.create(question=self.q, order=0, text="۳", is_correct=False)
         Choice.objects.create(question=self.q, order=1, text="۴", is_correct=True)
 
+        self.book2 = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب دوم", slug="mistake-admin-book-2", is_published=True)
+        ch2 = self.book2.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل دوم", slug="m2-ch1", position=1, is_published=True, is_free=True)
+        sec2 = ch2.add_child(kind=ContentNode.Kind.SECTION, title="بخش دوم", slug="m2-sec1", position=1, is_published=True, is_free=True)
+        self.q2 = Question.objects.create(node=sec2, slug="q-mistake-2", stem="سؤال کتاب دوم چیست؟", difficulty="easy", is_free=True)
+        self.wrong_choice2 = Choice.objects.create(question=self.q2, order=0, text="الف", is_correct=False)
+        Choice.objects.create(question=self.q2, order=1, text="ب", is_correct=True)
+
     def test_student_mistake_reason_visible_in_readonly_manager_admin(self):
-        # Student answers wrong and records a mistake reason via real API
+        # Student answers wrong in two books and records mistake reasons via real API
         api = APIClient()
         api.force_authenticate(self.student)
         ans = api.post(f"/api/v1/questions/{self.q.id}/answer/", {"choice_id": self.wrong_choice.id}, format="json")
@@ -1257,23 +1264,44 @@ class MistakeNoteAdminTests(TestCase):
         reason = api.post(f"/api/v1/me/mistakes/{self.q.id}/reason/", {"reason": "careless"}, format="json")
         self.assertEqual(reason.status_code, 200)
 
+        ans2 = api.post(f"/api/v1/questions/{self.q2.id}/answer/", {"choice_id": self.wrong_choice2.id}, format="json")
+        self.assertEqual(ans2.status_code, 200)
+        reason2 = api.post(f"/api/v1/me/mistakes/{self.q2.id}/reason/", {"reason": "forgot"}, format="json")
+        self.assertEqual(reason2.status_code, 200)
+
         # Teacher cannot see individual student MistakeNotes
         self.client.force_login(self.teacher)
         self.assertEqual(self.client.get("/admin/study/mistakenote/").status_code, 403)
 
-        # Superuser can view, filter by book & reason, search by phone, and cannot add/edit/delete
+        # Superuser can view, filter by book & reason, and clicking "فیلتر کاربر" preserves book filter
         self.client.force_login(self.superuser)
         res = self.client.get("/admin/study/mistakenote/")
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, "09120002099")
         self.assertContains(res, "بی‌دقتی")
         self.assertContains(res, "کتاب آزمون")
+        self.assertContains(res, "کتاب دوم")
 
         res_filtered = self.client.get(f"/admin/study/mistakenote/?book={self.book.pk}&reason__exact=careless")
         self.assertEqual(res_filtered.status_code, 200)
         self.assertContains(res_filtered, "09120002099")
+        self.assertContains(res_filtered, "کتاب آزمون")
+        self.assertNotContains(res_filtered, "سؤال کتاب دوم چیست؟")
+        # Generated user filter link keeps book & reason parameters
+        import re
+        html = res_filtered.content.decode("utf-8")
+        match = re.search(rf'href="([^"]*user__id__exact={self.student.id}[^"]*)"', html)
+        self.assertIsNotNone(match)
+        user_filter_href = match.group(1).replace("&amp;", "&")
+        self.assertIn(f"book={self.book.pk}", user_filter_href)
+        self.assertIn("reason__exact=careless", user_filter_href)
 
-        res_empty = self.client.get("/admin/study/mistakenote/?reason__exact=forgot")
+        res_after_user_click = self.client.get(f"/admin/study/mistakenote/{user_filter_href}")
+        self.assertEqual(res_after_user_click.status_code, 200)
+        self.assertContains(res_after_user_click, "کتاب آزمون")
+        self.assertNotContains(res_after_user_click, "سؤال کتاب دوم چیست؟")
+
+        res_empty = self.client.get("/admin/study/mistakenote/?reason__exact=time")
         self.assertEqual(res_empty.status_code, 200)
         self.assertNotContains(res_empty, "09120002099")
 

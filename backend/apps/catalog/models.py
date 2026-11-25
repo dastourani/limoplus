@@ -559,14 +559,14 @@ class BookBoxMapping(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.book.title}: {self.environment_name} ← {self.label_name}"
-
-    def __str__(self):
         return f"{self.book.title}: {self.environment_name} -> {self.label_name}"
 
+    @staticmethod
+    def normalize(environment_name: str, label_name: str) -> tuple[str, str]:
+        return (environment_name or "").strip().lower(), (label_name or "").strip()
+
     def clean(self):
-        self.environment_name = (self.environment_name or "").strip().lower()
-        self.label_name = (self.label_name or "").strip()
+        self.environment_name, self.label_name = self.normalize(self.environment_name, self.label_name)
 
 
 class BookEditor(models.Model):

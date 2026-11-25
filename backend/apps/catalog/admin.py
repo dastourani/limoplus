@@ -1653,10 +1653,7 @@ def _admin_kpis_payload():
     from django.contrib.admin.models import LogEntry
     from apps.catalog.access import BOOK_EDITOR_GROUP
     from apps.catalog.models import (
-        BookBoxMapping,
         BookEditor,
-        BookOpinion,
-        BookTeamTask,
         ChapterRevision,
         ContentNode,
     )
@@ -1664,7 +1661,7 @@ def _admin_kpis_payload():
 
     since_30d = now - timedelta(days=30)
 
-    # آمار جامعه اساتید و تألیف: فقط فعالیت‌های دارای هویت ثبت‌شده برای همان استاد محاسبه می‌شود
+    # آمار جامعه اساتید و تألیف: فقط ویرایش‌های واقعی روی کتاب، فصل، بخش، تست و فلش‌کارت با هویت ویرایشگر محاسبه می‌شود
     teacher_ids = set(
         User.objects.filter(groups__name=BOOK_EDITOR_GROUP, is_active=True, is_superuser=False)
         .values_list("id", flat=True)
@@ -1682,26 +1679,12 @@ def _admin_kpis_payload():
                 user_id__in=teacher_ids,
                 content_type__model__in=(
                     "contentnode",
+                    "book",
+                    "section",
                     "question",
                     "flashcard",
-                    "label",
-                    "examsource",
-                    "teacherprofile",
-                    "bookopinion",
                 ),
             ).values_list("user_id", flat=True)
-        )
-        active_teacher_ids.update(
-            BookTeamTask.objects.filter(created_at__gte=since_30d, author_id__in=teacher_ids)
-            .values_list("author_id", flat=True)
-        )
-        active_teacher_ids.update(
-            BookOpinion.objects.filter(teacher_replied_at__gte=since_30d, teacher_replied_by_id__in=teacher_ids)
-            .values_list("teacher_replied_by_id", flat=True)
-        )
-        active_teacher_ids.update(
-            BookBoxMapping.objects.filter(updated_at__gte=since_30d, created_by_id__in=teacher_ids)
-            .values_list("created_by_id", flat=True)
         )
         active_teacher_ids &= teacher_ids
 
@@ -2219,7 +2202,7 @@ class TeacherProfileAdmin(admin.ModelAdmin):
             UserModel = get_user_model()
             kwargs["queryset"] = (
                 UserModel.objects.filter(teacher_profile__isnull=True)
-                .filter(Q(edited_books__isnull=False) | Q(groups__name=access.BOOK_EDITOR_GROUP) | Q(is_staff=True))
+                .filter(Q(edited_books__isnull=False) | Q(groups__name=access.BOOK_EDITOR_GROUP))
                 .distinct()
                 .order_by("phone")
             )
@@ -2376,39 +2359,31 @@ class BookOpinionAdmin(admin.ModelAdmin):
             orig = BookOpinion.objects.select_related("book").get(pk=obj.pk)
             if not access.can_edit_book(request.user, orig.book):
                 raise PermissionDenied
-            # Server-side lock: teachers may only reply or report abuse; student rating/text/moderation stay immutable.
-            obj.book_id = orig.book_id
-            obj.user_id = orig.user_id
-            obj.rating = orig.rating
-            obj.satisfaction_percent = orig.satisfaction_percent
-            obj.body = orig.body
-            obj.status = orig.status
-            obj.is_pinned = orig.is_pinned
-            obj.study_percent = orig.study_percent
-            obj.test_percent = orig.test_percent
-
+            # Update only reply/report fields in SQL so concurrent manager/student edits (e.g. status) are never overwritten.
+            update_fields = []
             if (obj.teacher_reply or "") != (orig.teacher_reply or ""):
+                update_fields.extend(["teacher_reply", "teacher_replied_at", "teacher_replied_by"])
                 if (obj.teacher_reply or "").strip():
                     obj.teacher_replied_at = timezone.now()
                     obj.teacher_replied_by = request.user
                 else:
                     obj.teacher_replied_at = None
                     obj.teacher_replied_by = None
-            else:
-                obj.teacher_replied_at = orig.teacher_replied_at
-                obj.teacher_replied_by_id = orig.teacher_replied_by_id
 
             if (obj.report_reason or "") != (orig.report_reason or ""):
+                update_fields.extend(["report_reason", "reported_at", "reported_by"])
                 if (obj.report_reason or "").strip():
                     obj.reported_at = timezone.now()
                     obj.reported_by = request.user
                 else:
                     obj.reported_at = None
                     obj.reported_by = None
-            else:
-                obj.reported_at = orig.reported_at
-                obj.reported_by_id = orig.reported_by_id
-        elif "teacher_reply" in form.changed_data and obj.teacher_reply:
+
+            if update_fields:
+                obj.save(update_fields=update_fields + ["updated_at"])
+            obj.refresh_from_db()
+            return
+        if "teacher_reply" in form.changed_data and obj.teacher_reply:
             obj.teacher_replied_at = timezone.now()
             obj.teacher_replied_by = request.user
         super().save_model(request, obj, form, change)
@@ -2424,7 +2399,7 @@ class BookTeamTaskAdmin(admin.ModelAdmin):
     list_filter = ("is_done", BookFKFilter, "created_at")
     search_fields = ("book__title", "author__phone", "author__first_name", "author__last_name", "text")
     list_select_related = ("book", "author")
-    readonly_fields = ("created_at",)
+    readonly_fields = ("author", "created_at")
 
     @admin.display(description="متن یادداشت / وظیفه")
     def text_preview(self, obj):
@@ -2445,20 +2420,24 @@ class BookTeamTaskAdmin(admin.ModelAdmin):
 
         return jalali_datetime(obj.created_at)
 
-    def get_changeform_initial_data(self, request):
-        return {"author": request.user.pk}
+    def get_fields(self, request, obj=None):
+        if obj is None:
+            return ("book", "text", "is_done")
+        return ("book", "author", "text", "is_done", "created_at")
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "book":
             kwargs["queryset"] = ContentNode.objects.filter(
                 kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False
             ).order_by("title")
-        elif db_field.name == "author":
-            UserModel = get_user_model()
-            kwargs["queryset"] = UserModel.objects.filter(
-                Q(is_superuser=True) | Q(is_staff=True) | Q(edited_books__isnull=False)
-            ).distinct().order_by("phone")
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.author = request.user
+        else:
+            obj.author_id = BookTeamTask.objects.values_list("author_id", flat=True).get(pk=obj.pk)
+        super().save_model(request, obj, form, change)
 
     def has_module_permission(self, request):
         return bool(request.user.is_active and request.user.is_superuser)
@@ -2479,18 +2458,14 @@ class BookTeamTaskAdmin(admin.ModelAdmin):
 class BookBoxMappingForm(forms.ModelForm):
     class Meta:
         model = BookBoxMapping
-        fields = ("book", "environment_name", "label_name", "created_by")
-
-    def clean_environment_name(self):
-        return (self.cleaned_data.get("environment_name") or "").strip().lower()
-
-    def clean_label_name(self):
-        return (self.cleaned_data.get("label_name") or "").strip()
+        fields = ("book", "environment_name", "label_name")
 
     def clean(self):
         cleaned = super().clean()
+        env, lbl = BookBoxMapping.normalize(cleaned.get("environment_name"), cleaned.get("label_name"))
+        cleaned["environment_name"] = env
+        cleaned["label_name"] = lbl
         book = cleaned.get("book")
-        env = cleaned.get("environment_name")
         if book and env:
             dup = BookBoxMapping.objects.filter(book=book, environment_name=env)
             if self.instance.pk:
@@ -2509,7 +2484,7 @@ class BookBoxMappingAdmin(admin.ModelAdmin):
     list_filter = (BookFKFilter, "updated_at")
     search_fields = ("book__title", "environment_name", "label_name", "created_by__phone")
     list_select_related = ("book", "created_by")
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("created_by", "created_at", "updated_at")
 
     @admin.display(description="محیط LaTeX", ordering="environment_name")
     def env_code(self, obj):
@@ -2528,24 +2503,23 @@ class BookBoxMappingAdmin(admin.ModelAdmin):
 
         return jalali_datetime(obj.updated_at)
 
-    def get_changeform_initial_data(self, request):
-        return {"created_by": request.user.pk}
+    def get_fields(self, request, obj=None):
+        if obj is None:
+            return ("book", "environment_name", "label_name")
+        return ("book", "environment_name", "label_name", "created_by", "created_at", "updated_at")
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "book":
             kwargs["queryset"] = ContentNode.objects.filter(
                 kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False
             ).order_by("title")
-        elif db_field.name == "created_by":
-            UserModel = get_user_model()
-            kwargs["queryset"] = UserModel.objects.filter(
-                Q(is_superuser=True) | Q(is_staff=True) | Q(edited_books__isnull=False)
-            ).distinct().order_by("phone")
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def save_model(self, request, obj, form, change):
-        if not obj.created_by_id:
+        if not change:
             obj.created_by = request.user
+        else:
+            obj.created_by_id = BookBoxMapping.objects.values_list("created_by_id", flat=True).get(pk=obj.pk)
         super().save_model(request, obj, form, change)
 
     def has_module_permission(self, request):

@@ -1026,8 +1026,7 @@ def import_view(admin_site, request, book_id=None):
             if target_book and custom_boxes:
                 from .models import BookBoxMapping
                 for env_k, lbl_v in custom_boxes.items():
-                    clean_env = (env_k or "").strip().lower()
-                    clean_lbl = (lbl_v or "").strip()
+                    clean_env, clean_lbl = BookBoxMapping.normalize(env_k, lbl_v)
                     if clean_env and clean_lbl:
                         BookBoxMapping.objects.update_or_create(
                             book=target_book,
