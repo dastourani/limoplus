@@ -26,8 +26,19 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         ("بخش میانی و فوتر", {"fields": ("band_title", "band_sub", "footer_about")}),
         ("دانلود", {"fields": ("bazaar_url", "myket_url", "apk_url")}),
         ("تماس", {"fields": ("email", "phone", "address", "telegram_url", "instagram_url")}),
+        ("متن وضعیت کتاب‌های در حال انتشار", {
+            "description": "متن پیش‌فرض برای کتاب‌های «در حال برنامه‌ریزی» و «به‌زودی» در سایت و اپ. اگر روی خود یک کتاب «توضیح اختصاصی وضعیت انتشار» ثبت شود، متن همان کتاب جایگزین می‌شود.",
+            "fields": ("preparing_hover_note", "preparing_note", "coming_soon_note"),
+        }),
         ("اینماد", {"fields": ("enamad_html",)}),
     )
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        for name in ("preparing_note", "coming_soon_note"):
+            if name in form.base_fields:
+                form.base_fields[name].widget.attrs.update({"rows": 3})
+        return form
 
     def has_add_permission(self, request):
         return not SiteSettings.objects.exists()

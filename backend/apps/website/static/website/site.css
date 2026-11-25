@@ -215,6 +215,8 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .cover-rating { position: absolute; left: 11px; bottom: 8px; z-index: 2; display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 999px; background: rgba(23, 32, 26, .84); border: 1px solid rgba(255, 255, 255, .22); color: #fff; font-size: 11px; font-weight: 800; line-height: 1.4; pointer-events: none; }
 .cover-rating-dark { background: rgba(255, 255, 255, .11); border-color: rgba(255, 255, 255, .18); }
 .cover-rating-star { color: #F5C518; font-size: 10px; font-weight: 900; }
+.cover-rating-lg { left: 13px; bottom: 10px; padding: 3px 8px; font-size: 12px; }
+.cover-rating-lg .cover-rating-star { font-size: 11px; }
 .cover-ph { aspect-ratio: 2 / 3; border-radius: 10px; background: #1E2A23; color: #fff; display: flex; align-items: flex-end; padding: 16px; font-size: 16px; }
 .tagbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; border-radius: 12px; border: 1px solid; font-size: 13px; font-weight: 700; padding: 0 12px; flex: none; }
 .bk .tagbtn { margin: 0; width: 100%; display: flex; padding: 0 8px; }
@@ -226,8 +228,12 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .bk-action .tagbtn { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; }
 .bk-price { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bk-discount-chip { flex: none; border-radius: 6px; padding: 0 5px; background: #A8332E; color: #fff; font-size: 10px; font-weight: 900; line-height: 1.7; }
-/* The free-preview label rides on the cover, like the app's ribbon. */
+/* The cover ribbon rides on the top-left of every cover, matching CoverRibbon in the app. */
 .bk-ribbon { position: absolute; top: 12px; left: -4px; z-index: 2; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: var(--lemon); color: var(--ink); border-radius: 6px 6px 6px 0; font-size: 11px; font-weight: 800; line-height: 1.6; white-space: nowrap; }
+.bk-ribbon-soon { background: #8A938C; color: #FFFFFF; }
+.bk-ribbon-access { background: #3FB8A9; color: #FFFFFF; }
+.bk-ribbon-planning { background: #56655B; color: #FFFFFF; }
+.bk-ribbon-locked { background: var(--ink); color: var(--ground); border: 1px solid rgba(245, 197, 24, .38); }
 .bk.hide { display: none; }
 
 /* The catalogue is a local horizontal scroller; book cards keep their fixed cover width without widening the page. */

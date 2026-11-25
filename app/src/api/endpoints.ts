@@ -26,6 +26,7 @@ export type BookListItem = {
   cover: string | null;
   is_coming_soon: boolean;
   release_estimate?: string;
+  release_note?: string;
   product_status: ProductStatus;
   /** Effective price at the time the API response was generated. */
   price: number | null;

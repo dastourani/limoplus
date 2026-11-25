@@ -20,7 +20,7 @@
       var ratingText = w >= 100 ? formatRating(data.rating, data.rating_count) : '';
       var ratingChip = function (cls) {
         return ratingText
-          ? '<span class="' + cls + '" aria-label="امتیاز ' + ratingText + ' از ۵"><span class="cover-rating-star" aria-hidden="true">★</span><span>' + ratingText + '</span></span>'
+          ? '<span class="' + cls + (w >= 180 ? ' cover-rating-lg' : '') + '" aria-label="امتیاز ' + ratingText + ' از ۵"><span class="cover-rating-star" aria-hidden="true">★</span><span>' + ratingText + '</span></span>'
           : '';
       };
       if (data.image) {

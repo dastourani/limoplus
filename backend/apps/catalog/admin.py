@@ -124,7 +124,7 @@ class BookAdmin(admin.ModelAdmin):
         # `is_published` is deliberately NOT a form field: writing a book and releasing it are separate gates, and a
         # checkbox in a form cannot tell the two apart. Publishing goes through the button below the title, which
         # asks can_publish_book (see publish_book view).
-        ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "release_estimate", "position", "is_archived")}),
+        ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "release_estimate", "release_note", "position", "is_archived")}),
         ("اشتراک‌گذاری", {"fields": ("share_link",)}),
     )
 
@@ -198,6 +198,8 @@ class BookAdmin(admin.ModelAdmin):
             form.base_fields["about"].help_text = "در صفحه‌ی کتاب در اپ، بالای فهرست فصل‌ها نشان داده می‌شود."
         if "is_free" in form.base_fields:
             form.base_fields["is_free"].help_text = "کل کتاب رایگان؛ برای رایگان کردن فقط چند فصل، گزینه‌ی هر فصل را در فهرست فصل‌ها بزنید."
+        if "release_note" in form.base_fields:
+            form.base_fields["release_note"].widget.attrs.update({"rows": 3})
         return form
 
     def save_model(self, request, obj, form, change):

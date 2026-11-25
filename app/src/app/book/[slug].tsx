@@ -434,7 +434,7 @@ export default function Book() {
                     </Text>
                   ) : (
                     book.product_status.state === 'preparing' && (
-                      <Text style={[styles.ctaSmall, rtl]}>قرارداد تألیف ثبت شده و در صف تولید محتوا قرار دارد.</Text>
+                      <Text style={[styles.ctaSmall, rtl]}>{book.release_note || 'قرارداد تألیف ثبت شده و در صف تولید محتوا قرار دارد.'}</Text>
                     )
                   )}
                 </View>
@@ -446,9 +446,10 @@ export default function Book() {
                       : `زمان حدودی انتشار: ${book.release_estimate || 'به‌زودی'}`
                   }
                   text={
-                    book.product_status.state === 'preparing'
+                    book.release_note ||
+                    (book.product_status.state === 'preparing'
                       ? `قرارداد تألیف این منبع ثبت شده و در صف تولید محتوا قرار دارد.${book.release_estimate ? ` پیش‌بینی انتشار: ${book.release_estimate}.` : ''} با زدن دکمه‌ی «خبرم کن»، به محض انتشار فصل اول رایگان با پیامک به شما اطلاع می‌دهیم.`
-                      : 'با زدن دکمه‌ی «خبرم کن»، به محض انتشار فصل اول رایگان این کتاب، یک پیامک اطلاع‌رسانی برای شما ارسال می‌شود.'
+                      : 'با زدن دکمه‌ی «خبرم کن»، به محض انتشار فصل اول رایگان این کتاب، یک پیامک اطلاع‌رسانی برای شما ارسال می‌شود.')
                   }
                 />
               </View>
