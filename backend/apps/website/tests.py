@@ -341,8 +341,8 @@ class WebsiteTests(TestCase):
         self.assertContains(c.get("/site/sitemap.xml"), "/site/books/math-1/")
         self.assertContains(c.get("/site/robots.txt"), "Sitemap:")
 
-    def test_a_book_with_only_a_free_section_is_labelled_bakshi_rayegan(self):
-        """وقتی فقط یک بخش از یک فصل رایگان است، نه فصل رایگان است و نه چند فصل: «بخشی رایگان»."""
+    def test_a_book_with_only_a_free_section_is_labelled_with_chapter_number(self):
+        """وقتی فقط بخشی از یک فصل رایگان است، روی جلد سایت هم مانند اپ «بخشی از فصل N رایگان» می‌آید."""
         from apps.catalog.models import Major
 
         major = Major.objects.create(slug="free-part-major", name="رشته‌ی نمونه")
@@ -354,10 +354,75 @@ class WebsiteTests(TestCase):
 
         card = next(c for c in Client().get("/site/books/").context["books"] if c["book"].slug == book.slug)
         self.assertEqual(card["product_status"], {"state": "paid", "preview": "sample", "promotion": "none"})
-        self.assertEqual(card["sample_label"], "بخشی رایگان")
+        self.assertEqual(card["sample_label"], "بخشی از فصل ۱ رایگان")
         html = Client().get("/site/books/").content.decode()
         self.assertIn('<span class="bk-ribbon">', html)
-        self.assertIn("بخشی رایگان", html)
+        self.assertIn("بخشی از فصل ۱ رایگان", html)
+
+        detail = Client().get(f"/site/books/{book.slug}/")
+        self.assertEqual(detail.context["sample_label"], "بخشی از فصل ۱ رایگان")
+        self.assertContains(detail, "بخشی از فصل ۱ رایگان")
+
+        # Partial free section in chapter 2 while chapter 1 is locked.
+        ContentNode.objects.filter(pk=chapter.pk).update(is_free=False)
+        ContentNode.objects.filter(slug="s1").update(is_free=False)
+        ch2 = book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل دوم", slug="ch2", is_published=True)
+        ch2.add_child(kind=ContentNode.Kind.SECTION, title="بخش دوم", slug="s2", is_published=True, is_free=True)
+        card2 = next(c for c in Client().get("/site/books/").context["books"] if c["book"].slug == book.slug)
+        self.assertEqual(card2["sample_label"], "بخشی از فصل ۲ رایگان")
+
+        # Whole free book matches the app's «کل کتاب رایگان» cover label.
+        free_book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب کاملاً رایگان", slug="all-free-book",
+                                         is_published=True, is_free=True)
+        free_book.majors.add(major)
+        free_card = next(c for c in Client().get("/site/books/").context["books"] if c["book"].slug == free_book.slug)
+        self.assertEqual(free_card["sample_label"], "کل کتاب رایگان")
+        self.assertEqual(Client().get(f"/site/books/{free_book.slug}/").context["sample_label"], "کل کتاب رایگان")
+
+    def test_website_book_page_renders_author_and_reviews_tabs_from_app_source(self):
+        from apps.accounts.models import User
+        from apps.catalog.models import BookEditor, BookOpinion, TeacherProfile
+
+        book = ContentNode.objects.get(slug="math-1")
+        teacher = User.objects.create_user("09129990001", first_name="دکتر", last_name="احمدی")
+        TeacherProfile.objects.create(
+            user=teacher,
+            academic_title="عضو هیئت علمی ریاضی",
+            bio="توضیحات کامل سوابق علمی مؤلف کتاب.",
+            contact_email="ahmadi@example.com",
+        )
+        BookEditor.objects.create(user=teacher, book=book)
+
+        reviewer = User.objects.create_user("09129990002", first_name="مریم", last_name="رضایی")
+        BookOpinion.objects.create(
+            book=book, user=reviewer, rating=5, satisfaction_percent=95, study_percent=65, test_percent=40,
+            body="کتاب بسیار دقیق و روان است.", teacher_reply="ممنون از نظر ارزشمند شما.",
+            status=BookOpinion.Status.APPROVED,
+        )
+        BookOpinion.objects.create(
+            book=book, user=teacher, rating=1, body="نظر تأییدنشده نباید دیده شود",
+            status=BookOpinion.Status.PENDING,
+        )
+
+        r = Client().get(f"/site/books/{book.slug}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'data-book-tabs')
+        self.assertContains(r, "درباره‌ی کتاب")
+        self.assertContains(r, "درباره‌ی نویسنده")
+        self.assertContains(r, "نظرات (۱)")
+        self.assertContains(r, "عضو هیئت علمی ریاضی")
+        self.assertContains(r, "توضیحات کامل سوابق علمی مؤلف کتاب.")
+        self.assertContains(r, "ahmadi@example.com")
+        self.assertContains(r, "مریم رضایی")
+        self.assertContains(r, "کتاب بسیار دقیق و روان است.")
+        self.assertContains(r, "ممنون از نظر ارزشمند شما.")
+        self.assertNotContains(r, "نظر تأییدنشده نباید دیده شود")
+
+        css = (Path(__file__).resolve().parent / "static/website/site.css").read_text(encoding="utf-8")
+        self.assertIn(".book-tabs-body", css)
+        self.assertIn("overflow-y: auto", css)
+        js = (Path(__file__).resolve().parent / "static/website/site.js").read_text(encoding="utf-8")
+        self.assertIn("bookTabs()", js)
 
     def test_website_cover_payload_carries_approved_rating(self):
         import json

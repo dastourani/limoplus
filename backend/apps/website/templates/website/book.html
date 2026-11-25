@@ -55,12 +55,128 @@
 </section>
 <section class="sec wrap twocol">
   <div>
-    {% if about %}
-    <div class="about-card" data-fold>
-      <div class="card-head">{% icon "book-open" 20 %}<h2>درباره‌ی کتاب</h2></div>
-      <div class="about about-body" data-md="{{ about }}"><p>{{ about|linebreaksbr }}</p></div>
-      <button type="button" class="fold-btn" hidden>نمایش کامل معرفی کتاب ▾</button>
-    </div>
+    {% if is_preparing %}
+      {% if about %}
+      <div class="about-card" data-fold>
+        <div class="card-head">{% icon "book-open" 20 %}<h2>درباره‌ی کتاب</h2></div>
+        <div class="about about-body" data-md="{{ about }}"><p>{{ about|linebreaksbr }}</p></div>
+        <button type="button" class="fold-btn" hidden>نمایش کامل معرفی کتاب ▾</button>
+      </div>
+      {% endif %}
+    {% else %}
+      <div class="book-tabs-card" data-book-tabs>
+        <div class="book-tabs-head" role="tablist" aria-label="اطلاعات کتاب">
+          <button type="button" class="book-tab-btn is-active" role="tab" aria-selected="true" data-tab-btn="book">
+            {% icon "book-open" 17 %}<span>درباره‌ی کتاب</span>
+          </button>
+          <button type="button" class="book-tab-btn" role="tab" aria-selected="false" data-tab-btn="author">
+            {% icon "circle-user-round" 17 %}<span>درباره‌ی نویسنده</span>
+          </button>
+          <button type="button" class="book-tab-btn" role="tab" aria-selected="false" data-tab-btn="reviews">
+            {% icon "message-circle" 17 %}<span>نظرات{% if community_reviews.total_count %} ({{ community_reviews.total_count_fa }}){% endif %}</span>
+          </button>
+        </div>
+        <div class="book-tabs-body">
+          <div class="book-tab-panel" role="tabpanel" data-tab-panel="book">
+            {% if about %}
+              <div class="about about-body" data-md="{{ about }}"><p>{{ about|linebreaksbr }}</p></div>
+            {% else %}
+              <p class="book-tab-empty">توضیحاتی برای این اثر ثبت نشده است.</p>
+            {% endif %}
+          </div>
+
+          <div class="book-tab-panel" role="tabpanel" data-tab-panel="author" hidden>
+            <div class="author-header">
+              {% if author_profile.avatar %}
+                <div class="author-avatar">
+                  <img src="{{ author_profile.avatar }}" alt="{{ author_profile.name }}">
+                </div>
+              {% else %}
+                <div class="author-avatar author-avatar-ph">
+                  {% icon "circle-user-round" 32 %}
+                </div>
+              {% endif %}
+              <div class="author-ident">
+                <b class="author-name">{{ author_profile.name|default:"مؤلف اثر" }}</b>
+                {% if author_profile.academic_title %}
+                  <span class="author-title">{{ author_profile.academic_title }}</span>
+                {% endif %}
+              </div>
+            </div>
+            {% if author_profile.bio %}
+              <div class="about author-bio" data-md="{{ author_profile.bio }}"><p>{{ author_profile.bio|linebreaksbr }}</p></div>
+            {% else %}
+              <p class="book-tab-empty">رزومه و اطلاعات تکمیلی مؤلف به زودی قرار می‌گیرد.</p>
+            {% endif %}
+            {% if author_profile.contact_email %}
+              <div class="author-meta-row">
+                {% icon "mail" 14 %}
+                <span>{{ author_profile.contact_email }}</span>
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="book-tab-panel" role="tabpanel" data-tab-panel="reviews">
+            {% if community_reviews.total_count %}
+              <div class="review-stats-box">
+                <div class="review-stat-col">
+                  <b class="review-big-score">{{ community_reviews.average_rating_fa }}</b>
+                  <span class="review-stars" aria-label="میانگین امتیاز {{ community_reviews.average_rating_fa }} از ۵">
+                    {% for _ in "12345" %}<span class="r-star{% if forloop.counter <= community_reviews.average_rating %} on{% endif %}">★</span>{% endfor %}
+                  </span>
+                  <span class="review-sub-label">از {{ community_reviews.total_count_fa }} نظر</span>
+                </div>
+                <div class="review-stat-divider"></div>
+                <div class="review-highlights">
+                  <div class="review-highlight-row">
+                    {% icon "circle-check" 16 %}
+                    <span>رضایت کلی: <b>{{ community_reviews.satisfaction_rate_fa }}٪</b></span>
+                  </div>
+                  {% if community_reviews.serious_readers_rating %}
+                    <div class="review-highlight-row">
+                      {% icon "graduation-cap" 16 %}
+                      <span>میانگین خوانندگان جدی (+۵۰٪ مطالعه): <b>{{ community_reviews.serious_readers_rating_fa }} ★</b></span>
+                    </div>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="review-cards">
+                {% for r in community_reviews.reviews %}
+                  <article class="review-card">
+                    <div class="review-user-head">
+                      <div class="review-user-meta">
+                        <b class="review-user-name">{{ r.display_name }}</b>
+                        <div class="review-badges">
+                          <span class="study-badge">{{ r.study_percent_fa }}٪ مطالعه</span>
+                          {% if r.test_percent > 0 %}
+                            <span class="study-badge test">{{ r.test_percent_fa }}٪ تست</span>
+                          {% endif %}
+                          <span class="review-date">{{ r.created_at_fa }}</span>
+                        </div>
+                      </div>
+                      <span class="review-stars" aria-label="امتیاز {{ r.rating }} از ۵">
+                        {% for _ in "12345" %}<span class="r-star{% if forloop.counter <= r.rating %} on{% endif %}">★</span>{% endfor %}
+                      </span>
+                    </div>
+                    <p class="review-body-text">{{ r.body }}</p>
+                    {% if r.teacher_reply %}
+                      <div class="teacher-reply-box">
+                        <div class="teacher-reply-head">
+                          {% icon "corner-down-left" 14 %}
+                          <span>پاسخ مؤلف / استاد</span>
+                        </div>
+                        <p class="teacher-reply-body">{{ r.teacher_reply }}</p>
+                      </div>
+                    {% endif %}
+                  </article>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="book-tab-empty">هنوز نظری برای این کتاب ثبت نشده است.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
     {% endif %}
     {% if chapters %}
     <div class="sechead"><div><h2>سرفصل‌ها و ساختار درس</h2>{% if first_free %}<p class="sub">روی هر فصل بزن تا بخش‌ها، درسنامه‌ها و تست‌هایش را ببینی</p>{% endif %}</div></div>

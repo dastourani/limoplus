@@ -18,7 +18,7 @@ import { PageTurn } from '../../components/PageTurn';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Chip, ErrorState, Header, Loading, Screen, usePullRefresh } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
-import { firstReadableNodeId, isSectionAccessibleInBook } from '../../lib/bookAccess';
+import { isSectionAccessibleInBook, resolveBookCta } from '../../lib/bookAccess';
 import { coverByline } from '../../lib/cover';
 import { jalaliDate } from '../../lib/jalali';
 import { offlineBookDetail, offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
@@ -275,10 +275,6 @@ export default function Book() {
   const tests = book.chapters.reduce((n, c) => n + (c.question_count ?? 0), 0);
   const cards = book.chapters.reduce((n, c) => n + (c.flashcard_count ?? 0), 0);
   const readCount = sections.filter((x) => done.has(x.id)).length;
-  const firstOpenNodeId = firstReadableNodeId(book);
-  const firstFreeNodeId = book.product_status.preview === 'sample' ? firstOpenNodeId : null;
-  // Only the book-level is_free flag (reported as state=free) grants the whole book; a free chapter is a preview.
-  const fullAccess = book.owned || book.product_status.state === 'free';
   const now = notify ?? { on: book.notify, canCancel: !!book.notify_can_cancel };
   const waiting = now.on;
   const toggleNotify = async () => {
@@ -301,6 +297,7 @@ export default function Book() {
 
   const isPreparing = book.product_status.state === 'coming_soon' || book.product_status.state === 'preparing';
   const validLast = last && last.bookSlug === slug && isSectionAccessibleInBook(book, last.id) ? last : null;
+  const cta = resolveBookCta(book, { isAuthenticated: !!user, lastSection: validLast });
   const wideCta = width >= 560;
 
   return (
@@ -421,7 +418,7 @@ export default function Book() {
         </Animated.View>
         <View style={styles.sheet}>
         <View style={styles.page}>
-          {isPreparing ? (
+          {cta.kind === 'preparing' ? (
             <View style={styles.cta}>
               <View style={styles.ctaHead}>
                 <IconBadge name={book.product_status.state === 'preparing' ? 'calendar' : 'bell'} size={30} />
@@ -462,7 +459,7 @@ export default function Book() {
                 onPress={toggleNotify}
               />
             </View>
-          ) : fullAccess ? (
+          ) : cta.kind === 'full' ? (
             <View style={[styles.cta, styles.ctaRow, totalBookSeconds >= 60 && { marginBottom: 16 }]}>
               <HelpTip
                 size={54}
@@ -480,16 +477,13 @@ export default function Book() {
                 </View>
                 <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{validLast ? validLast.title : 'از اول کتاب شروع کن'}</Text>
               </View>
-              {(validLast || firstOpenNodeId != null) && (
+              {cta.targetNodeId != null && (
                 <Pressable
-                  onPress={() => {
-                    const target = validLast ? validLast.id : firstOpenNodeId;
-                    if (target != null) router.push(`/section/${target}`);
-                  }}
+                  onPress={() => router.push(`/section/${cta.targetNodeId!}`)}
                   style={styles.ctaButton}
                   accessibilityRole="button"
                 >
-                  <Text style={styles.ctaButtonText}>{validLast ? 'ادامه بده' : 'شروع'}</Text>
+                  <Text style={styles.ctaButtonText}>{cta.buttonLabel}</Text>
                 </Pressable>
               )}
               {totalBookSeconds >= 60 && (
@@ -502,45 +496,42 @@ export default function Book() {
             </View>
           ) : (
             <View style={[styles.cta, totalBookSeconds >= 60 && { marginBottom: 16 }]}>
-              {!!validLast && (
+              {!!cta.lastTitle && (
                 <View style={styles.ctaHead}>
                   <IconBadge name="book-open" size={30} />
                   <Text style={[styles.ctaTitle, rtl, { flex: 1 }]} numberOfLines={1}>
-                    {`آخرین مطالعه: «${validLast.title}»`}
+                    {`آخرین مطالعه: «${cta.lastTitle}»`}
                   </Text>
                 </View>
               )}
-              {(!!validLast || firstFreeNodeId != null || book.product_status.state === 'paid') && (
+              {(cta.buttonLabel != null || cta.showUnlock) && (
                 <View
                   style={[
                     styles.ctaActions,
-                    wideCta && (!!validLast || firstFreeNodeId != null) && book.product_status.state === 'paid' && styles.ctaActionsRow,
+                    wideCta && cta.buttonLabel != null && cta.showUnlock && styles.ctaActionsRow,
                   ]}
                 >
-                  {(!!validLast || firstFreeNodeId != null) && (
+                  {cta.buttonLabel != null && cta.targetNodeId != null && (
                     <Pressable
-                      onPress={() => {
-                        const target = validLast ? validLast.id : firstFreeNodeId;
-                        if (target != null) router.push(`/section/${target}`);
-                      }}
+                      onPress={() => router.push(`/section/${cta.targetNodeId!}`)}
                       style={[
                         styles.startFreeBtn,
-                        wideCta && book.product_status.state === 'paid' && styles.ctaActionFlex,
+                        wideCta && cta.showUnlock && styles.ctaActionFlex,
                       ]}
                       accessibilityRole="button"
                     >
                       <Text style={styles.startFreeBtnText}>
-                        {validLast ? 'ادامهٔ مطالعه' : 'شروع مطالعهٔ رایگان'}
+                        {cta.buttonLabel}
                       </Text>
                     </Pressable>
                   )}
-                  {book.product_status.state === 'paid' && (
+                  {cta.showUnlock && (
                     <Pressable
                       onPress={() => router.push(`/buy/${book.slug}`)}
                       style={[
                         styles.unlock,
-                        !(firstFreeNodeId != null || validLast) && styles.unlockMain,
-                        wideCta && (!!validLast || firstFreeNodeId != null) && styles.ctaActionFlex,
+                        cta.buttonLabel == null && styles.unlockMain,
+                        wideCta && cta.buttonLabel != null && styles.ctaActionFlex,
                       ]}
                       accessibilityRole="button"
                     >
