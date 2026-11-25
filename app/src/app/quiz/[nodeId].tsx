@@ -106,6 +106,8 @@ export default function Quiz() {
   const [reportOpen, setReportOpen] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const resumed = useRef(false);
+  const hydratedSession = useRef<number | null>(null);
+  const [resumedNote, setResumedNote] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const shareRef = useRef<HostInstance>(null);
@@ -139,6 +141,39 @@ export default function Quiz() {
     }
     return sectionQuiz && withExtra ? [...list.filter((q) => !q.extra), ...list.filter((q) => q.extra)] : list;
   }, [data, order, reviewQs, review, sectionQuiz, withExtra]);
+
+  // Review sitting: hydrate answers already recorded in this session and resume at the first unanswered question.
+  useEffect(() => {
+    if (!review) return;
+    const s = (data as { session?: ReviewSessionData } | undefined)?.session;
+    if (!s || hydratedSession.current === s.id) return;
+    hydratedSession.current = s.id;
+    const sessionAnswers = s.answers ?? {};
+    const hydrated: Record<number, Answer> = {};
+    for (const [qidStr, item] of Object.entries(sessionAnswers)) {
+      const qid = Number(qidStr);
+      const cards =
+        item.result.book_id && item.result.flashcards.length
+          ? { book: item.result.book_id, ids: item.result.flashcards.map((f) => f.id) }
+          : undefined;
+      hydrated[qid] = {
+        picked: item.picked,
+        result: { ...resultForView(item.result), notes: !!(item.result.node_id ?? qid) },
+        cards,
+      };
+    }
+    if (Object.keys(hydrated).length) setAnswers((prev) => ({ ...hydrated, ...prev }));
+    const first = s.questions.findIndex((x) => !(String(x.id) in sessionAnswers));
+    const answeredCount = Object.keys(sessionAnswers).length;
+    if (first === -1 && s.questions.length > 0) {
+      setShowSummary(true);
+    } else if (first > 0) {
+      setIndex(first);
+      if (answeredCount > 0) {
+        setResumedNote(`${toPersianDigits(answeredCount)} از ${toPersianDigits(s.questions.length)} پاسخ داده‌ای؛ ادامه از سؤال ${toPersianDigits(first + 1)}`);
+      }
+    }
+  }, [review, data]);
 
   // Signed-in learners continue at the first question they have not answered yet.
   useEffect(() => {
@@ -257,7 +292,8 @@ export default function Quiz() {
     setPending({ id: q.id, picked: choiceId });
     setAnswerError(null);
     try {
-      const r = await endpoints.answer(q.id, choiceId);
+      const r = await endpoints.answer(q.id, choiceId, review ? Number(session) : undefined);
+      setResumedNote(null);
       const cards = r.book_id && r.flashcards.length ? { book: r.book_id, ids: r.flashcards.map((f) => f.id) } : undefined;
       setAnswers((a) => ({ ...a, [q.id]: { picked: choiceId, result: { ...resultForView(r), notes: !!(r.node_id ?? q.node_id) }, cards } }));
       if (r.fixed?.step === 'settled') {
@@ -433,18 +469,22 @@ export default function Quiz() {
   }
 
   const parts: PartState[] = questions.map((x) => ({ right: 'done', wrong: 'wrong', none: 'empty' })[status(x.id)] as PartState);
+  const reviewSessionKind = (reviewInfo ?? (data as { session?: ReviewSessionData } | undefined)?.session)?.kind;
 
   return (
     <Screen>
       <PageHeader
         icon={notebook ? 'notebook-pen' : review ? 'rotate-ccw' : repeats ? 'repeat' : past ? 'graduation-cap' : 'list-checks'}
-        title={notebook ? 'تمرین اشتباه‌ها' : review ? 'مرور فصل' : quick ? 'فقط ۵ دقیقه' : past ? ((data as { title?: string } | undefined)?.title ?? 'کنکور') : 'تمرین تست'}
+        title={notebook ? 'تمرین اشتباه‌ها' : review ? (reviewSessionKind === 'book' ? 'مرور ترکیبی کتاب' : 'مرور فصل') : quick ? 'فقط ۵ دقیقه' : past ? ((data as { title?: string } | undefined)?.title ?? 'کنکور') : 'تمرین تست'}
         status={`تست ${toPersianDigits(index + 1)} از ${toPersianDigits(questions.length)}`}
         lemon={<LemonProgress parts={parts} current={index} size={46} onPress={() => setPickerOpen(true)} accessibilityLabel="پیشرفت تست‌ها؛ برای رفتن به سؤال دیگر بزنید" />}
       />
       <Text style={[styles.place, rtl]} numberOfLines={1}>
         {[placeLabel(q.node_title, q.chapter_number), `${toPersianDigits(counts.right)} درست، ${toPersianDigits(counts.wrong)} غلط، ${toPersianDigits(counts.none)} مانده`].filter(Boolean).join('؛ ')}
       </Text>
+      {!!resumedNote && (
+        <Text style={[styles.resumedNote, rtl]} numberOfLines={1}>{resumedNote}</Text>
+      )}
       {!review && <View style={styles.orders}>
         {ORDERS.map(([key, label]) => (
           <Pill key={key} label={label} small selected={order.order === key} onPress={() => changeOrder(key)} />
@@ -518,6 +558,7 @@ export default function Quiz() {
 
 const styles = StyleSheet.create({
   place: { fontSize: 12.5, color: colors.muted, paddingHorizontal: 16, paddingBottom: 6 },
+  resumedNote: { fontSize: 12.5, fontWeight: '700', color: colors.greenDark, paddingHorizontal: 16, paddingBottom: 6 },
   orders: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 16, paddingBottom: 6 },
   page: { flex: 1, backfaceVisibility: 'hidden' },
   share: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, alignSelf: 'flex-end', marginHorizontal: 16, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.lemonSoft },

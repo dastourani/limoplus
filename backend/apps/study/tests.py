@@ -611,7 +611,7 @@ class ReviewCycleTests(TestCase):
         self.assertIsNone(self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data["next_due_on"])
         for q in s["questions"]:
             right = Question.objects.get(pk=q["id"]).choices.get(is_correct=True)
-            self.client.post(f"/api/v1/questions/{q['id']}/answer/", {"choice_id": right.id}, format="json")
+            self.client.post(f"/api/v1/questions/{q['id']}/answer/", {"choice_id": right.id, "review_session": s["id"]}, format="json")
         done = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
         self.assertTrue(done["finished"])
         self.assertGreaterEqual(done["next_in_days"], 7, "a good result moves on to the week step")
@@ -629,11 +629,109 @@ class ReviewCycleTests(TestCase):
         s = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": rid}, format="json").data
         for q in s["questions"]:
             wrong = Question.objects.get(pk=q["id"]).choices.filter(is_correct=False).first()
-            self.client.post(f"/api/v1/questions/{q['id']}/answer/", {"choice_id": wrong.id}, format="json")
+            self.client.post(f"/api/v1/questions/{q['id']}/answer/", {"choice_id": wrong.id, "review_session": s["id"]}, format="json")
         done = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
         self.assertEqual(done["next_in_days"], 1)
         self.assertEqual(ChapterReview.objects.get().stage, 0)
         self.assertGreater(self.client.get("/api/v1/me/mistakes/").data["open"], 0, "wrong review answers go to the notebook")
+
+    def test_review_answers_stay_isolated_and_resume_across_days(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.accounts.models import DeviceSession, User
+
+        from .models import ChapterReview, ReviewSession, StudyDay
+
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        self._age(1)
+        rid = ChapterReview.objects.get().id
+        s = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": rid}, format="json").data
+        qs = s["questions"]
+        self.assertGreaterEqual(len(qs), 5)
+
+        # Answer first 3 questions inside this review sitting
+        picked_ids = {}
+        for q in qs[:3]:
+            right = Question.objects.get(pk=q["id"]).choices.get(is_correct=True)
+            picked_ids[q["id"]] = right.id
+            r = self.client.post(
+                f"/api/v1/questions/{q['id']}/answer/",
+                {"choice_id": right.id, "review_session": s["id"]},
+                format="json",
+            )
+            self.assertEqual(r.status_code, 200)
+
+        # Retrying the same answer in this session does not duplicate QuizAnswer or StudyDay
+        day_count_before = StudyDay.objects.get(user=self.user, date=timezone.localdate()).answers
+        retry_r = self.client.post(
+            f"/api/v1/questions/{qs[0]['id']}/answer/",
+            {"choice_id": picked_ids[qs[0]["id"]], "review_session": s["id"]},
+            format="json",
+        )
+        self.assertEqual(retry_r.status_code, 200)
+        self.assertEqual(StudyDay.objects.get(user=self.user, date=timezone.localdate()).answers, day_count_before)
+        self.assertEqual(QuizAnswer.objects.filter(review_session_id=s["id"], question_id=qs[0]["id"]).count(), 1)
+
+        # Answering the 4th question in free practice (no review_session) does NOT count toward the review
+        q4_wrong = Question.objects.get(pk=qs[3]["id"]).choices.filter(is_correct=False).first()
+        free_r = self.client.post(f"/api/v1/questions/{qs[3]['id']}/answer/", {"choice_id": q4_wrong.id}, format="json")
+        self.assertEqual(free_r.status_code, 200)
+
+        # Invalid review_session (question not in session or another user's session) is rejected
+        other_q = Question.objects.exclude(pk__in=[q["id"] for q in qs]).first()
+        if other_q:
+            bad = self.client.post(
+                f"/api/v1/questions/{other_q.id}/answer/",
+                {"choice_id": other_q.choices.first().id, "review_session": s["id"]},
+                format="json",
+            )
+            self.assertEqual(bad.status_code, 400)
+        other_user = User.objects.create_user("09120009988")
+        _, other_token = DeviceSession.start(other_user, "other")
+        other_client = type(self.client)()
+        other_client.credentials(HTTP_AUTHORIZATION=f"Bearer {other_token}")
+        hijack = other_client.post(
+            f"/api/v1/questions/{qs[4]['id']}/answer/",
+            {"choice_id": qs[4]["choices"][0]["id"], "review_session": s["id"]},
+            format="json",
+        )
+        self.assertEqual(hijack.status_code, 400)
+
+        # Move the sitting to yesterday: today's tile still shows 3 done and the session resumes with exact answers
+        ReviewSession.objects.filter(pk=s["id"]).update(started_at=timezone.now() - timedelta(days=1))
+        today_tasks = self.client.get("/api/v1/me/today/").data["tasks"]
+        review_task = next(t for t in today_tasks if t["kind"] == "review" and t["id"] == rid)
+        self.assertEqual(review_task["done"], 3)
+
+        resumed = self.client.get(f"/api/v1/me/reviews/{s['id']}/").data
+        self.assertEqual(resumed["answered"], 3)
+        self.assertEqual(resumed["right"], 3)
+        self.assertEqual(set(resumed["answers"].keys()), {str(q["id"]) for q in qs[:3]})
+        for q in qs[:3]:
+            self.assertEqual(resumed["answers"][str(q["id"])]["picked"], picked_ids[q["id"]])
+            self.assertTrue(resumed["answers"][str(q["id"])]["result"]["is_correct"])
+        self.assertNotIn(str(qs[3]["id"]), resumed["answers"])
+
+        # Cannot finish yet because only 3 of 5 review answers belong to this sitting
+        not_yet = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
+        self.assertFalse(not_yet["finished"])
+        self.assertIsNone(not_yet["next_due_on"])
+
+        # Answer remaining 2 questions inside the review sitting (both right) -> 100% score, unaffected by free wrong answer
+        for q in qs[3:]:
+            right = Question.objects.get(pk=q["id"]).choices.get(is_correct=True)
+            self.client.post(
+                f"/api/v1/questions/{q['id']}/answer/",
+                {"choice_id": right.id, "review_session": s["id"]},
+                format="json",
+            )
+        done = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
+        self.assertTrue(done["finished"])
+        self.assertEqual((done["answered"], done["right"]), (5, 5))
+        self.assertGreaterEqual(done["next_in_days"], 6)
+        self.assertEqual(ChapterReview.objects.get(pk=rid).last_score, 1.0)
 
     def test_month_step_is_an_exam_without_negative_marking_and_doubts_come_back(self):
         from .models import ChapterReview, ExamAnswer

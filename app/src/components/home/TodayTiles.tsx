@@ -65,7 +65,12 @@ function Row({ t, ended, first, onError }: { t: TodayTask; ended: boolean; first
         : `${t.is_exam ? 'آزمون یادآوری' : 'مرور'} فصل ${t.chapter_number ? fa(t.chapter_number) + ' ' : ''}«${t.chapter_title}»`;
     total = t.questions;
     const left = Math.max(0, t.questions - done);
-    size = `${t.book_title}، ${fa(left)} تست، حدود ${fa(Math.max(1, Math.round((t.minutes * left) / Math.max(1, t.questions))))} دقیقه`;
+    size =
+      done > 0
+        ? left > 0
+          ? `${t.book_title}؛ ${fa(done)} از ${fa(total)} پاسخ داده‌ای، ادامه از سؤال ${fa(done + 1)}`
+          : `${t.book_title}؛ برای ثبت مرور باز کن`
+        : `${t.book_title}، ${fa(left)} تست، حدود ${fa(Math.max(1, Math.round((t.minutes * left) / Math.max(1, t.questions))))} دقیقه`;
     open = () => openReview({ ...t, kind: t.review_kind }).catch(onError);
   } else if (t.kind === 'cards') {
     title = t.comeback && t.total > t.count ? 'کارت‌های مهم‌تر' : 'مرور کارت‌ها';

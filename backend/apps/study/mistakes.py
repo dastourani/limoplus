@@ -429,13 +429,16 @@ def _cards_today(user) -> int:
 
 
 def _review_done_today(user, item: dict) -> int:
-    """Questions already answered in today's unfinished sitting of this review."""
+    """Questions already answered in the unfinished sitting of this review (including sittings started on an earlier day)."""
     from .models import ReviewSession
     from .reviews import _session_answers
 
-    start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
     field = "chapter_review_id" if item["kind"] == "chapter" else "book_review_id"
-    session = ReviewSession.objects.filter(user=user, finished_at__isnull=True, started_at__gte=start, **{field: item["id"]}).first()
+    session = (
+        ReviewSession.objects.filter(user=user, finished_at__isnull=True, exam__isnull=True, **{field: item["id"]})
+        .order_by("-started_at", "-id")
+        .first()
+    )
     return min(len(_session_answers(session)), item["questions"]) if session else 0
 
 

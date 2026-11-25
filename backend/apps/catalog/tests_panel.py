@@ -3456,6 +3456,8 @@ class StepFourAdminPanelTests(TestCase):
         inbox = ContentNode.add_root(title="صندوق تست", kind=ContentNode.Kind.BOOK, slug="s4-inbox", is_inbox=True)
         picker = self.client.get("/admin/catalog/book/study-analytics/")
         self.assertEqual(picker.status_code, 200)
+        self.assertContains(picker, "خوانندگان دارای سابقهٔ مطالعه")
+        self.assertNotContains(picker, "خوانندگان فعال")
         self.assertContains(picker, self.book.title)
         self.assertNotContains(picker, inbox.title)
         self.assertContains(picker, f"/admin/catalog/book/{self.book.pk}/study-analytics/")

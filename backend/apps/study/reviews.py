@@ -358,22 +358,56 @@ def book_schedule(user, book) -> dict:
 
 
 def _payload(request, session: ReviewSession) -> dict:
+    from apps.learning.views import answer_feedback
+
     from .mistakes import _practice_payload
 
-    qs = {q.id: q for q in Question.objects.filter(pk__in=session.served, is_archived=False).select_related("node").prefetch_related("choices", "questionsource_set__source")}
-    answered = _session_answers(session)
+    answer_rows = _session_answer_rows(session)
+    prefetches = ["choices", "questionsource_set__source"]
+    if answer_rows:
+        prefetches += ["flashcards", "similar_to", "similar_from"]
+    qs = {
+        q.id: q
+        for q in Question.objects.filter(pk__in=session.served, is_archived=False)
+        .select_related("node")
+        .prefetch_related(*prefetches)
+    }
     review = session.chapter_review or session.book_review
     access = AccessMap(request.user, review.book)
     pool = _session_pool(session, access)
     chapter = access.nodes.get(session.chapter_review.chapter_id) if session.chapter_review else None
+    answers_payload = {}
+    for qid in session.served:
+        row = answer_rows.get(qid)
+        q = qs.get(qid)
+        if not row or not q or not _usable(access, q):
+            continue
+        ok, choice_order, at = row
+        choices = list(q.choices.all())
+        picked_choice = next((c for c in choices if c.order == choice_order), None)
+        correct_choice = next((c for c in choices if c.is_correct), None)
+        if picked_choice is None or correct_choice is None:
+            continue
+        answers_payload[str(qid)] = {
+            "picked": picked_choice.id,
+            "result": answer_feedback(
+                request,
+                access,
+                q,
+                is_correct=ok,
+                correct_choice_id=correct_choice.id,
+                answered_before=bool(q.key_changed_at and at < q.key_changed_at),
+            ),
+        }
     return {
         "id": session.id,
         "kind": "chapter" if session.chapter_review else "book",
         "title": (f"مرور فصل {chapter.position or ''} «{chapter.title}»".replace("  ", " ") if chapter else f"مرور ترکیبی «{access.book.title}»"),
         "book_title": access.book.title,
         "minimum": min(session.minimum, len(pool)),
-        "answered": len(answered),
-        "right": sum(1 for ok in answered.values() if ok),
+        "answered": len(answer_rows),
+        "right": sum(1 for ok, _, _ in answer_rows.values() if ok),
+        "answers": answers_payload,
         "more": len(pool) > len(session.served),
         "finished": bool(session.finished_at),
         "exam_id": session.exam_id,
@@ -394,15 +428,21 @@ def _session_pool(session: ReviewSession, access) -> list[Question]:
     return out
 
 
-def _session_answers(session: ReviewSession) -> dict[int, bool]:
-    """The first practice answer to each served question since the session began."""
-    out: dict[int, bool] = {}
-    for qid, ok in (
-        QuizAnswer.objects.filter(user=session.user, question_id__in=session.served, answered_at__gte=session.started_at)
-        .order_by("answered_at", "id").values_list("question_id", "was_correct")
+def _session_answer_rows(session: ReviewSession) -> dict[int, tuple[bool, int, object]]:
+    """The first answer recorded directly in this review sitting for each served question."""
+    out: dict[int, tuple[bool, int, object]] = {}
+    for qid, ok, choice_order, at in (
+        QuizAnswer.objects.filter(review_session=session, question_id__in=session.served)
+        .order_by("answered_at", "id")
+        .values_list("question_id", "was_correct", "choice_order", "answered_at")
     ):
-        out.setdefault(qid, ok)
+        out.setdefault(qid, (ok, choice_order, at))
     return out
+
+
+def _session_answers(session: ReviewSession) -> dict[int, bool]:
+    """{question_id: was_correct} for answers recorded in this review sitting."""
+    return {qid: ok for qid, (ok, _, _) in _session_answer_rows(session).items()}
 
 
 def _review_or_404(request, kind, pk):
