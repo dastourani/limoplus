@@ -400,6 +400,16 @@ export default function Quiz() {
     const left = Math.max(0, minNeeded - answeredTotal);
     const firstOpen = questions.findIndex((x) => status(x.id) === 'none');
     const targetKind = info?.kind === 'book' ? 'کتاب' : 'فصل';
+    const noMoreNote =
+      info && !info.more
+        ? firstOpen >= 0
+          ? 'تست تازه‌ای برای افزودن نمانده است.'
+          : `همه‌ی تست‌های این ${targetKind} را در این مرور زدی.`
+        : null;
+    const smallNotice = info?.small_chapter
+      ? `این فصل فقط ${toPersianDigits(info.pool_size ?? questions.length)} تست دارد؛ برای ارزیابی دقیق‌تر کافی نیست و بیشتر یادآوری سریع است.`
+      : null;
+    const flashcardSuggest = (info?.flashcard_count ?? 0) > 0 && info?.chapter_id;
     return (
       <Screen>
         <Header title={info?.title ?? 'مرور'} />
@@ -417,9 +427,29 @@ export default function Quiz() {
                 : `آمادهٔ ثبت است؛ با زدن «پایان و ثبت مرور»، نمره و موعد بعدی ثبت می‌شود.`}
           </Text>
           {counts.wrong > 0 && <Text style={[styles.resultLine, { fontSize: 13 }]}>تست‌های غلط به «اشتباهات من» رفتند.</Text>}
+          {!!smallNotice && (
+            <View style={[styles.cardBox, { alignSelf: 'stretch', backgroundColor: '#FFF6CC', borderColor: '#EBD98D' }]}>
+              <Text style={[styles.resultLine, rtl, { marginBottom: 0, color: colors.ink, fontSize: 13 }]}>{smallNotice}</Text>
+              {!flashcardSuggest && (
+                <Text style={[styles.resultLine, rtl, { marginBottom: 0, fontSize: 12.5 }]}>
+                  برای تثبیت بهتر، خلاصه و نکات این فصل را هم مرور کن.
+                </Text>
+              )}
+            </View>
+          )}
           {!!finishError && <Text style={[styles.resultLine, { color: colors.red, fontWeight: '700' }]}>{finishError}</Text>}
           {info?.finished ? (
-            <Button label="بازگشت به خانه" onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
+            <>
+              {!!flashcardSuggest && (
+                <Button
+                  label={`مرور ${toPersianDigits(info!.flashcard_count!)} فلش‌کارت این فصل`}
+                  variant="outline"
+                  onPress={() => router.push(`/flashcards/${info!.chapter_id}`)}
+                  style={{ alignSelf: 'stretch' }}
+                />
+              )}
+              <Button label="بازگشت به خانه" onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
+            </>
           ) : left > 0 ? (
             <>
               {firstOpen >= 0 && (
@@ -438,6 +468,15 @@ export default function Quiz() {
                   variant={firstOpen >= 0 ? 'outline' : 'primary'}
                   onPress={moreReview}
                   disabled={reviewBusy}
+                  style={{ alignSelf: 'stretch' }}
+                />
+              )}
+              {!!noMoreNote && <Text style={[styles.resultLine, { fontSize: 13 }]}>{noMoreNote}</Text>}
+              {!!flashcardSuggest && (
+                <Button
+                  label={`مرور ${toPersianDigits(info!.flashcard_count!)} فلش‌کارت این فصل`}
+                  variant="outline"
+                  onPress={() => router.push(`/flashcards/${info!.chapter_id}`)}
                   style={{ alignSelf: 'stretch' }}
                 />
               )}
@@ -472,7 +511,16 @@ export default function Quiz() {
                   style={{ alignSelf: 'stretch' }}
                 />
               )}
-              {info && !info.more && <Text style={[styles.resultLine, { fontSize: 13 }]}>همه‌ی تست‌های این {targetKind} را در این مرور زدی.</Text>}
+              {!!noMoreNote && <Text style={[styles.resultLine, { fontSize: 13 }]}>{noMoreNote}</Text>}
+              {!!flashcardSuggest && (
+                <Button
+                  label={`مرور ${toPersianDigits(info!.flashcard_count!)} فلش‌کارت این فصل`}
+                  variant="outline"
+                  onPress={() => router.push(`/flashcards/${info!.chapter_id}`)}
+                  disabled={finishBusy}
+                  style={{ alignSelf: 'stretch' }}
+                />
+              )}
               <Button label="ادامه در نوبت بعد (بدون ثبت)" variant="outline" onPress={() => router.replace('/home')} disabled={finishBusy} style={{ alignSelf: 'stretch' }} />
             </>
           )}

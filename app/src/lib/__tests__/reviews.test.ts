@@ -8,7 +8,7 @@ vi.mock('../../api/endpoints', () => ({
   endpoints: { startReview: vi.fn() },
 }));
 
-import { reviewResumeState } from '../reviews';
+import { reviewReasonLine, reviewResumeState } from '../reviews';
 
 const mkQuestions = (ids: number[]) =>
   ids.map((id) => ({
@@ -81,5 +81,37 @@ describe('reviewResumeState', () => {
       allAnswered: false,
       resumeNote: null,
     });
+  });
+});
+
+describe('reviewReasonLine', () => {
+  it('combines suggestion reason and flashcard hint for small chapters', () => {
+    expect(
+      reviewReasonLine({
+        reason: 'نوبت مرور یک‌روزه بعد از پایان فصل',
+        small_chapter: true,
+        flashcard_count: 3,
+      }),
+    ).toBe('نوبت مرور یک‌روزه بعد از پایان فصل · فصل کم‌تست؛ مرور ۳ فلش‌کارت هم پیشنهاد می‌شود');
+  });
+
+  it('shows quick recall hint when small chapter has no flashcards', () => {
+    expect(
+      reviewReasonLine({
+        reason: 'نوبت مرور یک‌هفته‌ای فصل',
+        small_chapter: true,
+        flashcard_count: 0,
+      }),
+    ).toBe('نوبت مرور یک‌هفته‌ای فصل · فصل کم‌تست (یادآوری سریع)');
+  });
+
+  it('returns plain reason for normal chapters', () => {
+    expect(
+      reviewReasonLine({
+        reason: 'مرور دوره‌ای برای تثبیت فصل',
+        small_chapter: false,
+        flashcard_count: 0,
+      }),
+    ).toBe('مرور دوره‌ای برای تثبیت فصل');
   });
 });

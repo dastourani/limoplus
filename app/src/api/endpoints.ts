@@ -290,12 +290,19 @@ export type ReviewItem = {
   minutes: number;
   due_on: string;
   late_days: number;
+  reason?: string;
+  small_chapter?: boolean;
+  flashcard_count?: number;
 };
 export type ReviewSessionData = {
   id: number;
   kind: 'chapter' | 'book';
   title: string;
   book_title: string;
+  chapter_id?: number | null;
+  small_chapter?: boolean;
+  pool_size?: number;
+  flashcard_count?: number;
   minimum: number;
   answered: number;
   right: number;
