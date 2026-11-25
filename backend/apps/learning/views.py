@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import F
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -113,6 +114,43 @@ def similar_of(access, question) -> list[dict]:
     return [{"id": q.id, "node_id": q.node_id, "source": source_label(q)} for q in found.values()]
 
 
+def answer_feedback(
+    request,
+    access,
+    question,
+    *,
+    is_correct: bool,
+    correct_choice_id: int,
+    related=None,
+    fixed=None,
+    answered_before: bool = False,
+    queued: int = 0,
+) -> dict:
+    """Shared payload builder for question answer feedback (used by practice answer and resumed review sessions)."""
+    if related is None:
+        related = [f for f in question.flashcards.filter(is_archived=False).order_by("node__path", "order", "id") if _usable(access, f)]
+    return {
+        "is_correct": is_correct,
+        "correct_choice_id": correct_choice_id,
+        # «[[#sin-hamarz]]» → «مثال ۳-۵», a tap opens it in the notes (apps/catalog/numbering.py).
+        "explanation": media_urls(request, resolve_refs(request, question.node, question.explanation), book=access.book),
+        # Extra solutions, each under its own title («راه‌حل تستی», «حل دیگر», …).
+        "solutions": [
+            {"title": x.get("title", ""), "body": media_urls(request, resolve_refs(request, question.node, x.get("body", "")), book=access.book)}
+            for x in question.solutions or []
+        ],
+        # Tapping one opens the book's cards at it (a link never leaves the book).
+        "flashcards": [{"id": f.id, "title": f.title} for f in related],
+        # «مشابه»: the same test with a change in another exam («نسخه‌ی دیگری از این تست در کنکور ۱۴۰۱ آمده»).
+        "similar": similar_of(access, question),
+        "book_id": access.book.id,
+        "cards_queued": queued,
+        "node_id": question.node_id,
+        "fixed": fixed,
+        "corrected": ({**question.correction(), "answered_before": answered_before} if question.key_changed_at else None),
+    }
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def answer(request, question_id):
@@ -132,28 +170,71 @@ def answer(request, question_id):
     if picked is None or correct is None:
         return Response({"code": "invalid_choice", "message": "گزینه‌ی انتخاب‌شده معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Only signed-in learners count toward measured difficulty (guests could skew it).
-    fixed, answered_before = None, False
-    if request.user.is_authenticated:
-        from apps.study.mistakes import fixed_info
-        from apps.study.views import first_answer
-
-        # A question from the mistakes notebook answered right: «اشتباهی که برطرف شد».
-        fixed = fixed_info(request.user, question.pk) if picked.is_correct else None
-        first = first_answer(request.user, question.pk)
-        if question.key_changed_at:
-            answered_before = QuizAnswer.objects.filter(user=request.user, question=question, answered_at__lt=question.key_changed_at).exists()
-        QuizAnswer.objects.create(user=request.user, question=question, choice_order=picked.order, was_correct=picked.is_correct)
-        from apps.study.reviews import recheck
-
-        recheck(request.user)
-        if first:
-            Question.objects.filter(pk=question.pk).update(
-                answer_count=F("answer_count") + 1, correct_count=F("correct_count") + (1 if picked.is_correct else 0)
-            )
-        StudyDay.touch(request.user, "answers")
+    raw_session = request.data.get("review_session")
+    session_id = None
+    if raw_session not in (None, ""):
+        if not request.user.is_authenticated:
+            return Response({"code": "invalid_session", "message": "جلسهٔ مرور معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            session_id = int(raw_session)
+        except (TypeError, ValueError):
+            return Response({"code": "invalid_session", "message": "جلسهٔ مرور معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
 
     related = [f for f in question.flashcards.filter(is_archived=False).order_by("node__path", "order", "id") if _usable(access, f)]
+
+    # Only signed-in learners count toward measured difficulty (guests could skew it).
+    fixed, answered_before = None, False
+    with transaction.atomic():
+        review_session = None
+        if session_id is not None:
+            from apps.study.models import ReviewSession
+
+            # Lock the sitting so concurrent retries of the same review question cannot create duplicate answers.
+            review_session = ReviewSession.objects.select_for_update().filter(
+                pk=session_id, user=request.user, exam__isnull=True
+            ).first()
+            if review_session is None or question.id not in review_session.served:
+                return Response({"code": "invalid_session", "message": "این سؤال متعلق به این جلسهٔ مرور نیست."}, status=status.HTTP_400_BAD_REQUEST)
+            existing = QuizAnswer.objects.filter(review_session=review_session, question=question).order_by("answered_at", "id").first()
+            if existing is not None:
+                answered_before = bool(question.key_changed_at and existing.answered_at < question.key_changed_at)
+                return Response(
+                    answer_feedback(
+                        request,
+                        access,
+                        question,
+                        is_correct=existing.was_correct,
+                        correct_choice_id=correct.id,
+                        related=related,
+                        answered_before=answered_before,
+                    )
+                )
+
+        if request.user.is_authenticated:
+            from apps.study.mistakes import fixed_info
+            from apps.study.views import first_answer
+
+            # A question from the mistakes notebook answered right: «اشتباهی که برطرف شد».
+            fixed = fixed_info(request.user, question.pk) if picked.is_correct else None
+            first = first_answer(request.user, question.pk)
+            if question.key_changed_at:
+                answered_before = QuizAnswer.objects.filter(user=request.user, question=question, answered_at__lt=question.key_changed_at).exists()
+            QuizAnswer.objects.create(
+                user=request.user,
+                question=question,
+                choice_order=picked.order,
+                was_correct=picked.is_correct,
+                review_session=review_session,
+            )
+            from apps.study.reviews import recheck
+
+            recheck(request.user)
+            if first:
+                Question.objects.filter(pk=question.pk).update(
+                    answer_count=F("answer_count") + 1, correct_count=F("correct_count") + (1 if picked.is_correct else 0)
+                )
+            StudyDay.touch(request.user, "answers")
+
     # A wrong answer brings its key points back: up to three linked cards join today's review («مرور امروز»).
     queued = 0
     if request.user.is_authenticated and not picked.is_correct and related:
@@ -169,24 +250,17 @@ def answer(request, question_id):
                     FlashcardReview.objects.filter(pk=review.pk).update(due_at=now)
                 queued += 1
     return Response(
-        {
-            "is_correct": picked.is_correct,
-            "correct_choice_id": correct.id,
-            # «[[#sin-hamarz]]» → «مثال ۳-۵», a tap opens it in the notes (apps/catalog/numbering.py).
-            "explanation": media_urls(request, resolve_refs(request, question.node, question.explanation), book=access.book),
-            # Extra solutions, each under its own title («راه‌حل تستی», «حل دیگر», …).
-            "solutions": [{"title": x.get("title", ""), "body": media_urls(request, resolve_refs(request, question.node, x.get("body", "")), book=access.book)}
-                          for x in question.solutions or []],
-            # Tapping one opens the book's cards at it (a link never leaves the book).
-            "flashcards": [{"id": f.id, "title": f.title} for f in related],
-            # «مشابه»: the same test with a change in another exam («نسخه‌ی دیگری از این تست در کنکور ۱۴۰۱ آمده»).
-            "similar": similar_of(access, question),
-            "book_id": access.book.id,
-            "cards_queued": queued,
-            "node_id": question.node_id,
-            "fixed": fixed,
-            "corrected": ({**question.correction(), "answered_before": answered_before} if question.key_changed_at else None),
-        }
+        answer_feedback(
+            request,
+            access,
+            question,
+            is_correct=picked.is_correct,
+            correct_choice_id=correct.id,
+            related=related,
+            fixed=fixed,
+            answered_before=answered_before,
+            queued=queued,
+        )
     )
 
 

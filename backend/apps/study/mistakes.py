@@ -373,7 +373,10 @@ def _today_data(request) -> dict:
     todays = reviews_due[:DAILY_CAP]
 
     # «done»: what of each job is already done today, for its lemon (one wedge per question or card).
-    tasks = [{**r, "kind": "review", "review_kind": r["kind"], "done": _review_done_today(request.user, r)} for r in todays]
+    tasks = []
+    for r in todays:
+        done, next_q = _review_progress(request.user, r)
+        tasks.append({**r, "kind": "review", "review_kind": r["kind"], "done": done, "next_question": next_q})
     if cards:
         tasks.append({"kind": "cards", "count": cards, "total": cards_due, "comeback": comeback, "minutes": max(1, round(cards * 0.4)),
                       "done": _cards_today(request.user)})
@@ -428,15 +431,23 @@ def _cards_today(user) -> int:
     return StudyDay.objects.filter(user=user, date=timezone.localdate()).values_list("cards", flat=True).first() or 0
 
 
-def _review_done_today(user, item: dict) -> int:
-    """Questions already answered in today's unfinished sitting of this review."""
+def _review_progress(user, item: dict) -> tuple[int, int | None]:
+    """(answered count, 1-based position of the first unanswered question) in the unfinished sitting of this review."""
     from .models import ReviewSession
     from .reviews import _session_answers
 
-    start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
     field = "chapter_review_id" if item["kind"] == "chapter" else "book_review_id"
-    session = ReviewSession.objects.filter(user=user, finished_at__isnull=True, started_at__gte=start, **{field: item["id"]}).first()
-    return min(len(_session_answers(session)), item["questions"]) if session else 0
+    session = (
+        ReviewSession.objects.filter(user=user, finished_at__isnull=True, exam__isnull=True, **{field: item["id"]})
+        .order_by("-started_at", "-id")
+        .first()
+    )
+    if not session:
+        return 0, None
+    answered = _session_answers(session)
+    done = min(len(answered), item["questions"])
+    first_idx = next((i for i, qid in enumerate(session.served) if qid not in answered), None)
+    return done, (first_idx + 1 if first_idx is not None else None)
 
 
 def _notebook_answered_today(user) -> int:

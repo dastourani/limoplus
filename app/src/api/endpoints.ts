@@ -269,7 +269,7 @@ export type Today = {
 };
 export type NeedsReviewItem = { id: number; title: string; book_title: string; book_slug: string; reason: 'mistakes' | 'old'; mistakes: number; days: number; question_ids?: number[] };
 export type TodayTask =
-  | (Omit<ReviewItem, 'kind'> & { kind: 'review'; review_kind: 'chapter' | 'book'; done?: number })
+  | (Omit<ReviewItem, 'kind'> & { kind: 'review'; review_kind: 'chapter' | 'book'; done?: number; next_question?: number | null })
   | { kind: 'cards'; count: number; total: number; comeback: boolean; minutes: number; done?: number }
   | { kind: 'notebook'; count: number; total: number; minutes: number; done?: number };
 /** A review whose day has come: «مرور فصل ۲ «…» از …: ۵ تست، حدود ۷ دقیقه». */
@@ -297,6 +297,7 @@ export type ReviewSessionData = {
   minimum: number;
   answered: number;
   right: number;
+  answers?: Record<string, { picked: number; result: AnswerResult }>;
   more: boolean;
   finished: boolean;
   exam_id: number | null;
@@ -626,7 +627,10 @@ export const endpoints = {
   mistakes: (book = '') => api<Mistakes>(`me/mistakes/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
   mistakeQuestions: (book = '') => api<{ questions: Question[]; locked_count: number }>(`me/mistakes/questions/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
   mistakeReason: (questionId: number, reason: string) => api<{ reason: string; cards: number }>(`me/mistakes/${questionId}/reason/`, { body: { reason } }),
-  answer: (questionId: number, choiceId: number) => api<AnswerResult>(`questions/${questionId}/answer/`, { body: { choice_id: choiceId } }),
+  answer: (questionId: number, choiceId: number, reviewSessionId?: number) =>
+    api<AnswerResult>(`questions/${questionId}/answer/`, {
+      body: { choice_id: choiceId, ...(reviewSessionId ? { review_session: reviewSessionId } : {}) },
+    }),
   flashcards: (nodeId: number, doneOnly = false, ids?: string) =>
     api<{ flashcards: Flashcard[]; locked_count: number; book_id?: number; macros?: Record<string, string> }>(
       `nodes/${nodeId}/flashcards/${ids ? `?ids=${ids}` : doneOnly ? '?done=1' : ''}`,

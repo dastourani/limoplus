@@ -218,8 +218,18 @@ class QuizAnswer(models.Model):
     answered_at = models.DateTimeField(auto_now_add=True)
     # "Start the tests again" archives earlier answers for practice; history and statistics keep them.
     is_archived = models.BooleanField(default=False)
+    review_session = models.ForeignKey(
+        "study.ReviewSession", null=True, blank=True, on_delete=models.SET_NULL, related_name="quiz_answers"
+    )
 
     class Meta:
         verbose_name = "پاسخ"
         verbose_name_plural = "پاسخ‌ها"
         indexes = [models.Index(fields=["user", "question"])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["review_session", "question"],
+                condition=models.Q(review_session__isnull=False),
+                name="unique_answer_per_review_question",
+            )
+        ]
