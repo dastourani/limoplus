@@ -257,9 +257,11 @@ export type Today = {
   practise: number;
   continue: { id: number; title: string; book_title: string; book_slug: string } | null;
   minutes: number;
-  /** Chapter and book reviews due today (at most two), and how many more wait. */
+  /** Chapter and book reviews due today (within remaining daily quota), completed today, and waiting ones. */
   reviews?: ReviewItem[];
+  reviews_done_today?: number;
   reviews_waiting?: number;
+  extra_reviews?: ReviewItem[];
   /** «برنامه‌ی امروز» tiles, in order; a job done today is gone. */
   tasks?: TodayTask[];
   /** «نیاز به مرور»: sections with wrong answers still open, or finished long ago (at most three). */
@@ -613,7 +615,7 @@ export const endpoints = {
     ),
   questions: (nodeId: number, ids?: string) => api<{ questions: Question[]; locked_count: number; macros?: Record<string, string> }>(`nodes/${nodeId}/questions/${ids ? `?ids=${ids}` : ''}`),
   today: () => api<Today>('me/today/'),
-  reviews: () => api<{ due: ReviewItem[]; today: ReviewItem[]; daily_cap: number }>('me/reviews/'),
+  reviews: () => api<{ due: ReviewItem[]; today: ReviewItem[]; waiting: ReviewItem[]; done_today: number; daily_cap: number }>('me/reviews/'),
   bookSamples: (slug: string) => api<{ book: string; questions: Question[] }>(`books/${encodeURIComponent(slug)}/samples/`),
   startReview: (kind: 'chapter' | 'book', id: number) => api<ReviewSessionData>('me/reviews/start/', { body: { kind, id } }),
   reviewSession: (id: number) => api<ReviewSessionData>(`me/reviews/${id}/`),

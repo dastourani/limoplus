@@ -340,6 +340,23 @@ def due_reviews(user, limit=None) -> list[dict]:
     return items[:limit] if limit else items
 
 
+def reviews_done_today(user) -> int:
+    """Count of review sittings completed and scored today."""
+    if not user.is_authenticated:
+        return 0
+    start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    return ReviewSession.objects.filter(user=user, finished_at__gte=start, score__isnull=False).count()
+
+
+def today_reviews(user, items: list[dict] | None = None) -> tuple[list[dict], list[dict], int]:
+    """(reviews scheduled for remaining daily quota, waiting reviews beyond today's cap, completed today)."""
+    if items is None:
+        items = due_reviews(user)
+    done_today = reviews_done_today(user)
+    slots = max(0, DAILY_CAP - done_today)
+    return items[:slots], items[slots:], done_today
+
+
 def book_schedule(user, book) -> dict:
     """For the book page: each chapter's review state, and the mixed review of the book."""
     if not user.is_authenticated:
@@ -454,7 +471,14 @@ def _review_or_404(request, kind, pk):
 @api_view(["GET"])
 def my_reviews(request):
     items = due_reviews(request.user)
-    return Response({"due": items, "today": items[:DAILY_CAP], "daily_cap": DAILY_CAP})
+    todays, waiting, done_today = today_reviews(request.user, items)
+    return Response({
+        "due": items,
+        "today": todays,
+        "waiting": waiting,
+        "done_today": done_today,
+        "daily_cap": DAILY_CAP,
+    })
 
 
 @api_view(["POST"])
@@ -521,6 +545,8 @@ def review_more(request, session_id):
         session = get_object_or_404(ReviewSession.objects.select_for_update(), pk=session_id, user=request.user)
         if session.exam_id:
             return Response({"code": "exam", "message": "این مرور آزمون است."}, status=status.HTTP_400_BAD_REQUEST)
+        if session.finished_at is not None:
+            return Response({"code": "session_finished", "message": "این جلسهٔ مرور قبلاً ثبت شده است."}, status=status.HTTP_400_BAD_REQUEST)
         review = session.chapter_review or session.book_review
         pool = _session_pool(session, AccessMap(request.user, review.book))
         more = pick(request.user, pool, BATCH, set(session.served), set(review.last_served))

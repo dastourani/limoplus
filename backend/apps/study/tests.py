@@ -596,6 +596,15 @@ class ReviewCycleTests(TestCase):
         self.assertTrue(FlashcardReview.objects.filter(user=self.user).exists(), "the chapter's cards join the Leitner box")
 
     def test_button_finishes_and_the_day_one_review_runs_in_fives(self):
+        extra = Question.objects.create(
+            node=self.chapter.get_children().last(),
+            slug="s2-extra-unanswered",
+            stem="سوال اضافه",
+            explanation="-",
+            difficulty="easy",
+        )
+        extra.choices.create(order=0, text="درست", is_correct=True)
+        extra.choices.create(order=1, text="غلط", is_correct=False)
         r = self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
         self.assertEqual(r.data["days"], 1)
         self._age(1)
@@ -612,13 +621,43 @@ class ReviewCycleTests(TestCase):
         for q in s["questions"]:
             right = Question.objects.get(pk=q["id"]).choices.get(is_correct=True)
             self.client.post(f"/api/v1/questions/{q['id']}/answer/", {"choice_id": right.id, "review_session": s["id"]}, format="json")
-        done = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
-        self.assertTrue(done["finished"])
-        self.assertGreaterEqual(done["next_in_days"], 7, "a good result moves on to the week step")
-        if done["more"]:
+        if s["more"]:
             more = self.client.post(f"/api/v1/me/reviews/{s['id']}/more/").data
             self.assertGreater(len(more["questions"]), len(s["questions"]))
             self.assertEqual(len({q["id"] for q in more["questions"]}), len(more["questions"]), "no question twice")
+            # Answers on the added batch count toward the sitting before finalizing
+            extra_q = more["questions"][len(s["questions"])]
+            right = Question.objects.get(pk=extra_q["id"]).choices.get(is_correct=True)
+            self.client.post(
+                f"/api/v1/questions/{extra_q['id']}/answer/",
+                {"choice_id": right.id, "review_session": s["id"]},
+                format="json",
+            )
+        done = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
+        self.assertTrue(done["finished"])
+        self.assertGreaterEqual(done["next_in_days"], 7, "a good result moves on to the week step")
+        # Once finalized, the sitting rejects further batches and new answers (while retries stay idempotent)
+        self.assertEqual(self.client.post(f"/api/v1/me/reviews/{s['id']}/more/").status_code, 400)
+        first_q = s["questions"][0]
+        first_right = Question.objects.get(pk=first_q["id"]).choices.get(is_correct=True)
+        self.assertEqual(
+            self.client.post(
+                f"/api/v1/questions/{first_q['id']}/answer/",
+                {"choice_id": first_right.id, "review_session": s["id"]},
+                format="json",
+            ).status_code,
+            200,
+        )
+        unanswered_q = next((q for q in more["questions"] if str(q["id"]) not in done["answers"]), None)
+        self.assertIsNotNone(unanswered_q)
+        self.assertEqual(
+            self.client.post(
+                f"/api/v1/questions/{unanswered_q['id']}/answer/",
+                {"choice_id": unanswered_q["choices"][0]["id"], "review_session": s["id"]},
+                format="json",
+            ).status_code,
+            400,
+        )
 
     def test_weak_result_comes_back_sooner(self):
         from .models import ChapterReview
@@ -755,6 +794,71 @@ class ReviewCycleTests(TestCase):
         today_tasks = self.client.get("/api/v1/me/today/").data["tasks"]
         review_task = next(t for t in today_tasks if t["kind"] == "review" and t["id"] == rid)
         self.assertEqual((review_task["done"], review_task["next_question"]), (3, 2))
+
+    def test_daily_cap_finishes_for_today_and_leaves_backlog_optional(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.commerce.models import Entitlement
+
+        from .models import BookReview, ChapterReview, ReviewSession
+
+        book = self.chapter.get_parent()
+        Entitlement.objects.create(user=self.user, book=book)
+        ch3 = book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل ۳", slug="s2-ch3", position=3, is_published=True)
+        sec3 = ch3.add_child(kind=ContentNode.Kind.SECTION, title="بخش ۳", slug="s2-sec3", is_published=True)
+        q3 = Question.objects.create(node=sec3, slug="s2-q3", stem="سوال فصل ۳؟", explanation="-", difficulty="easy")
+        q3.choices.create(order=0, text="درست", is_correct=True)
+        q3.choices.create(order=1, text="غلط", is_correct=False)
+
+        for ch in book.get_children():
+            self.client.post(f"/api/v1/nodes/{ch.id}/finish/")
+        ChapterReview.objects.update(due_on=timezone.localdate() - timedelta(days=2))
+        BookReview.objects.update(due_on=timezone.localdate() - timedelta(days=1))
+
+        # A closed unscored session (e.g. expired exam or legacy cleanup) does NOT consume today's quota
+        first_cr = ChapterReview.objects.order_by("id").first()
+        ReviewSession.objects.create(user=self.user, chapter_review=first_cr, finished_at=timezone.now(), score=None)
+
+        # Start of day: 4 due total -> 2 in today's plan, 2 waiting
+        day0 = self.client.get("/api/v1/me/today/").data
+        self.assertEqual(len(day0["reviews"]), 2)
+        self.assertEqual((day0["reviews_done_today"], day0["reviews_waiting"]), (0, 2))
+        self.assertEqual(len(day0["extra_reviews"]), 2)
+
+        def complete_one(item):
+            s = self.client.post("/api/v1/me/reviews/start/", {"kind": item["kind"], "id": item["id"]}, format="json").data
+            for q in s["questions"]:
+                right = Question.objects.get(pk=q["id"]).choices.get(is_correct=True)
+                self.client.post(
+                    f"/api/v1/questions/{q['id']}/answer/",
+                    {"choice_id": right.id, "review_session": s["id"]},
+                    format="json",
+                )
+            done = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
+            self.assertTrue(done["finished"])
+
+        # Finishing 1st review leaves ONLY 1 scheduled slot today (does NOT pull a 3rd overdue review)
+        complete_one(day0["reviews"][0])
+        day1 = self.client.get("/api/v1/me/today/").data
+        self.assertEqual(len(day1["reviews"]), 1)
+        self.assertEqual((day1["reviews_done_today"], day1["reviews_waiting"]), (1, 2))
+
+        # Finishing 2nd review completes today's scheduled reviews while leaving backlog optional
+        complete_one(day1["reviews"][0])
+        day2 = self.client.get("/api/v1/me/today/").data
+        self.assertEqual(day2["reviews"], [])
+        self.assertEqual((day2["reviews_done_today"], day2["reviews_waiting"]), (2, 2))
+        self.assertEqual(len(day2["extra_reviews"]), 2)
+        rev_api = self.client.get("/api/v1/me/reviews/").data
+        self.assertEqual((len(rev_api["due"]), len(rev_api["today"]), len(rev_api["waiting"]), rev_api["done_today"]), (2, 0, 2, 2))
+
+        # Completing an optional review reduces extra_reviews without reopening scheduled quota
+        complete_one(day2["extra_reviews"][0])
+        day3 = self.client.get("/api/v1/me/today/").data
+        self.assertEqual(day3["reviews"], [])
+        self.assertEqual((day3["reviews_done_today"], day3["reviews_waiting"]), (3, 1))
 
     def test_month_step_is_an_exam_without_negative_marking_and_doubts_come_back(self):
         from .models import ChapterReview, ExamAnswer

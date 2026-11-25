@@ -82,6 +82,8 @@ export default function Quiz() {
   const [reviewQs, setReviewQs] = useState<Question[] | null>(null);
   const [reviewInfo, setReviewInfo] = useState<ReviewSessionData | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [finishBusy, setFinishBusy] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
   const { user } = useAuth();
   const { confirm, toast: flash } = useFeedback();
 
@@ -165,7 +167,7 @@ export default function Quiz() {
     }
     if (Object.keys(hydrated).length) setAnswers((prev) => ({ ...hydrated, ...prev }));
     const { firstUnansweredIndex, allAnswered, resumeNote } = reviewResumeState(s);
-    if (allAnswered) {
+    if (s.finished || allAnswered) {
       setShowSummary(true);
     } else if (firstUnansweredIndex >= 0) {
       setIndex(firstUnansweredIndex);
@@ -191,15 +193,24 @@ export default function Quiz() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, data, nodeId, order === null]);
 
-  // A review is counted (and its next date set) when its summary opens; asking again is harmless.
-  useEffect(() => {
-    if (!review || !showSummary || !session) return;
-    endpoints.finishReview(Number(session)).then(setReviewInfo).catch(() => undefined);
-  }, [review, showSummary, session]);
+  const submitReview = async () => {
+    if (!session || finishBusy) return;
+    setFinishBusy(true);
+    setFinishError(null);
+    try {
+      const s = await endpoints.finishReview(Number(session));
+      setReviewInfo(s);
+    } catch (e) {
+      setFinishError(e instanceof ApiError ? e.message : 'ثبت مرور انجام نشد؛ اتصال را بررسی کن و دوباره تلاش کن.');
+    } finally {
+      setFinishBusy(false);
+    }
+  };
 
   const moreReview = async () => {
     if (!session || reviewBusy) return;
     setReviewBusy(true);
+    setFinishError(null);
     try {
       const s = await endpoints.reviewMore(Number(session));
       const before = questions.length;
@@ -384,34 +395,87 @@ export default function Quiz() {
 
   if (showSummary && review) {
     const info = reviewInfo ?? (data as { session?: ReviewSessionData } | undefined)?.session ?? null;
-    const left = info ? Math.max(0, info.minimum - info.answered) : 0;
+    const answeredTotal = counts.right + counts.wrong;
+    const minNeeded = info?.minimum ?? questions.length;
+    const left = Math.max(0, minNeeded - answeredTotal);
+    const firstOpen = questions.findIndex((x) => status(x.id) === 'none');
+    const targetKind = info?.kind === 'book' ? 'کتاب' : 'فصل';
     return (
       <Screen>
         <Header title={info?.title ?? 'مرور'} />
         <ScrollView contentContainerStyle={styles.result}>
           <Text style={styles.resultPercent}>
-            {toPersianDigits(counts.right)} از {toPersianDigits(counts.right + counts.wrong)}
+            {toPersianDigits(counts.right)} از {toPersianDigits(answeredTotal)}
           </Text>
           <Text style={styles.resultLine}>
             {info?.finished
               ? info.next_in_days != null
-                ? `مرور انجام شد. مرور بعدی این ${info.kind === 'book' ? 'کتاب' : 'فصل'}: ${toPersianDigits(info.next_in_days)} روز دیگر.`
-                : 'مرور انجام شد.'
+                ? `مرور ثبت شد. مرور بعدی این ${targetKind}: ${toPersianDigits(info.next_in_days)} روز دیگر.`
+                : 'مرور ثبت شد.'
               : left > 0
-                ? `برای اینکه این مرور حساب شود، ${toPersianDigits(left)} تست دیگر بزن.`
-                : 'در حال ثبت…'}
+                ? `برای ثبت این مرور، حداقل ${toPersianDigits(left)} تست دیگر بزن.`
+                : `آمادهٔ ثبت است؛ با زدن «پایان و ثبت مرور»، نمره و موعد بعدی ثبت می‌شود.`}
           </Text>
           {counts.wrong > 0 && <Text style={[styles.resultLine, { fontSize: 13 }]}>تست‌های غلط به «اشتباهات من» رفتند.</Text>}
-          {(info?.more ?? true) && (
-            <Button
-              label={reviewBusy ? 'صبر کن…' : `۵ تست دیگر از این ${info?.kind === 'book' ? 'کتاب' : 'فصل'}`}
-              onPress={moreReview}
-              disabled={reviewBusy}
-              style={{ alignSelf: 'stretch' }}
-            />
+          {!!finishError && <Text style={[styles.resultLine, { color: colors.red, fontWeight: '700' }]}>{finishError}</Text>}
+          {info?.finished ? (
+            <Button label="بازگشت به خانه" onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
+          ) : left > 0 ? (
+            <>
+              {firstOpen >= 0 && (
+                <Button
+                  label={`رفتن به ${toPersianDigits(counts.none)} تست بی‌جواب`}
+                  onPress={() => {
+                    setShowSummary(false);
+                    setIndex(firstOpen);
+                  }}
+                  style={{ alignSelf: 'stretch' }}
+                />
+              )}
+              {(info?.more ?? true) && (
+                <Button
+                  label={reviewBusy ? 'صبر کن…' : `۵ تست دیگر از این ${targetKind}`}
+                  variant={firstOpen >= 0 ? 'outline' : 'primary'}
+                  onPress={moreReview}
+                  disabled={reviewBusy}
+                  style={{ alignSelf: 'stretch' }}
+                />
+              )}
+              <Button label="ادامه در نوبت بعد" variant="outline" onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
+            </>
+          ) : (
+            <>
+              <Button
+                label={finishBusy ? 'در حال ثبت مرور…' : finishError ? 'تلاش دوباره برای ثبت مرور' : 'پایان و ثبت مرور'}
+                onPress={submitReview}
+                disabled={finishBusy || reviewBusy}
+                style={{ alignSelf: 'stretch' }}
+              />
+              {firstOpen >= 0 && (
+                <Button
+                  label={`برگشت به ${toPersianDigits(counts.none)} تست بی‌جواب`}
+                  variant="outline"
+                  onPress={() => {
+                    setShowSummary(false);
+                    setIndex(firstOpen);
+                  }}
+                  disabled={finishBusy}
+                  style={{ alignSelf: 'stretch' }}
+                />
+              )}
+              {(info?.more ?? true) && (
+                <Button
+                  label={reviewBusy ? 'صبر کن…' : `۵ تست دیگر از این ${targetKind} (در همین مرور)`}
+                  variant="outline"
+                  onPress={moreReview}
+                  disabled={reviewBusy || finishBusy}
+                  style={{ alignSelf: 'stretch' }}
+                />
+              )}
+              {info && !info.more && <Text style={[styles.resultLine, { fontSize: 13 }]}>همه‌ی تست‌های این {targetKind} را در این مرور زدی.</Text>}
+              <Button label="ادامه در نوبت بعد (بدون ثبت)" variant="outline" onPress={() => router.replace('/home')} disabled={finishBusy} style={{ alignSelf: 'stretch' }} />
+            </>
           )}
-          {info && !info.more && <Text style={[styles.resultLine, { fontSize: 13 }]}>همه‌ی تست‌های این {info.kind === 'book' ? 'کتاب' : 'فصل'} را در این مرور زدی.</Text>}
-          <Button label="کافی است برای امروز" variant={info?.more ? 'outline' : 'primary'} onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
         </ScrollView>
       </Screen>
     );

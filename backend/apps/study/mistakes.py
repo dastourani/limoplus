@@ -359,7 +359,7 @@ def today(request):
 
 def _today_data(request) -> dict:
     from .needs import needs_review
-    from .reviews import DAILY_CAP, due_reviews
+    from .reviews import due_reviews, today_reviews
 
     away = _away_days(request.user)
     comeback = away >= COMEBACK_DAYS
@@ -370,7 +370,7 @@ def _today_data(request) -> dict:
     practise = 0 if practised >= NOTEBOOK_DAILY else min(mistakes, NOTEBOOK_DAILY - practised)
     cont = _continue(request)
     reviews_due = due_reviews(request.user)
-    todays = reviews_due[:DAILY_CAP]
+    todays, waiting_reviews, reviews_done_today = today_reviews(request.user, reviews_due)
 
     # «done»: what of each job is already done today, for its lemon (one wedge per question or card).
     tasks = []
@@ -393,9 +393,11 @@ def _today_data(request) -> dict:
             "mistakes": mistakes,
             "practise": practise,
             "continue": {"id": cont.node_id, "title": cont.node.title, "book_title": cont.book.title, "book_slug": cont.book.slug} if cont else None,
-            # «مرور فصل ۲ «…» از …: ۵ تست، حدود ۷ دقیقه» (at most two a day, the oldest first).
+            # «مرور فصل ۲ «…» از …: ۵ تست، حدود ۷ دقیقه» (capped by DAILY_CAP including completed reviews today).
             "reviews": todays,
-            "reviews_waiting": max(0, len(reviews_due) - len(todays)),
+            "reviews_done_today": reviews_done_today,
+            "reviews_waiting": len(waiting_reviews),
+            "extra_reviews": waiting_reviews,
             "tasks": tasks,
             "minutes": minutes,
             # «نیاز به مرور»: sections with wrong answers still open, or finished long ago (apps/study/needs.py).

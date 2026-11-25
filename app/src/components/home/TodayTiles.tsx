@@ -16,7 +16,15 @@ import { Text } from '../Text';
 const keyOf = (t: TodayTask) => (t.kind === 'review' ? `r-${t.review_kind}-${t.id}` : t.kind);
 const FINISHED_MS = 1600;
 
-export function TodayTiles({ tasks, onError }: { tasks: TodayTask[]; onError: () => void }) {
+export function TodayTiles({
+  tasks,
+  onError,
+  doneMessage = 'برنامه‌ی امروز تمام شد. آفرین!',
+}: {
+  tasks: TodayTask[];
+  onError: () => void;
+  doneMessage?: string;
+}) {
   // Jobs seen before and gone now were just finished: kept a moment, ticked.
   const seen = useRef<Map<string, TodayTask>>(new Map());
   const [finished, setFinished] = useState<TodayTask[]>([]);
@@ -37,7 +45,7 @@ export function TodayTiles({ tasks, onError }: { tasks: TodayTask[]; onError: ()
     return (
       <View style={styles.row}>
         <LemonProgress parts={['done']} size={44} />
-        <Text style={[styles.allDone, rtl]}>برنامه‌ی امروز تمام شد. آفرین!</Text>
+        <Text style={[styles.allDone, rtl]}>{doneMessage}</Text>
       </View>
     );
   }
