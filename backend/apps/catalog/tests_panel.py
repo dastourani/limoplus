@@ -2800,6 +2800,177 @@ class TeacherAIProviderAndAuditAccessTests(TestCase):
         self.assertEqual(self.prov_a.masked_api_key(), "sk-t••••••••-key")
 
 
+class StepOneAdminHardeningTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+
+        self.group, _ = Group.objects.get_or_create(name="استاد کتاب")
+        self.superuser = User.objects.create_superuser("09120000001", is_staff=True)
+        self.teacher_1 = User.objects.create_user("09120000011", first_name="مریم", last_name="احمدی", is_staff=True)
+        self.teacher_2 = User.objects.create_user("09120000012", first_name="رضا", last_name="کریمی", is_staff=True)
+        self.student = User.objects.create_user("09120000099", first_name="سهراب", last_name="دانشجو")
+        self.teacher_1.groups.add(self.group)
+        self.teacher_2.groups.add(self.group)
+
+        self.shared_book = ContentNode.add_root(title="کتاب مشترک", kind=ContentNode.Kind.BOOK, slug="shared-step1", is_published=True)
+        self.other_book = ContentNode.add_root(title="کتاب دیگر", kind=ContentNode.Kind.BOOK, slug="other-step1", is_published=True)
+        self.chapter = self.shared_book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل اول", slug="ch-1", is_published=True)
+
+        BookEditor.objects.create(book=self.shared_book, user=self.teacher_1, can_edit_content=True)
+        BookEditor.objects.create(book=self.shared_book, user=self.teacher_2, can_edit_content=True)
+
+    def test_book_opinion_teacher_can_reply_but_cannot_tamper_student_fields(self):
+        from django.contrib import admin
+        from django.test import RequestFactory
+        from apps.catalog.models import BookOpinion
+
+        opinion = BookOpinion.objects.create(
+            book=self.shared_book,
+            user=self.student,
+            rating=2,
+            satisfaction_percent=40,
+            body="نیاز به اصلاح مثال‌ها دارد.",
+            status=BookOpinion.Status.APPROVED,
+            is_pinned=False,
+        )
+        other_opinion = BookOpinion.objects.create(
+            book=self.other_book,
+            user=self.student,
+            rating=5,
+            body="کتاب دیگر",
+        )
+
+        self.client.force_login(self.teacher_1)
+
+        # Cannot add or delete opinions, nor access another book's opinion
+        self.assertEqual(self.client.get("/admin/catalog/bookopinion/add/").status_code, 403)
+        self.assertIn(self.client.get(f"/admin/catalog/bookopinion/{other_opinion.pk}/change/").status_code, (302, 403, 404))
+        self.assertFalse(admin.site._registry[BookOpinion].has_change_permission(
+            type("Req", (), {"user": self.teacher_1})(), other_opinion
+        ))
+        self.assertIn(self.client.post(f"/admin/catalog/bookopinion/{opinion.pk}/delete/").status_code, (302, 403))
+
+        # Direct POST trying to modify protected fields alongside a reply
+        res = self.client.post(
+            f"/admin/catalog/bookopinion/{opinion.pk}/change/",
+            {
+                "book": self.other_book.pk,
+                "user": self.teacher_1.pk,
+                "rating": 5,
+                "satisfaction_percent": 100,
+                "body": "متن جعلی",
+                "status": BookOpinion.Status.HIDDEN,
+                "is_pinned": "on",
+                "teacher_reply": "پاسخ رسمی استاد",
+                "report_reason": "گزارش تست",
+            },
+        )
+        self.assertEqual(res.status_code, 302)
+        opinion.refresh_from_db()
+        self.assertEqual(opinion.teacher_reply, "پاسخ رسمی استاد")
+        self.assertEqual(opinion.teacher_replied_by, self.teacher_1)
+        self.assertIsNotNone(opinion.teacher_replied_at)
+        self.assertEqual(opinion.report_reason, "گزارش تست")
+        self.assertEqual(opinion.reported_by, self.teacher_1)
+        # Student rating, satisfaction, body, status, pin, and book/user remain intact
+        self.assertEqual(opinion.book_id, self.shared_book.pk)
+        self.assertEqual(opinion.user_id, self.student.pk)
+        self.assertEqual(opinion.rating, 2)
+        self.assertEqual(opinion.satisfaction_percent, 40)
+        self.assertEqual(opinion.body, "نیاز به اصلاح مثال‌ها دارد.")
+        self.assertEqual(opinion.status, BookOpinion.Status.APPROVED)
+        self.assertFalse(opinion.is_pinned)
+
+        # Even direct save_model call with mutated object attributes restores protected fields
+        opinion_admin = admin.site._registry[BookOpinion]
+        req = RequestFactory().post("/")
+        req.user = self.teacher_1
+        opinion.rating = 5
+        opinion.body = "تغییر مستقیم"
+        opinion.status = BookOpinion.Status.HIDDEN
+        opinion.is_pinned = True
+        opinion.teacher_reply = "پاسخ دوم استاد"
+        opinion_admin.save_model(req, opinion, None, change=True)
+        opinion.refresh_from_db()
+        self.assertEqual(opinion.teacher_reply, "پاسخ دوم استاد")
+        self.assertEqual(opinion.rating, 2)
+        self.assertEqual(opinion.body, "نیاز به اصلاح مثال‌ها دارد.")
+        self.assertEqual(opinion.status, BookOpinion.Status.APPROVED)
+        self.assertFalse(opinion.is_pinned)
+
+    def test_teacher_profile_dropdown_excludes_existing_profiles(self):
+        from django.contrib import admin
+        from django.test import RequestFactory
+        from apps.catalog.models import TeacherProfile
+
+        TeacherProfile.objects.create(user=self.teacher_1, academic_title="استادیار")
+        profile_admin = admin.site._registry[TeacherProfile]
+        req = RequestFactory().get("/admin/catalog/teacherprofile/add/")
+        req.user = self.superuser
+        field = profile_admin.formfield_for_foreignkey(TeacherProfile._meta.get_field("user"), req)
+        user_ids = set(field.queryset.values_list("id", flat=True))
+        self.assertNotIn(self.teacher_1.id, user_ids)
+        self.assertIn(self.teacher_2.id, user_ids)
+
+        # Teacher without profile can create their own once, and then add permission is False
+        self.client.force_login(self.teacher_2)
+        res = self.client.post("/admin/catalog/teacherprofile/add/", {
+            "academic_title": "مدرس",
+            "bio": "رزومه",
+        })
+        self.assertEqual(res.status_code, 302)
+        self.assertTrue(TeacherProfile.objects.filter(user=self.teacher_2).exists())
+        self.assertEqual(self.client.get("/admin/catalog/teacherprofile/add/").status_code, 403)
+
+    def test_teacher_menu_has_no_duplicate_profile_or_opinion(self):
+        from django.contrib import admin
+        from django.test import RequestFactory
+
+        rf = RequestFactory()
+        req = rf.get("/admin/")
+        req.user = self.teacher_1
+        req.session = {}
+        apps_teacher = admin.site.get_app_list(req)
+        names = [m["object_name"] for app in apps_teacher for m in app["models"]]
+        self.assertEqual(names.count("TeacherProfile"), 1)
+        self.assertEqual(names.count("BookOpinion"), 1)
+        ai_app = next(a for a in apps_teacher if a["app_label"] == "catalog_ai")
+        self.assertEqual([m["object_name"] for m in ai_app["models"]], ["AIProvider", "BookAssistantAuditLog"])
+
+    def test_shared_book_activity_tracks_individual_editor_and_flags_unattributed_edits(self):
+        from apps.catalog import editing
+        from apps.catalog.admin import _admin_kpis_payload
+        from apps.catalog.models import ChapterRevision
+
+        # Initially both teachers have no recorded activity
+        kpi0 = _admin_kpis_payload()
+        self.assertEqual(kpi0["kpi_teachers_total"], "۲")
+        self.assertEqual(kpi0["kpi_teachers_inactive"], "۲")
+        self.assertEqual(kpi0["kpi_unattributed_edits_count"], 0)
+
+        # Teacher 1 edits the shared book's chapter (including baseline creation)
+        editing.ensure_baseline(self.chapter, self.teacher_1)
+        self.chapter.add_child(kind=ContentNode.Kind.SECTION, title="بخش جدید", slug="sec-new", full_body="محتوای تازه")
+        editing.record_revision(self.chapter, source=ChapterRevision.Source.PANEL, note="ویرایش", user=self.teacher_1)
+
+        kpi1 = _admin_kpis_payload()
+        # Only teacher_1 is active; teacher_2 remains inactive even though they share the same book
+        self.assertEqual(kpi1["kpi_teachers_inactive"], "۱")
+        self.assertEqual(kpi1["kpi_unattributed_edits_count"], 0)
+
+        # Historical / unattributed edit (user=None) must NOT mark teacher_2 active, and must be reported
+        ChapterRevision.objects.create(chapter=self.chapter, text="قدیمی", source=ChapterRevision.Source.FILE, note="ورود قدیمی", user=None)
+        kpi2 = _admin_kpis_payload()
+        self.assertEqual(kpi2["kpi_teachers_inactive"], "۱")
+        self.assertEqual(kpi2["kpi_unattributed_edits_count"], 1)
+
+        self.client.force_login(self.superuser)
+        dashboard = self.client.get("/admin/")
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertContains(dashboard, "سوابق بدون هویت ویرایشگر")
+
+
+
 
 
 
