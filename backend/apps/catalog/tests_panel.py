@@ -3139,6 +3139,197 @@ class StepTwoAdminModelsTests(TestCase):
         self.assertFalse(BookBoxMapping.objects.filter(pk=mapping.pk).exists())
 
 
+class StepFourAdminPanelTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+
+        self.group, _ = Group.objects.get_or_create(name="استاد کتاب")
+        self.superuser = User.objects.create_superuser("09120002001", is_staff=True)
+        self.teacher = User.objects.create_user("09120002011", first_name="سهراب", last_name="مؤلف", is_staff=True)
+        self.teacher.groups.add(self.group)
+        self.student = User.objects.create_user("09120002022", first_name="مریم", last_name="دانشجو")
+        self.book = ContentNode.add_root(title="کتاب شیمی", kind=ContentNode.Kind.BOOK, slug="step4-chem", is_published=True)
+        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True)
+
+    def test_teacher_profile_moved_under_teacher_workflows_and_catalog_ordered(self):
+        from django.contrib import admin
+        from django.test import RequestFactory
+
+        rf = RequestFactory()
+        req = rf.get("/admin/")
+        req.user = self.superuser
+        req.session = {}
+        app_list = admin.site.get_app_list(req)
+
+        wf_app = next(a for a in app_list if a["app_label"] == "teacher_workflows")
+        wf_names = [m["object_name"] for m in wf_app["models"]]
+        self.assertIn("TeacherProfile", wf_names)
+        self.assertLess(wf_names.index("BookEditor"), wf_names.index("TeacherProfile"))
+        self.assertLess(wf_names.index("TeacherProfile"), wf_names.index("TeacherInvitation"))
+
+        cat_app = next(a for a in app_list if a["app_label"] == "catalog")
+        cat_names = [m["object_name"] for m in cat_app["models"]]
+        self.assertNotIn("TeacherProfile", cat_names)
+        expected_prefix = [
+            "Book",
+            "Section",
+            "Label",
+            "ChapterRevision",
+            "BookTeamTask",
+            "BookBoxMapping",
+            "BookOpinion",
+            "BookWaitlist",
+            "Major",
+            "Shelf",
+            "Banner",
+            "ShareSettings",
+            "FormulaCommand",
+            "AIProvider",
+            "BookAssistantAuditLog",
+            "BookChange",
+            "CleanupRun",
+        ]
+        self.assertEqual(cat_names, expected_prefix)
+
+        # Teacher workspace still sees TeacherProfile once inside authoring desk
+        req_t = rf.get("/admin/")
+        req_t.user = self.teacher
+        req_t.session = {}
+        t_apps = admin.site.get_app_list(req_t)
+        authoring = next(a for a in t_apps if a["app_label"] == "catalog")
+        self.assertEqual([m["object_name"] for m in authoring["models"]].count("TeacherProfile"), 1)
+
+    def test_manager_action_badges_on_payout_opinion_and_team_tasks(self):
+        from django.utils import timezone
+        from apps.catalog.models import BookOpinion, BookTeamTask
+        from apps.commerce.models import PayoutRequest
+
+        PayoutRequest.objects.create(
+            teacher=self.teacher, amount=100000, status=PayoutRequest.Status.PENDING,
+            account_holder_snapshot="سهراب", iban_snapshot="IR000000000000000000000001",
+        )
+        PayoutRequest.objects.create(
+            teacher=self.teacher, amount=200000, status=PayoutRequest.Status.PROCESSING,
+            account_holder_snapshot="سهراب", iban_snapshot="IR000000000000000000000001",
+        )
+        PayoutRequest.objects.create(
+            teacher=self.teacher, amount=50000, status=PayoutRequest.Status.PAID,
+            account_holder_snapshot="سهراب", iban_snapshot="IR000000000000000000000001",
+        )
+
+        other_student = User.objects.create_user("09120002033")
+        short_phone_user = User.objects.create_user("12345678")
+        fourth_student = User.objects.create_user("09120002044")
+        BookOpinion.objects.create(book=self.book, user=self.student, rating=4, body="در انتظار", status=BookOpinion.Status.PENDING)
+        reported_op = BookOpinion.objects.create(
+            book=self.book, user=other_student, rating=2, body="گزارش شده",
+            status=BookOpinion.Status.APPROVED, report_reason="تبلیغات", reported_at=timezone.now(), reported_by=self.teacher,
+        )
+        BookOpinion.objects.create(book=self.book, user=short_phone_user, rating=5, body="عالی", status=BookOpinion.Status.APPROVED)
+        BookOpinion.objects.create(
+            book=self.book, user=fourth_student, rating=1, body="پنهان",
+            status=BookOpinion.Status.HIDDEN, report_reason="اسپم", reported_at=timezone.now(), reported_by=self.teacher,
+        )
+
+        BookTeamTask.objects.create(book=self.book, author=self.teacher, text="یادداشت باز ۱", is_done=False)
+        BookTeamTask.objects.create(book=self.book, author=self.teacher, text="یادداشت باز ۲", is_done=False)
+        BookTeamTask.objects.create(book=self.book, author=self.superuser, text="یادداشت باز ۳", is_done=False)
+        BookTeamTask.objects.create(book=self.book, author=self.teacher, text="انجام‌شده", is_done=True)
+
+        self.client.force_login(self.superuser)
+        res = self.client.get("/admin/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, '<span class="lp-badge lp-b-yellow lp-menu-badge" title="درخواست تسویه باز">۲</span>', html=True)
+        self.assertContains(res, '<span class="lp-badge lp-b-yellow lp-menu-badge" title="نظر نیازمند بازبینی یا گزارش‌شده">۲</span>', html=True)
+        self.assertContains(res, '<span class="lp-badge lp-b-yellow lp-menu-badge" title="یادداشت‌های باز هماهنگی">۳</span>', html=True)
+
+        # Short legacy phone on BookOpinionAdmin uses shared mask_phone fallback
+        op_list = self.client.get("/admin/catalog/bookopinion/")
+        self.assertEqual(op_list.status_code, 200)
+        self.assertNotContains(op_list, "12345678")
+        self.assertContains(op_list, "کاربر لیموخوان")
+
+        # Teacher viewing BookOpinionAdmin never sees raw student phones in __str__ / aria-label / changeform
+        self.client.force_login(self.teacher)
+        t_op_list = self.client.get("/admin/catalog/bookopinion/")
+        self.assertEqual(t_op_list.status_code, 200)
+        self.assertNotContains(t_op_list, "09120002033")
+        t_op_change = self.client.get(f"/admin/catalog/bookopinion/{reported_op.pk}/change/")
+        self.assertEqual(t_op_change.status_code, 200)
+        self.assertNotContains(t_op_change, "09120002033")
+        self.client.force_login(self.superuser)
+
+        # Manager clearing report_reason dismisses report and drops opinion badge count to 1
+        res_clear = self.client.post(f"/admin/catalog/bookopinion/{reported_op.pk}/change/", {
+            "book": self.book.pk,
+            "user": other_student.pk,
+            "rating": 2,
+            "satisfaction_percent": 100,
+            "body": "گزارش شده",
+            "status": BookOpinion.Status.APPROVED,
+            "teacher_reply": "",
+            "report_reason": "",
+        })
+        self.assertEqual(res_clear.status_code, 302)
+        reported_op.refresh_from_db()
+        self.assertIsNone(reported_op.reported_at)
+        self.assertIsNone(reported_op.reported_by)
+
+        res_after = self.client.get("/admin/")
+        self.assertContains(res_after, '<span class="lp-badge lp-b-yellow lp-menu-badge" title="نظر نیازمند بازبینی یا گزارش‌شده">۱</span>', html=True)
+
+    def test_dashboard_open_team_tasks_counter_matches_filtered_changelist(self):
+        from apps.catalog.models import BookTeamTask
+
+        t1 = BookTeamTask.objects.create(book=self.book, author=self.teacher, text="بررسی فصل اول", is_done=False)
+        t2 = BookTeamTask.objects.create(book=self.book, author=self.superuser, text="تنظیم جلد", is_done=False)
+        t3 = BookTeamTask.objects.create(book=self.book, author=self.teacher, text="کار بسته‌شده", is_done=True)
+
+        self.client.force_login(self.superuser)
+        dash = self.client.get("/admin/")
+        self.assertEqual(dash.status_code, 200)
+        self.assertEqual(dash.context["kpi_open_team_tasks"], "۲")
+        self.assertContains(dash, "/admin/catalog/bookteamtask/?is_done__exact=0")
+        self.assertContains(dash, "یادداشت‌های باز هماهنگی تیم‌ها")
+
+        filtered = self.client.get("/admin/catalog/bookteamtask/?is_done__exact=0")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual(filtered.context["cl"].result_count, 2)
+        self.assertContains(filtered, t1.text)
+        self.assertContains(filtered, t2.text)
+        self.assertNotContains(filtered, t3.text)
+
+    def test_guides_enabled_and_complete_for_superuser_and_teacher(self):
+        self.client.force_login(self.superuser)
+        res_admin = self.client.get("/admin/")
+        self.assertEqual(res_admin.status_code, 200)
+        self.assertContains(res_admin, 'id="lp-guide-toggle"')
+        self.assertContains(res_admin, 'id="lp-bubble"')
+        for key in (
+            "auth-group",
+            "teacher_workflows-teacherprofile",
+            "catalog-bookteamtask",
+            "catalog-bookboxmapping",
+            "catalog-bookopinion",
+            "guard-tracker",
+            "guard-tracehit",
+            "guard-copyevent",
+            "commerce-payoutrequest",
+            "releases-apprelease",
+            "website-sitesettings",
+        ):
+            self.assertContains(res_admin, f"'{key}'")
+
+        self.client.force_login(self.teacher)
+        res_teacher = self.client.get("/admin/")
+        self.assertEqual(res_teacher.status_code, 200)
+        self.assertContains(res_teacher, 'id="lp-guide-toggle"')
+        self.assertContains(res_teacher, 'id="lp-bubble"')
+        self.assertContains(res_teacher, "'guard-tracker'")
+        self.assertContains(res_teacher, "'teacher_workflows-teacherprofile'")
+
+
+
 
 
 

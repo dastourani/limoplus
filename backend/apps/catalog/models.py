@@ -954,7 +954,7 @@ class BookOpinion(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.book.title} — {self.user.phone} ({self.rating}★)"
+        return f"{self.book.title} — {self.display_author_name} ({self.rating}★)"
 
     @property
     def display_author_name(self):

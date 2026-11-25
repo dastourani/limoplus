@@ -7,6 +7,7 @@ from django.urls import reverse
 
 _TEACHER_WORKFLOW_MODELS = frozenset({
     ("catalog", "BookEditor"),
+    ("catalog", "TeacherProfile"),
     ("website", "Classroom"),
     ("website", "ClassroomMember"),
     ("website", "TeacherApplication"),
@@ -29,7 +30,6 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     ("catalog", "ShareSettings"),
     ("catalog", "AIProvider"),
     ("catalog", "BookAssistantAuditLog"),
-    ("catalog", "TeacherProfile"),
     ("catalog", "BookOpinion"),
     # commerce (royalty, wallet & payout)
     ("commerce", "TeacherWallet"),
@@ -50,6 +50,7 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     ("teacher_workflows", "Classroom"),
     ("teacher_workflows", "ClassroomMember"),
     ("teacher_workflows", "PublicationRequest"),
+    ("teacher_workflows", "TeacherProfile"),
 })
 
 
@@ -85,7 +86,7 @@ class LimoAdminSite(AdminSite):
             ("catalog", "Label"),
             ("catalog", "ChapterRevision"),
             ("teacher_workflows", "PublicationRequest"),
-            ("catalog", "TeacherProfile"),
+            ("teacher_workflows", "TeacherProfile"),
             ("guard", "Tracker"),
             ("guard", "TraceHit"),
         ]
@@ -210,14 +211,19 @@ class LimoAdminSite(AdminSite):
             "Section": 2,
             "Label": 3,
             "ChapterRevision": 4,
-            "ShareSettings": 5,
-            "Major": 6,
-            "Shelf": 7,
-            "Banner": 8,
-            "FormulaCommand": 9,
-            "BookWaitlist": 10,
-            "BookChange": 11,
-            "CleanupRun": 12,
+            "BookTeamTask": 5,
+            "BookBoxMapping": 6,
+            "BookOpinion": 7,
+            "BookWaitlist": 8,
+            "Major": 9,
+            "Shelf": 10,
+            "Banner": 11,
+            "ShareSettings": 12,
+            "FormulaCommand": 13,
+            "AIProvider": 14,
+            "BookAssistantAuditLog": 15,
+            "BookChange": 16,
+            "CleanupRun": 17,
         }
 
         for app in app_list:
@@ -246,8 +252,9 @@ class LimoAdminSite(AdminSite):
                 "PublicationRequest": 3,
                 "BookAccessRequest": 4,
                 "BookEditor": 5,
-                "TeacherInvitation": 6,
-                "TeacherApplication": 7,
+                "TeacherProfile": 6,
+                "TeacherInvitation": 7,
+                "TeacherApplication": 8,
             }
             workflow_models.sort(
                 key=lambda model: (
@@ -306,27 +313,87 @@ class LimoAdminSite(AdminSite):
         # If viewing as superuser (admin view), append real-time action counters to model names
         if user and user.is_authenticated and user.is_superuser and not teacher_view_mode:
             try:
+                badges_map = getattr(request, "_limo_admin_badges", None) if request else None
+                if badges_map is None:
+                    from django.db.models import Count, IntegerField, Q, Subquery, Value
+                    from django.db.models.functions import Coalesce
+                    from django.utils import timezone
+                    from apps.accounts.models import User
+                    from apps.catalog.models import BookOpinion, BookTeamTask
+                    from apps.commerce.models import Order, PayoutRequest
+                    from apps.learning.models import Report
+                    from apps.website.models import BookAccessRequest, PublicationRequest, TeacherApplication
+
+                    today = timezone.localdate()
+                    reports_qs = Report.objects.filter(status=Report.Status.OPEN)
+                    pub_qs = PublicationRequest.objects.filter(
+                        status__in=(PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO)
+                    )
+                    teacher_app_qs = TeacherApplication.objects.filter(status=TeacherApplication.Status.PENDING)
+                    access_req_qs = BookAccessRequest.objects.filter(status=BookAccessRequest.Status.PENDING)
+                    orders_qs = Order.objects.filter(status=Order.Status.PAID, paid_at__date=today)
+                    payout_qs = PayoutRequest.objects.filter(
+                        status__in=(PayoutRequest.Status.PENDING, PayoutRequest.Status.PROCESSING)
+                    )
+                    opinions_qs = BookOpinion.objects.filter(
+                        Q(status=BookOpinion.Status.PENDING)
+                        | Q(status=BookOpinion.Status.APPROVED, reported_at__isnull=False)
+                    )
+                    tasks_qs = BookTeamTask.objects.filter(is_done=False)
+
+                    def _subcount(qs):
+                        return Coalesce(
+                            Subquery(
+                                qs.order_by().annotate(_g=Value(1)).values("_g").annotate(_c=Count("*")).values("_c")[:1],
+                                output_field=IntegerField(),
+                            ),
+                            Value(0),
+                        )
+
+                    counts = None
+                    if getattr(user, "pk", None):
+                        counts = (
+                            User.objects.filter(pk=user.pk)
+                            .values("pk")
+                            .annotate(
+                                reports_open=_subcount(reports_qs),
+                                pub_pending=_subcount(pub_qs),
+                                teacher_app_pending=_subcount(teacher_app_qs),
+                                access_req_pending=_subcount(access_req_qs),
+                                orders_today=_subcount(orders_qs),
+                                payout_pending=_subcount(payout_qs),
+                                opinions_pending=_subcount(opinions_qs),
+                                open_team_tasks=_subcount(tasks_qs),
+                            )
+                            .first()
+                        )
+                    if counts is None:
+                        counts = {
+                            "reports_open": reports_qs.count(),
+                            "pub_pending": pub_qs.count(),
+                            "teacher_app_pending": teacher_app_qs.count(),
+                            "access_req_pending": access_req_qs.count(),
+                            "orders_today": orders_qs.count(),
+                            "payout_pending": payout_qs.count(),
+                            "opinions_pending": opinions_qs.count(),
+                            "open_team_tasks": tasks_qs.count(),
+                        }
+
+                    badges_map = {
+                        ("learning", "Report"): (counts["reports_open"], "lp-b-red", "گزارش‌های باز"),
+                        ("teacher_workflows", "PublicationRequest"): (counts["pub_pending"], "lp-b-yellow", "در انتظار بررسی"),
+                        ("teacher_workflows", "TeacherApplication"): (counts["teacher_app_pending"], "lp-b-yellow", "درخواست جدید"),
+                        ("teacher_workflows", "BookAccessRequest"): (counts["access_req_pending"], "lp-b-blue", "درخواست باز"),
+                        ("commerce", "Order"): (counts["orders_today"], "lp-b-green", "خرید امروز"),
+                        ("commerce", "PayoutRequest"): (counts["payout_pending"], "lp-b-yellow", "درخواست تسویه باز"),
+                        ("catalog", "BookOpinion"): (counts["opinions_pending"], "lp-b-yellow", "نظر نیازمند بازبینی یا گزارش‌شده"),
+                        ("catalog", "BookTeamTask"): (counts["open_team_tasks"], "lp-b-yellow", "یادداشت‌های باز هماهنگی"),
+                    }
+                    if request is not None:
+                        request._limo_admin_badges = badges_map
+
+                from django.utils.html import format_html
                 from apps.catalog.panel_display import fa_number
-                from apps.learning.models import Report
-                from apps.website.models import PublicationRequest, TeacherApplication, BookAccessRequest
-                from apps.commerce.models import Order
-                from django.utils import timezone
-                from datetime import timedelta
-
-                today = timezone.localdate()
-                reports_open = Report.objects.filter(status=Report.Status.OPEN).count()
-                pub_pending = PublicationRequest.objects.filter(status__in=(PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO)).count()
-                teacher_app_pending = TeacherApplication.objects.filter(status=TeacherApplication.Status.PENDING).count()
-                access_req_pending = BookAccessRequest.objects.filter(status=BookAccessRequest.Status.PENDING).count()
-                orders_today = Order.objects.filter(status=Order.Status.PAID, paid_at__date=today).count()
-
-                badges_map = {
-                    ("learning", "Report"): (reports_open, "lp-b-red", "گزارش‌های باز"),
-                    ("teacher_workflows", "PublicationRequest"): (pub_pending, "lp-b-yellow", "در انتظار بررسی"),
-                    ("teacher_workflows", "TeacherApplication"): (teacher_app_pending, "lp-b-yellow", "درخواست جدید"),
-                    ("teacher_workflows", "BookAccessRequest"): (access_req_pending, "lp-b-blue", "درخواست باز"),
-                    ("commerce", "Order"): (orders_today, "lp-b-green", "خرید امروز"),
-                }
 
                 for app in retained_apps:
                     for model in app.get("models", []):
@@ -334,7 +401,6 @@ class LimoAdminSite(AdminSite):
                         if key in badges_map:
                             cnt, color_cls, title = badges_map[key]
                             if cnt > 0:
-                                from django.utils.html import format_html
                                 model["name"] = format_html(
                                     '{} <span class="lp-badge {} lp-menu-badge" title="{}">{}</span>',
                                     model["name"],

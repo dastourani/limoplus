@@ -1646,6 +1646,7 @@ def _admin_kpis_payload():
     from apps.catalog.access import BOOK_EDITOR_GROUP
     from apps.catalog.models import (
         BookEditor,
+        BookTeamTask,
         ChapterRevision,
         ContentNode,
     )
@@ -1699,6 +1700,7 @@ def _admin_kpis_payload():
     # گلوگاه‌ها و هشدارهای نیازمند اقدام مدیر
     pending_pubs = PublicationRequest.objects.filter(status__in=(PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO)).count()
     pending_teacher_apps = TeacherApplication.objects.filter(status=TeacherApplication.Status.PENDING).count()
+    open_team_tasks = BookTeamTask.objects.filter(is_done=False).count()
 
     return {
         "kpi_users_today": fa_number(new_users_today),
@@ -1720,6 +1722,7 @@ def _admin_kpis_payload():
         "kpi_class_students": fa_number(classroom_students_count),
         "kpi_pending_pubs": fa_number(pending_pubs),
         "kpi_pending_teacher_apps": fa_number(pending_teacher_apps),
+        "kpi_open_team_tasks": fa_number(open_team_tasks),
     }
 
 
@@ -2296,10 +2299,9 @@ class BookOpinionAdmin(admin.ModelAdmin):
         return self._TEACHER_PROTECTED
 
     def display_user(self, obj):
-        name = f"{obj.user.first_name} {obj.user.last_name}".strip()
-        phone = obj.user.phone
-        masked = phone[:4] + "***" + phone[-4:] if len(phone) >= 7 else phone
-        return f"{name} ({masked})" if name else masked
+        from apps.guard import core
+
+        return core.masked_user_label(obj.user)
     display_user.short_description = "کاربر / دانشجو"
 
     def rating_badge(self, obj):
@@ -2378,6 +2380,9 @@ class BookOpinionAdmin(admin.ModelAdmin):
         if "teacher_reply" in form.changed_data and obj.teacher_reply:
             obj.teacher_replied_at = timezone.now()
             obj.teacher_replied_by = request.user
+        if "report_reason" in form.changed_data and not (obj.report_reason or "").strip():
+            obj.reported_at = None
+            obj.reported_by = None
         super().save_model(request, obj, form, change)
 
 

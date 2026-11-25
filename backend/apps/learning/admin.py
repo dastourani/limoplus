@@ -687,18 +687,3 @@ class ReportAdmin(admin.ModelAdmin):
         User.objects.filter(pk__in=user_ids).update(can_report=True)
         self.message_user(request, f"امکان ارسال گزارش برای {len(user_ids)} کاربر دوباره باز شد.")
 
-
-_each_context = admin.site.each_context
-
-
-def _each_context_with_reports(request):
-    """Every panel page knows how many error reports are open: the side menu shows it next to «گزارش‌های ایراد»."""
-    context = _each_context(request)
-    if getattr(request, "user", None) is not None and request.user.is_active and request.user.is_staff:
-        model_admin = admin.site._registry.get(Report)
-        reports = model_admin.get_queryset(request) if model_admin else Report.objects.none()
-        context["lp_open_reports"] = reports.filter(status=Report.Status.OPEN).count()
-    return context
-
-
-admin.site.each_context = _each_context_with_reports

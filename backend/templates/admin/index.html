@@ -532,6 +532,8 @@
           <span title="درخواست‌های انتشار منتظر بررسی مدیر کل">درخواست انتشار: <b style="color:#b45309;">{{ kpi_pending_pubs }}</b></span>
           <span>•</span>
           <span title="درخواست‌های جدید همکاری آموزشی">درخواست همکاری: <b style="color:#0284c7;">{{ kpi_pending_teacher_apps }}</b></span>
+          <span>•</span>
+          <a href="{% url 'admin:catalog_bookteamtask_changelist' %}?is_done__exact=0" title="مشاهدهٔ یادداشت‌ها و وظایف انجام‌نشدهٔ تیم‌های تألیف کتاب‌ها" style="color:inherit; text-decoration:none; border-bottom:1px dashed rgba(180,83,9,0.45);">یادداشت‌های باز هماهنگی تیم‌ها: <b style="color:#b45309;">{{ kpi_open_team_tasks }}</b></a>
         </div>
       </div>
     </div>
@@ -542,12 +544,14 @@
     {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
   </div>
 
-  {% if is_teacher %}
   <div id="lp-bubble" class="lp-menu-bubble" role="tooltip"></div>
 
   <script>
     (function () {
       var GUIDES = {
+        // دسترسی و نقش‌ها (auth)
+        'auth-group': { title: 'گروه‌ها', desc: 'مدیریت گروه‌های دسترسی پنل از جمله گروه «استاد کتاب» و مجوزهای پایه.' },
+
         // تست‌ها و فلش‌کارت‌ها (learning)
         'learning-question': { title: 'تست‌ها', desc: 'بانک جامع سوالات چهارگزینه‌ای؛ مشاهده، جستجو، ویرایش گزینه‌ها، پاسخ تشریحی و کلید سوالات.' },
         'learning-flashcard': { title: 'فلش‌کارت‌ها', desc: 'کارت‌های مرور و یادگیری سریع (پرسش و پاسخ پشت کارت) متصل به جعبه لایتنر هوشمند.' },
@@ -555,7 +559,14 @@
           title: 'منابع تست‌ها',
           desc: 'در این بخش منابع تست‌ها (مانند تألیفی، سال کنکور سراسری، یا کتاب و آزمون خاص) را تعریف می‌کنید تا هنگام ثبت سوال استفاده شوند. نتیجه این است که برای دانشجویان تست‌ها بر اساس سال کنکور و منابع تفکیک و دسته‌بندی می‌شوند.'
         },
-        'learning-report': { title: 'گزارش‌های ایراد', desc: 'اشکالات علمی یا تایپی که کاربران و دانشجویان حین مطالعه برای سوالات ارسال کرده‌اند.' },
+        'learning-report': { title: 'گزارش‌های ایراد', desc: 'اشکالات علمی یا تایپی که کاربران و دانشجویان حین مطالعه برای سوالات و بخش‌ها ارسال کرده‌اند.' },
+
+        // سایت (website)
+        'website-sitesettings': { title: 'تنظیمات سایت', desc: 'تنظیمات عمومی وب‌سایت، متن‌های هدر/فوتر، راه‌های ارتباطی و اطلاعات معرفی سامانه.' },
+        'website-helppage': { title: 'صفحه‌های راهنما', desc: 'راهنماهای کاربری، آموزش استفاده از اپلیکیشن و مستندات کمکی برای دانشجویان و اساتید.' },
+        'website-sitepage': { title: 'صفحه‌های سایت', desc: 'صفحه‌های ایستا و محتوایی وب‌سایت مانند قوانین، حریم خصوصی و درباره ما.' },
+        'website-sitenavitem': { title: 'منوی بالای سایت', desc: 'آیتم‌ها و ترتیب پیوندهای نوار ناوبری بالای وب‌سایت عمومی.' },
+        'website-faqitem': { title: 'پرسش‌های پرتکرار', desc: 'فهرست سوال‌های رایج کاربران و پاسخ‌های رسمی قابل نمایش در سایت.' },
 
         // اساتید و مؤلفان (teacher_workflows)
         'teacher_workflows-classroom': { title: 'کلاس‌ها و دوره‌های اختصاصی', desc: 'تعریف دوره‌های ترمی و تولید پیوند اختصاصی دعوت دانشجو جهت ورود مستقیم به کتاب کلاس.' },
@@ -563,28 +574,69 @@
         'teacher_workflows-publicationrequest': { title: 'درخواست‌های بازبینی انتشار عمومی', desc: 'ارسال و پیگیری وضعیت انتشار کتاب‌های آماده‌شده برای نمایش و عرضه در ویترین سراسری پلتفرم.' },
         'teacher_workflows-bookaccessrequest': { title: 'درخواست‌های دسترسی گروهی', desc: 'پیشنهاد و اعطای مستقیم دسترسی به مجموعه‌ای از شماره‌های دانشجویان کلاس برای کتاب.' },
         'teacher_workflows-bookeditor': { title: 'استادان کتاب', desc: 'مدیریت مؤلفان همکار، دبیران درس و دستیاران آموزشی مجاز برای هر کتاب.' },
+        'teacher_workflows-teacherprofile': { title: 'پروفایل‌های استادان', desc: 'معرفی علمی، رزومه، عنوان دانشگاهی و تصویر پروفایل اساتید و مؤلفان کتاب‌ها.' },
         'teacher_workflows-teacherinvitation': { title: 'دعوت‌های استاد', desc: 'پیوندهای امن و زمان‌دار صدور دسترسی مؤلف جدید به کتاب‌های سامانه.' },
         'teacher_workflows-teacherapplication': { title: 'درخواست‌های همکاری آموزشی', desc: 'پرونده‌ها و رزومه‌های دریافتی متقاضیان تدریس و تألیف در لیموخوان.' },
+        'teacher_workflows-publicationrequestevent': { title: 'رویدادهای بازبینی انتشار', desc: 'تاریخچه کامل بررسی‌ها، پیام‌ها و تغییر وضعیت‌های پرونده‌های انتشار کتاب.' },
+        'teacher_workflows-bookaccessrequestevent': { title: 'رویدادهای تصمیم دسترسی گروهی', desc: 'سوابق تأیید یا رد درخواست‌های اعطای دسترسی گروهی دانشجویان توسط مدیر.' },
+        'teacher_workflows-bookaccessevent': { title: 'رویدادهای دسترسی گروهی', desc: 'گزارش اجرای دسترسی‌های گروهی و تاریخچه تغییر وضعیت شماره‌های کلاس.' },
+        'teacher_workflows-bookaccessmember': { title: 'شماره‌های دسترسی گروهی', desc: 'فهرست شماره‌های تلفن ثبت‌شده در درخواست‌ها و دسته‌های دسترسی گروهی.' },
 
-        // محتوا (catalog)
+        // محتوا (catalog و catalog_ai)
         'catalog-book': { title: 'کتاب‌ها', desc: 'میز کار اصلی تألیف، مدیریت سرفصل‌ها، صندوق تست کتاب و دریافت خروجی‌های LaTeX.' },
         'catalog-section': { title: 'بخش‌ها (جزوه و خلاصه)', desc: 'درسنامه‌ها، چکیده‌ها و متون آموزشی فصول کتاب که قالب تعاملی اپلیکیشن را تشکیل می‌دهند.' },
         'catalog-label': { title: 'برچسب‌های متن', desc: 'کادرهای رنگی اختصاصی متن (مانند تعریف، قضیه، نکته، تله، فرمول و برچسب‌های سفارشی شما).' },
         'catalog-chapterrevision': { title: 'نسخه‌های فصل', desc: 'تاریخچه تغییرات و نسخه‌های ذخیره‌شده فایل فصول با امکان بازیابی نسخه‌های قبلی.' },
+        'catalog-bookteamtask': { title: 'یادداشت‌های هماهنگی تیم کتاب', desc: 'فهرست متمرکز وظایف و یادداشت‌های باز یا انجام‌شدهٔ تیم‌های تألیف کتاب‌ها.' },
+        'catalog-bookboxmapping': { title: 'حافظه‌های نگاشت کادر کتاب', desc: 'تطبیق نام محیط‌های LaTeX با برچسب‌های کادر لیموخوان برای واردکردن سریع فایل‌های هر کتاب.' },
+        'catalog-bookopinion': { title: 'نظرات و امتیازهای کتاب‌ها', desc: 'دیدگاه‌ها و ستاره‌های دانشجویان روی کتاب‌ها، پاسخ‌های استادان و بازبینی نظرات گزارش‌شده.' },
+        'catalog-bookwaitlist': { title: 'درخواست‌های «خبرم کن»', desc: 'دانشجویان منتظر انتشار کتاب که به محض انتشار عمومی پیامک اطلاع‌رسانی دریافت می‌کنند.' },
+        'catalog-major': { title: 'رشته‌ها', desc: 'دسته‌بندی‌های تحصیلی (مانند ریاضی، تجربی، مهندسی) که کتاب‌ها در قفسه آن‌ها قرار می‌گیرند.' },
+        'catalog-shelf': { title: 'قفسه‌ها', desc: 'ردیف‌های کتاب در صفحه اصلی اپلیکیشن برای دسته‌بندی و چیدمان بصری کتاب‌ها.' },
+        'catalog-banner': { title: 'بنرها', desc: 'اسلایدرها و بنرهای معرفی کتاب در صفحه اول وب‌اپ و اپلیکیشن.' },
         'catalog-sharesettings': { title: 'پیوند معرفی اپلیکیشن', desc: 'پیوند پیش‌فرض سراسری برای دکمه «اشتراک‌گذاری کتاب با دوستان» در اپلیکیشن (مانند لینک کانال بله یا صفحه دانلود).' },
-        'catalog-major': { title: 'رشته‌ها و شاخه‌ها', desc: 'دسته‌بندی‌های تحصیلی (مانند ریاضی، تجربی، مهندسی) که کتاب‌ها در قفسه آن‌ها قرار می‌گیرند.' },
-        'catalog-shelf': { title: 'قفسه‌های ویترین', desc: 'ردیف‌های کتاب در صفحه اصلی اپلیکیشن برای دسته‌بندی و چیدمان بصری کتاب‌ها.' },
-        'catalog-banner': { title: 'بنرهای تبلیغاتی', desc: 'اسلایدرها و بنرهای معرفی کتاب در صفحه اول وب‌اپ و اپلیکیشن.' },
-        'catalog-formulacommand': { title: 'دستورهای فرمول KaTeX', desc: 'ماکروها و دستورات سفارشی ریاضی برای نمایش یکدست فرمول‌ها در کل کتاب‌ها.' },
-        'catalog-bookwaitlist': { title: 'درخواست‌های خبرم کن', desc: 'دانشجویان منتظر انتشار کتاب که به محض انتشار عمومی پیامک اطلاع‌رسانی دریافت می‌کنند.' },
+        'catalog-formulacommand': { title: 'دستورهای فرمول', desc: 'ماکروها و دستورات سفارشی KaTeX برای نمایش یکدست فرمول‌های ریاضی در کل کتاب‌ها.' },
+        'catalog-aiprovider': { title: 'ارائه‌دهندگان هوش مصنوعی', desc: 'پیکربندی سرویس‌دهنده‌ها و کلیدهای مدل هوش مصنوعی برای ابزارهای کمکی تألیف.' },
+        'catalog-bookassistantauditlog': { title: 'لاگ‌های ممیزی دستیاران آموزشی', desc: 'گزارش تاریخچه افزودن، ویرایش مجوزها و حذف دستیاران در کتاب‌ها.' },
+        'catalog-bookchange': { title: 'تغییرات کتاب‌ها', desc: 'یادداشت‌های به‌روزرسانی کتاب‌ها که به اطلاع دانشجویان و خریداران می‌رسد.' },
+        'catalog-cleanuprun': { title: 'فضای سرور', desc: 'گزارش‌های دوره‌ای پاکسازی فایل‌های بلااستفاده و وضعیت مصرف فضای سرور.' },
 
-        // سایر بخش‌ها
+        // محافظت از متن (guard)
+        'guard-tracker': { title: 'ردیاب متن و اصالت اثر', desc: 'چسباندن متن لو‌رفته یا مشکوک برای شناسایی نسخه، زمان کپی و کاربر مرتبط.' },
+        'guard-tracehit': { title: 'تاریخچه ردیابی‌های متن', desc: 'سوابق ردیابی‌های موفق و تطبیق‌های ثبت‌شده برای حفاظت از حقوق مؤلف.' },
+        'guard-copyevent': { title: 'کپی‌های متن', desc: 'گزارش خام رویدادهای کپی و کدهای اثرانگشت ثبت‌شده در اپلیکیشن (فقط مدیر کل).' },
+
+        // حساب‌ها (accounts)
         'accounts-user': { title: 'کاربران', desc: 'حساب‌های کاربری دانشجویان، اساتید و مدیران سیستم و نقش‌های دسترسی.' },
-        'accounts-devicesession': { title: 'نشست‌های فعال', desc: 'دستگاه‌های متصل کاربران برای حفظ امنیت حساب و پیشگیری از ورود غیرمجاز.' },
+        'accounts-devicesession': { title: 'نشست‌ها', desc: 'دستگاه‌های متصل کاربران برای حفظ امنیت حساب و پیشگیری از ورود غیرمجاز.' },
+
+        // فروش و اشتراک (commerce و commerce_teacher)
         'commerce-order': { title: 'سفارش‌ها', desc: 'تراکنش‌های مالی، صورت‌حساب‌ها و گزارش خریدهای انجام‌شده در سامانه.' },
-        'commerce-entitlement': { title: 'دسترسی‌های فعال', desc: 'حق دسترسی و مالکیت دانشجویان به کتاب‌های خریداری‌شده یا اعطاشده.' },
+        'commerce-entitlement': { title: 'دسترسی‌های خریداری‌شده', desc: 'حق دسترسی و مالکیت دانشجویان به کتاب‌های خریداری‌شده یا اعطاشده.' },
+        'commerce-plan': { title: 'طرح‌های اشتراک', desc: 'تعرفه‌ها و بسته‌های اشتراک دوره‌ای برای دسترسی به کتاب‌ها.' },
+        'commerce-revenueplan': { title: 'طرح‌های درآمدی و تشویقی', desc: 'مدل‌ها و درصدهای پایه تقسیم درآمد میان پلتفرم و مؤلفان.' },
+        'commerce-bookroyaltyrule': { title: 'قراردادهای تسهیم کتاب‌ها', desc: 'سهم اختصاصی هر استاد یا مؤلف از فروش تک‌کتاب و اشتراک.' },
+        'commerce-salecampaign': { title: 'کمپین‌های تخفیف زمان‌دار', desc: 'جشنواره‌ها و بازه‌های تخفیف گروهی یا کتابی با تاریخ شروع و پایان.' },
+        'commerce-teacherwallet': { title: 'کیف پول اساتید', desc: 'موجودی قابل تسویه، مبلغ مسدود در جریان و تاریخچه تجمیعی درآمد اساتید.' },
+        'commerce-teacherbankaccount': { title: 'حساب‌های بانکی اساتید', desc: 'شماره شبا و اطلاعات بانکی تأییدشده برای واریز تسویه‌حساب‌ها.' },
+        'commerce-payoutrequest': { title: 'درخواست‌های تسویه حساب', desc: 'صف درخواست‌های برداشت وجه اساتید؛ ثبت پرداخت پایا/ساتنا یا بررسی و رد درخواست.' },
+        'commerce-wallettransaction': { title: 'تراکنش‌های کیف پول', desc: 'ریز گردش مالی واریز سهم فروش، اشتراک و برداشت‌های تسویه.' },
+        'commerce-orderauthorrevenue': { title: 'سهم‌های ریالی مؤلفان از سفارش‌ها', desc: 'محاسبه و ثبت سهم ریالی هر مؤلف به ازای تک‌تک سفارش‌های موفق.' },
+        'commerce-orderrevenuesnapshot': { title: 'اسنپ‌شات‌های مالی سفارش‌ها', desc: 'تصویر دقیق و تغییرناپذیر محاسبات تسهیم درآمد در لحظه تسویه سفارش.' },
+        'commerce-subscriptionpoolperiod': { title: 'دوره‌های استخر اشتراک ماهانه', desc: 'محاسبه، شبیه‌سازی و نهایی‌سازی استخر درآمد اشتراک در پایان هر دوره.' },
+        'commerce-poolbookshare': { title: 'سهم‌های کتاب‌ها از استخر اشتراک', desc: 'سهم مطالعه و امتیاز هر کتاب از کل درآمد استخر اشتراک در هر دوره.' },
+
+        // مطالعه کاربران (study)
+        'study-examattempt': { title: 'آزمون‌ها', desc: 'نتایج آزمون‌های آزمایشی، کارنامه‌ها و تحلیل درصدهای دانشجویان.' },
+        'study-librarybook': { title: 'تنظیم‌های قفسه‌ی شخصی', desc: 'کتاب‌های افزوده‌شده به قفسه شخصی دانشجویان و نشانک‌های مطالعه.' },
+        'study-dashboard': { title: 'داشبورد آمار', desc: 'نمای تجمیعی روند مطالعه و فعالیت‌های یادگیری کاربران در سامانه.' },
+        'study-studytime': { title: 'زمان مطالعه', desc: 'مدت‌زمان ثبت‌شده مطالعه و حل تست کاربران به تفکیک روز و کتاب.' },
+        'study-mistakenote': { title: 'علت‌های اشتباه', desc: 'یادداشت‌ها و دسته‌بندی اشتباهات ثبت‌شده توسط دانشجویان روی تست‌ها.' },
         'study-sectionprogress': { title: 'پیشرفت مطالعه', desc: 'آمار مطالعه خط‌به‌خط، درصد پیشروی و نقاط توقف کاربران در کتاب‌ها.' },
-        'study-examattempt': { title: 'آزمون‌های کاربران', desc: 'نتایج آزمون‌های آزمایشی، کارنامه‌ها و تحلیل درصدهای دانشجویان.' }
+        'study-note': { title: 'یادداشت‌ها و هایلایت‌ها', desc: 'نشانه‌گذاری‌ها و یادداشت‌های شخصی ثبت‌شده توسط دانشجویان در متن کتاب‌ها.' },
+
+        // نسخه‌های اپ (releases)
+        'releases-apprelease': { title: 'نسخه‌های اپ', desc: 'مدیریت نسخه‌های منتشرشده اپلیکیشن، لینک دانلود و اجبار یا پیشنهاد به‌روزرسانی.' }
       };
 
       var bubble = document.getElementById('lp-bubble');
@@ -627,7 +679,9 @@
 
       function showBubble(target, data) {
         if (!isEnabled || !data) return;
-        bubble.innerHTML = '<b>' + data.title + '</b>' + data.desc;
+        var b = document.createElement('b');
+        b.textContent = data.title;
+        bubble.replaceChildren(b, document.createTextNode(data.desc));
         bubble.classList.add('visible');
 
         var rect = target.getBoundingClientRect();
@@ -656,23 +710,31 @@
         if (bubble) bubble.classList.remove('visible');
       }
 
-      // Attach inline help icons to model headers in the app lists
-      document.querySelectorAll('.app-learning, .app-catalog, .app-teacher_workflows, .app-accounts, .app-commerce, .app-study, .app-website').forEach(function (appBox) {
-        appBox.querySelectorAll('tr').forEach(function (row) {
-          var th = row.querySelector('th');
-          if (!th) return;
-          var key = th.id;
-          var data = GUIDES[key];
-          if (!data) {
-            var link = th.querySelector('a');
-            var txt = (link ? link.textContent : th.textContent).trim();
-            for (var k in GUIDES) {
-              if (GUIDES[k].title === txt) {
-                data = GUIDES[k];
-                break;
-              }
-            }
+      function resolveGuide(th) {
+        var key = th.id || '';
+        if (GUIDES[key]) return GUIDES[key];
+        if (key.indexOf('commerce_teacher-') === 0) {
+          var ck = 'commerce-' + key.slice('commerce_teacher-'.length);
+          if (GUIDES[ck]) return GUIDES[ck];
+        }
+        if (key.indexOf('catalog_ai-') === 0) {
+          var ak = 'catalog-' + key.slice('catalog_ai-'.length);
+          if (GUIDES[ak]) return GUIDES[ak];
+        }
+        var link = th.querySelector('a');
+        var txt = (link ? link.textContent : th.textContent).trim();
+        for (var k in GUIDES) {
+          if (GUIDES[k].title === txt) {
+            return GUIDES[k];
           }
+        }
+        return null;
+      }
+
+      // Attach inline help icons to model headers across all app modules
+      if (container) {
+        container.querySelectorAll('.module tr th').forEach(function (th) {
+          var data = resolveGuide(th);
           if (data) {
             var icon = document.createElement('span');
             icon.className = 'lp-help-icon';
@@ -689,13 +751,12 @@
             th.appendChild(icon);
           }
         });
-      });
+      }
 
       updateToggleUI();
       window.addEventListener('scroll', hideBubble, { passive: true });
     })();
   </script>
-  {% endif %}
 
 </div>
 {% endblock %}

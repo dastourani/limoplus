@@ -393,12 +393,33 @@
       </a>
     {% endif %}
   {% endif %}
-  {% if is_teacher %}
   <button type="button" class="lp-header-btn" id="lp-guide-toggle" title="روشن/خاموش کردن حباب‌های راهنمای منو" style="margin-inline-end:6px;">
     <span id="lp-guide-icon">💡</span>
     <span id="lp-guide-text">راهنما: روشن</span>
   </button>
-  {% endif %}
+  <script>
+    (function () {
+      document.addEventListener('DOMContentLoaded', function () {
+        if (document.getElementById('lp-apps-container')) return;
+        var btn = document.getElementById('lp-guide-toggle');
+        if (!btn) return;
+        var KEY = 'lp_admin_menu_guide_enabled';
+        var icon = document.getElementById('lp-guide-icon');
+        var text = document.getElementById('lp-guide-text');
+        function render() {
+          var on = localStorage.getItem(KEY) !== 'false';
+          btn.classList.toggle('active', !on);
+          if (icon) icon.textContent = on ? '💡' : '💤';
+          if (text) text.textContent = on ? 'راهنما: روشن' : 'راهنما: خاموش';
+        }
+        btn.addEventListener('click', function () {
+          localStorage.setItem(KEY, localStorage.getItem(KEY) === 'false' ? 'true' : 'false');
+          render();
+        });
+        render();
+      });
+    })();
+  </script>
   <form class="lp-open-app" method="post" action="{% url 'panel-open-app' %}" target="_blank" rel="noopener">{% csrf_token %}
     <button type="submit" class="lp-header-btn" title="وب اپ در زبانه‌ی تازه، با همین حساب و بدون پیامک باز می‌شود">وب‌اپ</button>
   </form> /
