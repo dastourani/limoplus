@@ -220,6 +220,7 @@ def settle(track_id: str) -> Order | None:
         log.exception("Zibal verify failed for order %s", preview["id"])
         return Order.objects.filter(pk=preview["id"]).first()  # stays pending; the user can retry the check
 
+    just_paid = False
     with transaction.atomic():
         # Lock the buyer BEFORE the order (consistent lock order: User -> Order) so two concurrent renewals for
         # the same learner serialize cleanly and stack end-to-end instead of reading the same Max(ends_at).
@@ -238,6 +239,7 @@ def settle(track_id: str) -> Order | None:
             order.card_number = str(result.get("cardNumber") or "")[:20]
             order.save()
             _grant(order)
+            just_paid = True
             try:
                 # Isolate royalty errors in an inner savepoint so a failure never aborts the paid order transaction.
                 with transaction.atomic():
@@ -271,7 +273,11 @@ def settle(track_id: str) -> Order | None:
             if amount_mismatch or result.get("result") in FINAL_FAILURES:
                 order.status = Order.Status.FAILED
             order.save(update_fields=["status", "gateway_response"])
-        return order
+    if just_paid:
+        from apps.diagnostics.checks import verify_settled_order
+
+        verify_settled_order(order.id)
+    return order
 
 
 @transaction.non_atomic_requests

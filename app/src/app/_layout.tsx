@@ -1,17 +1,19 @@
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { I18nManager, View } from 'react-native';
+import { AppState, I18nManager, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { endpoints } from '../api/endpoints';
 import { CelebrationProvider } from '../components/Celebrate';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { FeedbackProvider } from '../components/Feedback';
 import { Intro } from '../components/Intro';
 import { UpdateGate } from '../components/UpdateGate';
 import { AuthProvider, useAuth } from '../lib/auth';
+import { addBreadcrumb, flushDiagnostics, installGlobalErrorHandlers, setDiagnosticsRoute } from '../lib/diagnostics';
 import { FONT_FILES } from '../lib/fonts';
 import { NetworkProvider } from '../lib/network';
 import { loadMacros } from '../lib/macrosStore';
@@ -31,8 +33,23 @@ if (I18nManager.isRTL) {
 
 function Root() {
   const { ready } = useAuth();
+  const pathname = usePathname();
   // Paid content is protected: no screenshots or screen recording in the app (Android FLAG_SECURE).
   useScreenProtection();
+  useEffect(() => {
+    installGlobalErrorHandlers();
+    void flushDiagnostics();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void flushDiagnostics();
+    });
+    return () => sub.remove();
+  }, []);
+  useEffect(() => {
+    if (pathname) {
+      setDiagnosticsRoute(pathname);
+      addBreadcrumb('route', pathname);
+    }
+  }, [pathname]);
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => undefined);
   }, [ready]);
@@ -60,17 +77,19 @@ export default function RootLayout() {
   // Wait for the font so text doesn't jump; on error continue with the system font.
   if (!fontsLoaded && !fontError) return <View style={{ flex: 1, backgroundColor: colors.ink }} />;
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <AuthProvider>
-        <NetworkProvider>
-          <FeedbackProvider>
-            <CelebrationProvider>
-              <Root />
-            </CelebrationProvider>
-          </FeedbackProvider>
-        </NetworkProvider>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        <AuthProvider>
+          <NetworkProvider>
+            <FeedbackProvider>
+              <CelebrationProvider>
+                <Root />
+              </CelebrationProvider>
+            </FeedbackProvider>
+          </NetworkProvider>
+        </AuthProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

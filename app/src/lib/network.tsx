@@ -9,6 +9,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api, ApiError, setOnline } from '../api/client';
+import { flushDiagnostics } from './diagnostics';
 import { HelpTip } from '../components/HelpTip';
 import { Icon } from '../components/Icon';
 import { Text } from '../components/Text';
@@ -167,10 +168,14 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
   }, [online]);
   useEffect(() => {
     flushOutbox();
+    flushDiagnostics();
     const update = (now: boolean) => {
       setState(now);
       setOnline(now);
-      if (now) flushOutbox();
+      if (now) {
+        flushOutbox();
+        flushDiagnostics();
+      }
     };
     // In a browser the reachability check is a request to our own server every few seconds, per open tab: only
     // the tab in front checks, and not more than once a minute when all is well.

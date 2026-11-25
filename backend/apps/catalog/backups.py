@@ -605,6 +605,15 @@ def run_due(now=None, force=False) -> list[str]:
             done.append(f"royalty-release({released_count})")
     except Exception as exc:  # noqa: BLE001
         log.error("royalty holds release failed: %s", _safe(exc))
+    try:
+        from apps.diagnostics.checks import run_all_health_checks_if_due
+
+        health_runs = run_all_health_checks_if_due(now=now, force=force)
+        found = sum(r.issues_found for r in health_runs if r.completed)
+        if found > 0:
+            done.append(f"health-checks({found})")
+    except Exception as exc:  # noqa: BLE001
+        log.error("diagnostics health checks failed: %s", _safe(exc))
     return done
 
 

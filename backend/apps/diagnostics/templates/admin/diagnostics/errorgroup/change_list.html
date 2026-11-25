@@ -1,0 +1,44 @@
+{% extends "admin/change_list.html" %}
+{% block extrastyle %}{{ block.super }}
+<style>
+  .dg-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 12px; margin: 0 0 16px; direction: rtl; }
+  .dg-card { background: var(--body-bg); border: 1px solid var(--hairline-color); border-radius: 12px; padding: 12px 14px; }
+  .dg-card h3 { margin: 0 0 6px; font-size: 13px; color: var(--body-quiet-color); background: none; padding: 0; }
+  .dg-big { font-size: 18px; font-weight: 800; }
+  .dg-sub { font-size: 12px; color: var(--body-quiet-color); margin-top: 4px; line-height: 1.6; }
+  .dg-ok { color: #23864B; } .dg-warn { color: #9A6B00; } .dg-bad { color: #B33A3A; }
+  .dg-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="dg-bar">
+  <div class="lp-quiet">
+    گروه‌های باز یا در حال بررسی: <b>{{ open_count }}</b> (بحرانی: <b>{{ critical_open_count }}</b>)
+  </div>
+  <form method="post" action="{% url 'admin:diagnostics_errorgroup_run_checks' %}">
+    {% csrf_token %}
+    <button type="submit" class="button default">اجرای بررسی سلامت همین حالا</button>
+  </form>
+</div>
+<div class="dg-strip">
+  {% for c in health_cards %}
+  <div class="dg-card">
+    <h3>{{ c.label }}</h3>
+    {% if c.last_failed %}
+      <div class="dg-big dg-bad">آخرین اجرا ناموفق</div>
+    {% elif c.stale %}
+      <div class="dg-big dg-warn">{% if c.at %}نیازمند بررسی تازه{% else %}هنوز اجرا نشده{% endif %}</div>
+    {% elif c.issues > 0 %}
+      <div class="dg-big dg-bad">{{ c.issues }} مغایرت</div>
+    {% else %}
+      <div class="dg-big dg-ok">✓ سالم</div>
+    {% endif %}
+    <div class="dg-sub">
+      {% if c.at %}آخرین بررسی موفق: <b>{{ c.at }}</b><br>{% endif %}
+      {{ c.summary }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{{ block.super }}
+{% endblock %}

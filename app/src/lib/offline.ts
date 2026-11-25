@@ -15,6 +15,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 
 import { ApiError } from '../api/client';
 import type { BookDetail, ChapterSummary, NodeSummary, OfflineBundle, OfflineRevocation } from '../api/endpoints';
+import { reportDiagnostic } from './diagnostics';
 import type { Label } from './labels';
 import type { Numbering } from './numbering';
 import { bytesToBase64, utf8Decode, utf8Encode } from './utf8';
@@ -324,16 +325,40 @@ export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBoo
   const slug = bundle.book.slug;
   return withSlugLock(slug, async () => {
     const epoch = clearEpoch;
+    const hadExistingAtStart = fileFor(slug).exists;
     const k = (await key(true))!;
     const versionTag = `${Date.now().toString(36)}_${toHex(getRandomBytes(4))}`;
 
+    const reportFailedUpdate = async (err: unknown) => {
+      if (!hadExistingAtStart || !fileFor(slug).exists) return;
+      const errObj = err instanceof Error ? err : null;
+      await reportDiagnostic({
+        kind: 'offline',
+        severity: 'warning',
+        code: 'offline_update_failed_prev_intact',
+        title: 'به‌روزرسانی بستهٔ آفلاین شکست خورد ولی نسخهٔ قبلی سالم ماند',
+        operation: 'saveOfflineBook',
+        expected: 'نسخهٔ جدید بستهٔ آفلاین دانلود و جایگزین شود.',
+        observed: 'دریافت یا ذخیرهٔ نسخهٔ جدید شکست خورد اما نسخهٔ قبلی کتاب همچنان قابل استفاده است.',
+        context: {
+          book_slug: slug,
+          previous_intact: true,
+          error_name: errObj?.name || 'Error',
+        },
+      });
+    };
+
     // Download & encrypt all referenced images BEFORE touching the existing book bundle or index.
-    const { manifest: mediaManifest, files: newMediaFiles } = await downloadMediaAssets(
-      slug,
-      versionTag,
-      k,
-      bundle.media ?? [],
-    );
+    let mediaManifest: Record<string, StoredMediaEntry>;
+    let newMediaFiles: string[];
+    try {
+      const dl = await downloadMediaAssets(slug, versionTag, k, bundle.media ?? []);
+      mediaManifest = dl.manifest;
+      newMediaFiles = dl.files;
+    } catch (e) {
+      await reportFailedUpdate(e);
+      throw e;
+    }
 
     const payload: StoredBundle = {
       ...bundle,
@@ -362,6 +387,7 @@ export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBoo
       if (bak.exists && !fileFor(slug).exists) {
         await bak.move(fileFor(slug), { overwrite: true }).catch(() => undefined);
       }
+      await reportFailedUpdate(e);
       throw e;
     }
 
@@ -396,6 +422,7 @@ export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBoo
       if (bak.exists) {
         await bak.move(fileFor(slug), { overwrite: true }).catch(() => undefined);
       }
+      await reportFailedUpdate(e);
       throw e;
     }
 
@@ -416,71 +443,165 @@ export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBoo
   });
 }
 
-async function readBundle(slug: string): Promise<{ bundle: StoredBundle; key: Uint8Array } | null> {
-  if (await Device.isRootedExperimentalAsync().catch(() => false)) return null;
-  const k = await key(false);
-  const f = fileFor(slug);
-  if (!k || !f.exists) return null;
+async function findIndexedBook(predicate: (b: OfflineBook) => boolean): Promise<OfflineBook | null> {
   try {
-    const data = await f.bytes();
-    const plain = unsealBytes(k, data);
-    return { bundle: JSON.parse(utf8Decode(plain)) as StoredBundle, key: k };
+    return await withIndexLock(async () => {
+      await drainPendingCleanupLocked();
+      await pruneExpiredOfflineBooksLocked();
+      const valid = await readIndex();
+      return valid.find(predicate) ?? null;
+    });
   } catch {
     return null;
   }
 }
 
-async function injectOfflineMedia(text: string, bundle: StoredBundle, k: Uint8Array): Promise<string> {
-  if (!text || !text.includes('media:content/') || !bundle.mediaManifest) return text;
+async function readBundle(slug: string, nodeId?: number): Promise<{ bundle: StoredBundle; key: Uint8Array } | null> {
+  if (await Device.isRootedExperimentalAsync().catch(() => false)) return null;
+  const f = fileFor(slug);
+  if (!f.exists) {
+    await reportDiagnostic({
+      kind: 'offline',
+      severity: 'error',
+      code: 'offline_missing',
+      title: 'فایل بستهٔ آفلاین پیدا نشد',
+      operation: nodeId ? 'offlineSection' : 'offlineBookDetail',
+      is_offline: true,
+      expected: 'کتاب در فهرست دانلودهای معتبر است و فایل رمزنگاری‌شدهٔ آن باید روی دستگاه وجود داشته باشد.',
+      observed: 'فایل اصلی بستهٔ آفلاین روی حافظهٔ دستگاه پیدا نشد.',
+      context: { book_slug: slug, ...(nodeId ? { node_id: nodeId } : {}), offline_reason: 'missing' },
+    });
+    return null;
+  }
+  const k = await key(false);
+  if (!k) {
+    await reportDiagnostic({
+      kind: 'offline',
+      severity: 'error',
+      code: 'offline_corrupt',
+      title: 'فایل بستهٔ آفلاین خوانده شد ولی باز نشد (کلید رمزگشایی در دسترس نیست)',
+      operation: nodeId ? 'offlineSection' : 'offlineBookDetail',
+      is_offline: true,
+      expected: 'بستهٔ آفلاین با کلید امن دستگاه رمزگشایی و باز شود.',
+      observed: 'فایل بسته موجود است اما کلید رمزگشایی در keystore پیدا نشد.',
+      context: { book_slug: slug, ...(nodeId ? { node_id: nodeId } : {}), offline_reason: 'missing_key' },
+    });
+    return null;
+  }
+  try {
+    const data = await f.bytes();
+    const plain = unsealBytes(k, data);
+    return { bundle: JSON.parse(utf8Decode(plain)) as StoredBundle, key: k };
+  } catch (e) {
+    const errObj = e instanceof Error ? e : null;
+    await reportDiagnostic({
+      kind: 'offline',
+      severity: 'error',
+      code: 'offline_corrupt',
+      title: 'فایل بستهٔ آفلاین خوانده شد ولی رمزگشایی یا باز نشد',
+      operation: nodeId ? 'offlineSection' : 'offlineBookDetail',
+      is_offline: true,
+      expected: 'فایل بستهٔ آفلاین سالم رمزگشایی و به JSON معتبر تبدیل شود.',
+      observed: 'فایل بسته خوانده شد اما رمزگشایی یا پارس آن شکست خورد.',
+      context: {
+        book_slug: slug,
+        ...(nodeId ? { node_id: nodeId } : {}),
+        offline_reason: 'corrupt',
+        error_name: errObj?.name || 'Error',
+      },
+    });
+    return null;
+  }
+}
+
+async function injectOfflineMedia(
+  text: string,
+  bundle: StoredBundle,
+  k: Uint8Array,
+): Promise<{ text: string; missingRefs: string[]; totalRefs: number }> {
+  if (!text || !text.includes('media:content/') || !bundle.mediaManifest) {
+    return { text, missingRefs: [], totalRefs: 0 };
+  }
 
   const refs = new Set<string>();
   for (const m of text.matchAll(MEDIA_REF_RE)) {
     if (bundle.mediaManifest[m[2]]) refs.add(m[2]);
   }
-  if (!refs.size) return text;
+  if (!refs.size) return { text, missingRefs: [], totalRefs: 0 };
 
   const dataUrls = new Map<string, string>();
+  const missingRefs: string[] = [];
   await Promise.all(
     Array.from(refs).map(async (ref) => {
       const meta = bundle.mediaManifest![ref];
-      if (!meta) return;
+      if (!meta) {
+        missingRefs.push(ref);
+        return;
+      }
       try {
         const mf = mediaFileByName(meta.file);
-        if (!mf.exists) return;
+        if (!mf.exists) {
+          missingRefs.push(ref);
+          return;
+        }
         const encrypted = await mf.bytes();
         const plain = unsealBytes(k, encrypted);
         dataUrls.set(ref, `data:${meta.mime};base64,${bytesToBase64(plain)}`);
       } catch {
         // missing or corrupted media asset falls back without crashing section open
+        missingRefs.push(ref);
       }
     }),
   );
 
-  return text.replace(MEDIA_REF_RE, (full, alt: string, ref: string) => {
+  const rendered = text.replace(MEDIA_REF_RE, (full, alt: string, ref: string) => {
     const dataUri = dataUrls.get(ref);
     return dataUri ? `![${alt}](${dataUri})` : full;
   });
+  return { text: rendered, missingRefs, totalRefs: refs.size };
 }
 
 /** A section (or chapter intro) from an offline book, if downloaded and not expired, with its images hydrated as data: URIs. */
 export async function offlineSection(id: number): Promise<OfflineSection | null> {
-  const book = (await offlineBooks()).find((b) => b.sectionIds.includes(id));
+  const book = await findIndexedBook((b) => b.sectionIds.includes(id));
   if (!book) return null;
-  const loaded = await readBundle(book.slug);
+  const loaded = await readBundle(book.slug, id);
   if (!loaded) return null;
   const { bundle, key: k } = loaded;
   const section = bundle.sections.find((s) => s.id === id);
   if (!section) return null;
 
-  const [summary, full] = await Promise.all([
+  const [summaryRes, fullRes] = await Promise.all([
     injectOfflineMedia(section.summary, bundle, k),
     injectOfflineMedia(section.full, bundle, k),
   ]);
+  const missingAll = Array.from(new Set([...summaryRes.missingRefs, ...fullRes.missingRefs]));
+  const totalRefs = summaryRes.totalRefs + fullRes.totalRefs;
+  if (missingAll.length > 0) {
+    await reportDiagnostic({
+      kind: 'offline',
+      severity: 'error',
+      code: 'offline_media_missing',
+      title: 'بستهٔ آفلاین باز شد اما تصویر یا رسانهٔ آن قابل بازگشایی نبود',
+      operation: 'offlineSection',
+      is_offline: true,
+      expected: 'همهٔ تصویرهای ارجاع‌شده در بستهٔ آفلاین باید روی گوشی رمزگشایی شوند.',
+      observed: `${missingAll.length} تصویر از ${totalRefs} تصویر بخش پیدا نشد یا رمزگشایی نشد.`,
+      context: {
+        book_slug: book.slug,
+        node_id: id,
+        missing_count: missingAll.length,
+        total_count: totalRefs,
+        media_ref: missingAll[0],
+        offline_reason: 'media_missing',
+      },
+    });
+  }
 
   return {
     ...section,
-    summary,
-    full,
+    summary: summaryRes.text,
+    full: fullRes.text,
     bookSlug: book.slug,
     bookTitle: book.title,
     labels: bundle.labels,
@@ -490,7 +611,7 @@ export async function offlineSection(id: number): Promise<OfflineSection | null>
 
 /** Reconstructs a `BookDetail`-compatible view from the encrypted offline bundle for Airplane Mode browsing. */
 export async function offlineBookDetail(slug: string): Promise<BookDetail | null> {
-  const entry = (await offlineBooks()).find((b) => b.slug === slug);
+  const entry = await findIndexedBook((b) => b.slug === slug);
   if (!entry) return null;
   const loaded = await readBundle(slug);
   if (!loaded) return null;

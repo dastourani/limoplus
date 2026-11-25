@@ -118,6 +118,7 @@ jobs:
           npm ci
           echo "EXPO_PUBLIC_API_URL=" > .env
           echo "EXPO_PUBLIC_APP_CHANNEL=official" >> .env
+          echo "EXPO_PUBLIC_WEB_COMMIT=${GITHUB_SHA}" >> .env
           npx expo export -p web --output-dir dist
 
       - name: Put main + the web build on «deploy» (one commit, replaced each time)
