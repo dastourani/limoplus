@@ -49,6 +49,7 @@ jobs:
         run: |
           echo "EXPO_PUBLIC_API_URL=" > .env
           echo "EXPO_PUBLIC_APP_CHANNEL=official" >> .env
+          echo "EXPO_PUBLIC_WEB_COMMIT=${GITHUB_SHA}" >> .env
           npx expo export -p web --output-dir dist
 
       - name: Keep it on the branch «web-build» (only the latest build)

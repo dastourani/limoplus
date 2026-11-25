@@ -11,6 +11,7 @@ from apps.catalog import media as catalog_media
 from apps.catalog import search as catalog_search
 from apps.catalog import views as catalog
 from apps.commerce import views as commerce
+from apps.diagnostics import views as diagnostics
 from apps.guard import views as guard
 from apps.learning import views as learning
 from apps.releases import views as releases
@@ -48,6 +49,7 @@ api = [
     path("questions/<int:question_id>/answer/", learning.answer),
     path("app/version/", releases.app_version),
     path("releases/sync-github/", releases.sync_github_webhook),
+    path("diagnostics/events/", diagnostics.ingest_events),
     path("app/pages/", website_api.app_pages),
     path("app/pages/<str:slug>/", website_api.site_page),
     path("app/help/<int:page_id>/", website_api.help_page),

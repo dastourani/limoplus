@@ -321,6 +321,7 @@ class LimoAdminSite(AdminSite):
                     from apps.accounts.models import User
                     from apps.catalog.models import BookOpinion, BookTeamTask
                     from apps.commerce.models import Order, PayoutRequest
+                    from apps.diagnostics.models import ErrorGroup
                     from apps.learning.models import Report
                     from apps.website.models import BookAccessRequest, PublicationRequest, TeacherApplication
 
@@ -333,6 +334,7 @@ class LimoAdminSite(AdminSite):
                     payout_qs = PayoutRequest.objects.filter(PayoutRequest.pending_queue_q())
                     opinions_qs = BookOpinion.objects.filter(BookOpinion.pending_queue_q())
                     tasks_qs = BookTeamTask.objects.filter(BookTeamTask.pending_queue_q())
+                    diag_qs = ErrorGroup.objects.filter(status__in=[ErrorGroup.Status.OPEN, ErrorGroup.Status.INVESTIGATING])
 
                     def _subcount(qs):
                         return Coalesce(
@@ -357,6 +359,7 @@ class LimoAdminSite(AdminSite):
                                 payout_pending=_subcount(payout_qs),
                                 opinions_pending=_subcount(opinions_qs),
                                 open_team_tasks=_subcount(tasks_qs),
+                                diag_open=_subcount(diag_qs),
                             )
                             .first()
                         )
@@ -370,6 +373,7 @@ class LimoAdminSite(AdminSite):
                             "payout_pending": payout_qs.count(),
                             "opinions_pending": opinions_qs.count(),
                             "open_team_tasks": tasks_qs.count(),
+                            "diag_open": diag_qs.count(),
                         }
 
                     badges_map = {
@@ -381,6 +385,7 @@ class LimoAdminSite(AdminSite):
                         ("commerce", "PayoutRequest"): (counts["payout_pending"], "lp-b-yellow", "درخواست تسویه باز", "queue=pending"),
                         ("catalog", "BookOpinion"): (counts["opinions_pending"], "lp-b-yellow", "نظر نیازمند بازبینی یا گزارش‌شده", "queue=pending"),
                         ("catalog", "BookTeamTask"): (counts["open_team_tasks"], "lp-b-yellow", "یادداشت‌های باز هماهنگی", "is_done__exact=0"),
+                        ("diagnostics", "ErrorGroup"): (counts["diag_open"], "lp-b-red", "خطاها و مغایرت‌های باز", f"status__exact={ErrorGroup.Status.OPEN}"),
                     }
                     if request is not None:
                         request._limo_admin_badges = badges_map

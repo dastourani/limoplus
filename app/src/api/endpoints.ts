@@ -627,7 +627,7 @@ export const endpoints = {
   startReview: (kind: 'chapter' | 'book', id: number) => api<ReviewSessionData>('me/reviews/start/', { body: { kind, id } }),
   reviewSession: (id: number) => api<ReviewSessionData>(`me/reviews/${id}/`),
   reviewMore: (id: number) => api<ReviewSessionData>(`me/reviews/${id}/more/`, { body: {} }),
-  finishReview: (id: number) => api<ReviewSessionData>(`me/reviews/${id}/finish/`, { body: {} }),
+  finishReview: (id: number, opId?: string) => api<ReviewSessionData>(`me/reviews/${id}/finish/`, { body: {}, opId }),
   /** «این فصل را تمام کردم». */
   finishChapter: (chapterId: number) => api<{ due_on: string; days: number }>(`nodes/${chapterId}/finish/`, { body: {} }),
   search: (q: string, book = '') =>
@@ -636,9 +636,10 @@ export const endpoints = {
   mistakes: (book = '') => api<Mistakes>(`me/mistakes/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
   mistakeQuestions: (book = '') => api<{ questions: Question[]; locked_count: number }>(`me/mistakes/questions/${book ? `?book=${encodeURIComponent(book)}` : ''}`),
   mistakeReason: (questionId: number, reason: string) => api<{ reason: string; cards: number }>(`me/mistakes/${questionId}/reason/`, { body: { reason } }),
-  answer: (questionId: number, choiceId: number, reviewSessionId?: number) =>
+  answer: (questionId: number, choiceId: number, reviewSessionId?: number, opId?: string) =>
     api<AnswerResult>(`questions/${questionId}/answer/`, {
       body: { choice_id: choiceId, ...(reviewSessionId ? { review_session: reviewSessionId } : {}) },
+      opId,
     }),
   flashcards: (nodeId: number, doneOnly = false, ids?: string) =>
     api<{ flashcards: Flashcard[]; locked_count: number; book_id?: number; macros?: Record<string, string> }>(

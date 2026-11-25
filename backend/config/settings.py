@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     "apps.releases",
     "apps.website",
     "apps.guard",
+    "apps.diagnostics",
 ]
 
 MIDDLEWARE = [
@@ -88,6 +89,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.accounts.middleware.SimpleCorsMiddleware",
+    "apps.diagnostics.middleware.RequestDiagnosticsMiddleware",
     "apps.accounts.middleware.AdminLoginThrottleMiddleware",
     "apps.releases.middleware.MinimumAppVersionMiddleware",
     "apps.website.middleware.WebsiteHostMiddleware",

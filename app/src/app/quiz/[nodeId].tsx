@@ -26,6 +26,7 @@ import { requireLogin, useAuth } from '../../lib/auth';
 import { useGuestNudge } from '../../lib/guestNudge';
 import { placeLabel } from '../../lib/place';
 import { useStudyTimer } from '../../lib/studyTime';
+import { addBreadcrumb, newOpId } from '../../lib/diagnostics';
 import { usePageTurn } from '../../lib/pageTurn';
 import { reviewResumeState } from '../../lib/reviews';
 import { seeded } from '../../lib/shuffle';
@@ -83,6 +84,8 @@ export default function Quiz() {
   const [reviewInfo, setReviewInfo] = useState<ReviewSessionData | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [finishBusy, setFinishBusy] = useState(false);
+  const finishOpId = useRef<string | null>(null);
+  const answerOpIds = useRef<Record<number, string>>({});
   const [finishError, setFinishError] = useState<string | null>(null);
   const { user } = useAuth();
   const { confirm, toast: flash } = useFeedback();
@@ -195,10 +198,14 @@ export default function Quiz() {
 
   const submitReview = async () => {
     if (!session || finishBusy) return;
+    if (!finishOpId.current) finishOpId.current = newOpId();
+    const opId = finishOpId.current;
+    addBreadcrumb('review', 'finish_click', `session=${session}`);
     setFinishBusy(true);
     setFinishError(null);
     try {
-      const s = await endpoints.finishReview(Number(session));
+      const s = await endpoints.finishReview(Number(session), opId);
+      finishOpId.current = null;
       setReviewInfo(s);
     } catch (e) {
       setFinishError(e instanceof ApiError ? e.message : 'ثبت مرور انجام نشد؛ اتصال را بررسی کن و دوباره تلاش کن.');
@@ -297,11 +304,14 @@ export default function Quiz() {
 
   const choose = async (choiceId: number) => {
     if (current?.result || sending) return;
+    if (!answerOpIds.current[q.id]) answerOpIds.current[q.id] = newOpId();
+    const opId = answerOpIds.current[q.id];
     setSending(q.id);
     setPending({ id: q.id, picked: choiceId });
     setAnswerError(null);
     try {
-      const r = await endpoints.answer(q.id, choiceId, review ? Number(session) : undefined);
+      const r = await endpoints.answer(q.id, choiceId, review ? Number(session) : undefined, opId);
+      delete answerOpIds.current[q.id];
       setResumedNote(null);
       const cards = r.book_id && r.flashcards.length ? { book: r.book_id, ids: r.flashcards.map((f) => f.id) } : undefined;
       setAnswers((a) => ({ ...a, [q.id]: { picked: choiceId, result: { ...resultForView(r), notes: !!(r.node_id ?? q.node_id) }, cards } }));

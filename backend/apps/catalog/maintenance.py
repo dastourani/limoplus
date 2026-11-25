@@ -53,7 +53,10 @@ def cleanup_temporary(now=None) -> dict:
                 pass
     ops = FlashcardReviewOp.objects.filter(created_at__lt=now - timedelta(days=30)).delete()[0]
     ops += StudyTimeReport.objects.filter(created_at__lt=now - timedelta(days=35)).delete()[0]
-    return {"codes": codes, "rate_counters": buckets, "sessions": sessions, "pending_imports": pending, "review_ids": ops}
+    from apps.diagnostics.service import prune_old_events
+
+    diag_events = prune_old_events(now=now)
+    return {"codes": codes, "rate_counters": buckets, "sessions": sessions, "pending_imports": pending, "review_ids": ops, "diag_events": diag_events}
 
 
 def prune_revisions(now=None) -> int:
