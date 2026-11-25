@@ -375,19 +375,47 @@ describe('browser-diag.js', () => {
     expect(extUrlHeaders.get('X-App-Platform')).toBeNull();
     expect(extUrlHeaders.get('X-Request-Id')).toBeNull();
 
-    // 3. Request + init.headers (both Request headers and init.headers must survive alongside diagnostic headers)
-    const req = new Request('https://panel.example.com/admin/catalog/req-save/', {
+    // 3a. Request WITHOUT init.headers preserves Request's own headers + diagnostic headers
+    const reqKeep = new Request('https://panel.example.com/admin/catalog/req-keep/', {
       method: 'POST',
       headers: { 'X-From-Request': 'req_val' },
     });
-    await h.win.fetch(req, { headers: { 'X-CSRFToken': 'csrf_req' } });
-    const reqCall = h.fetchCalls.find((c) => c.input instanceof Request && c.input.url.endsWith('/admin/catalog/req-save/'));
-    expect(reqCall).toBeDefined();
-    const sentReq = reqCall!.input as Request;
-    expect(sentReq.headers.get('X-From-Request')).toBe('req_val');
-    expect(sentReq.headers.get('X-CSRFToken')).toBe('csrf_req');
-    expect(sentReq.headers.get('X-Request-Id')).toMatch(/^req_/);
-    expect(sentReq.headers.get('X-App-Platform')).toBe('panel');
-    expect(reqCall!.init?.headers).toBeUndefined();
+    await h.win.fetch(reqKeep);
+    const keepCall = h.fetchCalls.find((c) => c.input instanceof Request && c.input.url.endsWith('/admin/catalog/req-keep/'));
+    expect(keepCall).toBeDefined();
+    const sentKeepReq = keepCall!.input as Request;
+    expect(sentKeepReq.headers.get('X-From-Request')).toBe('req_val');
+    expect(sentKeepReq.headers.get('X-Request-Id')).toMatch(/^req_/);
+    expect(sentKeepReq.headers.get('X-App-Platform')).toBe('panel');
+
+    // 3b. Request WITH init.headers replaces Request.headers with init.headers (standard Fetch behavior)
+    const reqReplace = new Request('https://panel.example.com/admin/catalog/req-replace/', {
+      method: 'POST',
+      headers: { 'X-Old': 'should_be_dropped' },
+    });
+    await h.win.fetch(reqReplace, { headers: { 'X-CSRFToken': 'csrf_req', 'X-New': 'yes' } });
+    const replaceCall = h.fetchCalls.find((c) => c.input instanceof Request && c.input.url.endsWith('/admin/catalog/req-replace/'));
+    expect(replaceCall).toBeDefined();
+    const sentReplaceReq = replaceCall!.input as Request;
+    expect(sentReplaceReq.headers.get('X-Old')).toBeNull();
+    expect(sentReplaceReq.headers.get('X-New')).toBe('yes');
+    expect(sentReplaceReq.headers.get('X-CSRFToken')).toBe('csrf_req');
+    expect(sentReplaceReq.headers.get('X-Request-Id')).toMatch(/^req_/);
+    expect(sentReplaceReq.headers.get('X-App-Platform')).toBe('panel');
+    expect(replaceCall!.init?.headers).toBeUndefined();
+
+    // 3c. Request WITH headers: {} explicitly clears old Request headers while still attaching diagnostic headers
+    const reqClear = new Request('https://panel.example.com/admin/catalog/req-clear/', {
+      method: 'POST',
+      headers: { 'X-Old': 'should_be_cleared' },
+    });
+    await h.win.fetch(reqClear, { headers: {} });
+    const clearCall = h.fetchCalls.find((c) => c.input instanceof Request && c.input.url.endsWith('/admin/catalog/req-clear/'));
+    expect(clearCall).toBeDefined();
+    const sentClearReq = clearCall!.input as Request;
+    expect(sentClearReq.headers.get('X-Old')).toBeNull();
+    expect(sentClearReq.headers.get('X-Request-Id')).toMatch(/^req_/);
+    expect(sentClearReq.headers.get('X-App-Platform')).toBe('panel');
+    expect(clearCall!.init?.headers).toBeUndefined();
   });
 });

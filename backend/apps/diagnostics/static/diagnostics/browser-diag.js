@@ -499,12 +499,8 @@
       var callInput = input;
       var callInit = init;
       try {
-        var hdrs = new Headers(isRequest ? input.headers : undefined);
-        if (init && init.headers) {
-          new Headers(init.headers).forEach(function (val, key) {
-            hdrs.set(key, val);
-          });
-        }
+        var hasInitHeaders = Boolean(init && 'headers' in init && init.headers !== undefined);
+        var hdrs = new Headers(hasInitHeaders ? init.headers : isRequest ? input.headers : undefined);
         if (hdrs.has('X-Request-Id')) reqId = hdrs.get('X-Request-Id') || reqId;
         else hdrs.set('X-Request-Id', reqId);
         if (!hdrs.has('X-App-Platform')) hdrs.set('X-App-Platform', PLATFORM);
