@@ -68,7 +68,8 @@ export default function Subscribe() {
       }
       setPendingOrder(order.order_id);
       if (Platform.OS === 'web') {
-        window.open(order.pay_url, '_blank');
+        const popup = window.open(order.pay_url, '_blank');
+        if (!popup) window.location.href = order.pay_url;
         setMessage('بعد از پرداخت در صفحه‌ی باز‌شده، اینجا «بررسی پرداخت» را بزنید.');
       } else {
         await WebBrowser.openAuthSessionAsync(order.pay_url, `${APP_SCHEME}://payment-result`);
