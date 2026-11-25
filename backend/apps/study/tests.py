@@ -699,11 +699,12 @@ class ReviewCycleTests(TestCase):
         )
         self.assertEqual(hijack.status_code, 400)
 
-        # Move the sitting to yesterday: today's tile still shows 3 done and the session resumes with exact answers
+        # Move the sitting to yesterday: today's tile still shows 3 done, exact next_question=4, and resumes cleanly
         ReviewSession.objects.filter(pk=s["id"]).update(started_at=timezone.now() - timedelta(days=1))
         today_tasks = self.client.get("/api/v1/me/today/").data["tasks"]
         review_task = next(t for t in today_tasks if t["kind"] == "review" and t["id"] == rid)
         self.assertEqual(review_task["done"], 3)
+        self.assertEqual(review_task["next_question"], 4)
 
         resumed = self.client.get(f"/api/v1/me/reviews/{s['id']}/").data
         self.assertEqual(resumed["answered"], 3)
@@ -732,6 +733,28 @@ class ReviewCycleTests(TestCase):
         self.assertEqual((done["answered"], done["right"]), (5, 5))
         self.assertGreaterEqual(done["next_in_days"], 6)
         self.assertEqual(ChapterReview.objects.get(pk=rid).last_score, 1.0)
+
+    def test_non_sequential_review_resume_targets_first_unanswered_question(self):
+        from .models import ChapterReview
+
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        self._age(1)
+        rid = ChapterReview.objects.get().id
+        s = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": rid}, format="json").data
+        qs = s["questions"]
+        self.assertEqual(len(qs), 5)
+
+        # Answer questions 1, 3, and 5 (indices 0, 2, 4) -> first unanswered is question 2 (1-based)
+        for idx in (0, 2, 4):
+            right = Question.objects.get(pk=qs[idx]["id"]).choices.get(is_correct=True)
+            self.client.post(
+                f"/api/v1/questions/{qs[idx]['id']}/answer/",
+                {"choice_id": right.id, "review_session": s["id"]},
+                format="json",
+            )
+        today_tasks = self.client.get("/api/v1/me/today/").data["tasks"]
+        review_task = next(t for t in today_tasks if t["kind"] == "review" and t["id"] == rid)
+        self.assertEqual((review_task["done"], review_task["next_question"]), (3, 2))
 
     def test_month_step_is_an_exam_without_negative_marking_and_doubts_come_back(self):
         from .models import ChapterReview, ExamAnswer

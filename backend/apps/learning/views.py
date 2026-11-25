@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import F
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -169,66 +170,70 @@ def answer(request, question_id):
     if picked is None or correct is None:
         return Response({"code": "invalid_choice", "message": "گزینه‌ی انتخاب‌شده معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
 
-    review_session = None
     raw_session = request.data.get("review_session")
+    session_id = None
     if raw_session not in (None, ""):
         if not request.user.is_authenticated:
             return Response({"code": "invalid_session", "message": "جلسهٔ مرور معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
-        from apps.study.models import ReviewSession
-
         try:
             session_id = int(raw_session)
         except (TypeError, ValueError):
             return Response({"code": "invalid_session", "message": "جلسهٔ مرور معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
-        review_session = ReviewSession.objects.filter(pk=session_id, user=request.user, exam__isnull=True).first()
-        if review_session is None or question.id not in review_session.served:
-            return Response({"code": "invalid_session", "message": "این سؤال متعلق به این جلسهٔ مرور نیست."}, status=status.HTTP_400_BAD_REQUEST)
 
     related = [f for f in question.flashcards.filter(is_archived=False).order_by("node__path", "order", "id") if _usable(access, f)]
 
-    # If a review answer was retried over a dropped connection, return the first recorded result without double-counting.
-    if review_session is not None:
-        existing = QuizAnswer.objects.filter(review_session=review_session, question=question).order_by("answered_at", "id").first()
-        if existing is not None:
-            answered_before = bool(question.key_changed_at and existing.answered_at < question.key_changed_at)
-            return Response(
-                answer_feedback(
-                    request,
-                    access,
-                    question,
-                    is_correct=existing.was_correct,
-                    correct_choice_id=correct.id,
-                    related=related,
-                    answered_before=answered_before,
-                )
-            )
-
     # Only signed-in learners count toward measured difficulty (guests could skew it).
     fixed, answered_before = None, False
-    if request.user.is_authenticated:
-        from apps.study.mistakes import fixed_info
-        from apps.study.views import first_answer
+    with transaction.atomic():
+        review_session = None
+        if session_id is not None:
+            from apps.study.models import ReviewSession
 
-        # A question from the mistakes notebook answered right: «اشتباهی که برطرف شد».
-        fixed = fixed_info(request.user, question.pk) if picked.is_correct else None
-        first = first_answer(request.user, question.pk)
-        if question.key_changed_at:
-            answered_before = QuizAnswer.objects.filter(user=request.user, question=question, answered_at__lt=question.key_changed_at).exists()
-        QuizAnswer.objects.create(
-            user=request.user,
-            question=question,
-            choice_order=picked.order,
-            was_correct=picked.is_correct,
-            review_session=review_session,
-        )
-        from apps.study.reviews import recheck
+            # Lock the sitting so concurrent retries of the same review question cannot create duplicate answers.
+            review_session = ReviewSession.objects.select_for_update().filter(
+                pk=session_id, user=request.user, exam__isnull=True
+            ).first()
+            if review_session is None or question.id not in review_session.served:
+                return Response({"code": "invalid_session", "message": "این سؤال متعلق به این جلسهٔ مرور نیست."}, status=status.HTTP_400_BAD_REQUEST)
+            existing = QuizAnswer.objects.filter(review_session=review_session, question=question).order_by("answered_at", "id").first()
+            if existing is not None:
+                answered_before = bool(question.key_changed_at and existing.answered_at < question.key_changed_at)
+                return Response(
+                    answer_feedback(
+                        request,
+                        access,
+                        question,
+                        is_correct=existing.was_correct,
+                        correct_choice_id=correct.id,
+                        related=related,
+                        answered_before=answered_before,
+                    )
+                )
 
-        recheck(request.user)
-        if first:
-            Question.objects.filter(pk=question.pk).update(
-                answer_count=F("answer_count") + 1, correct_count=F("correct_count") + (1 if picked.is_correct else 0)
+        if request.user.is_authenticated:
+            from apps.study.mistakes import fixed_info
+            from apps.study.views import first_answer
+
+            # A question from the mistakes notebook answered right: «اشتباهی که برطرف شد».
+            fixed = fixed_info(request.user, question.pk) if picked.is_correct else None
+            first = first_answer(request.user, question.pk)
+            if question.key_changed_at:
+                answered_before = QuizAnswer.objects.filter(user=request.user, question=question, answered_at__lt=question.key_changed_at).exists()
+            QuizAnswer.objects.create(
+                user=request.user,
+                question=question,
+                choice_order=picked.order,
+                was_correct=picked.is_correct,
+                review_session=review_session,
             )
-        StudyDay.touch(request.user, "answers")
+            from apps.study.reviews import recheck
+
+            recheck(request.user)
+            if first:
+                Question.objects.filter(pk=question.pk).update(
+                    answer_count=F("answer_count") + 1, correct_count=F("correct_count") + (1 if picked.is_correct else 0)
+                )
+            StudyDay.touch(request.user, "answers")
 
     # A wrong answer brings its key points back: up to three linked cards join today's review («مرور امروز»).
     queued = 0

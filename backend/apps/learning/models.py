@@ -226,3 +226,10 @@ class QuizAnswer(models.Model):
         verbose_name = "پاسخ"
         verbose_name_plural = "پاسخ‌ها"
         indexes = [models.Index(fields=["user", "question"])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["review_session", "question"],
+                condition=models.Q(review_session__isnull=False),
+                name="unique_answer_per_review_question",
+            )
+        ]

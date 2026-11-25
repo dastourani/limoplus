@@ -269,7 +269,7 @@ export type Today = {
 };
 export type NeedsReviewItem = { id: number; title: string; book_title: string; book_slug: string; reason: 'mistakes' | 'old'; mistakes: number; days: number; question_ids?: number[] };
 export type TodayTask =
-  | (Omit<ReviewItem, 'kind'> & { kind: 'review'; review_kind: 'chapter' | 'book'; done?: number })
+  | (Omit<ReviewItem, 'kind'> & { kind: 'review'; review_kind: 'chapter' | 'book'; done?: number; next_question?: number | null })
   | { kind: 'cards'; count: number; total: number; comeback: boolean; minutes: number; done?: number }
   | { kind: 'notebook'; count: number; total: number; minutes: number; done?: number };
 /** A review whose day has come: «مرور فصل ۲ «…» از …: ۵ تست، حدود ۷ دقیقه». */

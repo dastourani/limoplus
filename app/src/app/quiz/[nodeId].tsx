@@ -27,6 +27,7 @@ import { useGuestNudge } from '../../lib/guestNudge';
 import { placeLabel } from '../../lib/place';
 import { useStudyTimer } from '../../lib/studyTime';
 import { usePageTurn } from '../../lib/pageTurn';
+import { reviewResumeState } from '../../lib/reviews';
 import { seeded } from '../../lib/shuffle';
 import { resultForView, type QuizViewState } from '../../lib/quizHtml';
 import { useApi } from '../../lib/useApi';
@@ -163,15 +164,12 @@ export default function Quiz() {
       };
     }
     if (Object.keys(hydrated).length) setAnswers((prev) => ({ ...hydrated, ...prev }));
-    const first = s.questions.findIndex((x) => !(String(x.id) in sessionAnswers));
-    const answeredCount = Object.keys(sessionAnswers).length;
-    if (first === -1 && s.questions.length > 0) {
+    const { firstUnansweredIndex, allAnswered, resumeNote } = reviewResumeState(s);
+    if (allAnswered) {
       setShowSummary(true);
-    } else if (first > 0) {
-      setIndex(first);
-      if (answeredCount > 0) {
-        setResumedNote(`${toPersianDigits(answeredCount)} از ${toPersianDigits(s.questions.length)} پاسخ داده‌ای؛ ادامه از سؤال ${toPersianDigits(first + 1)}`);
-      }
+    } else if (firstUnansweredIndex >= 0) {
+      setIndex(firstUnansweredIndex);
+      if (resumeNote) setResumedNote(resumeNote);
     }
   }, [review, data]);
 
