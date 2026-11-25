@@ -358,3 +358,41 @@ class StepThreeGuardOptionATests(TestCase):
         self.hit_b.refresh_from_db()
         self.assertEqual(self.hit_b.note, "تذکر ارسال شد")
 
+    def test_mask_phone_hides_short_legacy_inputs(self):
+        self.assertEqual(core.mask_phone(""), "کاربر لیموخوان")
+        self.assertEqual(core.mask_phone("123456"), "کاربر لیموخوان")
+        self.assertEqual(core.mask_phone("1234567"), "کاربر لیموخوان")
+        self.assertEqual(core.mask_phone("12345678"), "کاربر لیموخوان")
+        self.assertEqual(core.mask_phone("09123334455"), "0912***4455")
+
+    def test_similarity_trace_prescoped_not_starved_by_other_books(self):
+        from apps.catalog.models import BookEditor
+
+        shared_quote = "این جمله مشترک برای آزمایش عدم تداخل بیش از پنجاه کپی در کتاب‌های دیگر است"
+        # Older match in Book A (permitted for self.teacher)
+        event_a_shared, _ = core.record(self.student_a, self.sec_a, shared_quote, "full", "web")
+        # 55 newer matches in Book B (more than core.trace's 50-match cap!)
+        for _ in range(55):
+            core.record(self.student_b, self.sec_b, shared_quote, "full", "web")
+        # Make sure Book A's shared event is strictly older than the 55 Book B events
+        CopyEvent.objects.filter(pk=event_a_shared.pk).update(created_at=timezone.now() - timedelta(days=5))
+
+        # 1) Global TrackerAdmin scoped to teacher's permitted books still finds Book A's match
+        self.client.force_login(self.teacher)
+        res_tracker = self.client.post("/admin/guard/tracker/", {"text": shared_quote})
+        self.assertEqual(res_tracker.status_code, 200)
+        self.assertContains(res_tracker, "کتاب اول")
+        self.assertContains(res_tracker, "0912***1111")
+        self.assertNotContains(res_tracker, "09120001111")
+        self.assertNotContains(res_tracker, "کتاب دوم")
+        self.assertNotContains(res_tracker, "0912***2222")
+
+        # 2) Dedicated Book A trace view scoped to Book A alone even when teacher ALSO has Book B permission
+        BookEditor.objects.create(book=self.book_b, user=self.teacher, can_edit_content=True)
+        res_book = self.client.post(f"/admin/catalog/book/{self.book_a.pk}/trace/", {"text": shared_quote})
+        self.assertEqual(res_book.status_code, 200)
+        self.assertContains(res_book, "0912***1111")
+        self.assertNotContains(res_book, "09120001111")
+        self.assertNotContains(res_book, "0912***2222")
+
+

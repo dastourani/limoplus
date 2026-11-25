@@ -118,23 +118,20 @@ class TrackerAdmin(admin.ModelAdmin):
 
         if request.method == "POST":
             pasted = request.POST.get("text", "")[:20000]
-            result = core.trace(pasted)
+            scoped_events = (
+                CopyEvent.objects.all()
+                if is_admin
+                else core.scope_to_traceable_books(CopyEvent.objects.all(), request.user, "node__path")
+            )
+            result = core.trace(pasted, events=scoped_events)
 
             marked_events = result["marked"]
             similar_events = result["similar"]
-
-            if not is_admin:
-                my_books = dict(core.traceable_books(request.user).values_list("path", "title"))
-                step = ContentNode.steplen
-
-                def _is_my_book(event):
-                    return bool(event.node_id and event.node and event.node.path[:step] in my_books)
-
-                marked_events = [e for e in marked_events if _is_my_book(e)]
-                similar_events = [e for e in similar_events if _is_my_book(e)]
-                book_titles = my_books
-            else:
-                book_titles = _book_titles_for_events(marked_events + similar_events)
+            book_titles = (
+                _book_titles_for_events(marked_events + similar_events)
+                if is_admin
+                else dict(core.traceable_books(request.user).values_list("path", "title"))
+            )
 
             for event in marked_events:
                 TraceHit.objects.get_or_create(event=event, found_by=request.user)

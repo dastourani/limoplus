@@ -714,7 +714,7 @@ class BookAdmin(admin.ModelAdmin):
         from django.shortcuts import get_object_or_404, render
         from apps.catalog.jalali import jalali_datetime
         from apps.guard import core
-        from apps.guard.models import TraceHit
+        from apps.guard.models import CopyEvent, TraceHit
 
         book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK)
         if not access.can_edit_book(request.user, book):
@@ -741,16 +741,10 @@ class BookAdmin(admin.ModelAdmin):
             searched = True
             pasted = request.POST.get("text", "")[:20000]
             if not rate_limit_exceeded:
-                result = core.trace(pasted)
+                result = core.trace(pasted, events=CopyEvent.objects.filter(node__path__startswith=book.path))
 
-                # ایزولاسیون سخت‌گیرانه سمت سرور: فیلتر انحصاری روی فصل‌ها و بخش‌های همین کتاب
-                def _belongs_to_this_book(event):
-                    if not event.node:
-                        return False
-                    return event.node.path.startswith(book.path)
-
-                marked_events = [e for e in result["marked"] if _belongs_to_this_book(e)]
-                similar_events = [e for e in result["similar"] if _belongs_to_this_book(e)]
+                marked_events = result["marked"]
+                similar_events = result["similar"]
 
                 # ثبت لاگ استعلام موفق در TraceHit
                 for e in marked_events:

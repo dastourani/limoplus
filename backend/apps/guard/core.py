@@ -140,16 +140,17 @@ def record(user, node: ContentNode, quote: str, mode: str, platform: str = "") -
 
 # --- Finding a pasted text ----------------------------------------------------------------------------------------
 
-def trace(text: str, limit_days: int = 365) -> dict:
+def trace(text: str, limit_days: int = 365, events=None) -> dict:
     """Fingerprints in the text; without them, recent copies whose text appears in it (or contains it)."""
+    base_qs = (CopyEvent.objects.all() if events is None else events).select_related("user", "node", "revision")
     codes = fingerprint.decode_all(text)
-    marked = list(CopyEvent.objects.filter(code__in=codes).select_related("user", "node", "revision"))
+    marked = list(base_qs.filter(code__in=codes))
     similar = []
     if not marked:
         flat = normalize(fingerprint.strip(text))
         if len(flat) >= 20:
             since = timezone.now() - timedelta(days=limit_days)
-            for event in CopyEvent.objects.filter(created_at__gte=since).select_related("user", "node", "revision")[:5000]:
+            for event in base_qs.filter(created_at__gte=since)[:5000]:
                 own = normalize(text_of(event))
                 if len(own) >= 20 and (own in flat or flat in own):
                     similar.append(event)
@@ -236,9 +237,9 @@ def device_switches(since) -> list[dict]:
 # --- Privacy & Book Scoping ---------------------------------------------------------------------------------------
 
 def mask_phone(phone: str, fallback: str = "کاربر لیموخوان") -> str:
-    """Mask user phone for teacher privacy (e.g. 0912***3456); never return short raw phones."""
+    """Mask user phone for teacher privacy (e.g. 0912***3456); never leak 8-digit or shorter raw phones."""
     raw = (phone or "").strip()
-    if len(raw) < 7:
+    if len(raw) < 9:
         return fallback
     return raw[:4] + "***" + raw[-4:]
 
