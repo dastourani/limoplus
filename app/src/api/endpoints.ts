@@ -708,6 +708,7 @@ export const endpoints = {
 
   // Sales (prices always come from the server)
   offers: (book: string) => api<Offers>(`offers/?book=${encodeURIComponent(book)}`),
+  plans: () => api<Plan[]>('plans/'),
   createOrder: (body: { book?: string; plan?: number; major?: string }) => api<{ order_id: number; amount: number; pay_url: string }>('orders/', { body, timeoutMs: 30_000 }),
   order: (id: number, check = false) => api<OrderStatus>(`orders/${id}/${check ? '?check=1' : ''}`, { timeoutMs: 30_000 }),
   purchases: () => api<Purchases>('me/purchases/'),

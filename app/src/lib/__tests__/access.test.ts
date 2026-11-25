@@ -67,8 +67,8 @@ describe('shelfLabel', () => {
 
   it('maps preparing, unpriced, unavailable, and paid locked states', () => {
     expect(shelfLabel({ owned: false, product_status: status('preparing'), free_chapter: null })).toEqual({
-      text: 'در حال آماده‌سازی',
-      kind: 'locked',
+      text: 'در حال برنامه‌ریزی',
+      kind: 'planning',
     });
     expect(shelfLabel({ owned: false, product_status: status('unpriced'), free_chapter: null })).toEqual({
       text: 'قیمت تعیین نشده',

@@ -167,9 +167,12 @@ class WebsiteTests(TestCase):
         )
         soon_r = Client().get(f"/site/books/{soon.slug}/")
         self.assertEqual(soon_r.status_code, 200)
-        self.assertContains(soon_r, "در حال تدوین و آماده‌سازی است")
+        self.assertContains(soon_r, "در حال برنامه‌ریزی")
         self.assertContains(soon_r, "آذر ۱۴۰۵")
         self.assertContains(soon_r, book.title)
+        soon_list = Client().get("/site/books/")
+        self.assertContains(soon_list, "در حال برنامه‌ریزی")
+        self.assertContains(soon_list, "این کتاب در حال برنامه‌ریزی است")
 
         # Content protection page renders on the website and in the app API.
         prot_r = Client().get("/site/p/protection/")
@@ -305,6 +308,7 @@ class WebsiteTests(TestCase):
         home = Client().get("/site/")
         self.assertContains(home, "بنر تخفیف کتاب")
         self.assertContains(home, "بنر تخفیف اشتراک")
+        self.assertContains(home, "/subscribe")
         self.assertContains(home, "۱۹۹ هزار تومان")
         self.assertContains(home, "۲۰٫۱٪ تخفیف")
         self.assertContains(home, "اشتراک سه‌ماهه")

@@ -22,10 +22,10 @@
       <div class="cta">
         {% if is_preparing %}
           <div class="tip-wrap">
-            <a class="btn lemon" href="{{ open_url }}">{% icon "bell" 18 %}به‌زودی؛ در اپ «خبرم کن» را بزن</a>
+            <a class="btn lemon" href="{{ open_url }}">{% icon "bell" 18 %}{% if product_status.state == 'preparing' %}در حال برنامه‌ریزی؛ ثبت «خبرم کن»{% else %}به‌زودی؛ در اپ «خبرم کن» را بزن{% endif %}</a>
             <div class="tip-bubble">
-              <b>زمان حدودی انتشار: {{ release_estimate|default:"به‌زودی" }}</b>
-              <span>با ثبت «خبرم کن» در اپلیکیشن یا وب‌اپ لیموخوان، به محض انتشار فصل اول رایگان با پیامک به شما اطلاع می‌دهیم.</span>
+              <b>{% if product_status.state == 'preparing' %}این کتاب در حال برنامه‌ریزی است{% else %}زمان حدودی انتشار: {{ release_estimate|default:"به‌زودی" }}{% endif %}</b>
+              <span>{% if product_status.state == 'preparing' %}قرارداد تألیف این منبع ثبت شده و در صف تولید محتوا قرار دارد.{% if release_estimate %} پیش‌بینی انتشار: {{ release_estimate }}.{% endif %} {% endif %}با ثبت «خبرم کن» در اپلیکیشن یا وب‌اپ لیموخوان، به محض انتشار فصل اول رایگان با پیامک به شما اطلاع می‌دهیم.</span>
             </div>
           </div>
         {% else %}

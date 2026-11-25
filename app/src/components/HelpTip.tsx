@@ -2,7 +2,7 @@
  *  the screen; a tap anywhere (or moving the mouse away after hovering on the web) closes it. The bubble stays inside
  *  the window and above the phone's own buttons (it opens upwards when there is no room below). */
 import { useRef, useState, type ReactNode } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
+import { Modal, Platform, Pressable, StyleSheet, View, useWindowDimensions, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, rtl } from '../theme';
@@ -16,6 +16,8 @@ export function HelpTip({
   size = 22,
   action,
   children,
+  triggerStyle,
+  accessibilityLabel,
 }: {
   title: string;
   text: string;
@@ -24,6 +26,8 @@ export function HelpTip({
   action?: { label: string; onPress: () => void };
   /** Custom trigger (e.g. a lemon or the offline icon) instead of the default «؟» badge. */
   children?: ReactNode;
+  triggerStyle?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
 }) {
   const [at, setAt] = useState<{
     x: number;
@@ -100,8 +104,8 @@ export function HelpTip({
         {...webTriggerProps}
         hitSlop={children ? 6 : 10}
         accessibilityRole="button"
-        accessibilityLabel={`${title} یعنی چه؟`}
-        style={children ? undefined : [styles.q, { width: size, height: size, borderRadius: size / 2 }, !!at && styles.qOn]}
+        accessibilityLabel={accessibilityLabel ?? `${title} یعنی چه؟`}
+        style={children ? triggerStyle : [styles.q, { width: size, height: size, borderRadius: size / 2 }, !!at && styles.qOn]}
       >
         {children ? (
           <View pointerEvents="none">{children}</View>

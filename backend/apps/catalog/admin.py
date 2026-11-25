@@ -1312,7 +1312,12 @@ class BannerAdmin(admin.ModelAdmin):
         target = campaign_banner_link(obj.sale_campaign) if obj.sale_campaign_id else obj.resolved_link()
         if not target:
             return "هنوز مسیر خرید فعالی برای این کمپین در دسترس نیست."
-        label = "خرید از کمپین" if obj.sale_campaign_id else "مقصد بنر"
+        if obj.sale_campaign_id and obj.sale_campaign.plan_id:
+            label = "خرید اشتراک (همه‌ی کتاب‌ها)"
+        elif obj.sale_campaign_id:
+            label = "خرید از کمپین"
+        else:
+            label = "مقصد بنر"
         return format_html('<span><b>{}</b><br><code dir="ltr">{}</code></span>', label, target)
 
     @admin.display(description="مقصد")

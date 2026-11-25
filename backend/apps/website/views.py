@@ -119,7 +119,7 @@ def _card(request, book, price_quote=None) -> dict:
         text = f"به‌زودی ({book.release_estimate})" if book.release_estimate else "به‌زودی"
         label = {"kind": "soon", "icon": "bell", "text": text}
     elif state == ProductStatus.PREPARING:
-        label = {"kind": "preparing", "icon": "book-open", "text": "در حال آماده‌سازی"}
+        label = {"kind": "preparing", "icon": "calendar", "text": "در حال برنامه‌ریزی"}
     elif state == ProductStatus.FREE:
         label = {"kind": "free", "icon": "gift", "text": "رایگان"}
     elif state == ProductStatus.PAID:
@@ -199,6 +199,7 @@ def _base(request, **extra) -> dict:
     return {
         "s": s,
         "app_url": app_url(),
+        "subscribe_url": app_url("subscribe"),
         "apk": _apk(s),
         "pages": {p.slug: p for p in ordered_pages},
         "footer_pages": [p for p in ordered_pages if p.show_in_footer],

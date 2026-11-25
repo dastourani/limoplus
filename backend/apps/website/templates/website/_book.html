@@ -12,6 +12,15 @@
         <span>برای ثبت «خبرم کن» و دریافت پیامک به محض انتشار این کتاب کلیک کنید.</span>
       </span>
     </span>
+    {% elif c.label.kind == 'preparing' %}
+    <span class="tip-wrap tip-up" style="width:100%">
+      <span class="tagbtn {{ c.label.kind }}">{% icon c.label.icon 15 %}{{ c.label.text }}</span>
+      <span class="tip-bubble">
+        <b>این کتاب در حال برنامه‌ریزی است</b>
+        {% if c.release_estimate %}<span>پیش‌بینی انتشار: {{ c.release_estimate }}</span>{% endif %}
+        <span>قرارداد تألیف این منبع ثبت شده و در صف تولید محتوا قرار دارد؛ برای جزئیات و ثبت «خبرم کن» کلیک کنید.</span>
+      </span>
+    </span>
     {% elif c.discount %}
     <span class="tip-wrap tip-up" style="width:100%">
       <span class="tagbtn {{ c.label.kind }}">

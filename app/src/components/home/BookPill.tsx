@@ -10,6 +10,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import type { BookListItem } from '../../api/endpoints';
 import { colors, toPersianDigits } from '../../theme';
 import { currentPrice, percentLabel } from '../../lib/pricing';
+import { HelpTip } from '../HelpTip';
 import { Icon, type IconName } from '../Icon';
 import { Text } from '../Text';
 
@@ -54,7 +55,7 @@ export function bookPillLook(book: BookListItem, notify: { on: boolean; canCance
       border: discounted ? '#EBC0BE' : '#F1DE94',
     };
   }
-  if (state === 'preparing') return { icon: 'book-open', text: 'در حال آماده‌سازی', ...neutral };
+  if (state === 'preparing') return { icon: 'calendar', text: 'در حال برنامه‌ریزی', ...neutral };
   if (state === 'unpriced') return { icon: 'tag', text: 'قیمت تعیین نشده', ...neutral };
   return { icon: 'lock', text: 'در دسترس نیست', ...neutral };
 }
@@ -82,6 +83,22 @@ export function BookPill({ book, notify, onNotify, onPress }: { book: BookListIt
         {body}
       </Pressable>
     );
+  if (book.product_status.state === 'preparing') {
+    const estimateText = book.release_estimate
+      ? ` پیش‌بینی انتشار: ${book.release_estimate}.`
+      : ' هنوز تاریخ دقیق انتشار قطعی نشده است.';
+    return (
+      <HelpTip
+        title="این کتاب در حال برنامه‌ریزی است"
+        text={`قرارداد تألیف این منبع ثبت شده و در صف تولید محتوا قرار دارد.${estimateText} به محض آماده شدن اولین فصل، امکان مطالعهٔ نمونهٔ رایگان فعال می‌شود.`}
+        action={onPress ? { label: notify.on ? 'مشاهده‌ی کتاب (خبرت می‌کنیم) ←' : 'مشاهده‌ی صفحه و خبرم کن ←', onPress } : undefined}
+        triggerStyle={{ alignSelf: 'stretch' }}
+        accessibilityLabel="در حال برنامه‌ریزی؛ اطلاعات بیشتر"
+      >
+        <View style={style}>{body}</View>
+      </HelpTip>
+    );
+  }
   // The cover is the link to the book; the button under it opens the same book («خبرم کن» stays the only real button).
   if (onPress)
     return (
