@@ -559,6 +559,9 @@ class BookBoxMapping(models.Model):
         ]
 
     def __str__(self):
+        return f"{self.book.title}: {self.environment_name} ← {self.label_name}"
+
+    def __str__(self):
         return f"{self.book.title}: {self.environment_name} -> {self.label_name}"
 
     def clean(self):

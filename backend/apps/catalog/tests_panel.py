@@ -2970,6 +2970,109 @@ class StepOneAdminHardeningTests(TestCase):
         self.assertContains(dashboard, "سوابق بدون هویت ویرایشگر")
 
 
+class StepTwoAdminModelsTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+
+        self.group, _ = Group.objects.get_or_create(name="استاد کتاب")
+        self.superuser = User.objects.create_superuser("09120001001", is_staff=True)
+        self.teacher = User.objects.create_user("09120001011", first_name="نگار", last_name="مؤلف", is_staff=True)
+        self.teacher.groups.add(self.group)
+        self.book_a = ContentNode.add_root(title="کتاب ریاضی", kind=ContentNode.Kind.BOOK, slug="step2-math", is_published=True)
+        self.book_b = ContentNode.add_root(title="کتاب فیزیک", kind=ContentNode.Kind.BOOK, slug="step2-phys", is_published=True)
+        BookEditor.objects.create(book=self.book_a, user=self.teacher, can_edit_content=True)
+
+    def test_book_team_task_central_admin_for_manager_only(self):
+        from apps.catalog.models import BookTeamTask
+
+        # Teacher creates a task from book panel
+        self.client.force_login(self.teacher)
+        res_add = self.client.post(f"/admin/catalog/book/{self.book_a.pk}/team-tasks/", {
+            "action": "add",
+            "text": "تکمیل تست‌های فصل سوم",
+        })
+        self.assertEqual(res_add.status_code, 302)
+        # Teacher cannot open centralized manager-only BookTeamTask list
+        self.assertEqual(self.client.get("/admin/catalog/bookteamtask/").status_code, 403)
+
+        # Superuser sees all tasks centrally, filters by book, and marks done
+        self.client.force_login(self.superuser)
+        BookTeamTask.objects.create(book=self.book_b, author=self.superuser, text="مرور نهایی فیزیک", is_done=True)
+        res_list = self.client.get("/admin/catalog/bookteamtask/")
+        self.assertEqual(res_list.status_code, 200)
+        self.assertContains(res_list, "تکمیل تست‌های فصل سوم")
+        self.assertContains(res_list, "مرور نهایی فیزیک")
+
+        res_filtered = self.client.get(f"/admin/catalog/bookteamtask/?book_id={self.book_a.pk}&is_done__exact=0")
+        self.assertEqual(res_filtered.status_code, 200)
+        self.assertContains(res_filtered, "تکمیل تست‌های فصل سوم")
+        self.assertNotContains(res_filtered, "مرور نهایی فیزیک")
+
+        task = BookTeamTask.objects.get(book=self.book_a)
+        res_edit = self.client.post(f"/admin/catalog/bookteamtask/{task.pk}/change/", {
+            "book": self.book_a.pk,
+            "author": self.teacher.pk,
+            "text": task.text,
+            "is_done": "on",
+        })
+        self.assertEqual(res_edit.status_code, 302)
+        task.refresh_from_db()
+        self.assertTrue(task.is_done)
+
+    def test_book_box_mapping_admin_crud_normalization_and_uniqueness(self):
+        from apps.catalog.models import BookBoxMapping
+
+        mapping = BookBoxMapping.objects.create(
+            book=self.book_a,
+            environment_name="clinictip",
+            label_name="نکته بالینی",
+            created_by=self.teacher,
+        )
+        BookBoxMapping.objects.create(
+            book=self.book_a,
+            environment_name="warningbox",
+            label_name="هشدار",
+            created_by=self.teacher,
+        )
+
+        # Teacher cannot access manager-only BookBoxMapping changelist
+        self.client.force_login(self.teacher)
+        self.assertEqual(self.client.get("/admin/catalog/bookboxmapping/").status_code, 403)
+
+        # Manager sees list, can filter/search, edit & normalize environment_name, and catches duplicate nicely
+        self.client.force_login(self.superuser)
+        res_list = self.client.get(f"/admin/catalog/bookboxmapping/?book_id={self.book_a.pk}")
+        self.assertEqual(res_list.status_code, 200)
+        self.assertContains(res_list, "clinictip")
+        self.assertContains(res_list, "نکته بالینی")
+
+        # Duplicate check after normalization returns 200 with validation error (never 500 IntegrityError)
+        res_dup = self.client.post(f"/admin/catalog/bookboxmapping/{mapping.pk}/change/", {
+            "book": self.book_a.pk,
+            "environment_name": "  WarningBox ",
+            "label_name": "هشدار",
+            "created_by": self.teacher.pk,
+        })
+        self.assertEqual(res_dup.status_code, 200)
+
+        # Valid edit normalizes whitespace & lowercase
+        res_edit = self.client.post(f"/admin/catalog/bookboxmapping/{mapping.pk}/change/", {
+            "book": self.book_a.pk,
+            "environment_name": "  ClinicNote ",
+            "label_name": " نکته تکمیلی ",
+            "created_by": self.teacher.pk,
+        })
+        self.assertEqual(res_edit.status_code, 302)
+        mapping.refresh_from_db()
+        self.assertEqual(mapping.environment_name, "clinicnote")
+        self.assertEqual(mapping.label_name, "نکته تکمیلی")
+
+        # Manager can delete stale mapping
+        res_del = self.client.post(f"/admin/catalog/bookboxmapping/{mapping.pk}/delete/", {"post": "yes"})
+        self.assertEqual(res_del.status_code, 302)
+        self.assertFalse(BookBoxMapping.objects.filter(pk=mapping.pk).exists())
+
+
 
 
 

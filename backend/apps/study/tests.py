@@ -11,7 +11,7 @@ from apps.accounts.models import DeviceSession, User
 from apps.catalog.models import ContentNode
 from apps.learning.models import Flashcard, Question, QuizAnswer
 
-from .models import ExamAttempt, FlashcardReview, Note, StudyDay
+from .models import ExamAttempt, FlashcardReview, MistakeNote, Note, StudyDay
 
 
 class StudyTests(TestCase):
@@ -1226,5 +1226,59 @@ class OfflineBundleRichTests(TestCase):
         for item in data["media"]:
             self.assertIn("?exp=", item["url"])
             self.assertEqual(self.client.get(item["url"].replace("http://testserver", "")).status_code, 200)
+
+
+class MistakeNoteAdminTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+        from apps.catalog.models import BookEditor
+        from apps.learning.models import Choice
+
+        self.superuser = User.objects.create_superuser("09120002001", is_staff=True)
+        self.teacher = User.objects.create_user("09120002011", is_staff=True)
+        group, _ = Group.objects.get_or_create(name="استاد کتاب")
+        self.teacher.groups.add(group)
+        self.student = User.objects.create_user("09120002099")
+
+        self.book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب آزمون", slug="mistake-admin-book", is_published=True)
+        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True)
+        self.chapter = self.book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل اول", slug="m-ch1", position=1, is_published=True, is_free=True)
+        self.section = self.chapter.add_child(kind=ContentNode.Kind.SECTION, title="بخش اول", slug="m-sec1", position=1, is_published=True, is_free=True)
+        self.q = Question.objects.create(node=self.section, slug="q-mistake-1", stem="حاصل $2+2$ چیست؟", difficulty="easy", is_free=True)
+        self.wrong_choice = Choice.objects.create(question=self.q, order=0, text="۳", is_correct=False)
+        Choice.objects.create(question=self.q, order=1, text="۴", is_correct=True)
+
+    def test_student_mistake_reason_visible_in_readonly_manager_admin(self):
+        # Student answers wrong and records a mistake reason via real API
+        api = APIClient()
+        api.force_authenticate(self.student)
+        ans = api.post(f"/api/v1/questions/{self.q.id}/answer/", {"choice_id": self.wrong_choice.id}, format="json")
+        self.assertEqual(ans.status_code, 200)
+        reason = api.post(f"/api/v1/me/mistakes/{self.q.id}/reason/", {"reason": "careless"}, format="json")
+        self.assertEqual(reason.status_code, 200)
+
+        # Teacher cannot see individual student MistakeNotes
+        self.client.force_login(self.teacher)
+        self.assertEqual(self.client.get("/admin/study/mistakenote/").status_code, 403)
+
+        # Superuser can view, filter by book & reason, search by phone, and cannot add/edit/delete
+        self.client.force_login(self.superuser)
+        res = self.client.get("/admin/study/mistakenote/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "09120002099")
+        self.assertContains(res, "بی‌دقتی")
+        self.assertContains(res, "کتاب آزمون")
+
+        res_filtered = self.client.get(f"/admin/study/mistakenote/?book={self.book.pk}&reason__exact=careless")
+        self.assertEqual(res_filtered.status_code, 200)
+        self.assertContains(res_filtered, "09120002099")
+
+        res_empty = self.client.get("/admin/study/mistakenote/?reason__exact=forgot")
+        self.assertEqual(res_empty.status_code, 200)
+        self.assertNotContains(res_empty, "09120002099")
+
+        note = MistakeNote.objects.get(user=self.student, question=self.q)
+        self.assertEqual(self.client.get("/admin/study/mistakenote/add/").status_code, 403)
+        self.assertEqual(self.client.post(f"/admin/study/mistakenote/{note.pk}/delete/", {"post": "yes"}).status_code, 403)
 
 
