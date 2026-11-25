@@ -43,6 +43,9 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     ("learning", "Flashcard"),
     ("learning", "ExamSource"),
     ("learning", "Report"),
+    # guard
+    ("guard", "Tracker"),
+    ("guard", "TraceHit"),
     # workflows
     ("teacher_workflows", "Classroom"),
     ("teacher_workflows", "ClassroomMember"),
@@ -83,12 +86,16 @@ class LimoAdminSite(AdminSite):
             ("catalog", "ChapterRevision"),
             ("teacher_workflows", "PublicationRequest"),
             ("catalog", "TeacherProfile"),
+            ("guard", "Tracker"),
+            ("guard", "TraceHit"),
         ]
         for key in _AUTHORING_KEYS:
             if key in all_models:
                 m_item = dict(all_models[key])
                 if key == ("guard", "Tracker"):
                     m_item["name"] = "ردیاب محتوای من (حفاظت اثر)"
+                elif key == ("guard", "TraceHit"):
+                    m_item["name"] = "تاریخچه ردیابی‌های من"
                 authoring_models.append(m_item)
 
         # 2. مدیریت کلاس‌ها و دوره‌ها (Classrooms & Students)

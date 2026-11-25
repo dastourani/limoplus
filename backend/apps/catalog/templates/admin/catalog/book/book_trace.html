@@ -94,8 +94,9 @@ table.lp-trace-table th {
 {% endblock %}
 
 {% block content %}
-<div style="margin-bottom: 16px;">
+<div style="margin-bottom: 16px; display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
   <a href="{% url 'admin:catalog_book_change' book.pk %}" style="text-decoration:none; font-size:13px; color:var(--link-fg);">‹ بازگشت به شناسنامه کتاب «{{ book.title }}»</a>
+  <a href="{% url 'admin:guard_tracehit_changelist' %}?book={{ book.pk }}" style="text-decoration:none; font-size:13px; color:var(--link-fg);">تاریخچه ردیابی‌های این کتاب ›</a>
 </div>
 
 <h2>🛡️ ردیاب هوشمند کپی و اصالت متن: «{{ book.title }}»</h2>

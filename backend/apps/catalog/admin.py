@@ -314,6 +314,7 @@ class BookAdmin(admin.ModelAdmin):
                 or (access.is_book_teacher(request.user) and BookEditor.objects.filter(book=book, user=request.user, can_view_aggregate_study=True).exists())
             )
             extra["can_view_study"] = can_view_study
+            extra["can_edit_book_content"] = access.can_edit_book(request.user, book)
             if not request.user.is_superuser and access.is_book_teacher(request.user):
                 editor = BookEditor.objects.filter(book=book, user=request.user).first()
                 extra["can_request_publication"] = bool(editor and editor.can_request_publication)
@@ -756,11 +757,8 @@ class BookAdmin(admin.ModelAdmin):
                     TraceHit.objects.get_or_create(event=e, found_by=request.user)
 
                 def _fmt_row(event):
-                    # ماسک کردن هویت دانشجو برای حفظ حریم خصوصی
-                    phone = event.user.phone if event.user else ""
-                    masked_phone = (phone[:4] + "***" + phone[-4:]) if len(phone) >= 7 else "دانشجو"
-                    full_name = f"{event.user.first_name} {event.user.last_name}".strip() if event.user else ""
-                    display_user = f"{full_name} ({masked_phone})" if full_name else masked_phone
+                    # ماسک کردن هویت دانشجو با منطق مشترک حفظ حریم خصوصی
+                    display_user = core.masked_user_label(event.user, fallback="دانشجو")
 
                     exact = core.is_exact(event) if not event.packed else None
                     state = "متن ذخیره‌شده" if event.packed else ("نشانی دقیق" if exact else "نسخه تغییریافته")

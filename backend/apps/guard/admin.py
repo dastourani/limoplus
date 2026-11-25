@@ -1,9 +1,17 @@
 from django.contrib import admin, messages
+from django.contrib.admin.utils import unquote
+from django.core.exceptions import PermissionDenied
+from django.db.models import BooleanField, OuterRef, Subquery, Value
+from django.db.models.functions import Substr
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
+from django.urls import reverse
 from django.utils.html import format_html
 
+from apps.catalog import access
+from apps.catalog.filters import BookFilter
 from apps.catalog.jalali import fa_digits, jalali_datetime
+from apps.catalog.models import ContentNode
 
 from . import core
 from .models import CopyEvent, GuardSettings, TraceHit, Tracker
@@ -11,48 +19,60 @@ from .models import CopyEvent, GuardSettings, TraceHit, Tracker
 LEVELS = {"high": ("زیاد", "#B33A3A"), "mid": ("متوسط", "#B7791F"), "low": ("کم", "#23864B")}
 
 
-def _row(event: CopyEvent) -> dict:
-    exact = core.is_exact(event) if not event.packed else None
-    return {
+def _event_state(event: CopyEvent) -> str:
+    if event.packed:
+        return "متن ذخیره‌شده"
+    return "نشانی دقیق" if core.is_exact(event) else "نسخه عوض شده"
+
+
+def _book_titles_for_events(events) -> dict[str, str]:
+    step = ContentNode.steplen
+    roots = {e.node.path[:step] for e in events if e.node_id and e.node}
+    if not roots:
+        return {}
+    return dict(
+        ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, path__in=roots)
+        .values_list("path", "title")
+    )
+
+
+def _format_event_for_user(event: CopyEvent, request_user, book_titles: dict[str, str]) -> dict:
+    book_title = "—"
+    if event.node_id and event.node:
+        book_title = book_titles.get(event.node.path[: ContentNode.steplen], "—")
+    is_teacher_view = not request_user.is_superuser
+    row_data = {
         "event": event,
+        "book_title": book_title,
         "when": jalali_datetime(event.created_at),
         "text": core.text_of(event),
-        "state": "متن ذخیره‌شده" if event.packed else ("نشانی دقیق" if exact else "نسخه عوض شده"),
+        "state": _event_state(event),
+        "is_teacher_view": is_teacher_view,
     }
-
-
-def _mask_phone(phone: str) -> str:
-    """ماسک کردن شماره تماس کاربر برای حفظ حریم خصوصی: 0912***3456"""
-    if not phone or len(phone) < 7:
-        return "کاربر لیموخوان"
-    return phone[:4] + "***" + phone[-4:]
-
-
-def _format_event_for_user(event: CopyEvent, request_user) -> dict:
-    row_data = _row(event)
-    if not request_user.is_superuser:
-        # برای اساتید، هویت کاربر به شکل ماسک‌شده ایمن ارائه می‌شود
-        masked = _mask_phone(event.user.phone)
-        full_name = f"{event.user.first_name} {event.user.last_name}".strip()
-        display_user = f"{full_name} ({masked})" if full_name else masked
-        row_data["display_user"] = display_user
-        row_data["is_teacher_view"] = True
-    else:
-        row_data["is_teacher_view"] = False
+    if is_teacher_view:
+        row_data["display_user"] = core.masked_user_label(event.user)
     return row_data
 
 
 @admin.register(Tracker)
 class TrackerAdmin(admin.ModelAdmin):
-    """«ردیاب متن»: who copied a pasted text, the Bale alerts switch, and the riskiest accounts."""
+    """«ردیاب متن»: who copied a pasted text, Bale alerts & risk table (superuser), and teacher-scoped tracing."""
+
+    @staticmethod
+    def _teacher_can_trace(user) -> bool:
+        return bool(access.is_book_teacher(user) and core.traceable_books(user).exists())
 
     def has_module_permission(self, request):
-        from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_active and request.user.is_superuser)
+        return bool(request.user.is_active and (request.user.is_superuser or self._teacher_can_trace(request.user)))
 
     def has_view_permission(self, request, obj=None):
-        from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_active and request.user.is_superuser)
+        if not request.user.is_active:
+            return False
+        if request.user.is_superuser:
+            return True
+        if obj is not None:
+            return False
+        return self._teacher_can_trace(request.user)
 
     def has_add_permission(self, request):
         return False
@@ -61,12 +81,25 @@ class TrackerAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
-        from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_active and request.user.is_superuser)
+        return self.has_view_permission(request, obj)
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        return super().changeform_view(request, object_id, form_url, extra_context)
+
+    def history_view(self, request, object_id, extra_context=None):
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        return super().history_view(request, object_id, extra_context)
+
+    def delete_view(self, request, object_id, extra_context=None):
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        return super().delete_view(request, object_id, extra_context)
 
     def changelist_view(self, request, extra_context=None):
         if not self.has_view_or_change_permission(request):
-            from django.core.exceptions import PermissionDenied
             raise PermissionDenied
 
         is_admin = request.user.is_superuser
@@ -75,7 +108,9 @@ class TrackerAdmin(admin.ModelAdmin):
         pasted = ""
 
         # فقط مدیر کل می‌تواند تنظیمات هشدارهای بله را تغییر دهد
-        if is_admin and request.method == "POST" and "alerts" in request.POST:
+        if request.method == "POST" and "alerts" in request.POST:
+            if not is_admin:
+                raise PermissionDenied
             row.bale_alerts = request.POST["alerts"] == "on"
             row.save(update_fields=["bale_alerts"])
             messages.success(request, "هشدارهای بله روشن شد." if row.bale_alerts else "هشدارهای بله خاموش شد.")
@@ -88,33 +123,68 @@ class TrackerAdmin(admin.ModelAdmin):
             marked_events = result["marked"]
             similar_events = result["similar"]
 
-            # ایزولاسیون کامل برای استاد: فقط کپی‌های مربوط به کتاب‌های خودش نمایش داده می‌شود
             if not is_admin:
-                from apps.catalog.access import book_editor_ids
-                from apps.catalog.models import ContentNode
+                my_books = dict(core.traceable_books(request.user).values_list("path", "title"))
+                step = ContentNode.steplen
 
-                my_book_ids = set(book_editor_ids(request.user).values_list("book_id", flat=True))
-                
                 def _is_my_book(event):
-                    if not event.node:
-                        return False
-                    root_path = event.node.path[:ContentNode.steplen]
-                    root_book = ContentNode.objects.filter(path=root_path, kind=ContentNode.Kind.BOOK, depth=1).first()
-                    return root_book and root_book.id in my_book_ids
+                    return bool(event.node_id and event.node and event.node.path[:step] in my_books)
 
                 marked_events = [e for e in marked_events if _is_my_book(e)]
                 similar_events = [e for e in similar_events if _is_my_book(e)]
+                book_titles = my_books
+            else:
+                book_titles = _book_titles_for_events(marked_events + similar_events)
 
             for event in marked_events:
                 TraceHit.objects.get_or_create(event=event, found_by=request.user)
 
             found = {
                 "codes": result["codes"],
-                "marked": [_format_event_for_user(e, request.user) for e in marked_events],
-                "similar": [_format_event_for_user(e, request.user) for e in similar_events],
-                "total_matched_raw": len(result["marked"]) + len(result["similar"]),
+                "marked": [_format_event_for_user(e, request.user, book_titles) for e in marked_events],
+                "similar": [_format_event_for_user(e, request.user, book_titles) for e in similar_events],
                 "is_isolated_teacher": not is_admin,
             }
+
+        step = ContentNode.steplen
+        book_subquery = ContentNode.objects.filter(
+            path=Substr(OuterRef("event__node__path"), 1, step),
+            kind=ContentNode.Kind.BOOK,
+            depth=1,
+        ).values("title")[:1]
+        recent_qs = (
+            TraceHit.objects.select_related("event", "event__user", "event__node", "found_by")
+            .annotate(_lp_book_title=Subquery(book_subquery))
+            .order_by("-created_at", "-id")
+        )
+        recent_qs = core.scope_to_traceable_books(recent_qs, request.user, "event__node__path")[:20]
+
+        recent_hits = []
+        for hit in recent_qs:
+            ev = hit.event
+            if is_admin:
+                display_user = str(ev.user) if ev and ev.user_id else "—"
+                found_by_label = str(hit.found_by) if hit.found_by_id else "—"
+            else:
+                display_user = core.masked_user_label(ev.user if ev else None)
+                if not hit.found_by_id:
+                    found_by_label = "—"
+                elif hit.found_by_id == request.user.id:
+                    found_by_label = "شما"
+                else:
+                    found_by_label = core.masked_user_label(hit.found_by, fallback="همکار/مدیر")
+            recent_hits.append({
+                "hit": hit,
+                "hit_url": reverse("admin:guard_tracehit_change", args=[hit.pk]),
+                "book_title": getattr(hit, "_lp_book_title", None) or "—",
+                "section_title": ev.node.title if ev and ev.node_id else "—",
+                "user_id": ev.user_id if (is_admin and ev) else None,
+                "display_user": display_user,
+                "found_by_label": found_by_label,
+                "when": jalali_datetime(hit.created_at),
+                "note": hit.note or "—",
+                "is_teacher_view": not is_admin,
+            })
 
         risky = []
         if is_admin:
@@ -137,10 +207,193 @@ class TrackerAdmin(admin.ModelAdmin):
             "bale_ready": bale_ready() if is_admin else False,
             "found": found,
             "pasted": pasted,
+            "recent_hits": recent_hits,
             "risky": risky,
             "limit": core.DAILY_LIMIT,
         }
         return TemplateResponse(request, "admin/guard/tracker.html", context)
+
+
+class TraceHitBookFilter(BookFilter):
+    path_field = "event__node__path"
+
+
+@admin.register(TraceHit)
+class TraceHitAdmin(admin.ModelAdmin):
+    """«تاریخچه ردیابی‌های متن»: سوابق اثرانگشت‌های کشف‌شده با ایزولاسیون کامل برای اساتید."""
+
+    list_filter = (TraceHitBookFilter, "created_at")
+    list_select_related = ("event", "event__user", "event__node", "event__revision", "found_by")
+
+    def has_module_permission(self, request):
+        return bool(
+            request.user.is_active and (request.user.is_superuser or TrackerAdmin._teacher_can_trace(request.user))
+        )
+
+    def has_view_permission(self, request, obj=None):
+        if not request.user.is_active:
+            return False
+        if request.user.is_superuser:
+            return True
+        if obj is not None:
+            return core.can_view_event(request.user, obj.event)
+        return TrackerAdmin._teacher_can_trace(request.user)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def _check_direct_object_access(self, request, object_id):
+        if request.user.is_superuser:
+            return
+        if not (request.user.is_active and TrackerAdmin._teacher_can_trace(request.user)):
+            raise PermissionDenied
+        hit = TraceHit.objects.select_related("event__node").filter(pk=unquote(object_id)).first()
+        if hit is not None and not core.can_view_event(request.user, hit.event):
+            raise PermissionDenied
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        if object_id:
+            self._check_direct_object_access(request, object_id)
+        return super().changeform_view(request, object_id, form_url, extra_context)
+
+    def history_view(self, request, object_id, extra_context=None):
+        self._check_direct_object_access(request, object_id)
+        return super().history_view(request, object_id, extra_context)
+
+    def get_queryset(self, request):
+        step = ContentNode.steplen
+        book_subquery = ContentNode.objects.filter(
+            path=Substr(OuterRef("event__node__path"), 1, step),
+            kind=ContentNode.Kind.BOOK,
+            depth=1,
+        ).values("title")[:1]
+        qs = (
+            super()
+            .get_queryset(request)
+            .select_related("event", "event__user", "event__node", "event__revision", "found_by")
+            .annotate(
+                _lp_book_title=Subquery(book_subquery),
+                _lp_is_admin=Value(bool(request.user.is_superuser), output_field=BooleanField()),
+            )
+        )
+        return core.scope_to_traceable_books(qs, request.user, "event__node__path")
+
+    def get_list_display(self, request):
+        if request.user.is_superuser:
+            return ("book_col", "section_col", "copied_user_col", "fingerprint_col", "found_by_col", "note_col", "when_col")
+        return ("book_col", "section_col", "copied_user_col", "state_col", "found_by_col", "note_col", "when_col")
+
+    def get_search_fields(self, request):
+        if request.user.is_superuser:
+            return ("event__code", "event__user__phone", "found_by__phone", "event__node__title", "note")
+        return ("event__node__title", "note")
+
+    def get_fields(self, request, obj=None):
+        if request.user.is_superuser:
+            return (
+                "book_col",
+                "section_col",
+                "copied_user_col",
+                "event_link",
+                "copied_text_col",
+                "state_col",
+                "fingerprint_col",
+                "found_by_col",
+                "note",
+                "when_col",
+            )
+        return (
+            "book_col",
+            "section_col",
+            "copied_user_col",
+            "copied_text_col",
+            "state_col",
+            "found_by_col",
+            "note",
+            "when_col",
+        )
+
+    def get_readonly_fields(self, request, obj=None):
+        ro = (
+            "book_col",
+            "section_col",
+            "copied_user_col",
+            "event_link",
+            "copied_text_col",
+            "state_col",
+            "fingerprint_col",
+            "found_by_col",
+            "when_col",
+        )
+        if request.user.is_superuser:
+            return ro
+        return ro + ("note",)
+
+    @admin.display(description="کتاب")
+    def book_col(self, obj):
+        title = getattr(obj, "_lp_book_title", None)
+        if title:
+            return title
+        book = core.book_of_event(obj.event) if obj.event_id else None
+        return book.title if book else "—"
+
+    @admin.display(description="بخش")
+    def section_col(self, obj):
+        if obj.event_id and obj.event.node_id:
+            return obj.event.node.title
+        return "—"
+
+    @admin.display(description="کاربر کپی‌کننده")
+    def copied_user_col(self, obj):
+        if not obj.event_id or not obj.event.user_id:
+            return "—"
+        user = obj.event.user
+        if getattr(obj, "_lp_is_admin", False):
+            url = reverse("admin:accounts_user_change", args=[user.pk])
+            return format_html('<a href="{}"><b>{}</b></a>', url, user)
+        return core.masked_user_label(user)
+
+    @admin.display(description="ردیاب")
+    def found_by_col(self, obj):
+        if not obj.found_by_id:
+            return "—"
+        if getattr(obj, "_lp_is_admin", False):
+            url = reverse("admin:accounts_user_change", args=[obj.found_by_id])
+            return format_html('<a href="{}">{}</a>', url, obj.found_by)
+        return core.masked_user_label(obj.found_by, fallback="همکار/مدیر")
+
+    @admin.display(description="اثرانگشت")
+    def fingerprint_col(self, obj):
+        return obj.event.code if obj.event_id else "—"
+
+    @admin.display(description="رویداد کپی")
+    def event_link(self, obj):
+        if not obj.event_id or not getattr(obj, "_lp_is_admin", False):
+            return "—"
+        url = reverse("admin:guard_copyevent_change", args=[obj.event_id])
+        return format_html('<a href="{}">کپی #{} ({})</a>', url, obj.event_id, obj.event.code)
+
+    @admin.display(description="متن کپی‌شده")
+    def copied_text_col(self, obj):
+        return core.text_of(obj.event) if obj.event_id else "—"
+
+    @admin.display(description="وضعیت نشانه")
+    def state_col(self, obj):
+        return _event_state(obj.event) if obj.event_id else "—"
+
+    @admin.display(description="یادداشت پیگیری")
+    def note_col(self, obj):
+        return obj.note or "—"
+
+    @admin.display(description="زمان ردیابی", ordering="created_at")
+    def when_col(self, obj):
+        return jalali_datetime(obj.created_at)
 
 
 @admin.register(CopyEvent)

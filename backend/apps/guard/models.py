@@ -37,13 +37,22 @@ class CopyEvent(models.Model):
 class TraceHit(models.Model):
     """A fingerprint found by «ردیاب متن»: counts toward the account's risk score."""
 
-    event = models.ForeignKey(CopyEvent, on_delete=models.PROTECT, related_name="hits")
-    found_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+")
-    note = models.CharField(max_length=200, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    event = models.ForeignKey(CopyEvent, on_delete=models.PROTECT, related_name="hits", verbose_name="رویداد کپی")
+    found_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+", verbose_name="ردیابی‌شده توسط"
+    )
+    note = models.CharField("یادداشت پیگیری", max_length=200, blank=True)
+    created_at = models.DateTimeField("زمان ردیابی", auto_now_add=True)
 
     class Meta:
+        verbose_name = "یافته ردیابی متن"
+        verbose_name_plural = "تاریخچه ردیابی‌های متن"
+        ordering = ["-created_at", "-id"]
         unique_together = [("event", "found_by")]
+
+    def __str__(self):
+        section = self.event.node.title if self.event_id and self.event.node_id else "—"
+        return f"یافته #{self.pk} › {section}"
 
 
 class GuardSettings(models.Model):
