@@ -40,6 +40,8 @@ export type BookListItem = {
   /** Why the whole book is open: bought, by subscription, or as a staff member. */
   access?: 'purchase' | 'gift' | 'subscription' | 'staff' | null;
   free_chapters?: number;
+  /** Number of the first chapter with a free section when no whole chapter is free. */
+  partial_free_chapter?: number | null;
   /** Only in the all-books list: the book's first major, for its cover. */
   major?: { slug: string; name: string; color: string } | null;
   /** Share of sections read (0–1), once the learner has started. */

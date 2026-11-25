@@ -63,6 +63,26 @@ describe('shelfLabel', () => {
         free_chapters: 3,
       }),
     ).toEqual({ text: '۳ فصل رایگان', kind: 'free' });
+
+    expect(
+      shelfLabel({
+        owned: false,
+        product_status: status('paid', 'sample'),
+        free_chapter: null,
+        free_chapters: 0,
+        partial_free_chapter: 2,
+      }),
+    ).toEqual({ text: 'بخشی از فصل ۲ رایگان', kind: 'free' });
+
+    expect(
+      shelfLabel({
+        owned: false,
+        product_status: status('paid', 'sample'),
+        free_chapter: null,
+        free_chapters: 0,
+        partial_free_chapter: null,
+      }),
+    ).toEqual({ text: 'بخشی رایگان', kind: 'free' });
   });
 
   it('maps preparing, unpriced, unavailable, and paid locked states', () => {

@@ -174,6 +174,14 @@ def book_card(request, book, access, price_quote=None) -> dict:
     done = section_states(request.user, access, request)[1] & {s.id for s in sections}
     free_chapter = next((i for i, c in enumerate(chapters, start=1) if c.is_free), None)
     free_chapters = len(chapters) if book.is_free else sum(1 for c in chapters if c.is_free)
+    partial_free_chapter = (
+        None
+        if book.is_free or free_chapter is not None
+        else next(
+            (i for i, c in enumerate(chapters, start=1) if any(s.is_free for s in access.children(c))),
+            None,
+        )
+    )
     major = min(book.majors.all(), key=lambda m: (m.order, m.name), default=None)
     return {
         "slug": book.slug,
@@ -195,6 +203,7 @@ def book_card(request, book, access, price_quote=None) -> dict:
         "free_chapter": free_chapter,
         # On a paid product these describe free previews only; only the book-level flag means the whole book is free.
         "free_chapters": free_chapters,
+        "partial_free_chapter": partial_free_chapter,
         # Kept for older app builds; it now means exactly the explicit whole-book flag, never inferred from chapters.
         "all_free": book.is_free,
         "owned": access.owned,

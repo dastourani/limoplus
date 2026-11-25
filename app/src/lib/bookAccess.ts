@@ -16,3 +16,20 @@ export function isSectionAccessibleInBook(book: Pick<BookDetail, 'chapters'>, no
   }
   return false;
 }
+
+/**
+ * Returns the first genuinely readable node ID in the book (an unlocked chapter overview,
+ * or the first unlocked section inside any chapter), even when earlier chapters are locked.
+ */
+export function firstReadableNodeId(book: Pick<BookDetail, 'chapters'>): number | null {
+  for (const chapter of book.chapters) {
+    if (!chapter.is_locked && chapter.has_overview) {
+      return chapter.id;
+    }
+    const openSection = chapter.sections.find((s) => !s.is_locked);
+    if (openSection) {
+      return openSection.id;
+    }
+  }
+  return null;
+}
