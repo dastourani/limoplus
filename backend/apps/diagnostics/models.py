@@ -85,6 +85,20 @@ class ErrorEvent(models.Model):
         return f"{self.event_id} ({self.group.code})"
 
 
+class ErrorEventReceipt(models.Model):
+    """
+    Lightweight deduplication & time-window counting receipt kept independently of the 50-sample display cap.
+    Prevents re-sent events from double-counting after sample trimming and keeps 24h health counts exact.
+    """
+
+    event_id = models.CharField(max_length=64, unique=True)
+    group = models.ForeignKey(ErrorGroup, on_delete=models.CASCADE, related_name="receipts")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["group", "created_at"])]
+
+
 class ErrorAffectedActor(models.Model):
     """Tracks unique installs and pseudonymous users per ErrorGroup without retaining unbounded raw events."""
 

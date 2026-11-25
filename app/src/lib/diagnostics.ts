@@ -119,14 +119,66 @@ export function newOpId(): string {
   return `op_${Date.now().toString(36)}_${randomToken(8)}`;
 }
 
+const PERSIAN_ARABIC_RE =
+  /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+(?:[\s\u200c\u200d،؛؟!«»\-–—.\d]+[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+)*/g;
+
 function cleanString(value: unknown, maxLen = 400): string {
   if (value == null) return '';
   return String(value)
     .replace(/(?:\+?98|0)9\d{9}/g, '[PHONE]')
+    .replace(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g, '[EMAIL]')
     .replace(/(bearer\s+)[A-Za-z0-9._\-]{8,}/gi, '$1[REDACTED]')
-    .replace(/([?&](?:sig|signature|token|code|exp|expires|password|key)=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(/\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{6,}\b/g, '[REDACTED]')
+    .replace(/([?&](?:sig|signature|token|code|exp|expires|password|key|q|query|search)=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(/\?[^\s"'<>#]+/g, '?[REDACTED]')
     .trim()
     .slice(0, maxLen);
+}
+
+export function sanitizeErrorText(value: unknown, maxLen = 300): string {
+  const base = cleanString(value, maxLen * 2);
+  if (!base) return '';
+  return base
+    .replace(PERSIAN_ARABIC_RE, '[TEXT]')
+    .replace(/(["'«])(?:\\.|(?!\1).)*\1/g, (m) => (m.length > 22 || /\s/.test(m) || m.includes('[TEXT]') ? '"[REDACTED]"' : m))
+    .replace(/(?:\[TEXT\]\s*){2,}/g, '[TEXT] ')
+    .trim()
+    .slice(0, maxLen);
+}
+
+export function sanitizeStack(value: unknown, maxLen = 1400): string {
+  if (!value) return '';
+  const lines = String(value).split(/\r?\n/).slice(-12);
+  const out: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.replace(/\s+$/, '');
+    if (!trimmed) continue;
+    if (/^\s*(?:at\s+|@\S+|File\s+")/.test(trimmed)) {
+      out.push(cleanString(trimmed, 240));
+    } else {
+      out.push(sanitizeErrorText(trimmed, 240));
+    }
+  }
+  return out.join('\n').slice(0, maxLen);
+}
+
+const SAFE_CLIENT_TITLE_PREFIXES = [
+  'خطای اجرای جاوااسکریپت:',
+  'خطای مرورگر:',
+  'خطای نمایش صفحه:',
+  'وعدهٔ مدیریت‌نشده',
+];
+
+function sanitizeClientTitle(title: string, fallback: string): string {
+  const base = cleanString(title, 240);
+  if (!base) return fallback;
+  for (const prefix of SAFE_CLIENT_TITLE_PREFIXES) {
+    if (base.startsWith(prefix)) {
+      const rest = sanitizeErrorText(base.slice(prefix.length), 120);
+      return `${prefix} ${rest}`.trim().slice(0, 240);
+    }
+  }
+  return sanitizeErrorText(base, 240) || fallback;
 }
 
 function cleanContext(raw?: Record<string, string | number | boolean | undefined>): Record<string, string | number | boolean> | undefined {
@@ -136,8 +188,12 @@ function cleanContext(raw?: Record<string, string | number | boolean | undefined
     if (v === undefined) continue;
     if (typeof v === 'boolean' || typeof v === 'number') out[k] = v;
     else {
-      const limit = k === 'stack' || k === 'component_stack' ? 1400 : 300;
-      const cleaned = cleanString(v, limit);
+      const cleaned =
+        k === 'stack' || k === 'component_stack'
+          ? sanitizeStack(v, 1400)
+          : k === 'error_message'
+            ? sanitizeErrorText(v, 300)
+            : cleanString(v, 300);
       if (cleaned) out[k] = cleaned;
     }
   }
@@ -178,7 +234,7 @@ export function addBreadcrumb(type: string, name: string, detail?: string) {
     at: new Date().toISOString(),
     type: cleanString(type, 30),
     name: cleanString(name, 80),
-    ...(detail ? { detail: cleanString(detail, 120) } : {}),
+    ...(detail ? { detail: sanitizeErrorText(detail, 120) } : {}),
   });
   if (breadcrumbs.length > MAX_BREADCRUMBS) {
     breadcrumbs.splice(0, breadcrumbs.length - MAX_BREADCRUMBS);
@@ -221,16 +277,18 @@ export async function reportDiagnostic(input: ReportDiagnosticInput): Promise<st
   try {
     const installId = await getInstallId();
     const eventId = cleanString(input.event_id || newEventId(), 64) || newEventId();
+    const isClientError = input.kind === 'client_error';
+    const cleanCode = cleanString(input.code, 80) || 'client_error';
     const payload: DiagnosticEventPayload = {
       event_id: eventId,
       kind: input.kind,
       severity: input.severity ?? 'error',
-      code: cleanString(input.code, 80) || 'client_error',
-      title: cleanString(input.title, 240) || cleanString(input.code, 80),
+      code: cleanCode,
+      title: isClientError ? sanitizeClientTitle(input.title, cleanCode) : cleanString(input.title, 240) || cleanCode,
       route: cleanString(input.route ?? currentRoute, 200),
       operation: cleanString(input.operation, 80),
       expected: cleanString(input.expected, 1000),
-      observed: cleanString(input.observed, 1000),
+      observed: isClientError ? sanitizeErrorText(input.observed, 1000) : cleanString(input.observed, 1000),
       request_id: cleanString(input.request_id, 64),
       op_id: cleanString(input.op_id, 64),
       install_id: installId,
@@ -319,16 +377,18 @@ export function installGlobalErrorHandlers() {
     const prev = g.ErrorUtils.getGlobalHandler?.();
     g.ErrorUtils.setGlobalHandler((err: unknown, isFatal?: boolean) => {
       const e = err instanceof Error ? err : new Error(String(err ?? 'Unknown JS error'));
-      const key = `rn:${e.name}:${e.message.slice(0, 80)}`;
+      const safeName = sanitizeErrorText(e.name, 60) || 'Error';
+      const safeMsg = sanitizeErrorText(e.message, 240);
+      const key = `rn:${safeName}:${safeMsg.slice(0, 80)}`;
       if (!shouldSkipDuplicate(key)) {
         void reportDiagnostic({
           kind: 'client_error',
           severity: isFatal ? 'critical' : 'error',
           code: 'js_error',
-          title: `خطای اجرای جاوااسکریپت: ${e.name}`,
+          title: `خطای اجرای جاوااسکریپت: ${safeName}`,
           expected: 'اجرای بدون استثنای مهارنشده در اپ.',
-          observed: `${e.name}: ${e.message}`,
-          context: { error_name: e.name, error_message: e.message, stack: e.stack },
+          observed: safeMsg ? `${safeName}: ${safeMsg}` : safeName,
+          context: { error_name: safeName, error_message: safeMsg, stack: sanitizeStack(e.stack) },
           deferFlush: true,
         });
       }
@@ -339,20 +399,21 @@ export function installGlobalErrorHandlers() {
   if (g.window?.addEventListener) {
     g.window.addEventListener('error', (ev: any) => {
       const err = ev?.error instanceof Error ? ev.error : null;
-      const msg = err?.message || String(ev?.message || 'Script error');
-      const key = `web:${msg.slice(0, 80)}`;
+      const safeName = sanitizeErrorText(err?.name || 'Error', 60) || 'Error';
+      const safeMsg = sanitizeErrorText(err?.message || String(ev?.message || 'Script error'), 240);
+      const key = `web:${safeMsg.slice(0, 80)}`;
       if (shouldSkipDuplicate(key)) return;
       void reportDiagnostic({
         kind: 'client_error',
         severity: 'error',
         code: 'js_error',
-        title: `خطای مرورگر: ${err?.name || 'Error'}`,
+        title: `خطای مرورگر: ${safeName}`,
         expected: 'اجرای بدون خطای رندر یا اسکریپت در وب‌اپ.',
-        observed: msg,
+        observed: safeMsg ? `${safeName}: ${safeMsg}` : safeName,
         context: {
-          error_name: err?.name || 'Error',
-          error_message: msg,
-          stack: err?.stack,
+          error_name: safeName,
+          error_message: safeMsg,
+          stack: sanitizeStack(err?.stack),
         },
       });
     });
@@ -360,8 +421,9 @@ export function installGlobalErrorHandlers() {
     g.window.addEventListener('unhandledrejection', (ev: any) => {
       const reason = ev?.reason;
       const err = reason instanceof Error ? reason : null;
-      const msg = err?.message || String(reason ?? 'Unhandled promise rejection');
-      const key = `rej:${msg.slice(0, 80)}`;
+      const safeName = sanitizeErrorText(err?.name || 'PromiseRejection', 60) || 'PromiseRejection';
+      const safeMsg = sanitizeErrorText(err?.message || String(reason ?? 'Unhandled promise rejection'), 240);
+      const key = `rej:${safeMsg.slice(0, 80)}`;
       if (shouldSkipDuplicate(key)) return;
       void reportDiagnostic({
         kind: 'client_error',
@@ -369,11 +431,11 @@ export function installGlobalErrorHandlers() {
         code: 'unhandled_rejection',
         title: 'وعدهٔ مدیریت‌نشده (Unhandled Rejection)',
         expected: 'همهٔ عملیات ناهم‌زمان خطاها را مدیریت کنند.',
-        observed: msg,
+        observed: safeMsg ? `${safeName}: ${safeMsg}` : safeName,
         context: {
-          error_name: err?.name || 'PromiseRejection',
-          error_message: msg,
-          stack: err?.stack,
+          error_name: safeName,
+          error_message: safeMsg,
+          stack: sanitizeStack(err?.stack),
         },
       });
     });
@@ -389,4 +451,5 @@ export function _resetDiagnosticsForTests() {
   transport = null;
   isOnlineFlag = true;
   currentRoute = '';
+  handlersInstalled = false;
 }

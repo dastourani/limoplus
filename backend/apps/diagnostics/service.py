@@ -11,14 +11,16 @@ from django.utils import timezone
 from apps.catalog.backups import notify_bale_after_commit
 from apps.catalog.jalali import jalali_datetime
 
-from .models import ErrorAffectedActor, ErrorEvent, ErrorGroup
+from .models import ErrorAffectedActor, ErrorEvent, ErrorEventReceipt, ErrorGroup
 from .sanitize import (
     format_build_label,
     make_fingerprint,
     normalize_route,
     sanitize_breadcrumbs,
     sanitize_context,
+    scrub_stack,
     scrub_text,
+    scrub_untrusted_error,
     server_web_commit,
     user_ref_for,
 )
@@ -46,6 +48,32 @@ def _trim_group_samples(group: ErrorGroup) -> None:
         ErrorEvent.objects.filter(id__in=stale_ids).delete()
 
 
+_SAFE_CLIENT_TITLE_PREFIXES = (
+    "خطای اجرای جاوااسکریپت:",
+    "خطای مرورگر:",
+    "خطای نمایش صفحه:",
+    "وعدهٔ مدیریت‌نشده",
+    "خطای رندر وب",
+)
+
+
+def _sanitize_client_title(raw_title: str, fallback: str) -> str:
+    cleaned = scrub_text(raw_title, 240)
+    if not cleaned:
+        return fallback
+    for prefix in _SAFE_CLIENT_TITLE_PREFIXES:
+        if cleaned.startswith(prefix):
+            rest = scrub_untrusted_error(cleaned[len(prefix) :], 160)
+            return f"{prefix} {rest}".strip()[:240]
+    return scrub_untrusted_error(cleaned, 240) or fallback
+
+
+def _existing_sample_for_receipt(receipt: ErrorEventReceipt) -> ErrorEvent | None:
+    return ErrorEvent.objects.select_related("group").filter(event_id=receipt.event_id).first() or (
+        ErrorEvent.objects.select_related("group").filter(group_id=receipt.group_id).order_by("-created_at", "-id").first()
+    )
+
+
 def record_event(
     *,
     source: str,
@@ -71,25 +99,30 @@ def record_event(
     context: dict | None = None,
     breadcrumbs: list | None = None,
     created_at=None,
-) -> tuple[ErrorEvent, bool]:
+) -> tuple[ErrorEvent | None, bool]:
     """
     Idempotently records one diagnostic event into an aggregated ErrorGroup.
-    Repeated delivery of the same `event_id` returns `(existing_event, False)` without incrementing counters.
+    Deduplicates against `ErrorEventReceipt` (kept independently of the 50-sample display cap),
+    so re-sent events never double-count even after older samples are trimmed.
     """
     clean_event_id = scrub_text(event_id or uuid.uuid4().hex, 64) or uuid.uuid4().hex
-    existing = ErrorEvent.objects.select_related("group").filter(event_id=clean_event_id).first()
-    if existing is not None:
-        return existing, False
+    existing_receipt = ErrorEventReceipt.objects.filter(event_id=clean_event_id).first()
+    if existing_receipt is not None:
+        return _existing_sample_for_receipt(existing_receipt), False
 
     clean_source = source if source in ErrorGroup.Source.values else ErrorGroup.Source.CLIENT
     clean_kind = kind if kind in ErrorGroup.Kind.values else ErrorGroup.Kind.CLIENT_ERROR
     clean_severity = severity if severity in ErrorGroup.Severity.values else ErrorGroup.Severity.ERROR
     clean_code = scrub_text(code or "unknown", 80) or "unknown"
-    clean_title = scrub_text(title or clean_code, 240) or clean_code
+    if clean_source == ErrorGroup.Source.CLIENT and clean_kind == ErrorGroup.Kind.CLIENT_ERROR:
+        clean_title = _sanitize_client_title(title, clean_code)
+        clean_observed = scrub_untrusted_error(observed, 1500)
+    else:
+        clean_title = scrub_text(title or clean_code, 240) or clean_code
+        clean_observed = scrub_text(observed, 1500)
     clean_route = normalize_route(route)
     clean_operation = scrub_text(operation, 80)
     clean_expected = scrub_text(expected, 1500)
-    clean_observed = scrub_text(observed, 1500)
     clean_platform = scrub_text(platform, 20).lower()
     clean_channel = scrub_text(channel, 20).lower()
     clean_web_commit = scrub_text(web_commit, 40)
@@ -116,9 +149,9 @@ def record_event(
 
     with transaction.atomic():
         # Double-check inside atomic transaction in case of concurrent delivery of the same event_id.
-        existing = ErrorEvent.objects.select_related("group").filter(event_id=clean_event_id).first()
-        if existing is not None:
-            return existing, False
+        existing_receipt = ErrorEventReceipt.objects.filter(event_id=clean_event_id).first()
+        if existing_receipt is not None:
+            return _existing_sample_for_receipt(existing_receipt), False
 
         group = ErrorGroup.objects.select_for_update().filter(fingerprint=fingerprint).first()
         if group is None:
@@ -144,28 +177,35 @@ def record_event(
 
         try:
             with transaction.atomic():
-                event = ErrorEvent.objects.create(
-                    group=group,
+                ErrorEventReceipt.objects.create(
                     event_id=clean_event_id,
-                    request_id=clean_request_id,
-                    op_id=clean_op_id,
-                    install_id=clean_install,
-                    user_ref=clean_user_ref,
-                    platform=clean_platform,
-                    channel=clean_channel,
-                    app_build=clean_build,
-                    server_version=srv_commit,
-                    version_mismatch=mismatch,
-                    is_offline=bool(is_offline),
-                    route=clean_route,
-                    operation=clean_operation,
-                    expected=clean_expected,
-                    observed=clean_observed,
-                    evidence=evidence,
+                    group=group,
                     created_at=now,
                 )
         except IntegrityError:
-            return ErrorEvent.objects.select_related("group").get(event_id=clean_event_id), False
+            receipt = ErrorEventReceipt.objects.get(event_id=clean_event_id)
+            return _existing_sample_for_receipt(receipt), False
+
+        event = ErrorEvent.objects.create(
+            group=group,
+            event_id=clean_event_id,
+            request_id=clean_request_id,
+            op_id=clean_op_id,
+            install_id=clean_install,
+            user_ref=clean_user_ref,
+            platform=clean_platform,
+            channel=clean_channel,
+            app_build=clean_build,
+            server_version=srv_commit,
+            version_mismatch=mismatch,
+            is_offline=bool(is_offline),
+            route=clean_route,
+            operation=clean_operation,
+            expected=clean_expected,
+            observed=clean_observed,
+            evidence=evidence,
+            created_at=now,
+        )
 
         group.event_count += 1
         if now >= group.last_seen_at:
@@ -253,11 +293,12 @@ def record_server_exception(request, exc: Exception) -> ErrorEvent | None:
     req_id = getattr(request, "diagnostics_request_id", "") or (request.headers.get("X-Request-Id") or "").strip()
 
     try:
+        clean_route = normalize_route(getattr(request, "path", "")) or "/"
         event, _ = record_event(
             source=ErrorGroup.Source.SERVER,
             kind=ErrorGroup.Kind.EXCEPTION,
             code="unhandled_exception",
-            title=f"{type(exc).__name__}: {scrub_text(exc, 160) or 'خطای پیش‌بینی‌نشده'}",
+            title=f"{type(exc).__name__} در {clean_route}"[:240],
             request_id=req_id,
             op_id=op_id,
             install_id=install_id,
@@ -267,7 +308,7 @@ def record_server_exception(request, exc: Exception) -> ErrorEvent | None:
             app_build=app_build,
             web_commit=web_commit,
             route=getattr(request, "path", ""),
-            operation=f"{getattr(request, 'method', 'GET')} {normalize_route(getattr(request, 'path', ''))}",
+            operation=f"{getattr(request, 'method', 'GET')} {clean_route}",
             expected="درخواست بدون خطای پیش‌بینی‌نشده و وضعیت ۵۰۰ پاسخ داده شود.",
             observed=f"استثنای {type(exc).__name__} در سرور رخ داد.",
             severity=ErrorGroup.Severity.CRITICAL,
@@ -275,8 +316,8 @@ def record_server_exception(request, exc: Exception) -> ErrorEvent | None:
                 "status_code": 500,
                 "method": getattr(request, "method", ""),
                 "exception_type": type(exc).__name__,
-                "error_message": scrub_text(exc, 300),
-                "stack": tb_tail,
+                "error_message": scrub_untrusted_error(exc, 300),
+                "stack": scrub_stack(tb_tail, 1600),
             },
         )
         return event
@@ -286,7 +327,7 @@ def record_server_exception(request, exc: Exception) -> ErrorEvent | None:
 
 
 def prune_old_events(now=None) -> int:
-    """Deletes sample ErrorEvents older than EVENT_RETENTION_DAYS while keeping the newest sample per group."""
+    """Deletes sample ErrorEvents and expired deduplication receipts older than EVENT_RETENTION_DAYS."""
     now = now or timezone.now()
     cutoff = now - timedelta(days=EVENT_RETENTION_DAYS)
     keep_ids: set[int] = set()
@@ -297,7 +338,9 @@ def prune_old_events(now=None) -> int:
     qs = ErrorEvent.objects.filter(created_at__lt=cutoff)
     if keep_ids:
         qs = qs.exclude(id__in=keep_ids)
-    return qs.delete()[0]
+    deleted_samples = qs.delete()[0]
+    ErrorEventReceipt.objects.filter(created_at__lt=cutoff).delete()
+    return deleted_samples
 
 
 def build_ai_report(group: ErrorGroup) -> str:

@@ -35,6 +35,9 @@ ALLOWED_CONTEXT_KEYS = frozenset({
     "recorded_days",
     "expected_book_id",
     "recorded_book_id",
+    "expected_scope",
+    "recorded_scope",
+    "owner_mismatch",
     "source",
     "method",
     "exception_type",
@@ -50,9 +53,15 @@ ALLOWED_CONTEXT_KEYS = frozenset({
 
 ALLOWED_BREADCRUMB_KEYS = frozenset({"at", "type", "name", "detail"})
 
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _PHONE_RE = re.compile(r"(?:\+?98|0)9\d{9}")
 _BEARER_RE = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{8,}")
-_QUERY_SECRET_RE = re.compile(r"([?&](?:sig|signature|token|code|exp|expires|password|key)=)[^&\s]+", re.IGNORECASE)
+_JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{6,}\b")
+_QUERY_ALL_RE = re.compile(r"\?[^\s\"'<>#]+")
+_QUERY_SECRET_RE = re.compile(r"([?&](?:sig|signature|token|code|exp|expires|password|key|q|query|search)=)[^&\s]+", re.IGNORECASE)
+_PERSIAN_ARABIC_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+(?:[\s\u200c\u200d،؛؟!«»\-–—.\d]+[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+)*")
+_QUOTED_SENSITIVE_RE = re.compile(r"([\"'«])(?:(?=(\\?))\2.)*?\1")
+_STACK_FRAME_LINE_RE = re.compile(r"^\s*(?:at\s+.+|File\s+\"[^\"]+\",\s+line\s+\d+.*|[^\s:]+(?:Error|Exception)(?::.*)?)$")
 _UUID_OR_HEX_RE = re.compile(r"/[0-9a-fA-F]{16,}(?=/|$)")
 _INT_SEGMENT_RE = re.compile(r"/\d+(?=/|$)")
 _BOOK_SLUG_SEGMENT_RE = re.compile(r"^(/api/v1/books/|/book/)([^/]+)")
@@ -104,9 +113,45 @@ def scrub_text(raw: object, max_len: int = 1000) -> str:
         if secret and len(secret) >= 6:
             text = text.replace(secret, "***")
     text = _BEARER_RE.sub(r"\1[REDACTED]", text)
+    text = _JWT_RE.sub("[REDACTED]", text)
+    text = _EMAIL_RE.sub("[EMAIL]", text)
     text = _PHONE_RE.sub("[PHONE]", text)
     text = _QUERY_SECRET_RE.sub(r"\1[REDACTED]", text)
+    text = _QUERY_ALL_RE.sub("?[REDACTED]", text)
     return text.strip()[:max_len]
+
+
+def _redact_quote(match: re.Match) -> str:
+    body = match.group(0)
+    if len(body) > 22 or _PERSIAN_ARABIC_RE.search(body) or " " in body:
+        return '"[REDACTED]"'
+    return body
+
+
+def scrub_untrusted_error(raw: object, max_len: int = 400) -> str:
+    """Scrubs untrusted exception/error text so emails, search queries, and lesson/user Persian text never leak."""
+    text = scrub_text(raw, max_len=max_len * 2)
+    if not text:
+        return ""
+    text = _PERSIAN_ARABIC_RE.sub("[TEXT]", text)
+    text = _QUOTED_SENSITIVE_RE.sub(_redact_quote, text)
+    text = re.sub(r"(?:\[TEXT\]\s*){2,}", "[TEXT] ", text)
+    return text.strip()[:max_len]
+
+
+def scrub_stack(raw: object, max_len: int = 1600) -> str:
+    if not raw:
+        return ""
+    lines: list[str] = []
+    for line in str(raw).splitlines()[-14:]:
+        stripped = line.rstrip()
+        if not stripped:
+            continue
+        if re.match(r"^\s*(?:at\s+|File\s+\")", stripped):
+            lines.append(scrub_text(stripped, max_len=240))
+        else:
+            lines.append(scrub_untrusted_error(stripped, max_len=240))
+    return "\n".join(lines)[:max_len]
 
 
 def normalize_route(raw: object) -> str:
@@ -134,8 +179,12 @@ def sanitize_context(raw: object) -> dict:
     for key, val in raw.items():
         if key not in ALLOWED_CONTEXT_KEYS:
             continue
-        limit = 1600 if key in ("stack", "component_stack") else 400
-        cleaned = sanitize_scalar(val, max_len=limit)
+        if key in ("stack", "component_stack"):
+            cleaned = scrub_stack(val, max_len=1600)
+        elif key == "error_message":
+            cleaned = scrub_untrusted_error(val, max_len=400)
+        else:
+            cleaned = sanitize_scalar(val, max_len=400)
         if cleaned not in ("", None, []):
             out[key] = cleaned
     return out
@@ -151,7 +200,10 @@ def sanitize_breadcrumbs(raw: object) -> list[dict]:
         entry: dict[str, object] = {}
         for key in ALLOWED_BREADCRUMB_KEYS:
             if key in item and item[key] is not None:
-                entry[key] = sanitize_scalar(item[key], max_len=160)
+                if key == "detail":
+                    entry[key] = scrub_untrusted_error(item[key], max_len=160)
+                else:
+                    entry[key] = sanitize_scalar(item[key], max_len=160)
         if entry:
             out.append(entry)
     return out

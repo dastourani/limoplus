@@ -12,14 +12,14 @@ from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.catalog.models import ContentNode
+from apps.catalog.models import ContentNode, Major
 from apps.commerce.models import Entitlement, Order, Plan
 from apps.learning.models import Choice, Question, QuizAnswer
 from apps.study.models import ChapterReview, ReviewSession
 
 from .checks import check_offline_health, check_payments_and_entitlements, check_review_sessions, run_all_health_checks, verify_settled_order
 from .middleware import RequestDiagnosticsMiddleware
-from .models import ErrorEvent, ErrorGroup, HealthCheckRun
+from .models import ErrorEvent, ErrorEventReceipt, ErrorGroup, HealthCheckRun
 from .service import build_ai_report, prune_old_events, record_event
 
 User = get_user_model()
@@ -78,6 +78,104 @@ class DiagnosticsIngestionTests(TestCase):
         group.refresh_from_db()
         self.assertEqual(group.event_count, 3)
         self.assertEqual(group.install_count, 2)
+
+    def test_200_events_keep_exact_count_and_dedupe_even_after_50_sample_trim(self):
+        now = timezone.now()
+        for i in range(200):
+            _, created = record_event(
+                source=ErrorGroup.Source.CLIENT,
+                kind=ErrorGroup.Kind.OFFLINE,
+                code="offline_corrupt",
+                title="فایل بستهٔ آفلاین خراب است",
+                event_id=f"evt_bulk_{i}",
+                install_id=f"inst_{i % 5}",
+                created_at=now,
+            )
+            self.assertTrue(created)
+
+        group = ErrorGroup.objects.get(code="offline_corrupt")
+        self.assertEqual(group.event_count, 200)
+        self.assertEqual(group.events.count(), 50)
+        self.assertEqual(ErrorEventReceipt.objects.filter(group=group).count(), 200)
+
+        # Re-sending the very first event (already trimmed from ErrorEvent) must NOT increment counts!
+        r_dup = self.client.post(
+            "/api/v1/diagnostics/events/",
+            {
+                "event_id": "evt_bulk_0",
+                "kind": "offline",
+                "code": "offline_corrupt",
+                "title": "فایل بستهٔ آفلاین خراب است",
+                "install_id": "inst_0",
+            },
+            format="json",
+        )
+        self.assertEqual(r_dup.status_code, 200)
+        self.assertEqual(r_dup.json(), {"accepted": 0, "duplicates": 1})
+
+        group.refresh_from_db()
+        self.assertEqual(group.event_count, 200)
+        self.assertEqual(group.events.count(), 50)
+
+        # 24h offline health check must count all 200 events, not just the 50 kept samples.
+        off_run = check_offline_health(now=now)
+        self.assertEqual(off_run.details["offline_corrupt"], 200)
+        self.assertEqual(off_run.issues_found, 200)
+
+    def test_privacy_scrubs_email_and_persian_text_from_db_bale_and_ai_report(self):
+        bale_messages: list[str] = []
+        with mock.patch("apps.diagnostics.service.notify_bale_after_commit", side_effect=lambda msg, **kw: bale_messages.append(msg)):
+            # 1. Server unhandled exception containing email + Persian text
+            rf = RequestFactory()
+            mw = RequestDiagnosticsMiddleware(lambda req: None)
+            req = rf.post(
+                "/api/v1/search/?q=عبارت",
+                HTTP_X_REQUEST_ID="req_priv_srv_1",
+                HTTP_X_APP_PLATFORM="web",
+                HTTP_X_APP_WEB_COMMIT="sha_priv_99",
+            )
+            mw.process_exception(req, ValueError("خطا برای student@example.com روی عبارت خصوصی دانش‌آموز"))
+
+            # 2. Client error payload containing email + Persian text
+            r_cli = self.client.post(
+                "/api/v1/diagnostics/events/",
+                {
+                    "event_id": "evt_priv_cli_1",
+                    "kind": "client_error",
+                    "severity": "critical",
+                    "code": "js_error",
+                    "title": "خطای اجرای جاوااسکریپت: TypeError",
+                    "route": "/quiz/12",
+                    "request_id": "req_priv_cli_1",
+                    "app_build": "118",
+                    "observed": "TypeError: student@example.com عبارت خصوصی دانش‌آموز",
+                    "context": {
+                        "error_name": "TypeError",
+                        "error_message": "student@example.com عبارت خصوصی دانش‌آموز",
+                        "stack": "TypeError: student@example.com عبارت خصوصی دانش‌آموز\n    at render (quiz.tsx:42:9)",
+                    },
+                },
+                format="json",
+            )
+            self.assertEqual(r_cli.status_code, 200)
+
+        self.assertGreaterEqual(len(bale_messages), 2)
+        srv_group = ErrorGroup.objects.get(source=ErrorGroup.Source.SERVER, code="unhandled_exception")
+        cli_group = ErrorGroup.objects.get(source=ErrorGroup.Source.CLIENT, code="js_error")
+
+        for g, req_id, expected_type, expected_loc in (
+            (srv_group, "req_priv_srv_1", "ValueError", "/api/v1/search/"),
+            (cli_group, "req_priv_cli_1", "TypeError", "/quiz/<id>"),
+        ):
+            ev = g.events.first()
+            report = build_ai_report(g)
+            blob = "\n".join([g.title, g.observed, ev.observed, str(ev.evidence), report, *bale_messages])
+            self.assertNotIn("student@example.com", blob)
+            self.assertNotIn("عبارت خصوصی دانش‌آموز", blob)
+            self.assertIn(expected_type, report)
+            self.assertIn(expected_loc, report)
+            self.assertIn(req_id, report)
+            self.assertTrue(ev.app_build)
 
     def test_sanitization_scrubs_pii_secrets_and_disallowed_context(self):
         self.client.force_authenticate(user=self.user)
@@ -294,6 +392,52 @@ class HealthCheckAcceptanceTests(TestCase):
         # verify_settled_order also works cleanly on a valid order.
         self.assertTrue(verify_settled_order(o2.id))
 
+    def test_payment_health_check_catches_wrong_owner_and_wrong_major_scope(self):
+        now = timezone.now()
+        other_user = User.objects.create_user(phone="09128889900", password="pass")
+        m_math = Major.objects.create(name="ریاضی", slug="math")
+        m_bio = Major.objects.create(name="تجربی", slug="bio")
+        major_plan = Plan.objects.create(title="اشتراک ۱ ماهه رشته‌ای", scope=Plan.Scope.MAJOR, months=1, price=100000, is_active=False)
+
+        # Two orders with same price & duration:
+        # 1. Book order whose entitlement points to the right book & forever, but belongs to another user!
+        o_wrong_owner = Order.objects.create(
+            user=self.user, book=self.book, title="خرید کتاب", amount=100000,
+            status=Order.Status.PAID, paid_at=now, track_id="t-owner-bad",
+        )
+        Entitlement.objects.create(user=other_user, book=self.book, order=o_wrong_owner)
+
+        # 2. Major-scoped subscription order whose entitlement points to the wrong major!
+        o_wrong_major = Order.objects.create(
+            user=self.user, plan=major_plan, major=m_math, title=major_plan.title, amount=100000,
+            plan_months=1, plan_scope=Plan.Scope.MAJOR, status=Order.Status.PAID, paid_at=now, track_id="t-major-bad",
+        )
+        Entitlement.objects.create(
+            user=self.user, major=m_bio, all_majors=False, starts_at=now, ends_at=now + timedelta(days=30), order=o_wrong_major,
+        )
+
+        # 3. Healthy major-scoped renewal + later cancelled order with identical price & duration
+        o_ok_1 = Order.objects.create(
+            user=self.user, plan=major_plan, major=m_math, title=major_plan.title, amount=100000,
+            plan_months=1, plan_scope=Plan.Scope.MAJOR, status=Order.Status.PAID, paid_at=now, track_id="t-major-ok-1",
+        )
+        e_ok_1 = Entitlement.objects.create(
+            user=self.user, major=m_math, all_majors=False, starts_at=now, ends_at=now + timedelta(days=30), order=o_ok_1,
+        )
+        o_ok_2 = Order.objects.create(
+            user=self.user, plan=major_plan, major=m_math, title=major_plan.title, amount=100000,
+            plan_months=1, plan_scope=Plan.Scope.MAJOR, status=Order.Status.PAID, paid_at=now, track_id="t-major-ok-2",
+        )
+        Entitlement.objects.create(
+            user=self.user, major=m_math, all_majors=False, starts_at=e_ok_1.ends_at, ends_at=e_ok_1.ends_at + timedelta(days=30),
+            order=o_ok_2, is_archived=True,
+        )
+
+        run = check_payments_and_entitlements(now=now)
+        self.assertEqual(run.checked_count, 4)
+        self.assertEqual(run.issues_found, 2)
+        self.assertEqual(set(run.details["wrong_order_ids"]), {o_wrong_owner.id, o_wrong_major.id})
+
     def test_review_health_check_catches_silent_score_mismatch_without_false_positives(self):
         q1 = Question.objects.create(node=self.section, slug="q1", stem="s1", explanation="e1", difficulty=Question.Difficulty.EASY)
         c1_right = Choice.objects.create(question=q1, text="A", is_correct=True, order=0)
@@ -340,6 +484,26 @@ class HealthCheckAcceptanceTests(TestCase):
         self.assertEqual(ev.evidence["context"]["recorded_score"], 1.0)
         self.assertIn("0.5", score_group.observed)
         self.assertIn("1.0", score_group.observed)
+
+    def test_review_health_check_ignores_legacy_pre_0016_scored_sessions_and_catches_new_missing_answers(self):
+        cr = ChapterReview.objects.create(
+            user=self.user, chapter=self.chapter, book=self.book, finished_at=timezone.now(), due_on=timezone.localdate()
+        )
+        now = timezone.now()
+
+        # Legacy completed scored session from before migration 0016 (`QuizAnswer.review_session`) -> skipped cleanly
+        s_legacy = ReviewSession.objects.create(user=self.user, chapter_review=cr, served=[1, 2], finished_at=now - timedelta(days=5), score=0.5)
+        ReviewSession.objects.filter(pk=s_legacy.pk).update(started_at=now - timedelta(days=5), finished_at=now - timedelta(days=5))
+
+        # New completed scored session with genuinely missing answers -> definitive alert
+        s_new_missing = ReviewSession.objects.create(user=self.user, chapter_review=cr, served=[1, 2], finished_at=now, score=1.0)
+
+        run = check_review_sessions(now=now)
+
+        self.assertEqual(run.checked_count, 1)
+        self.assertEqual(run.issues_found, 1)
+        self.assertEqual(run.details["mismatched_session_ids"], [s_new_missing.id])
+        self.assertEqual(run.details["legacy_skipped"], 1)
 
     def test_offline_summary_retention_and_management_command(self):
         now = timezone.now()

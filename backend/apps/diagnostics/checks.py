@@ -4,14 +4,16 @@ import logging
 import time
 from datetime import timedelta
 
+from django.conf import settings
+from django.db.migrations.recorder import MigrationRecorder
 from django.db.models import Count
 from django.utils import timezone
 
-from apps.commerce.models import Order
+from apps.commerce.models import Order, Plan
 from apps.learning.models import QuizAnswer
 from apps.study.models import ReviewSession
 
-from .models import ErrorEvent, ErrorGroup, HealthCheckRun
+from .models import ErrorEventReceipt, ErrorGroup, HealthCheckRun
 from .service import record_event
 
 log = logging.getLogger(__name__)
@@ -76,6 +78,8 @@ def _verify_settled_order_impl(order_id: int) -> bool:
 
 def _order_context(order: Order, ent) -> dict:
     ctx: dict[str, object] = {"order_id": order.id, "entitlement_id": ent.id}
+    if ent.user_id != order.user_id:
+        ctx["owner_mismatch"] = True
     if order.book_id:
         ctx["expected_book_id"] = order.book_id
         ctx["recorded_book_id"] = ent.book_id
@@ -84,24 +88,43 @@ def _order_context(order: Order, ent) -> dict:
     else:
         months = order.plan_months or (order.plan.months if order.plan_id else 0)
         ctx["expected_months"] = months
+        expected_scope = order.plan_scope or (order.plan.scope if order.plan_id else "")
+        if expected_scope == Plan.Scope.ALL:
+            ctx["expected_scope"] = "all"
+        elif expected_scope == Plan.Scope.MAJOR:
+            ctx["expected_scope"] = f"major:{order.major_id}"
+        ctx["recorded_scope"] = "all" if ent.all_majors else (f"major:{ent.major_id}" if ent.major_id else "book_or_none")
         if ent.starts_at and ent.ends_at:
             ctx["recorded_days"] = round((ent.ends_at - ent.starts_at).total_seconds() / 86400, 2)
     return ctx
 
 
 def _entitlement_mismatch(order: Order, ent) -> str | None:
+    if ent.user_id != order.user_id:
+        return f"مالک دسترسی متصل به سفارش #{order.id} با خریدار سفارش مطابقت ندارد."
+
     if order.book_id:
         if ent.book_id != order.book_id:
             return f"سفارش #{order.id} برای کتاب {order.book_id} است، اما دسترسی متصل به کتاب {ent.book_id} اشاره دارد."
+        if ent.all_majors or ent.major_id is not None:
+            return f"سفارش کتاب #{order.id} به‌اشتباه دامنهٔ اشتراک رشته‌ای/عمومی دارد."
         if ent.ends_at is not None:
             return f"سفارش کتاب #{order.id} باید دسترسی دائمی بسازد، اما ends_at پر است."
         return None
 
     expected_months = order.plan_months or (order.plan.months if order.plan_id else None)
-    if expected_months is None:
-        return None
+    expected_scope = order.plan_scope or (order.plan.scope if order.plan_id else "")
     if ent.book_id is not None:
         return f"سفارش اشتراک #{order.id} به‌اشتباه دسترسی کتاب ثبت کرده است."
+    if expected_scope == Plan.Scope.ALL:
+        if not ent.all_majors or ent.major_id is not None:
+            return f"سفارش اشتراک همه‌رشته‌ها #{order.id} به‌اشتباه دسترسی با دامنهٔ محدود ثبت کرده است."
+    elif expected_scope == Plan.Scope.MAJOR:
+        if ent.all_majors or not order.major_id or ent.major_id != order.major_id:
+            return f"سفارش اشتراک رشته‌ای #{order.id} (رشته {order.major_id}) با رشتهٔ دسترسی ({ent.major_id}) تطابق ندارد."
+
+    if expected_months is None:
+        return None
     if ent.starts_at is None or ent.ends_at is None:
         return f"سفارش اشتراک #{order.id} ({expected_months} ماه) تاریخ شروع یا پایان ندارد."
     expected_seconds = expected_months * SECONDS_PER_MONTH
@@ -192,21 +215,38 @@ def check_payments_and_entitlements(now=None) -> HealthCheckRun:
     )
 
 
+def _review_tracking_cutoff():
+    configured = getattr(settings, "DIAGNOSTICS_REVIEW_TRACKING_SINCE", None)
+    if configured is not None:
+        return configured
+    return (
+        MigrationRecorder.Migration.objects.filter(app="learning", name__startswith="0016_")
+        .values_list("applied", flat=True)
+        .first()
+    )
+
+
 def check_review_sessions(now=None) -> HealthCheckRun:
     """
     Audits finalized non-exam ReviewSessions (`finished_at__isnull=False, score__isnull=False, exam__isnull=True`):
-    - Excludes legacy sessions closed without a score by migration 0016.
+    - Excludes legacy sessions closed without a score by migration 0016 AND completed sessions finished before
+      migration 0016 introduced `QuizAnswer.review_session` (unverifiable without session-linked answers).
     - Uses `QuizAnswer.was_correct` recorded at answer time (immune to later answer-key edits).
     - Compares session answers against `session.served` and `session.score`.
     """
     t0 = time.monotonic()
     now = now or timezone.now()
     day_key = timezone.localdate(now).isoformat()
+    cutoff = _review_tracking_cutoff()
+
+    base_qs = ReviewSession.objects.filter(finished_at__isnull=False, score__isnull=False, exam__isnull=True)
+    legacy_skipped = 0
+    if cutoff is not None:
+        legacy_skipped = base_qs.filter(finished_at__lt=cutoff).count()
+        base_qs = base_qs.filter(finished_at__gte=cutoff)
 
     sessions = list(
-        ReviewSession.objects.filter(finished_at__isnull=False, score__isnull=False, exam__isnull=True)
-        .order_by("id")
-        .only("id", "user_id", "served", "score", "minimum", "stage")
+        base_qs.order_by("id").only("id", "user_id", "served", "score", "minimum", "stage")
     )
     checked = len(sessions)
     issues = 0
@@ -315,6 +355,8 @@ def check_review_sessions(now=None) -> HealthCheckRun:
                 )
 
     summary = f"{checked} جلسهٔ مرور نهایی‌شده بررسی شد؛ {issues} مغایرت یافت شد."
+    if legacy_skipped:
+        summary += f" ({legacy_skipped} جلسهٔ قدیمیِ پیش از ثبت شناسهٔ جلسه کنار گذاشته شد.)"
     return HealthCheckRun.objects.create(
         check_key=HealthCheckRun.CheckKey.REVIEWS,
         completed=True,
@@ -322,14 +364,14 @@ def check_review_sessions(now=None) -> HealthCheckRun:
         issues_found=issues,
         pending_count=0,
         summary=summary,
-        details={"mismatched_session_ids": mismatched_ids[:20]},
+        details={"mismatched_session_ids": mismatched_ids[:20], "legacy_skipped": legacy_skipped},
         duration_ms=int((time.monotonic() - t0) * 1000),
         ran_at=now,
     )
 
 
 def check_offline_health(now=None) -> HealthCheckRun:
-    """Summarizes client-reported offline bundle failures over the last 24 hours."""
+    """Summarizes client-reported offline bundle failures over the last 24 hours from untruncated receipts."""
     t0 = time.monotonic()
     now = now or timezone.now()
     since = now - timedelta(hours=24)
@@ -341,7 +383,7 @@ def check_offline_health(now=None) -> HealthCheckRun:
         "offline_update_failed_prev_intact": 0,
     }
     for code, cnt in (
-        ErrorEvent.objects.filter(group__kind=ErrorGroup.Kind.OFFLINE, created_at__gte=since)
+        ErrorEventReceipt.objects.filter(group__kind=ErrorGroup.Kind.OFFLINE, created_at__gte=since)
         .values_list("group__code")
         .annotate(c=Count("id"))
     ):
