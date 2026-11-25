@@ -140,16 +140,17 @@ def record(user, node: ContentNode, quote: str, mode: str, platform: str = "") -
 
 # --- Finding a pasted text ----------------------------------------------------------------------------------------
 
-def trace(text: str, limit_days: int = 365) -> dict:
+def trace(text: str, limit_days: int = 365, events=None) -> dict:
     """Fingerprints in the text; without them, recent copies whose text appears in it (or contains it)."""
+    base_qs = (CopyEvent.objects.all() if events is None else events).select_related("user", "node", "revision")
     codes = fingerprint.decode_all(text)
-    marked = list(CopyEvent.objects.filter(code__in=codes).select_related("user", "node", "revision"))
+    marked = list(base_qs.filter(code__in=codes))
     similar = []
     if not marked:
         flat = normalize(fingerprint.strip(text))
         if len(flat) >= 20:
             since = timezone.now() - timedelta(days=limit_days)
-            for event in CopyEvent.objects.filter(created_at__gte=since).select_related("user", "node", "revision")[:5000]:
+            for event in base_qs.filter(created_at__gte=since)[:5000]:
                 own = normalize(text_of(event))
                 if len(own) >= 20 and (own in flat or flat in own):
                     similar.append(event)
@@ -231,4 +232,75 @@ def device_switches(since) -> list[dict]:
 
     recent = set(DeviceSession.objects.filter(created_at__gte=since).values_list("user_id", flat=True))
     return [{"user_id": u, "n": n} for u, n in new_sessions_7d(recent).items() if n > settings.DEVICE_SWITCH_ALERT]
+
+
+# --- Privacy & Book Scoping ---------------------------------------------------------------------------------------
+
+def mask_phone(phone: str, fallback: str = "کاربر لیموخوان") -> str:
+    """Mask user phone for teacher privacy (e.g. 0912***3456); never leak 8-digit or shorter raw phones."""
+    raw = (phone or "").strip()
+    if len(raw) < 9:
+        return fallback
+    return raw[:4] + "***" + raw[-4:]
+
+
+def masked_user_label(user, fallback: str = "کاربر لیموخوان") -> str:
+    if not user:
+        return fallback
+    masked = mask_phone(getattr(user, "phone", ""), fallback=fallback)
+    full_name = f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
+    return f"{full_name} ({masked})" if full_name else masked
+
+
+def traceable_books(user):
+    """Books this user may trace or view trace findings on (active, non-archived, non-inbox)."""
+    from apps.catalog import access
+
+    if not (user and user.is_authenticated and user.is_active):
+        return ContentNode.objects.none()
+    if user.is_superuser:
+        return ContentNode.objects.filter(
+            kind=ContentNode.Kind.BOOK, depth=1, is_inbox=False, is_archived=False
+        )
+    return access.books_for_editor(user, capability="can_edit_content").filter(is_archived=False)
+
+
+def book_of_event(event: CopyEvent | None) -> ContentNode | None:
+    if not event or not event.node_id or not event.node:
+        return None
+    return event.node.book()
+
+
+def can_view_event(user, event: CopyEvent | None) -> bool:
+    """True if superuser, or an active book teacher with current edit permission on the event's book."""
+    from apps.catalog import access
+
+    if not (user and user.is_authenticated and user.is_active):
+        return False
+    if user.is_superuser:
+        return True
+    book = book_of_event(event)
+    return bool(book and access.can_edit_book(user, book))
+
+
+def scope_to_traceable_books(queryset, user, path_field: str = "node__path"):
+    """Restrict a CopyEvent/TraceHit queryset in SQL to books the user currently holds trace permission on."""
+    from django.db.models import OuterRef, Subquery
+    from django.db.models.functions import Substr
+    from apps.catalog import access
+
+    if user and user.is_authenticated and user.is_active and user.is_superuser:
+        return queryset
+    if not access.is_book_teacher(user) or not user.has_perm("catalog.change_contentnode"):
+        return queryset.none()
+    roots = ContentNode.objects.filter(
+        path=Substr(OuterRef(path_field), 1, ContentNode.steplen),
+        kind=ContentNode.Kind.BOOK,
+        depth=1,
+        is_archived=False,
+        is_inbox=False,
+        pk__in=access.book_editor_ids(user, capability="can_edit_content"),
+    ).order_by()
+    return queryset.annotate(_lp_trace_book_id=Subquery(roots.values("pk")[:1])).filter(_lp_trace_book_id__isnull=False)
+
 
