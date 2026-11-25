@@ -259,7 +259,8 @@ describe('client diagnostics queue & offline failure reporting', () => {
         error_name: 'TypeError',
         error_message: 'The passive voice expresses an action done to the subject',
         extra_note: 'یادداشت آزمایشی خصوصی دانش‌آموز',
-        stack: 'TypeError: The passive voice expresses an action done to the subject\n    at renderQuiz (quiz.tsx:42:9)',
+        stack:
+          'TypeError: The passive voice expresses an action done to the subject\nat room temperature molecules move faster\nin other words it stays liquid\n    at renderQuiz (quiz.tsx:42:9)',
         book_slug: 'english-1',
       },
       deferFlush: true,
@@ -267,6 +268,8 @@ describe('client diagnostics queue & offline failure reporting', () => {
 
     const raw = storage.get('limo.diagOutbox')!;
     expect(raw).not.toContain('passive voice');
+    expect(raw).not.toContain('at room temperature');
+    expect(raw).not.toContain('in other words');
     expect(raw).not.toContain('extra_note');
     expect(raw).not.toContain('یادداشت آزمایشی');
     expect(raw).not.toContain('student@example.com');

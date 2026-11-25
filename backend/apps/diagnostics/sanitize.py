@@ -145,18 +145,74 @@ def scrub_error_name(raw: object, fallback: str = "Error") -> str:
     return fallback
 
 
+_PY_FRAME_RE = re.compile(r'^File\s+"([^"]+)",\s+line\s+(\d+)(?:,\s+in\s+([A-Za-z_][\w.<>]{0,60}))?')
+_V8_PAREN_FRAME_RE = re.compile(
+    r"^(?:at|in)\s+(?:(?:async|new)\s+)?([A-Za-z_$][\w$.<>]{0,80})\s+\(([^()]+):(\d+)(?::(\d+))?\)\s*$"
+)
+_V8_ANON_FRAME_RE = re.compile(r"^at\s+(?:async\s+)?([^\s()]+):(\d+)(?::(\d+))?\s*$")
+_JSC_FRAME_RE = re.compile(r"^([A-Za-z_$][\w$.<>]{0,80})?@([^\s@()]+):(\d+)(?::(\d+))?\s*$")
+_REACT_COMP_FRAME_RE = re.compile(
+    r"^(at|in)\s+([A-Z][A-Za-z0-9_$.]{0,60})"
+    r"(?:\s+\((?:created by\s+([A-Z][A-Za-z0-9_$.]{0,60})|at\s+([^()]+):(\d+)(?::(\d+))?)\))?\s*$"
+)
+
+
+def _clean_frame_file(raw: str) -> str:
+    without_query = raw.split("?", 1)[0].split("#", 1)[0]
+    return scrub_text(without_query, max_len=160)[-140:]
+
+
+def _parse_stack_frame_line(line: str) -> str | None:
+    trimmed = line.strip()
+    if not trimmed:
+        return None
+
+    m = _PY_FRAME_RE.match(trimmed)
+    if m:
+        file = _clean_frame_file(m.group(1))
+        return f'File "{file}", line {m.group(2)}, in {m.group(3)}' if m.group(3) else f'File "{file}", line {m.group(2)}'
+
+    m = _REACT_COMP_FRAME_RE.match(trimmed)
+    if m:
+        if m.group(3):
+            return f"{m.group(1)} {m.group(2)} (created by {m.group(3)})"
+        if m.group(4):
+            file = _clean_frame_file(m.group(4))
+            loc = f"{file}:{m.group(5)}:{m.group(6)}" if m.group(6) else f"{file}:{m.group(5)}"
+            return f"{m.group(1)} {m.group(2)} (at {loc})"
+        return f"{m.group(1)} {m.group(2)}"
+
+    m = _V8_PAREN_FRAME_RE.match(trimmed)
+    if m:
+        file = _clean_frame_file(m.group(2))
+        loc = f"{file}:{m.group(3)}:{m.group(4)}" if m.group(4) else f"{file}:{m.group(3)}"
+        return f"at {m.group(1)} ({loc})"
+
+    m = _V8_ANON_FRAME_RE.match(trimmed)
+    if m:
+        file = _clean_frame_file(m.group(1))
+        loc = f"{file}:{m.group(2)}:{m.group(3)}" if m.group(3) else f"{file}:{m.group(2)}"
+        return f"at {loc}"
+
+    m = _JSC_FRAME_RE.match(trimmed)
+    if m:
+        file = _clean_frame_file(m.group(2))
+        loc = f"{file}:{m.group(3)}:{m.group(4)}" if m.group(4) else f"{file}:{m.group(3)}"
+        return f"{m.group(1)}@{loc}" if m.group(1) else f"@{loc}"
+
+    return None
+
+
 def scrub_stack(raw: object, max_len: int = 1600) -> str:
-    """Keep ONLY stack frame locations (file, line, function/component), never exception message headers or source lines."""
+    """Reconstruct ONLY parsed stack frame locations (file, line, col, function/component); drop everything else."""
     if not raw:
         return ""
     lines: list[str] = []
-    for line in str(raw).splitlines()[-16:]:
-        stripped = line.rstrip()
-        if not stripped:
-            continue
-        if re.match(r'^\s*(?:at\s+|@\S+|in\s+[A-Za-z_]\w*|File\s+"[^"]+",\s+line\s+\d+)', stripped):
-            lines.append(scrub_text(stripped, max_len=240))
-    return "\n".join(lines)[:max_len]
+    for line in str(raw).splitlines():
+        parsed = _parse_stack_frame_line(line)
+        if parsed:
+            lines.append(parsed)
+    return "\n".join(lines[-16:])[:max_len]
 
 
 def normalize_route(raw: object) -> str:

@@ -137,11 +137,13 @@ class DiagnosticsIngestionTests(TestCase):
                 HTTP_X_APP_WEB_COMMIT="sha_priv_99",
             )
             try:
-                raise ValueError(f"{english_sentence} student@example.com عبارت خصوصی دانش‌آموز")
+                raise ValueError(
+                    f"{english_sentence}\nat room temperature molecules move faster\nin other words water boils\nstudent@example.com عبارت خصوصی دانش‌آموز"
+                )
             except ValueError as exc:
                 mw.process_exception(req, exc)
 
-            # 2. Client error payload containing unquoted English sentence + disallowed extra key
+            # 2. Client error payload containing unquoted English sentence + multi-line at/in lines + disallowed extra key
             r_cli = self.client.post(
                 "/api/v1/diagnostics/events/",
                 {
@@ -158,7 +160,12 @@ class DiagnosticsIngestionTests(TestCase):
                         "error_name": "TypeError",
                         "error_message": english_sentence,
                         "extra_note": extra_note,
-                        "stack": f"TypeError: {english_sentence}\n    at renderQuiz (quiz.tsx:42:9)",
+                        "stack": (
+                            f"TypeError: {english_sentence}\n"
+                            "at room temperature molecules move faster\n"
+                            "in other words water boils\n"
+                            "    at renderQuiz (quiz.tsx:42:9)"
+                        ),
                     },
                 },
                 format="json",
@@ -177,6 +184,8 @@ class DiagnosticsIngestionTests(TestCase):
             report = build_ai_report(g)
             blob = "\n".join([g.title, g.observed, ev.observed, str(ev.evidence), report, *bale_messages])
             self.assertNotIn("passive voice", blob)
+            self.assertNotIn("at room temperature", blob)
+            self.assertNotIn("in other words", blob)
             self.assertNotIn("extra_note", blob)
             self.assertNotIn("یادداشت آزمایشی", blob)
             self.assertNotIn("student@example.com", blob)

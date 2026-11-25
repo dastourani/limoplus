@@ -171,20 +171,71 @@ export function sanitizeErrorName(value: unknown): string {
   return 'Error';
 }
 
+function cleanFrameFile(raw: string): string {
+  const withoutQuery = raw.split('?')[0].split('#')[0];
+  return cleanString(withoutQuery, 160).slice(-140);
+}
+
+function parseStackFrameLine(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  // 1. Python traceback frame: File "...", line 123, in fn
+  const py = /^File\s+"([^"]+)",\s+line\s+(\d+)(?:,\s+in\s+([A-Za-z_][\w.<>]{0,60}))?/.exec(trimmed);
+  if (py) {
+    const file = cleanFrameFile(py[1]);
+    return py[3] ? `File "${file}", line ${py[2]}, in ${py[3]}` : `File "${file}", line ${py[2]}`;
+  }
+
+  // 2. React componentStack frame: at/in PascalCaseComponent [(created by Parent | at file:line[:col])]
+  const reactComp = /^(at|in)\s+([A-Z][A-Za-z0-9_$.]{0,60})(?:\s+\((?:created by\s+([A-Z][A-Za-z0-9_$.]{0,60})|at\s+([^()]+):(\d+)(?::(\d+))?)\))?\s*$/.exec(
+    trimmed,
+  );
+  if (reactComp) {
+    if (reactComp[3]) return `${reactComp[1]} ${reactComp[2]} (created by ${reactComp[3]})`;
+    if (reactComp[4]) {
+      const file = cleanFrameFile(reactComp[4]);
+      const loc = reactComp[6] ? `${file}:${reactComp[5]}:${reactComp[6]}` : `${file}:${reactComp[5]}`;
+      return `${reactComp[1]} ${reactComp[2]} (at ${loc})`;
+    }
+    return `${reactComp[1]} ${reactComp[2]}`;
+  }
+
+  // 3. V8 / Node / Hermes frame with location: at [async|new] fn (file:line[:col])
+  const v8Paren = /^(?:at|in)\s+(?:(?:async|new)\s+)?([A-Za-z_$][\w$.<>]{0,80})\s+\(([^()]+):(\d+)(?::(\d+))?\)\s*$/.exec(trimmed);
+  if (v8Paren) {
+    const file = cleanFrameFile(v8Paren[2]);
+    const loc = v8Paren[4] ? `${file}:${v8Paren[3]}:${v8Paren[4]}` : `${file}:${v8Paren[3]}`;
+    return `at ${v8Paren[1]} (${loc})`;
+  }
+
+  // 4. Anonymous V8 / Hermes frame: at [async] file:line[:col]
+  const v8Anon = /^at\s+(?:async\s+)?([^\s()]+):(\d+)(?::(\d+))?\s*$/.exec(trimmed);
+  if (v8Anon) {
+    const file = cleanFrameFile(v8Anon[1]);
+    return v8Anon[3] ? `at ${file}:${v8Anon[2]}:${v8Anon[3]}` : `at ${file}:${v8Anon[2]}`;
+  }
+
+  // 5. JSC / Safari / Firefox frame: [fn]@file:line[:col]
+  const jsc = /^([A-Za-z_$][\w$.<>]{0,80})?@([^\s@()]+):(\d+)(?::(\d+))?\s*$/.exec(trimmed);
+  if (jsc) {
+    const file = cleanFrameFile(jsc[2]);
+    const loc = jsc[4] ? `${file}:${jsc[3]}:${jsc[4]}` : `${file}:${jsc[3]}`;
+    return jsc[1] ? `${jsc[1]}@${loc}` : `@${loc}`;
+  }
+
+  return null;
+}
+
 export function sanitizeStack(value: unknown, maxLen = 1400): string {
   if (!value) return '';
-  const lines = String(value).split(/\r?\n/).slice(-14);
+  const lines = String(value).split(/\r?\n/);
   const out: string[] = [];
   for (const line of lines) {
-    const trimmed = line.replace(/\s+$/, '');
-    if (!trimmed) continue;
-    // Keep only frame location lines (`at fn (file:line:col)`, `@file:line`, `in Component`, `File "...", line N`).
-    // Never keep exception message header lines (`Error: <arbitrary text>`).
-    if (/^\s*(?:at\s+|@\S+|in\s+[A-Z]\w*|File\s+"[^"]+",\s+line\s+\d+)/.test(trimmed)) {
-      out.push(cleanString(trimmed, 240));
-    }
+    const parsed = parseStackFrameLine(line);
+    if (parsed) out.push(parsed);
   }
-  return out.join('\n').slice(0, maxLen);
+  return out.slice(-14).join('\n').slice(0, maxLen);
 }
 
 function clientErrorTitle(code: string, errorName: string): string {
