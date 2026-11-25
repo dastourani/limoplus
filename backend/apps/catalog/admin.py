@@ -2141,6 +2141,7 @@ def _assets_version() -> str:
         "catalog/preview-pane.js",
         "catalog/limo-preview.js",
         "catalog/limo-editor.js",
+        "diagnostics/browser-diag.js",
         "catalog/fonts/Vazirmatn_400Regular.ttf",
         "catalog/fonts/Vazirmatn_700Bold.ttf",
         "catalog/fonts/Vazirmatn_800ExtraBold.ttf",

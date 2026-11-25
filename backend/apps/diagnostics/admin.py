@@ -35,6 +35,25 @@ class SuperuserOnlyAdmin(admin.ModelAdmin):
         return bool(request.user and request.user.is_superuser)
 
 
+class PlatformFilter(admin.SimpleListFilter):
+    title = "بستر / پلتفرم"
+    parameter_name = "platform"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("panel", "پنل استاد و مدیر"),
+            ("website", "سایت"),
+            ("web", "وب‌اپ"),
+            ("android", "اپ اندروید"),
+        )
+
+    def queryset(self, request, queryset):
+        val = self.value()
+        if val:
+            return queryset.filter(events__platform=val).distinct()
+        return queryset
+
+
 @admin.register(ErrorGroup)
 class ErrorGroupAdmin(SuperuserOnlyAdmin):
     list_display = (
@@ -48,7 +67,7 @@ class ErrorGroupAdmin(SuperuserOnlyAdmin):
         "last_build",
         "last_seen_col",
     )
-    list_filter = ("status", "severity", "source", "kind")
+    list_filter = ("status", "severity", "source", PlatformFilter, "kind")
     search_fields = ("title", "code", "route", "first_build", "last_build", "events__event_id", "events__request_id")
     readonly_fields = (
         "fingerprint",

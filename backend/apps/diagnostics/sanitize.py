@@ -63,7 +63,8 @@ _QUOTED_SENSITIVE_RE = re.compile(r"([\"'«])(?:(?=(\\?))\2.)*?\1")
 _STACK_FRAME_LINE_RE = re.compile(r"^\s*(?:at\s+.+|File\s+\"[^\"]+\",\s+line\s+\d+.*|[^\s:]+(?:Error|Exception)(?::.*)?)$")
 _UUID_OR_HEX_RE = re.compile(r"/[0-9a-fA-F]{16,}(?=/|$)")
 _INT_SEGMENT_RE = re.compile(r"/\d+(?=/|$)")
-_BOOK_SLUG_SEGMENT_RE = re.compile(r"^(/api/v1/books/|/book/)([^/]+)")
+_BOOK_SLUG_SEGMENT_RE = re.compile(r"^((?:/site)?(?:/api/v1/books/|/books/|/book/))([^/]+)")
+_TOKEN_SEGMENT_RE = re.compile(r"^((?:/site)?(?:/join/|/verify-email/|/invite/))([^/]+)")
 
 _WEB_COMMIT_CACHE: dict[str, str] = {}
 
@@ -95,6 +96,18 @@ def user_ref_for(user_id: int | None) -> str:
         hashlib.sha256,
     ).hexdigest()[:12]
     return f"u-{digest}"
+
+
+def diag_session_tag(user_id: int | None, session_key: str | None) -> str:
+    """Opaque session-bound HMAC proving capture-time and send-time share the same authenticated session."""
+    if not user_id or not session_key:
+        return ""
+    digest = hmac.new(
+        str(settings.HASH_KEY).encode("utf-8"),
+        f"diag-sess:{user_id}:{session_key}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:12]
+    return f"s-{digest}"
 
 
 def scrub_text(raw: object, max_len: int = 1000) -> str:
@@ -147,13 +160,13 @@ def scrub_error_name(raw: object, fallback: str = "Error") -> str:
 
 _PY_FRAME_RE = re.compile(r'^File\s+"([^"]+)",\s+line\s+(\d+)(?:,\s+in\s+([A-Za-z_][\w.<>]{0,60}))?')
 _V8_PAREN_FRAME_RE = re.compile(
-    r"^(?:at|in)\s+(?:(?:async|new)\s+)?([A-Za-z_$][\w$.<>]{0,80})\s+\(([^()]+):(\d+)(?::(\d+))?\)\s*$"
+    r"^(?:at|in)\s+(?:(?:async|new)\s+)?([A-Za-z_$][\w$.<>]{0,80})\s+\(([^()]+?):(\d+)(?::(\d+))?\)\s*$"
 )
-_V8_ANON_FRAME_RE = re.compile(r"^at\s+(?:async\s+)?([^\s()]+):(\d+)(?::(\d+))?\s*$")
-_JSC_FRAME_RE = re.compile(r"^([A-Za-z_$][\w$.<>]{0,80})?@([^\s@()]+):(\d+)(?::(\d+))?\s*$")
+_V8_ANON_FRAME_RE = re.compile(r"^at\s+(?:async\s+)?([^\s()]+?):(\d+)(?::(\d+))?\s*$")
+_JSC_FRAME_RE = re.compile(r"^([A-Za-z_$][\w$.<>]{0,80})?@([^\s@()]+?):(\d+)(?::(\d+))?\s*$")
 _REACT_COMP_FRAME_RE = re.compile(
     r"^(at|in)\s+([A-Z][A-Za-z0-9_$.]{0,60})"
-    r"(?:\s+\((?:created by\s+([A-Z][A-Za-z0-9_$.]{0,60})|at\s+([^()]+):(\d+)(?::(\d+))?)\))?\s*$"
+    r"(?:\s+\((?:created by\s+([A-Z][A-Za-z0-9_$.]{0,60})|at\s+([^()]+?):(\d+)(?::(\d+))?)\))?\s*$"
 )
 
 
@@ -222,7 +235,20 @@ def normalize_route(raw: object) -> str:
     path = _UUID_OR_HEX_RE.sub("/<hex>", path)
     path = _INT_SEGMENT_RE.sub("/<id>", path)
     path = _BOOK_SLUG_SEGMENT_RE.sub(r"\1<slug>", path)
+    path = _TOKEN_SEGMENT_RE.sub(r"\1<token>", path)
     return scrub_text(path, 200)
+
+
+def normalize_operation(raw: object) -> str:
+    s = scrub_text(raw, 120)
+    if not s:
+        return ""
+    parts = s.split(" ", 1)
+    if len(parts) == 2 and parts[1].startswith("/"):
+        return f"{parts[0]} {normalize_route(parts[1])}"[:80]
+    if s.startswith("/"):
+        return normalize_route(s)[:80]
+    return s[:80]
 
 
 def sanitize_scalar(value: object, max_len: int = 500):
@@ -270,6 +296,8 @@ def sanitize_breadcrumbs(raw: object) -> list[dict]:
                     )
                 else:
                     entry[key] = sanitize_scalar(item[key], max_len=160)
+        if entry.get("type") in ("route", "api") and isinstance(entry.get("name"), str):
+            entry["name"] = normalize_operation(entry["name"])
         if entry:
             out.append(entry)
     return out
@@ -289,6 +317,8 @@ def make_fingerprint(source: str, kind: str, code: str, route: str, title: str) 
         (kind or "").strip().lower(),
         (code or "").strip().lower(),
         normalize_route(route),
-        scrub_text(title, 120).lower() if code in ("unhandled_exception", "client_error", "react_render", "js_error") else "",
+        scrub_text(title, 120).lower()
+        if code in ("unhandled_exception", "client_error", "react_render", "js_error", "unhandled_rejection")
+        else "",
     ])
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:40]

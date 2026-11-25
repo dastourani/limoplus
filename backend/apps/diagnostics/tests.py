@@ -611,3 +611,201 @@ class DiagnosticsAdminTests(TestCase):
         self.ev.group.refresh_from_db()
         self.assertEqual(self.ev.group.status, ErrorGroup.Status.RESOLVED)
         self.assertIsNotNone(self.ev.group.resolved_at)
+
+
+class BrowserDiagnosticsTests(TestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(phone="09120003333", password="pass", is_staff=True, is_superuser=False)
+        self.teacher2 = User.objects.create_user(phone="09120005555", password="pass", is_staff=True, is_superuser=False)
+        self.super = User.objects.create_superuser(phone="09120004444", password="pass")
+
+    @staticmethod
+    def _extract_session_tag(html: str) -> str:
+        import re
+
+        m = re.search(r'data-session-tag="([^"]*)"', html)
+        return m.group(1) if m else ""
+
+    def test_panel_and_website_templates_include_browser_reporter(self):
+        login_res = self.client.get("/admin/login/")
+        self.assertEqual(login_res.status_code, 200)
+        self.assertContains(login_res, "diagnostics/browser-diag.js")
+        self.assertContains(login_res, 'data-platform="panel"')
+        self.assertContains(login_res, 'data-channel="login"')
+        self.assertEqual(self._extract_session_tag(login_res.content.decode()), "")
+
+        self.client.force_login(self.teacher)
+        teacher_res = self.client.get("/admin/")
+        self.assertEqual(teacher_res.status_code, 200)
+        self.assertContains(teacher_res, 'data-platform="panel"')
+        self.assertContains(teacher_res, 'data-channel="teacher"')
+        self.assertTrue(self._extract_session_tag(teacher_res.content.decode()).startswith("s-"))
+
+        self.client.force_login(self.super)
+        super_res = self.client.get("/admin/")
+        self.assertEqual(super_res.status_code, 200)
+        self.assertContains(super_res, 'data-platform="panel"')
+        self.assertContains(super_res, 'data-channel="superadmin"')
+        self.assertTrue(self._extract_session_tag(super_res.content.decode()).startswith("s-"))
+
+        self.client.logout()
+        site_res = self.client.get("/site/")
+        self.assertEqual(site_res.status_code, 200)
+        self.assertContains(site_res, "diagnostics/browser-diag.js")
+        self.assertContains(site_res, 'data-platform="website"')
+        self.assertContains(site_res, 'data-channel="public"')
+        self.assertEqual(self._extract_session_tag(site_res.content.decode()), "")
+
+    def test_session_authenticated_panel_ingest_and_platform_filter(self):
+        self.client.force_login(self.teacher)
+        teacher_tag = self._extract_session_tag(self.client.get("/admin/").content.decode())
+        res = self.client.post(
+            "/api/v1/diagnostics/events/",
+            data={
+                "events": [
+                    {
+                        "event_id": "evt_browser_panel_1",
+                        "kind": "client_error",
+                        "code": "asset_load_error",
+                        "title": "خطا در بارگذاری فایل اسکریپت",
+                        "route": "/admin/catalog/book/12/chapters/",
+                        "platform": "panel",
+                        "channel": "teacher",
+                        "app_build": "1732500000",
+                        "session_tag": teacher_tag,
+                        "context": {
+                            "error_name": "SCRIPTLoadError",
+                            "location": "/static/catalog/panel.js",
+                        },
+                    }
+                ]
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json(), {"accepted": 1, "duplicates": 0})
+        ev = ErrorEvent.objects.get(event_id="evt_browser_panel_1")
+        self.assertEqual(ev.platform, "panel")
+        self.assertEqual(ev.channel, "teacher")
+        self.assertTrue(ev.user_ref.startswith("u-"))
+        self.assertEqual(ev.group.title, "خطا در بارگذاری فایل اسکریپت یا استایل صفحه")
+
+        record_event(
+            source=ErrorGroup.Source.CLIENT,
+            kind=ErrorGroup.Kind.CLIENT_ERROR,
+            code="js_error",
+            title="website err",
+            event_id="evt_browser_site_1",
+            platform="website",
+            channel="public",
+            route="/site/books/math-1/",
+            context={"error_name": "TypeError"},
+        )
+
+        self.client.force_login(self.super)
+        filtered = self.client.get("/admin/diagnostics/errorgroup/?platform=panel")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertContains(filtered, "خطا در بارگذاری فایل اسکریپت یا استایل صفحه")
+        self.assertNotContains(filtered, "/site/books/&lt;slug&gt;/")
+
+    def test_mismatched_session_tag_never_attributes_guest_or_other_account_event_to_current_user(self):
+        # 1. Guest queues an event (session_tag=""), then Teacher 1 logs in and flushes -> user_ref must stay empty.
+        self.client.force_login(self.teacher)
+        res_guest = self.client.post(
+            "/api/v1/diagnostics/events/",
+            data={
+                "events": [
+                    {
+                        "event_id": "evt_guest_queued_1",
+                        "kind": "client_error",
+                        "code": "js_error",
+                        "title": "guest queued",
+                        "route": "/site/",
+                        "install_id": "inst_shared_pc",
+                        "platform": "website",
+                        "channel": "public",
+                        "session_tag": "",
+                        "context": {"error_name": "TypeError"},
+                    }
+                ]
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(res_guest.status_code, 200)
+        ev_guest = ErrorEvent.objects.get(event_id="evt_guest_queued_1")
+        self.assertEqual(ev_guest.user_ref, "")
+        self.assertEqual(ev_guest.install_id, "inst_shared_pc")
+
+        # 2. Teacher 1 captures event with Teacher 1's session_tag, then Teacher 2 logs in and flushes -> user_ref must stay empty.
+        teacher1_tag = self._extract_session_tag(self.client.get("/admin/").content.decode())
+        self.client.force_login(self.teacher2)
+        res_cross = self.client.post(
+            "/api/v1/diagnostics/events/",
+            data={
+                "events": [
+                    {
+                        "event_id": "evt_cross_acct_1",
+                        "kind": "client_error",
+                        "code": "js_error",
+                        "title": "teacher1 queued",
+                        "route": "/admin/",
+                        "install_id": "inst_shared_pc",
+                        "platform": "panel",
+                        "channel": "teacher",
+                        "session_tag": teacher1_tag,
+                        "context": {"error_name": "ReferenceError"},
+                    }
+                ]
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(res_cross.status_code, 200)
+        ev_cross = ErrorEvent.objects.get(event_id="evt_cross_acct_1")
+        self.assertEqual(ev_cross.user_ref, "")
+        self.assertEqual(ev_cross.install_id, "inst_shared_pc")
+
+    def test_normalize_route_operation_breadcrumbs_and_ai_report_scrub_tokens(self):
+        from apps.diagnostics.sanitize import normalize_route
+        from apps.diagnostics.service import build_ai_report
+
+        self.assertEqual(normalize_route("/join/CLASS42/?next=/x"), "/join/<token>/")
+        self.assertEqual(normalize_route("/site/join/SECRET_CODE/"), "/site/join/<token>/")
+        self.assertEqual(normalize_route("/verify-email/abc-token-99/"), "/verify-email/<token>/")
+        self.assertEqual(normalize_route("/invite/inv-token-88/"), "/invite/<token>/")
+        self.assertEqual(normalize_route("/site/books/physics-10/"), "/site/books/<slug>/")
+        self.assertEqual(normalize_route("/books/chem-11/"), "/books/<slug>/")
+
+        ev, _ = record_event(
+            source=ErrorGroup.Source.CLIENT,
+            kind=ErrorGroup.Kind.NETWORK,
+            code="api_5xx",
+            title="پاسخ خطای سرور (500)",
+            event_id="evt_token_scrub_1",
+            route="/join/SECRET_JOIN_TOKEN_99/",
+            operation="POST /verify-email/SECRET_EMAIL_TOKEN_42/",
+            breadcrumbs=[
+                {"at": "2026-11-25T10:00:00Z", "type": "route", "name": "/join/SECRET_JOIN_TOKEN_99/"},
+                {"at": "2026-11-25T10:00:01Z", "type": "api", "name": "POST /verify-email/SECRET_EMAIL_TOKEN_42/", "detail": "500"},
+            ],
+            context={"status_code": 500, "method": "POST"},
+        )
+        report = build_ai_report(ev.group)
+        self.assertIn("/join/<token>/", report)
+        self.assertIn("POST /verify-email/<token>/", report)
+        self.assertNotIn("SECRET_JOIN_TOKEN_99", report)
+        self.assertNotIn("SECRET_EMAIL_TOKEN_42", report)
+
+    def test_scrub_stack_preserves_line_and_col_when_url_has_query_string(self):
+        from apps.diagnostics.sanitize import scrub_stack
+
+        cleaned = scrub_stack(
+            "TypeError: secret message\n"
+            "    at renderNode (https://panel.example.com/static/catalog/panel.js?v=123:42:9)\n"
+            "    at https://panel.example.com/static/site.js?token=abc:18:3"
+        )
+        self.assertEqual(
+            cleaned,
+            "at renderNode (https://panel.example.com/static/catalog/panel.js:42:9)\n"
+            "at https://panel.example.com/static/site.js:18:3",
+        )
+
