@@ -803,9 +803,9 @@ def _book_reviews_data(book, user=None):
     total_count = reviews_qs.count()
     if total_count == 0:
         return {
-            "average_rating": 5.0,
-            "satisfaction_rate": 100,
-            "serious_readers_rating": 5.0,
+            "average_rating": None,
+            "satisfaction_rate": None,
+            "serious_readers_rating": None,
             "total_count": 0,
             "reviews": [],
         }

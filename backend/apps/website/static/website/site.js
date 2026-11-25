@@ -18,13 +18,15 @@
       var w = Number(el.getAttribute('data-w')) || el.clientWidth || 170;
       if (el.clientWidth && el.clientWidth < w) w = el.clientWidth;
       var ratingText = w >= 100 ? formatRating(data.rating, data.rating_count) : '';
-      var ratingHtml = ratingText
-        ? '<span class="cover-rating" aria-label="امتیاز ' + ratingText + ' از ۵"><span class="cover-rating-star" aria-hidden="true">★</span><span>' + ratingText + '</span></span>'
-        : '';
+      var ratingChip = function (cls) {
+        return ratingText
+          ? '<span class="' + cls + '" aria-label="امتیاز ' + ratingText + ' از ۵"><span class="cover-rating-star" aria-hidden="true">★</span><span>' + ratingText + '</span></span>'
+          : '';
+      };
       if (data.image) {
-        el.innerHTML = '<img alt="" loading="lazy" src="' + data.image.replace(/"/g, '&quot;') + '">' + ratingHtml;
+        el.innerHTML = '<img alt="" loading="lazy" src="' + data.image.replace(/"/g, '&quot;') + '">' + ratingChip('cover-rating');
       } else if (P && P.coverHtml) {
-        el.innerHTML = P.coverHtml(data, 'dark', w) + ratingHtml;
+        el.innerHTML = P.coverHtml(data, 'dark', w) + ratingChip('cover-rating cover-rating-dark');
       }
     });
   }

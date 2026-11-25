@@ -191,6 +191,11 @@ class PaymentTests(TestCase):
         self.assertEqual(offer["price"], 199_000)
         self.assertEqual(offer["discount"]["amount"], 50_000)
         self.assertEqual(offer["discount"]["percent"], 20.1)
+
+        from apps.commerce.pricing import _percentage
+        self.assertEqual(_percentage(499_900, 500_000), 99)
+        self.assertEqual(_percentage(100, 500_000), 0.1)
+        self.assertEqual(_percentage(500_000, 500_000), 100)
         self.assertEqual(
             offer["product_status"],
             {"state": "paid", "preview": "sample", "promotion": "discount"},

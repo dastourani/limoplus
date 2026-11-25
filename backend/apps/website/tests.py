@@ -314,11 +314,13 @@ class WebsiteTests(TestCase):
         self.assertContains(home, "۲۰٫۱٪ تخفیف")
         self.assertContains(home, "اشتراک سه‌ماهه")
         self.assertContains(home, "قیمت ویژه")
+        self.assertNotContains(home, "صرفه‌جویی")
 
         book_page = Client().get("/site/books/math-1/")
         self.assertContains(book_page, "قیمت عادی")
         self.assertContains(book_page, "قیمت ویژه")
-        self.assertContains(book_page, "صرفه‌جویی ۵۰ هزار تومان")
+        self.assertContains(book_page, "۵۰ هزار تومان تخفیف")
+        self.assertNotContains(book_page, "صرفه‌جویی")
 
         books_page = Client().get("/site/books/")
         self.assertRegex(

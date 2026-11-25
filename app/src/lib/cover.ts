@@ -19,6 +19,10 @@ export type CoverPalette = {
   muted: string;
   rule: string;
   brand: string;
+  ratingBg: string;
+  ratingBorder: string;
+  ratingStar: string;
+  ratingText: string;
   /** Hounsfield bar, air → bone. */
   scale: [string, string, string, string, string];
   pixel: (alpha: number) => string;
@@ -34,6 +38,10 @@ export function coverPalette(theme: CoverTheme): CoverPalette {
         muted: '#A9B6AD',
         rule: '#F5C518',
         brand: '#C9D2C9',
+        ratingBg: 'rgba(255, 255, 255, 0.11)',
+        ratingBorder: 'rgba(255, 255, 255, 0.18)',
+        ratingStar: '#F5C518',
+        ratingText: '#FFFFFF',
         scale: ['rgba(255,255,255,0.04)', 'rgba(255,255,255,0.2)', 'rgba(255,255,255,0.4)', 'rgba(255,255,255,0.65)', 'rgba(255,255,255,0.92)'],
         pixel: (a) => `rgba(255,255,255,${a})`,
       }
@@ -45,6 +53,10 @@ export function coverPalette(theme: CoverTheme): CoverPalette {
         muted: '#56655B',
         rule: '#D9A900',
         brand: '#56655B',
+        ratingBg: 'rgba(23, 32, 26, 0.08)',
+        ratingBorder: 'rgba(23, 32, 26, 0.16)',
+        ratingStar: '#C59000',
+        ratingText: '#17201A',
         scale: ['rgba(23,32,26,0.9)', 'rgba(23,32,26,0.62)', 'rgba(23,32,26,0.38)', 'rgba(23,32,26,0.16)', 'rgba(23,32,26,0.03)'],
         pixel: (a) => `rgba(23,32,26,${(a * 0.8).toFixed(3)})`,
       };

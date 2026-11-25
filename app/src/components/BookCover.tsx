@@ -65,28 +65,34 @@ export const BookCover = memo(function BookCover({
   const ast = useMemo(() => motifAst(coverMotifSvg(book.motif || 'ct', theme, book.drawing)), [book.motif, book.drawing, theme]);
   const byline = coverByline(book.author, book.edition);
   const ratingLabel = width >= 100 ? coverRatingLabel(book.rating, book.rating_count) : null;
-  const badgeScale = Math.max(k, 0.7);
-  const ratingBadge = ratingLabel ? (
-    <View
-      pointerEvents="none"
-      style={[
-        styles.ratingBadge,
-        {
-          left: Math.round(10 * badgeScale),
-          bottom: Math.round(11 * badgeScale),
-          paddingHorizontal: width >= 180 ? 8 : 6,
-          paddingVertical: width >= 180 ? 3 : 2,
-        },
-      ]}
-    >
-      <Text allowFontScaling={false} style={[styles.ratingStar, { fontSize: width >= 180 ? 11 : 10 }]}>
-        ★
-      </Text>
-      <Text allowFontScaling={false} style={[styles.ratingText, { fontSize: width >= 180 ? 12 : 11 }]}>
-        {ratingLabel}
-      </Text>
-    </View>
-  ) : null;
+  const renderRatingBadge = (uploaded: boolean) => {
+    if (!ratingLabel) return null;
+    const badgeLeft = Math.max(8, Math.round(16 * k));
+    const badgeBottom = Math.max(8, Math.round(24 * k - (width >= 180 ? 10 : 9)));
+    return (
+      <View
+        pointerEvents="none"
+        style={[
+          styles.ratingBadge,
+          {
+            left: badgeLeft,
+            bottom: badgeBottom,
+            paddingHorizontal: width >= 180 ? 8 : 6,
+            paddingVertical: width >= 180 ? 3 : 2,
+            backgroundColor: uploaded ? 'rgba(23, 32, 26, 0.84)' : p.ratingBg,
+            borderColor: uploaded ? 'rgba(255, 255, 255, 0.22)' : p.ratingBorder,
+          },
+        ]}
+      >
+        <Text allowFontScaling={false} style={[styles.ratingStar, { fontSize: width >= 180 ? 11 : 10, color: uploaded ? '#F5C518' : p.ratingStar }]}>
+          ★
+        </Text>
+        <Text allowFontScaling={false} style={[styles.ratingText, { fontSize: width >= 180 ? 12 : 11, color: uploaded ? '#FFFFFF' : p.ratingText }]}>
+          {ratingLabel}
+        </Text>
+      </View>
+    );
+  };
   const frame = {
     width,
     height: width * 1.5,
@@ -101,7 +107,7 @@ export const BookCover = memo(function BookCover({
       <View style={[styles.shadow, frame, { overflow: 'hidden' }]} accessibilityLabel={`جلد کتاب ${book.title}`}>
         {/* Kept on the phone after the first download (memory and disk), so a shelf never fetches it again. */}
         <Image source={{ uri: book.cover }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" transition={120} />
-        {ratingBadge}
+        {renderRatingBadge(true)}
       </View>
     );
   }
@@ -145,7 +151,7 @@ export const BookCover = memo(function BookCover({
           </Text>
         </View>
       </View>
-      {ratingBadge}
+      {renderRatingBadge(false)}
     </View>
   );
 });
@@ -165,10 +171,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     borderRadius: 999,
-    backgroundColor: 'rgba(23, 32, 26, 0.84)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.16)',
   },
-  ratingStar: { color: '#F5C518', fontWeight: '900' },
-  ratingText: { color: '#FFFFFF', fontWeight: '800' },
+  ratingStar: { fontWeight: '900' },
+  ratingText: { fontWeight: '800' },
 });
