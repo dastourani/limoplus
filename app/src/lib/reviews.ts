@@ -12,6 +12,19 @@ export function reviewLabel(r: ReviewItem): string {
   return `${r.is_exam ? 'آزمون یادآوری' : 'مرور'} فصل ${n}«${r.chapter_title}» از ${r.book_title}: ${size}`;
 }
 
+export function reviewReasonLine(r: Pick<ReviewItem, 'reason' | 'small_chapter' | 'flashcard_count'>): string {
+  return [
+    r.reason,
+    r.small_chapter
+      ? r.flashcard_count
+        ? `فصل کم‌تست؛ مرور ${toPersianDigits(r.flashcard_count)} فلش‌کارت هم پیشنهاد می‌شود`
+        : 'فصل کم‌تست (یادآوری سریع)'
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 export function reviewResumeState(session: Pick<ReviewSessionData, 'questions' | 'answers'>): {
   firstUnansweredIndex: number;
   answeredCount: number;

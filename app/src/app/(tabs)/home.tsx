@@ -22,7 +22,7 @@ import { ReadingCards, type ReadingItem } from '../../components/home/ReadingCar
 import { SectionHeader } from '../../components/home/SectionHeader';
 import { TodayTiles } from '../../components/home/TodayTiles';
 import { BookPill } from '../../components/home/BookPill';
-import { openReview, reviewLabel } from '../../lib/reviews';
+import { openReview, reviewLabel, reviewReasonLine } from '../../lib/reviews';
 import { storage, type ReadingSpot } from '../../lib/storage';
 import { useLocalStudySeconds } from '../../lib/studyTime';
 import { keepIfSame, useApi } from '../../lib/useApi';
@@ -384,6 +384,9 @@ export default function Home() {
                       >
                         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                           <Text style={[styles.needsTitle, rtl]} numberOfLines={1}>{reviewLabel(item)}</Text>
+                          {!!reviewReasonLine(item) && (
+                            <Text style={[styles.needsSub, rtl]} numberOfLines={2}>{reviewReasonLine(item)}</Text>
+                          )}
                         </View>
                         <View style={styles.needsPill}>
                           <Text style={styles.needsPillText}>ادامه</Text>

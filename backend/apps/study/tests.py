@@ -860,6 +860,193 @@ class ReviewCycleTests(TestCase):
         self.assertEqual(day3["reviews"], [])
         self.assertEqual((day3["reviews_done_today"], day3["reviews_waiting"]), (3, 1))
 
+    def test_repeat_finish_review_is_idempotent(self):
+        from .models import ChapterReview, ReviewSession
+
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        self._age(1)
+        rid = ChapterReview.objects.get().id
+        s = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": rid}, format="json").data
+        for q in s["questions"]:
+            right = Question.objects.get(pk=q["id"]).choices.get(is_correct=True)
+            self.client.post(
+                f"/api/v1/questions/{q['id']}/answer/",
+                {"choice_id": right.id, "review_session": s["id"]},
+                format="json",
+            )
+        first = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
+        second = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
+
+        self.assertTrue(first["finished"])
+        self.assertTrue(second["finished"])
+        self.assertEqual((second["answered"], second["right"]), (first["answered"], first["right"]))
+        self.assertEqual(second["next_due_on"], first["next_due_on"])
+        self.assertEqual(second["next_in_days"], first["next_in_days"])
+
+        review = ChapterReview.objects.get(pk=rid)
+        session = ReviewSession.objects.get(pk=s["id"])
+        self.assertEqual(review.done_count, 1)
+        self.assertEqual((review.last_score, session.score), (1.0, 1.0))
+        self.assertEqual(self.client.get("/api/v1/me/today/").data["reviews_done_today"], 1)
+
+    def test_book_review_rotates_all_eligible_chapters_across_sittings(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.commerce.models import Entitlement
+
+        from .models import BookReview, ChapterReview
+
+        book = self.chapter.get_parent()
+        Entitlement.objects.create(user=self.user, book=book)
+        # Create 6 more chapters so the book has 8 finished chapters total (> BATCH=5).
+        for pos in range(3, 9):
+            ch = book.add_child(kind=ContentNode.Kind.CHAPTER, title=f"فصل {pos}", slug=f"s3-ch-{pos}", position=pos, is_published=True)
+            sec = ch.add_child(kind=ContentNode.Kind.SECTION, title=f"بخش {pos}", slug=f"s3-sec-{pos}", is_published=True)
+            for k in range(1, 3):
+                q = Question.objects.create(node=sec, slug=f"s3-q-{pos}-{k}", stem=f"سوال {pos}-{k}؟", explanation="-", difficulty="easy")
+                q.choices.create(order=0, text="درست", is_correct=True)
+                q.choices.create(order=1, text="غلط", is_correct=False)
+
+        for ch in book.get_children():
+            self.client.post(f"/api/v1/nodes/{ch.id}/finish/")
+
+        # Make only BookReview due so ChapterReviews don't interfere.
+        future = timezone.localdate() + timedelta(days=5)
+        ChapterReview.objects.update(due_on=future)
+        br = BookReview.objects.get(user=self.user, book=book)
+        br.due_on = timezone.localdate() - timedelta(days=1)
+        br.save(update_fields=["due_on"])
+
+        q_to_chapter = {}
+        for ch in book.get_children():
+            for qid in Question.objects.filter(node__path__startswith=ch.path, is_archived=False).values_list("id", flat=True):
+                q_to_chapter[qid] = ch.id
+
+        # Sitting 1 (5 questions) covers 5 distinct chapters; review_more (+5) covers all 8 eligible chapters.
+        s1 = self.client.post("/api/v1/me/reviews/start/", {"kind": "book", "id": br.id}, format="json").data
+        ch_first_5 = {q_to_chapter[q["id"]] for q in s1["questions"]}
+        self.assertEqual(len(ch_first_5), 5)
+
+        s1_more = self.client.post(f"/api/v1/me/reviews/{s1['id']}/more/").data
+        ch_all_10 = {q_to_chapter[q["id"]] for q in s1_more["questions"]}
+        self.assertEqual(len(ch_all_10), 8, "all 8 eligible chapters should be covered across the sitting")
+
+        # Complete Sitting 1 with just its first 5 chapters' questions? No, Sitting 1 already served all 8 chapters in
+        # s1_more; verify Sitting 2 rotates starting from the chapters not in Sitting 1's second batch or oldest covered.
+        # Reset to test 2 consecutive 5-question sittings cleanly:
+        for q in s1["questions"]:
+            right = Question.objects.get(pk=q["id"]).choices.get(is_correct=True)
+            self.client.post(
+                f"/api/v1/questions/{q['id']}/answer/",
+                {"choice_id": right.id, "review_session": s1["id"]},
+                format="json",
+            )
+        # Answer 5 more so minimum=10 is met and finish Sitting 1, then run Sitting 2 on a 5-question cycle via fresh BookReview.
+        for q in s1_more["questions"][5:]:
+            right = Question.objects.get(pk=q["id"]).choices.get(is_correct=True)
+            self.client.post(
+                f"/api/v1/questions/{q['id']}/answer/",
+                {"choice_id": right.id, "review_session": s1["id"]},
+                format="json",
+            )
+        self.client.post(f"/api/v1/me/reviews/{s1['id']}/finish/")
+
+        # Now start a fresh BookReview cycle with last_served containing ONLY 5 chapters (simulating a 5-question sitting):
+        # the next sitting must prioritize the 3 chapters that were NOT covered last time.
+        from .models import ReviewSession
+
+        ReviewSession.objects.filter(book_review=br).delete()
+        five_qs = [next(qid for qid, cid in q_to_chapter.items() if cid == c.id) for c in list(book.get_children().order_by("position"))[:5]]
+        covered_prev = {q_to_chapter[qid] for qid in five_qs}
+        missing_prev = set(q_to_chapter.values()) - covered_prev
+        self.assertEqual(len(missing_prev), 3)
+
+        br.last_served = five_qs
+        br.due_on = timezone.localdate() - timedelta(days=1)
+        br.save(update_fields=["last_served", "due_on"])
+
+        s2 = self.client.post("/api/v1/me/reviews/start/", {"kind": "book", "id": br.id}, format="json").data
+        ch_s2 = {q_to_chapter[q["id"]] for q in s2["questions"]}
+        self.assertEqual(len(ch_s2), 5)
+        self.assertTrue(missing_prev.issubset(ch_s2), "chapters missed in the previous sitting must come first")
+
+    def test_review_uses_estimated_seconds_and_returns_reason(self):
+        from apps.commerce.models import Entitlement
+
+        from .models import ChapterReview
+
+        book = self.chapter.get_parent()
+        Entitlement.objects.create(user=self.user, book=book)
+        other_ch = ContentNode.objects.get(slug="derivatives")
+        sec_other = other_ch.get_children().first()
+        # Set every question in self.chapter to 180s -> 5 questions = 15 minutes (not fixed 7 min).
+        Question.objects.filter(node__path__startswith=self.chapter.path).update(estimated_seconds=180)
+        # Ensure other_ch has 5 questions at 30s each -> 5 * 30s = 2.5 min -> 3 min (or 2 with round-to-even).
+        for k in range(1, 5):
+            q = Question.objects.create(node=sec_other, slug=f"s3-fast-{k}", stem=f"سریع {k}", explanation="-", difficulty="easy", estimated_seconds=30)
+            q.choices.create(order=0, text="بله", is_correct=True)
+            q.choices.create(order=1, text="خیر", is_correct=False)
+        Question.objects.filter(node__path__startswith=other_ch.path).update(estimated_seconds=30)
+
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        self.client.post(f"/api/v1/nodes/{other_ch.id}/finish/")
+        self._age(2)
+
+        today = self.client.get("/api/v1/me/today/").data
+        by_ch = {r["chapter_id"]: r for r in today["reviews"] if r["kind"] == "chapter"}
+        self.assertEqual(by_ch[self.chapter.id]["minutes"], 15)
+        self.assertLessEqual(by_ch[other_ch.id]["minutes"], 3)
+        self.assertIn("یک‌روزه", by_ch[self.chapter.id]["reason"])
+        self.assertIn("عقب افتاده", by_ch[self.chapter.id]["reason"])
+
+        # A weak score sets a weak-repeat reason
+        ChapterReview.objects.filter(chapter=self.chapter).update(last_score=0.4)
+        from .reviews import recheck
+
+        recheck(self.user)
+        today2 = self.client.get("/api/v1/me/today/").data
+        ch1 = next(r for r in today2["reviews"] if r.get("chapter_id") == self.chapter.id)
+        self.assertIn("ضعیف", ch1["reason"])
+
+    def test_small_chapter_notice_and_flashcard_suggestion(self):
+        from apps.commerce.models import Entitlement
+        from apps.learning.models import Flashcard
+
+        from .models import ChapterReview
+
+        book = self.chapter.get_parent()
+        Entitlement.objects.create(user=self.user, book=book)
+        small_ch = book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل کوتاه", slug="s3-small-ch", position=9, is_published=True)
+        sec_small = small_ch.add_child(kind=ContentNode.Kind.SECTION, title="بخش کوتاه", slug="s3-small-sec", is_published=True)
+        q_small = Question.objects.create(node=sec_small, slug="s3-small-q1", stem="تست کوتاه؟", explanation="-", difficulty="easy")
+        q_small.choices.create(order=0, text="درست", is_correct=True)
+        q_small.choices.create(order=1, text="غلط", is_correct=False)
+        for k in range(1, 3):
+            Flashcard.objects.create(node=sec_small, slug=f"s3-fc-{k}", title=f"کارت {k}", point="نکته", is_free=True)
+
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        self.client.post(f"/api/v1/nodes/{small_ch.id}/finish/")
+        self._age(1)
+
+        today = self.client.get("/api/v1/me/today/").data
+        small_item = next(r for r in today["reviews"] if r.get("chapter_id") == small_ch.id)
+        normal_item = next(r for r in today["reviews"] if r.get("chapter_id") == self.chapter.id)
+        self.assertTrue(small_item["small_chapter"])
+        self.assertEqual(small_item["flashcard_count"], 2)
+        self.assertFalse(normal_item["small_chapter"])
+        self.assertEqual(normal_item["flashcard_count"], 0)
+
+        s_small = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": small_item["id"]}, format="json").data
+        self.assertTrue(s_small["small_chapter"])
+        self.assertEqual((s_small["pool_size"], s_small["flashcard_count"], s_small["chapter_id"]), (1, 2, small_ch.id))
+
+        rid_norm = ChapterReview.objects.get(chapter=self.chapter).id
+        s_norm = self.client.post("/api/v1/me/reviews/start/", {"kind": "chapter", "id": rid_norm}, format="json").data
+        self.assertFalse(s_norm["small_chapter"])
+        self.assertEqual(s_norm["flashcard_count"], 0)
+
     def test_month_step_is_an_exam_without_negative_marking_and_doubts_come_back(self):
         from .models import ChapterReview, ExamAnswer
 

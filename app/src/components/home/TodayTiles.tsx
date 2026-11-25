@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
 
 import type { TodayTask } from '../../api/endpoints';
-import { openReview } from '../../lib/reviews';
+import { openReview, reviewReasonLine } from '../../lib/reviews';
 import { colors, radius, rtl, toPersianDigits } from '../../theme';
 import { Icon } from '../Icon';
 import { LemonProgress, type PartState } from '../LemonProgress';
@@ -63,6 +63,7 @@ function Row({ t, ended, first, onError }: { t: TodayTask; ended: boolean; first
   const fa = toPersianDigits;
   let title = '';
   let size = '';
+  let reason = '';
   let total = 1;
   let open = () => {};
   const done = t.done ?? 0;
@@ -80,6 +81,7 @@ function Row({ t, ended, first, onError }: { t: TodayTask; ended: boolean; first
           ? `${t.book_title}؛ ${fa(done)} از ${fa(total)} پاسخ داده‌ای، ادامه از سؤال ${fa(nextQ)}`
           : `${t.book_title}؛ برای ثبت مرور باز کن`
         : `${t.book_title}، ${fa(left)} تست، حدود ${fa(Math.max(1, Math.round((t.minutes * left) / Math.max(1, t.questions))))} دقیقه`;
+    reason = reviewReasonLine(t);
     open = () => openReview({ ...t, kind: t.review_kind }).catch(onError);
   } else if (t.kind === 'cards') {
     title = t.comeback && t.total > t.count ? 'کارت‌های مهم‌تر' : 'مرور کارت‌ها';
@@ -105,6 +107,9 @@ function Row({ t, ended, first, onError }: { t: TodayTask; ended: boolean; first
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <Text style={[styles.title, rtl]} numberOfLines={1}>{title}</Text>
         <Text style={[styles.size, rtl]} numberOfLines={1}>{ended ? 'تمام شد' : size}</Text>
+        {!ended && !!reason && (
+          <Text style={[styles.reason, rtl]} numberOfLines={2}>{reason}</Text>
+        )}
       </View>
       {ended ? (
         <View style={[styles.pill, styles.pillDone]}>
@@ -125,6 +130,7 @@ const styles = StyleSheet.create({
   line: { borderTopWidth: 1, borderTopColor: colors.line },
   title: { fontSize: 15, fontWeight: '800', color: colors.ink },
   size: { fontSize: 12, color: colors.muted },
+  reason: { fontSize: 11.5, color: colors.greenDark, fontWeight: '600' },
   pill: { backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center', justifyContent: 'center' },
   pillDone: { backgroundColor: '#E7F3EC', paddingHorizontal: 10 },
   pillText: { fontSize: 12, fontWeight: '800', color: colors.ink },

@@ -50,13 +50,19 @@ EXAM_STEP = 2
 PRACTICE_MINIMUM = {0: 5, 1: 10}
 EXAM_MIN, EXAM_MAX = 15, 25
 BATCH = 5
+SMALL_CHAPTER_MAX = 4  # chapters with 1..4 usable questions carry a low-sample notice + flashcard suggestion
 BOOK_MINIMUM = 10
 BOOK_EVERY_DAYS = 7
 FINISH_SHARE = 0.7
 DAILY_CAP = 2
-SECONDS_PER_QUESTION = 80  # «۵ تست، حدود ۷ دقیقه»
+DEFAULT_QUESTION_SECONDS = 90
 EXAM_LATE = timedelta(minutes=5)
 SYNC_EVERY = timedelta(minutes=10)
+_FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+
+def _fa(n: int) -> str:
+    return str(n).translate(_FA_DIGITS)
 
 
 # --- When a chapter is finished --------------------------------------------------------------------------------------
@@ -225,6 +231,156 @@ def _cover_sections(ordered: list[int], by_id, n) -> list[int]:
     return out
 
 
+def _book_chapters(user, access, book) -> list[tuple[ContentNode, list[Question]]]:
+    """Readable finished chapters of one book that currently have usable questions, in book order."""
+    chapter_ids = list(
+        ChapterReview.objects.filter(user=user, book=book, is_archived=False).values_list("chapter_id", flat=True)
+    )
+    chapters = [access.nodes.get(cid) for cid in chapter_ids]
+    readable = [c for c in chapters if c is not None and access.readable(c.id)]
+    readable.sort(key=lambda c: (c.position, c.id))
+    out: list[tuple[ContentNode, list[Question]]] = []
+    for c in readable:
+        pool = chapter_pool(access, c)
+        if pool:
+            out.append((c, pool))
+    return out
+
+
+def _pick_book(
+    user,
+    access,
+    book_review: BookReview,
+    n: int,
+    exclude: set[int],
+    avoid: set[int],
+    current_served: list[int] | None = None,
+) -> list[int]:
+    """Pick up to n questions for a mixed BookReview, rotating across eligible chapters before repeating any."""
+    chapters = _book_chapters(user, access, book_review.book)
+    if not chapters or n <= 0:
+        return []
+    q_to_chapter: dict[int, int] = {}
+    ranked: dict[int, list[int]] = {}
+    chapter_order: dict[int, int] = {}
+    for idx, (ch, c_pool) in enumerate(chapters):
+        chapter_order[ch.id] = idx
+        for q in c_pool:
+            q_to_chapter[q.id] = ch.id
+        ranked[ch.id] = pick(user, c_pool, len(c_pool), exclude, avoid)
+
+    session_counts: dict[int, int] = {ch.id: 0 for ch, _ in chapters}
+    for qid in current_served or []:
+        cid = q_to_chapter.get(qid)
+        if cid is not None:
+            session_counts[cid] += 1
+
+    recent_sessions = list(
+        ReviewSession.objects.filter(book_review=book_review, finished_at__isnull=False, score__isnull=False)
+        .order_by("-finished_at", "-id")[:5]
+        .values_list("served", flat=True)
+    )
+    if not recent_sessions and book_review.last_served:
+        recent_sessions = [book_review.last_served]
+
+    recent_hits: dict[int, int] = {ch.id: 0 for ch, _ in chapters}
+    recency_rank: dict[int, int] = {ch.id: 0 for ch, _ in chapters}
+    depth = len(recent_sessions)
+    for idx, served_ids in enumerate(recent_sessions):
+        rank_val = depth - idx  # higher = seen in a more recent sitting
+        seen_in_sitting = set()
+        for qid in served_ids or []:
+            cid = q_to_chapter.get(qid)
+            if cid is None:
+                continue
+            recent_hits[cid] += 1
+            if cid not in seen_in_sitting:
+                seen_in_sitting.add(cid)
+                if rank_val > recency_rank[cid]:
+                    recency_rank[cid] = rank_val
+
+    chosen: list[int] = []
+    picked_now: dict[int, int] = {ch.id: 0 for ch, _ in chapters}
+    cursors: dict[int, int] = {ch.id: 0 for ch, _ in chapters}
+    while len(chosen) < n:
+        available = [ch.id for ch, _ in chapters if cursors[ch.id] < len(ranked[ch.id])]
+        if not available:
+            break
+        cid = min(
+            available,
+            key=lambda c: (
+                session_counts[c] + picked_now[c],
+                recency_rank[c],
+                recent_hits[c],
+                chapter_order[c],
+            ),
+        )
+        chosen.append(ranked[cid][cursors[cid]])
+        cursors[cid] += 1
+        picked_now[cid] += 1
+    return chosen
+
+
+def _pick_for_session(session: ReviewSession, access, n: int, exclude: set[int]) -> list[int]:
+    if session.chapter_review:
+        pool = _session_pool(session, access)
+        return pick(session.user, pool, n, exclude, set(session.chapter_review.last_served))
+    return _pick_book(
+        session.user,
+        access,
+        session.book_review,
+        n,
+        exclude,
+        set(session.book_review.last_served),
+        current_served=list(session.served or []),
+    )
+
+
+def _estimated_minutes(pool: list[Question], count: int, selected_ids: list[int] | None = None) -> int:
+    if not pool or count <= 0:
+        return 1
+    if selected_ids:
+        by_id = {q.id: q for q in pool}
+        selected = [by_id[qid] for qid in selected_ids if qid in by_id]
+        if selected:
+            return max(1, round(sum((q.estimated_seconds or DEFAULT_QUESTION_SECONDS) for q in selected) / 60))
+    avg_seconds = sum((q.estimated_seconds or DEFAULT_QUESTION_SECONDS) for q in pool) / len(pool)
+    return max(1, round(avg_seconds * count / 60))
+
+
+def _small_chapter_meta(access, chapter: ContentNode | None, pool_size: int) -> tuple[bool, int]:
+    if chapter is None or pool_size <= 0 or pool_size > SMALL_CHAPTER_MAX:
+        return False, 0
+    cards = sum(
+        1
+        for f in Flashcard.objects.filter(node_id__in=access.visible_ids_under(chapter), is_archived=False).only("id", "node_id", "is_free")
+        if _usable(access, f)
+    )
+    return True, cards
+
+
+def _chapter_reason(review: ChapterReview, late_days: int) -> str:
+    if review.last_score is not None and review.last_score < 0.6:
+        base = "تکرار زودتر به‌خاطر نتیجهٔ ضعیف مرور قبل"
+    elif review.stage == 0:
+        base = "نوبت مرور یک‌روزه بعد از پایان فصل"
+    elif review.stage == 1:
+        base = "نوبت مرور یک‌هفته‌ای فصل"
+    elif review.stage == 2:
+        base = "نوبت آزمون یادآوری یک‌ماهه"
+    else:
+        base = "مرور دوره‌ای برای تثبیت فصل"
+    return f"{base} ({_fa(late_days)} روز عقب افتاده)" if late_days > 0 else base
+
+
+def _book_reason(review: BookReview, chapters_count: int, late_days: int) -> str:
+    if review.last_score is not None and review.last_score < 0.6:
+        base = f"مرور ترکیبی زودتر بین {_fa(chapters_count)} فصل"
+    else:
+        base = f"مرور ترکیبی هفتگی بین {_fa(chapters_count)} فصل"
+    return f"{base} ({_fa(late_days)} روز عقب افتاده)" if late_days > 0 else base
+
+
 # --- Scheduling ------------------------------------------------------------------------------------------------------
 
 
@@ -264,7 +420,7 @@ def _exam_size(pool_size: int) -> int:
 # --- What is due -----------------------------------------------------------------------------------------------------
 
 
-def _chapter_item(review: ChapterReview, access, today) -> dict | None:
+def _chapter_item(review: ChapterReview, access, today, open_session: ReviewSession | None = None) -> dict | None:
     chapter = access.nodes.get(review.chapter_id)
     if chapter is None or not access.readable(chapter.id):
         return None
@@ -273,6 +429,11 @@ def _chapter_item(review: ChapterReview, access, today) -> dict | None:
         return None
     exam = review.stage >= EXAM_STEP
     count = _exam_size(len(pool)) if exam else min(_minimum(review.stage), len(pool))
+    selected = list(open_session.served) if open_session and open_session.served else None
+    if selected and not exam:
+        count = max(count, len(selected))
+    late_days = max(0, (today - review.due_on).days)
+    small_chapter, flashcard_count = _small_chapter_meta(access, chapter, len(pool))
     return {
         "kind": "chapter",
         "id": review.id,
@@ -284,18 +445,25 @@ def _chapter_item(review: ChapterReview, access, today) -> dict | None:
         "step": review.stage,
         "is_exam": exam,
         "questions": count,
-        "minutes": max(1, round(count * SECONDS_PER_QUESTION / 60)),
+        "minutes": _estimated_minutes(pool, count, selected),
         "due_on": review.due_on,
-        "late_days": max(0, (today - review.due_on).days),
+        "late_days": late_days,
+        "reason": _chapter_reason(review, late_days),
+        "small_chapter": small_chapter,
+        "flashcard_count": flashcard_count,
     }
 
 
-def _book_item(review: BookReview, access, today) -> dict | None:
-    chapters = [access.nodes.get(c) for c in ChapterReview.objects.filter(user=review.user, book=review.book, is_archived=False).values_list("chapter_id", flat=True)]
-    pool = [q for c in chapters if c is not None and access.readable(c.id) for q in chapter_pool(access, c)]
+def _book_item(review: BookReview, access, today, open_session: ReviewSession | None = None) -> dict | None:
+    chapters = _book_chapters(review.user, access, review.book)
+    pool = [q for _, c_pool in chapters for q in c_pool]
     if not pool:
         return None
     count = min(BOOK_MINIMUM, len(pool))
+    selected = list(open_session.served) if open_session and open_session.served else None
+    if selected:
+        count = max(count, len(selected))
+    late_days = max(0, (today - review.due_on).days)
     return {
         "kind": "book",
         "id": review.id,
@@ -304,13 +472,16 @@ def _book_item(review: BookReview, access, today) -> dict | None:
         "chapter_id": None,
         "chapter_title": "",
         "chapter_number": None,
-        "chapters": len([c for c in chapters if c is not None]),
+        "chapters": len(chapters),
         "step": None,
         "is_exam": False,
         "questions": count,
-        "minutes": max(1, round(count * SECONDS_PER_QUESTION / 60)),
+        "minutes": _estimated_minutes(pool, count, selected),
         "due_on": review.due_on,
-        "late_days": max(0, (today - review.due_on).days),
+        "late_days": late_days,
+        "reason": _book_reason(review, len(chapters), late_days),
+        "small_chapter": False,
+        "flashcard_count": 0,
     }
 
 
@@ -327,13 +498,21 @@ def due_reviews(user, limit=None) -> list[dict]:
             maps[book.id] = AccessMap(user, book)
         return maps[book.id]
 
+    open_chapter: dict[int, ReviewSession] = {}
+    open_book: dict[int, ReviewSession] = {}
+    for s in ReviewSession.objects.filter(user=user, finished_at__isnull=True, exam__isnull=True).order_by("-started_at", "-id"):
+        if s.chapter_review_id and s.chapter_review_id not in open_chapter:
+            open_chapter[s.chapter_review_id] = s
+        elif s.book_review_id and s.book_review_id not in open_book:
+            open_book[s.book_review_id] = s
+
     items = []
     for r in ChapterReview.objects.filter(user=user, is_archived=False, due_on__lte=today).select_related("book").order_by("due_on", "id"):
-        item = _chapter_item(r, access_for(r.book), today)
+        item = _chapter_item(r, access_for(r.book), today, open_chapter.get(r.id))
         if item:
             items.append(item)
     for r in BookReview.objects.filter(user=user, due_on__lte=today).select_related("book").order_by("due_on", "id"):
-        item = _book_item(r, access_for(r.book), today)
+        item = _book_item(r, access_for(r.book), today, open_book.get(r.id))
         if item:
             items.append(item)
     items.sort(key=lambda i: (i["due_on"], i["kind"] != "chapter"))
@@ -416,11 +595,16 @@ def _payload(request, session: ReviewSession) -> dict:
                 answered_before=bool(q.key_changed_at and at < q.key_changed_at),
             ),
         }
+    small_chapter, flashcard_count = _small_chapter_meta(access, chapter, len(pool))
     return {
         "id": session.id,
         "kind": "chapter" if session.chapter_review else "book",
         "title": (f"مرور فصل {chapter.position or ''} «{chapter.title}»".replace("  ", " ") if chapter else f"مرور ترکیبی «{access.book.title}»"),
         "book_title": access.book.title,
+        "chapter_id": chapter.id if chapter else None,
+        "small_chapter": small_chapter,
+        "pool_size": len(pool),
+        "flashcard_count": flashcard_count,
         "minimum": min(session.minimum, len(pool)),
         "answered": len(answer_rows),
         "right": sum(1 for ok, _, _ in answer_rows.values() if ok),
@@ -436,13 +620,7 @@ def _session_pool(session: ReviewSession, access) -> list[Question]:
     if session.chapter_review:
         chapter = access.nodes.get(session.chapter_review.chapter_id)
         return chapter_pool(access, chapter) if chapter and access.readable(chapter.id) else []
-    chapter_ids = ChapterReview.objects.filter(user=session.user, book=session.book_review.book, is_archived=False).values_list("chapter_id", flat=True)
-    out = []
-    for cid in chapter_ids:
-        c = access.nodes.get(cid)
-        if c is not None and access.readable(c.id):
-            out += chapter_pool(access, c)
-    return out
+    return [q for _, c_pool in _book_chapters(session.user, access, session.book_review.book) for q in c_pool]
 
 
 def _session_answer_rows(session: ReviewSession) -> dict[int, tuple[bool, int, object]]:
@@ -508,13 +686,12 @@ def start_review(request):
             pool = _session_pool(session, access)
             if not pool:
                 return Response({"code": "no_questions", "message": "برای این مرور تستی در دسترس نیست."}, status=status.HTTP_400_BAD_REQUEST)
-            avoid = set(review.last_served)
             if kind == "chapter" and stage >= EXAM_STEP:
-                ids = pick(request.user, pool, _exam_size(len(pool)), set(), avoid)
+                ids = _pick_for_session(session, access, _exam_size(len(pool)), set())
                 session.served = ids
                 session.exam = _start_exam(request.user, review.chapter, ids)
             else:
-                session.served = pick(request.user, pool, BATCH, set(), avoid)
+                session.served = _pick_for_session(session, access, BATCH, set())
             session.save()
     return Response(_payload(request, session), status=status.HTTP_201_CREATED)
 
@@ -525,7 +702,7 @@ def _start_exam(user, chapter, ids) -> ExamAttempt:
     questions = list(Question.objects.filter(pk__in=ids).prefetch_related("choices"))
     order = {qid: i for i, qid in enumerate(ids)}
     questions.sort(key=lambda q: order[q.id])
-    seconds = sum(q.estimated_seconds or 90 for q in questions)
+    seconds = sum(q.estimated_seconds or DEFAULT_QUESTION_SECONDS for q in questions)
     return ExamAttempt.objects.create(
         user=user, node=chapter, question_ids=[q.id for q in questions], snapshot=_snapshot(questions), negative_marking=False,
         time_limit_seconds=max(300, seconds),
@@ -548,8 +725,7 @@ def review_more(request, session_id):
         if session.finished_at is not None:
             return Response({"code": "session_finished", "message": "این جلسهٔ مرور قبلاً ثبت شده است."}, status=status.HTTP_400_BAD_REQUEST)
         review = session.chapter_review or session.book_review
-        pool = _session_pool(session, AccessMap(request.user, review.book))
-        more = pick(request.user, pool, BATCH, set(session.served), set(review.last_served))
+        more = _pick_for_session(session, AccessMap(request.user, review.book), BATCH, set(session.served))
         session.served = session.served + more
         session.save(update_fields=["served"])
     return Response(_payload(request, session))
