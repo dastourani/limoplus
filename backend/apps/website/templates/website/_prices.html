@@ -21,7 +21,7 @@
     <span class="price-tag">دسترسی جامع</span>
     <b>{{ p.title }}</b>
     <div class="price">{% if p.discount %}<del class="price-old">{{ p.regular_price }}</del>{% endif %}{{ p.price }}</div>
-    {% if p.discount %}<div class="price-promo"><span>{{ p.discount.percent }}٪ تخفیف زمان‌دار</span><small>صرفه‌جویی {{ p.discount.saving }}{% if p.discount.end_date %} · تا {{ p.discount.end_date }}{% endif %}</small></div>{% endif %}
+    {% if p.discount %}<div class="price-promo"><span>{{ p.discount.percent }}٪ تخفیف زمان‌دار</span>{% if p.discount.end_date %}<small>تا {{ p.discount.end_date }}</small>{% endif %}</div>{% endif %}
     <p class="price-desc">مبلغ درج‌شده، هزینه‌ی کلِ {{ p.months }} ماه اشتراک است؛ مناسب داوطلبانی که چند درس و منبع را هم‌زمان می‌خوانند.</p>
     <ul class="checks small">
       <li>{% icon "check" 16 3 %}باز شدن تمام کتاب‌ها به مدت {{ p.months }} ماه</li>

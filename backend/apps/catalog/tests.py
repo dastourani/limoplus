@@ -668,6 +668,7 @@ class TeacherProfileAndReviewTests(TestCase):
         self.assertEqual(resp.data["author_profile"]["academic_title"], "دانشیار دانشگاه")
         self.assertIn("community_reviews", resp.data)
         self.assertEqual(resp.data["community_reviews"]["total_count"], 0)
+        self.assertIsNone(resp.data["community_reviews"]["average_rating"])
         self.assertIsNone(resp.data["rating"])
         self.assertEqual(resp.data["rating_count"], 0)
 

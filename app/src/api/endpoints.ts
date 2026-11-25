@@ -108,9 +108,9 @@ export type BookDetail = BookListItem & {
     social_links?: string;
   };
   community_reviews?: {
-    average_rating: number;
-    satisfaction_rate: number;
-    serious_readers_rating: number;
+    average_rating: number | null;
+    satisfaction_rate: number | null;
+    serious_readers_rating: number | null;
     total_count: number;
     reviews: {
       id: number;

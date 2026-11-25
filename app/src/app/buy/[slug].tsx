@@ -202,7 +202,7 @@ export default function Buy() {
                   <Text style={styles.oldPrice}>{formatToman(selectedPrice.regularPrice ?? amount)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={[styles.sub, rtl]}>صرفه‌جویی کمپین</Text>
+                  <Text style={[styles.sub, rtl]}>تخفیف کمپین</Text>
                   <Text style={styles.saving}>−{formatToman(selectedPrice.discount.amount)}</Text>
                 </View>
               </>

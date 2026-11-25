@@ -74,7 +74,7 @@
             <strong>{{ offer.discount.price }}</strong>
           </div>
           <div class="offer-regular-row"><span>قیمت عادی</span><del>{{ offer.discount.regular_price }}</del></div>
-          <div class="offer-saving-row"><span class="offer-saving-badge">{{ offer.discount.percent }}٪ تخفیف</span><small>صرفه‌جویی {{ offer.discount.saving }}</small></div>
+          <div class="offer-saving-row"><span class="offer-saving-badge">{{ offer.discount.percent }}٪ تخفیف</span></div>
         </div>
         {% if offer.discount.end_date %}<p class="offer-expiry">{% icon "timer" 15 %} تا پایان {{ offer.discount.end_date }}</p>{% endif %}
         <span class="btn dark wide offer-action">{{ offer.button }}</span>

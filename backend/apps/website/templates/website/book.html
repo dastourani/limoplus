@@ -38,7 +38,7 @@
                 <span>قیمت ویژه</span>
                 <span class="deal-final-value"><strong>{{ price }}</strong><span class="deal-chip">{{ discount.percent }}٪ تخفیف</span></span>
               </div>
-              <small>صرفه‌جویی {{ discount.saving }}{% if discount.end_date %} · تا {{ discount.end_date }}{% endif %}</small>
+              <small>{{ discount.saving }} تخفیف{% if discount.end_date %} · تا {{ discount.end_date }}{% endif %}</small>
             </div>
             <a class="btn lemon" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب با قیمت ویژه</a>
             {% else %}<a class="btn ghost" href="{{ buy_url }}">{% icon "lock-open" 18 %}خرید کتاب، {{ price }}</a>{% endif %}

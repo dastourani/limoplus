@@ -67,8 +67,16 @@ class PriceQuote:
 
 
 def _percentage(saving: int, regular: int) -> int | float:
-    """Round to one decimal, half up (not Python's banker rounding), without inventing a whole percent."""
+    """Round to one decimal, half up, never reporting 100% when the buyer still pays a non-zero price."""
+    if saving <= 0 or regular <= 0:
+        return 0
+    if saving >= regular:
+        return 100
     value = (Decimal(saving * 100) / Decimal(regular)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    if value >= Decimal("100"):
+        return 99
+    if value <= Decimal("0"):
+        return 0.1
     return int(value) if value == value.to_integral_value() else float(value)
 
 

@@ -602,7 +602,7 @@ export default function Section() {
               <View style={styles.lockPriceBox}>
                 {price.discount && <Text style={styles.lockOldPrice}>{formatToman(price.regularPrice ?? price.price)}</Text>}
                 <Text style={styles.lockPrice}>{formatToman(price.price)}</Text>
-                {price.discount && <Text style={styles.lockSaving}>{percentLabel(price.discount.percent)}٪ تخفیف · صرفه‌جویی {formatToman(price.discount.amount)}</Text>}
+                {price.discount && <Text style={styles.lockSaving}>{percentLabel(price.discount.percent)}٪ تخفیف</Text>}
               </View>
             );
           })()}

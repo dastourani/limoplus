@@ -574,7 +574,7 @@ export default function Book() {
                     </View>
                     <Pressable onPress={() => router.push('/subscribe')} accessibilityRole="link">
                       <Text style={[styles.saving, rtl]}>
-                        صرفه‌جویی {formatToman(bookPrice.discount.amount)} · یا با اشتراک لیمو
+                        {formatToman(bookPrice.discount.amount)} تخفیف · یا با اشتراک لیمو
                       </Text>
                     </Pressable>
                   </View>

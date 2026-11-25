@@ -395,7 +395,6 @@ def home(request):
                     "product_title": sale["product_title"],
                     "price": toman(sale["price"]),
                     "regular_price": toman(sale["regular_price"]),
-                    "saving": toman(sale["amount"]),
                     "percent": fa_percent(sale["percent"]),
                     "end_date": fa_date(sale["ends_at"]),
                 },
