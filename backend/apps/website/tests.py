@@ -173,6 +173,7 @@ class WebsiteTests(TestCase):
         soon_list = Client().get("/site/books/")
         self.assertContains(soon_list, "در حال برنامه‌ریزی")
         self.assertContains(soon_list, "این کتاب در حال برنامه‌ریزی است")
+        self.assertContains(soon_list, "وضعیت آن به «به‌زودی» تغییر می‌کند")
 
         # Content protection page renders on the website and in the app API.
         prot_r = Client().get("/site/p/protection/")
@@ -355,6 +356,27 @@ class WebsiteTests(TestCase):
         html = Client().get("/site/books/").content.decode()
         self.assertIn('<span class="bk-ribbon">', html)
         self.assertIn("بخشی رایگان", html)
+
+    def test_website_cover_payload_carries_approved_rating(self):
+        import json
+        from apps.accounts.models import User
+        from apps.catalog.models import BookOpinion, ContentNode
+
+        book = ContentNode.objects.get(slug="math-1")
+        user1 = User.objects.create_user("09121230001")
+        user2 = User.objects.create_user("09121230002")
+        BookOpinion.objects.create(book=book, user=user1, rating=5, body="عالی", status=BookOpinion.Status.APPROVED)
+        BookOpinion.objects.create(book=book, user=user2, rating=4, body="خوب", status=BookOpinion.Status.APPROVED)
+
+        card = next(c for c in Client().get("/site/books/").context["books"] if c["book"].slug == "math-1")
+        cover_data = json.loads(card["cover"])
+        self.assertEqual(cover_data["rating"], 4.5)
+        self.assertEqual(cover_data["rating_count"], 2)
+
+        detail_ctx = Client().get("/site/books/math-1/").context
+        detail_cover = json.loads(detail_ctx["cover"])
+        self.assertEqual(detail_cover["rating"], 4.5)
+        self.assertEqual(detail_cover["rating_count"], 2)
 
     @override_settings(WEBSITE_HOSTS=["limookhan.ir"], ALLOWED_HOSTS=["limookhan.ir", "testserver"], APP_URL="https://app.example")
     def test_own_host_serves_site_at_root(self):

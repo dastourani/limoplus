@@ -668,6 +668,8 @@ class TeacherProfileAndReviewTests(TestCase):
         self.assertEqual(resp.data["author_profile"]["academic_title"], "دانشیار دانشگاه")
         self.assertIn("community_reviews", resp.data)
         self.assertEqual(resp.data["community_reviews"]["total_count"], 0)
+        self.assertIsNone(resp.data["rating"])
+        self.assertEqual(resp.data["rating_count"], 0)
 
     def test_submit_book_review_and_teacher_reply(self):
         # 1. Student submits review
@@ -681,16 +683,38 @@ class TeacherProfileAndReviewTests(TestCase):
         res = self.client.post(url, post_data, format="json")
         self.assertEqual(res.status_code, 200)
 
-        # 2. Verify review in book detail
+        # Invalid rating returns 400 rather than 500
+        bad = self.client.post(url, {**post_data, "rating": "not-a-number"}, format="json")
+        self.assertEqual(bad.status_code, 400)
+
+        # 2. Verify review in book detail and cover card payload
         detail = self.client.get(f"/api/v1/books/{self.book.slug}/").data
         reviews = detail["community_reviews"]
         self.assertEqual(reviews["total_count"], 1)
         self.assertEqual(reviews["average_rating"], 5.0)
+        self.assertEqual(detail["rating"], 5.0)
+        self.assertEqual(detail["rating_count"], 1)
         self.assertEqual(reviews["reviews"][0]["display_name"], "سارا رادمهر")
         self.assertEqual(reviews["reviews"][0]["rating"], 5)
 
-        # 3. Teacher adds reply via model/admin
+        # Pending/hidden opinions do not affect the public card rating; approved ones average cleanly
+        from apps.accounts.models import User
         from apps.catalog.models import BookOpinion
+        other = User.objects.create_user("09129998877")
+        BookOpinion.objects.create(book=self.book, user=other, rating=1, body="در انتظار", status=BookOpinion.Status.PENDING)
+        shelves = self.client.get("/api/v1/shelves/").data
+        card = next(b for s in shelves for b in s["books"] if b["slug"] == self.book.slug)
+        self.assertEqual(card["rating"], 5.0)
+        self.assertEqual(card["rating_count"], 1)
+
+        third = User.objects.create_user("09129998878")
+        BookOpinion.objects.create(book=self.book, user=third, rating=4, body="خوب", status=BookOpinion.Status.APPROVED)
+        shelves = self.client.get("/api/v1/shelves/").data
+        card = next(b for s in shelves for b in s["books"] if b["slug"] == self.book.slug)
+        self.assertEqual(card["rating"], 4.5)
+        self.assertEqual(card["rating_count"], 2)
+
+        # 3. Teacher adds reply via model/admin
         rev = BookOpinion.objects.get(book=self.book, user=self.student)
         rev.teacher_reply = "با تشکر از نظر دقیق شما خانم رادمهر، موفق باشید."
         rev.teacher_replied_by = self.teacher
@@ -698,7 +722,8 @@ class TeacherProfileAndReviewTests(TestCase):
 
         # 4. Verify teacher reply shows in book detail
         detail_after = self.client.get(f"/api/v1/books/{self.book.slug}/").data
-        self.assertEqual(detail_after["community_reviews"]["reviews"][0]["teacher_reply"], rev.teacher_reply)
+        student_review = next(r for r in detail_after["community_reviews"]["reviews"] if r["id"] == rev.id)
+        self.assertEqual(student_review["teacher_reply"], rev.teacher_reply)
 
 
 class CatalogConstantQueryTests(TestCase):

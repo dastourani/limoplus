@@ -97,7 +97,13 @@ def create_order(request):
     user = request.user
     book_slug, plan_id = request.data.get("book"), request.data.get("plan")
     from apps.releases.service import normalize_channel
-    return_channel = normalize_channel(request.headers.get("X-App-Channel")) if request.headers.get("X-App-Platform") else ""
+    platform = (request.headers.get("X-App-Platform") or "").strip().lower()
+    if platform == "web":
+        return_channel = "web"
+    elif platform:
+        return_channel = normalize_channel(request.headers.get("X-App-Channel"))
+    else:
+        return_channel = ""
     if book_slug and not plan_id:
         book = _book(book_slug)
         if book is None:
@@ -272,10 +278,17 @@ def settle(track_id: str) -> Order | None:
 @require_GET
 def zibal_callback(request):
     """Zibal sends the browser here after payment. We verify on the server, then send the user back to the app."""
+    from config.links import app_base_url
+
     track_id = request.GET.get("trackId", "")
     order = settle(track_id) if track_id else None
     paid = bool(order and order.status == Order.Status.PAID)
-    base_return = settings.TEST_APP_RETURN_URL if (order and order.return_channel == "test") else settings.APP_RETURN_URL
+    if order and order.return_channel == "web":
+        base_return = f"{app_base_url().rstrip('/')}/payment-result"
+    elif order and order.return_channel == "test":
+        base_return = settings.TEST_APP_RETURN_URL
+    else:
+        base_return = settings.APP_RETURN_URL
     return_url = f"{base_return}?order={order.id if order else ''}&status={'paid' if paid else 'failed'}"
     # No order details here: anyone holding a trackId could open this page. The app shows details after sign-in.
     return render(request, "commerce/payment_result.html", {"paid": paid, "return_url": return_url})

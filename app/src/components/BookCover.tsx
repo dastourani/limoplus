@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
 import { parse, SvgAst, type JsxAST } from 'react-native-svg';
 
-import { coverByline, coverMotifSvg, coverPalette, type CoverTheme } from '../lib/cover';
+import { coverByline, coverMotifSvg, coverPalette, coverRatingLabel, type CoverTheme } from '../lib/cover';
 import { useCoverTheme } from '../lib/coverTheme';
 import { LemonSlice } from './LemonSlice';
 import { Text } from './Text';
@@ -35,6 +35,8 @@ export type CoverBook = {
   drawing?: { viewBox: string; body: string } | null;
   /** An uploaded cover picture replaces the drawn cover. */
   cover?: string | null;
+  rating?: number | null;
+  rating_count?: number;
 };
 
 /**
@@ -62,6 +64,29 @@ export const BookCover = memo(function BookCover({
   const strip = major?.color || '#3FB8A9';
   const ast = useMemo(() => motifAst(coverMotifSvg(book.motif || 'ct', theme, book.drawing)), [book.motif, book.drawing, theme]);
   const byline = coverByline(book.author, book.edition);
+  const ratingLabel = width >= 100 ? coverRatingLabel(book.rating, book.rating_count) : null;
+  const badgeScale = Math.max(k, 0.7);
+  const ratingBadge = ratingLabel ? (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.ratingBadge,
+        {
+          left: Math.round(10 * badgeScale),
+          bottom: Math.round(11 * badgeScale),
+          paddingHorizontal: width >= 180 ? 8 : 6,
+          paddingVertical: width >= 180 ? 3 : 2,
+        },
+      ]}
+    >
+      <Text allowFontScaling={false} style={[styles.ratingStar, { fontSize: width >= 180 ? 11 : 10 }]}>
+        ★
+      </Text>
+      <Text allowFontScaling={false} style={[styles.ratingText, { fontSize: width >= 180 ? 12 : 11 }]}>
+        {ratingLabel}
+      </Text>
+    </View>
+  ) : null;
   const frame = {
     width,
     height: width * 1.5,
@@ -76,6 +101,7 @@ export const BookCover = memo(function BookCover({
       <View style={[styles.shadow, frame, { overflow: 'hidden' }]} accessibilityLabel={`جلد کتاب ${book.title}`}>
         {/* Kept on the phone after the first download (memory and disk), so a shelf never fetches it again. */}
         <Image source={{ uri: book.cover }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" transition={120} />
+        {ratingBadge}
       </View>
     );
   }
@@ -111,7 +137,7 @@ export const BookCover = memo(function BookCover({
             {byline}
           </Text>
         )}
-        <View style={{ height: 2 * k, width: 34 * k, borderRadius: 2, backgroundColor: p.rule, marginTop: 8 * k, marginBottom: 6 * k }} />
+        <View style={{ alignSelf: 'flex-end', height: 2 * k, width: 34 * k, borderRadius: 2, backgroundColor: p.rule, marginTop: 8 * k, marginBottom: 6 * k }} />
         <View style={styles.brand}>
           <LemonSlice size={16 * k} />
           <Text allowFontScaling={false} style={{ fontSize: 11 * k, fontWeight: '700', color: p.brand }}>
@@ -119,6 +145,7 @@ export const BookCover = memo(function BookCover({
           </Text>
         </View>
       </View>
+      {ratingBadge}
     </View>
   );
 });
@@ -132,4 +159,16 @@ const styles = StyleSheet.create({
   en: { fontStyle: 'italic', textAlign: 'right', writingDirection: 'ltr' },
   byline: { textAlign: 'right', writingDirection: 'rtl' },
   brand: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  ratingBadge: {
+    position: 'absolute',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(23, 32, 26, 0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+  },
+  ratingStar: { color: '#F5C518', fontWeight: '900' },
+  ratingText: { color: '#FFFFFF', fontWeight: '800' },
 });

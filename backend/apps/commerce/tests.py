@@ -804,9 +804,10 @@ class PaymentReturnChannelTests(TestCase):
 
     def test_zibal_callback_routes_back_to_creating_channel_scheme(self):
         from unittest import mock
+        from django.test import override_settings
         from apps.commerce.models import Order
 
-        with mock.patch("apps.commerce.zibal.request_payment", side_effect=["trk-test", "trk-off"]):
+        with mock.patch("apps.commerce.zibal.request_payment", side_effect=["trk-test", "trk-off", "trk-web"]):
             r_test = self.api.post(
                 "/api/v1/orders/",
                 {"book": "math-1"},
@@ -825,16 +826,30 @@ class PaymentReturnChannelTests(TestCase):
                 HTTP_X_APP_CHANNEL="official",
             )
             self.assertEqual(r_off.status_code, 201)
+            r_web = self.api.post(
+                "/api/v1/orders/",
+                {"book": "math-1"},
+                format="json",
+                HTTP_X_APP_PLATFORM="web",
+                HTTP_X_APP_BUILD="1",
+                HTTP_X_APP_CHANNEL="official",
+            )
+            self.assertEqual(r_web.status_code, 201)
 
         self.assertEqual(Order.objects.get(pk=r_test.data["order_id"]).return_channel, "test")
         self.assertEqual(Order.objects.get(pk=r_off.data["order_id"]).return_channel, "official")
+        self.assertEqual(Order.objects.get(pk=r_web.data["order_id"]).return_channel, "web")
 
         with mock.patch("apps.commerce.zibal.verify", return_value={"result": 100, "amount": 2490000, "refNumber": "123", "cardNumber": "6037"}):
             cb_test = self.client.get("/api/v1/payments/zibal/callback/?trackId=trk-test")
             cb_off = self.client.get("/api/v1/payments/zibal/callback/?trackId=trk-off")
+            with override_settings(APP_URL="https://app.limookhan.ir"):
+                cb_web = self.client.get("/api/v1/payments/zibal/callback/?trackId=trk-web")
         self.assertContains(cb_test, "limookhan-test://payment-result")
         self.assertContains(cb_off, "limookhan://payment-result")
         self.assertNotContains(cb_off, "limookhan-test://")
+        self.assertContains(cb_web, f"https://app.limookhan.ir/payment-result?order={r_web.data['order_id']}&amp;status=paid")
+        self.assertNotContains(cb_web, "limookhan://")
 
 
 

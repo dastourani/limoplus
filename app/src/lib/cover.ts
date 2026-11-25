@@ -171,3 +171,12 @@ export function coverMotifSvg(motif: string, theme: CoverTheme, custom?: { viewB
 export function coverByline(author?: string, edition?: string): string {
   return [author, edition].filter((x) => x && x.trim()).join('، ');
 }
+
+/** Compact cover rating text (e.g. «۴٫۸» or «۵»); returns null when a book has no approved ratings yet. */
+export function coverRatingLabel(rating?: number | null, ratingCount?: number | null): string | null {
+  if (rating == null || !Number.isFinite(rating) || rating <= 0) return null;
+  if (ratingCount != null && ratingCount <= 0) return null;
+  const rounded = Math.round(rating * 10) / 10;
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace('.', '٫');
+  return text.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
+}

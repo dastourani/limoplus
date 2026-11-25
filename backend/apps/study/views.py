@@ -915,12 +915,13 @@ def _library_payload(request, *, entitlements=None, card_cache=None, map_cache=N
         latest=Max("updated_at")
     )
     progress_latest = {row["book_id"]: row["latest"] for row in progress_rows}
-    from apps.catalog.views import _prefetch_user_rows, book_card
+    from apps.catalog.views import _prefetch_book_ratings, _prefetch_user_rows, book_card
     from apps.commerce.pricing import book_price_quotes
 
     if not getattr(request, "_limo_prefetched_user_rows", False):
         _prefetch_user_rows(request)
         request._limo_prefetched_user_rows = True
+    _prefetch_book_ratings(request, [book for book, _ in available])
     prices = book_price_quotes([book for book, _ in available])
     if card_cache is None:
         card_cache = {}
@@ -966,7 +967,7 @@ def _library_payload(request, *, entitlements=None, card_cache=None, map_cache=N
 
 @api_view(["GET"])
 def library(request):
-    from apps.catalog.views import _prefetch_user_rows, book_card
+    from apps.catalog.views import _prefetch_book_ratings, _prefetch_user_rows, book_card
     from apps.commerce.pricing import book_price_quotes
 
     user = request.user
@@ -994,6 +995,7 @@ def library(request):
         missing_books.append(p.book)
     if missing_books:
         map_cache.update(AccessMap.bulk_for_books(user, missing_books, entitlements=entitlements, card_only=True))
+        _prefetch_book_ratings(request, missing_books)
     prices = book_price_quotes(missing_books) if missing_books else {}
 
     reading, seen_books = [], set()
