@@ -344,7 +344,6 @@ export async function saveOfflineBook(bundle: OfflineBundle): Promise<OfflineBoo
           book_slug: slug,
           previous_intact: true,
           error_name: errObj?.name || 'Error',
-          error_message: errObj?.message || String(err),
         },
       });
     };
@@ -509,7 +508,6 @@ async function readBundle(slug: string, nodeId?: number): Promise<{ bundle: Stor
         ...(nodeId ? { node_id: nodeId } : {}),
         offline_reason: 'corrupt',
         error_name: errObj?.name || 'Error',
-        error_message: errObj?.message || String(e),
       },
     });
     return null;

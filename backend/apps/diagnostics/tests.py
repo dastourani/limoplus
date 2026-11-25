@@ -122,10 +122,12 @@ class DiagnosticsIngestionTests(TestCase):
         self.assertEqual(off_run.details["offline_corrupt"], 200)
         self.assertEqual(off_run.issues_found, 200)
 
-    def test_privacy_scrubs_email_and_persian_text_from_db_bale_and_ai_report(self):
+    def test_privacy_scrubs_english_text_extra_keys_email_and_persian_from_db_bale_and_ai_report(self):
         bale_messages: list[str] = []
+        english_sentence = "The passive voice expresses an action done to the subject"
+        extra_note = "یادداشت آزمایشی خصوصی دانش‌آموز"
         with mock.patch("apps.diagnostics.service.notify_bale_after_commit", side_effect=lambda msg, **kw: bale_messages.append(msg)):
-            # 1. Server unhandled exception containing email + Persian text
+            # 1. Server unhandled exception containing English lesson sentence + email + Persian text
             rf = RequestFactory()
             mw = RequestDiagnosticsMiddleware(lambda req: None)
             req = rf.post(
@@ -134,9 +136,12 @@ class DiagnosticsIngestionTests(TestCase):
                 HTTP_X_APP_PLATFORM="web",
                 HTTP_X_APP_WEB_COMMIT="sha_priv_99",
             )
-            mw.process_exception(req, ValueError("خطا برای student@example.com روی عبارت خصوصی دانش‌آموز"))
+            try:
+                raise ValueError(f"{english_sentence} student@example.com عبارت خصوصی دانش‌آموز")
+            except ValueError as exc:
+                mw.process_exception(req, exc)
 
-            # 2. Client error payload containing email + Persian text
+            # 2. Client error payload containing unquoted English sentence + disallowed extra key
             r_cli = self.client.post(
                 "/api/v1/diagnostics/events/",
                 {
@@ -144,15 +149,16 @@ class DiagnosticsIngestionTests(TestCase):
                     "kind": "client_error",
                     "severity": "critical",
                     "code": "js_error",
-                    "title": "خطای اجرای جاوااسکریپت: TypeError",
+                    "title": english_sentence,
                     "route": "/quiz/12",
                     "request_id": "req_priv_cli_1",
                     "app_build": "118",
-                    "observed": "TypeError: student@example.com عبارت خصوصی دانش‌آموز",
+                    "observed": f"TypeError: {english_sentence} student@example.com عبارت خصوصی دانش‌آموز",
                     "context": {
                         "error_name": "TypeError",
-                        "error_message": "student@example.com عبارت خصوصی دانش‌آموز",
-                        "stack": "TypeError: student@example.com عبارت خصوصی دانش‌آموز\n    at render (quiz.tsx:42:9)",
+                        "error_message": english_sentence,
+                        "extra_note": extra_note,
+                        "stack": f"TypeError: {english_sentence}\n    at renderQuiz (quiz.tsx:42:9)",
                     },
                 },
                 format="json",
@@ -163,17 +169,21 @@ class DiagnosticsIngestionTests(TestCase):
         srv_group = ErrorGroup.objects.get(source=ErrorGroup.Source.SERVER, code="unhandled_exception")
         cli_group = ErrorGroup.objects.get(source=ErrorGroup.Source.CLIENT, code="js_error")
 
-        for g, req_id, expected_type, expected_loc in (
-            (srv_group, "req_priv_srv_1", "ValueError", "/api/v1/search/"),
-            (cli_group, "req_priv_cli_1", "TypeError", "/quiz/<id>"),
+        for g, req_id, expected_type, expected_loc, expected_file in (
+            (srv_group, "req_priv_srv_1", "ValueError", "/api/v1/search/", "tests.py"),
+            (cli_group, "req_priv_cli_1", "TypeError", "/quiz/<id>", "quiz.tsx:42:9"),
         ):
             ev = g.events.first()
             report = build_ai_report(g)
             blob = "\n".join([g.title, g.observed, ev.observed, str(ev.evidence), report, *bale_messages])
+            self.assertNotIn("passive voice", blob)
+            self.assertNotIn("extra_note", blob)
+            self.assertNotIn("یادداشت آزمایشی", blob)
             self.assertNotIn("student@example.com", blob)
             self.assertNotIn("عبارت خصوصی دانش‌آموز", blob)
             self.assertIn(expected_type, report)
             self.assertIn(expected_loc, report)
+            self.assertIn(expected_file, report)
             self.assertIn(req_id, report)
             self.assertTrue(ev.app_build)
 

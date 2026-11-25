@@ -241,7 +241,7 @@ describe('client diagnostics queue & offline failure reporting', () => {
     expect(events.some((e: any) => e.code === 'offline_missing')).toBe(true);
   });
 
-  it('scrubs emails, Persian text, phones, and signed tokens from local queue while keeping error type/location/version/requestId', async () => {
+  it('strips unquoted English textbook text, unallowlisted context keys, emails, and Persian text from local queue while keeping file/line/version/requestId', async () => {
     const diag = await import('../diagnostics');
     diag._resetDiagnosticsForTests();
     diag.setDiagnosticsMeta({ platform: 'android', channel: 'official', appBuild: '118', webCommit: '' });
@@ -252,26 +252,31 @@ describe('client diagnostics queue & offline failure reporting', () => {
     await diag.reportDiagnostic({
       kind: 'client_error',
       code: 'js_error',
-      title: 'خطای اجرای جاوااسکریپت: TypeError',
+      title: 'The passive voice expresses an action done to the subject',
       request_id: 'req_diag_123',
-      observed: 'TypeError: bad student@example.com — عبارت خصوصی دانش‌آموز at /search/?q=انتگرال',
+      observed: 'TypeError: The passive voice expresses an action done to the subject for student@example.com — عبارت خصوصی دانش‌آموز',
       context: {
         error_name: 'TypeError',
-        error_message: 'student@example.com failed on عبارت خصوصی دانش‌آموز',
-        stack: 'TypeError: student@example.com عبارت خصوصی دانش‌آموز\n    at renderQuiz (quiz.tsx:42:9)',
-        book_slug: 'math-1',
+        error_message: 'The passive voice expresses an action done to the subject',
+        extra_note: 'یادداشت آزمایشی خصوصی دانش‌آموز',
+        stack: 'TypeError: The passive voice expresses an action done to the subject\n    at renderQuiz (quiz.tsx:42:9)',
+        book_slug: 'english-1',
       },
       deferFlush: true,
     });
 
     const raw = storage.get('limo.diagOutbox')!;
+    expect(raw).not.toContain('passive voice');
+    expect(raw).not.toContain('extra_note');
+    expect(raw).not.toContain('یادداشت آزمایشی');
     expect(raw).not.toContain('student@example.com');
     expect(raw).not.toContain('عبارت خصوصی دانش‌آموز');
     expect(raw).not.toContain('مشتق');
-    expect(raw).not.toContain('انتگرال');
 
     const queued = JSON.parse(raw);
     expect(queued[0].context.error_name).toBe('TypeError');
+    expect(queued[0].context.extra_note).toBeUndefined();
+    expect(queued[0].context.error_message).toBeUndefined();
     expect(queued[0].route).toBe('/quiz/42');
     expect(queued[0].app_build).toBe('118');
     expect(queued[0].request_id).toBe('req_diag_123');

@@ -1,7 +1,7 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { reportDiagnostic, sanitizeErrorText, sanitizeStack } from '../lib/diagnostics';
+import { reportDiagnostic, sanitizeErrorName, sanitizeStack } from '../lib/diagnostics';
 import { colors, rtl } from '../theme';
 import { Text } from './Text';
 import { Button } from './ui';
@@ -17,18 +17,16 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    const safeName = sanitizeErrorText(error.name || 'Error', 60) || 'Error';
-    const safeMsg = sanitizeErrorText(error.message, 240);
+    const safeName = sanitizeErrorName(error.name || 'Error');
     void reportDiagnostic({
       kind: 'client_error',
       severity: 'critical',
       code: 'react_render',
       title: `خطای نمایش صفحه: ${safeName}`,
       expected: 'صفحه بدون خطای رندر نمایش داده شود.',
-      observed: safeMsg ? `${safeName}: ${safeMsg}` : safeName,
+      observed: `خطای رندر (${safeName}) در نمایش صفحه رخ داد.`,
       context: {
         error_name: safeName,
-        error_message: safeMsg,
         stack: sanitizeStack(error.stack),
         component_stack: sanitizeStack(info.componentStack ?? ''),
       },

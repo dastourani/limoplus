@@ -18,9 +18,9 @@ from .sanitize import (
     normalize_route,
     sanitize_breadcrumbs,
     sanitize_context,
+    scrub_error_name,
     scrub_stack,
     scrub_text,
-    scrub_untrusted_error,
     server_web_commit,
     user_ref_for,
 )
@@ -48,24 +48,20 @@ def _trim_group_samples(group: ErrorGroup) -> None:
         ErrorEvent.objects.filter(id__in=stale_ids).delete()
 
 
-_SAFE_CLIENT_TITLE_PREFIXES = (
-    "خطای اجرای جاوااسکریپت:",
-    "خطای مرورگر:",
-    "خطای نمایش صفحه:",
-    "وعدهٔ مدیریت‌نشده",
-    "خطای رندر وب",
-)
+def _client_error_title(code: str, error_name: str) -> str:
+    if code == "react_render":
+        return f"خطای نمایش صفحه: {error_name}"
+    if code == "unhandled_rejection":
+        return f"وعدهٔ مدیریت‌نشده ({error_name})"
+    return f"خطای اجرای جاوااسکریپت: {error_name}"
 
 
-def _sanitize_client_title(raw_title: str, fallback: str) -> str:
-    cleaned = scrub_text(raw_title, 240)
-    if not cleaned:
-        return fallback
-    for prefix in _SAFE_CLIENT_TITLE_PREFIXES:
-        if cleaned.startswith(prefix):
-            rest = scrub_untrusted_error(cleaned[len(prefix) :], 160)
-            return f"{prefix} {rest}".strip()[:240]
-    return scrub_untrusted_error(cleaned, 240) or fallback
+def _client_error_observed(code: str, error_name: str) -> str:
+    if code == "react_render":
+        return f"خطای رندر ({error_name}) در نمایش صفحه رخ داد."
+    if code == "unhandled_rejection":
+        return f"وعدهٔ ناهم‌زمان مدیریت‌نشده ({error_name}) رخ داد."
+    return f"خطای مهارنشدهٔ جاوااسکریپت ({error_name}) رخ داد."
 
 
 def _existing_sample_for_receipt(receipt: ErrorEventReceipt) -> ErrorEvent | None:
@@ -114,9 +110,11 @@ def record_event(
     clean_kind = kind if kind in ErrorGroup.Kind.values else ErrorGroup.Kind.CLIENT_ERROR
     clean_severity = severity if severity in ErrorGroup.Severity.values else ErrorGroup.Severity.ERROR
     clean_code = scrub_text(code or "unknown", 80) or "unknown"
+    clean_ctx = sanitize_context(context or {})
     if clean_source == ErrorGroup.Source.CLIENT and clean_kind == ErrorGroup.Kind.CLIENT_ERROR:
-        clean_title = _sanitize_client_title(title, clean_code)
-        clean_observed = scrub_untrusted_error(observed, 1500)
+        error_name = scrub_error_name(clean_ctx.get("error_name"))
+        clean_title = _client_error_title(clean_code, error_name)
+        clean_observed = _client_error_observed(clean_code, error_name)
     else:
         clean_title = scrub_text(title or clean_code, 240) or clean_code
         clean_observed = scrub_text(observed, 1500)
@@ -138,7 +136,6 @@ def record_event(
     now = created_at or timezone.now()
 
     evidence: dict[str, object] = {}
-    clean_ctx = sanitize_context(context or {})
     if clean_ctx:
         evidence["context"] = clean_ctx
     clean_crumbs = sanitize_breadcrumbs(breadcrumbs or [])
@@ -316,7 +313,6 @@ def record_server_exception(request, exc: Exception) -> ErrorEvent | None:
                 "status_code": 500,
                 "method": getattr(request, "method", ""),
                 "exception_type": type(exc).__name__,
-                "error_message": scrub_untrusted_error(exc, 300),
                 "stack": scrub_stack(tb_tail, 1600),
             },
         )

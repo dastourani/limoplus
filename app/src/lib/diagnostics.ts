@@ -119,8 +119,38 @@ export function newOpId(): string {
   return `op_${Date.now().toString(36)}_${randomToken(8)}`;
 }
 
-const PERSIAN_ARABIC_RE =
-  /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+(?:[\s\u200c\u200d،؛؟!«»\-–—.\d]+[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+)*/g;
+const CLIENT_ALLOWED_CONTEXT_KEYS = new Set([
+  'book_slug',
+  'node_id',
+  'media_id',
+  'media_ref',
+  'session_id',
+  'order_id',
+  'entitlement_id',
+  'attempt_id',
+  'status_code',
+  'error_name',
+  'stack',
+  'component_stack',
+  'previous_intact',
+  'missing_count',
+  'total_count',
+  'stage',
+  'answered_count',
+  'correct_count',
+  'served_count',
+  'expected_score',
+  'recorded_score',
+  'expected_months',
+  'recorded_days',
+  'expected_book_id',
+  'recorded_book_id',
+  'source',
+  'method',
+  'exception_type',
+  'location',
+  'offline_reason',
+]);
 
 function cleanString(value: unknown, maxLen = 400): string {
   if (value == null) return '';
@@ -135,64 +165,52 @@ function cleanString(value: unknown, maxLen = 400): string {
     .slice(0, maxLen);
 }
 
-export function sanitizeErrorText(value: unknown, maxLen = 300): string {
-  const base = cleanString(value, maxLen * 2);
-  if (!base) return '';
-  return base
-    .replace(PERSIAN_ARABIC_RE, '[TEXT]')
-    .replace(/(["'«])(?:\\.|(?!\1).)*\1/g, (m) => (m.length > 22 || /\s/.test(m) || m.includes('[TEXT]') ? '"[REDACTED]"' : m))
-    .replace(/(?:\[TEXT\]\s*){2,}/g, '[TEXT] ')
-    .trim()
-    .slice(0, maxLen);
+export function sanitizeErrorName(value: unknown): string {
+  const s = String(value ?? '').trim();
+  if (/^[A-Za-z_][A-Za-z0-9_.]{0,60}$/.test(s)) return s;
+  return 'Error';
 }
 
 export function sanitizeStack(value: unknown, maxLen = 1400): string {
   if (!value) return '';
-  const lines = String(value).split(/\r?\n/).slice(-12);
+  const lines = String(value).split(/\r?\n/).slice(-14);
   const out: string[] = [];
   for (const line of lines) {
     const trimmed = line.replace(/\s+$/, '');
     if (!trimmed) continue;
-    if (/^\s*(?:at\s+|@\S+|File\s+")/.test(trimmed)) {
+    // Keep only frame location lines (`at fn (file:line:col)`, `@file:line`, `in Component`, `File "...", line N`).
+    // Never keep exception message header lines (`Error: <arbitrary text>`).
+    if (/^\s*(?:at\s+|@\S+|in\s+[A-Z]\w*|File\s+"[^"]+",\s+line\s+\d+)/.test(trimmed)) {
       out.push(cleanString(trimmed, 240));
-    } else {
-      out.push(sanitizeErrorText(trimmed, 240));
     }
   }
   return out.join('\n').slice(0, maxLen);
 }
 
-const SAFE_CLIENT_TITLE_PREFIXES = [
-  'خطای اجرای جاوااسکریپت:',
-  'خطای مرورگر:',
-  'خطای نمایش صفحه:',
-  'وعدهٔ مدیریت‌نشده',
-];
+function clientErrorTitle(code: string, errorName: string): string {
+  if (code === 'react_render') return `خطای نمایش صفحه: ${errorName}`;
+  if (code === 'unhandled_rejection') return `وعدهٔ مدیریت‌نشده (${errorName})`;
+  return `خطای اجرای جاوااسکریپت: ${errorName}`;
+}
 
-function sanitizeClientTitle(title: string, fallback: string): string {
-  const base = cleanString(title, 240);
-  if (!base) return fallback;
-  for (const prefix of SAFE_CLIENT_TITLE_PREFIXES) {
-    if (base.startsWith(prefix)) {
-      const rest = sanitizeErrorText(base.slice(prefix.length), 120);
-      return `${prefix} ${rest}`.trim().slice(0, 240);
-    }
-  }
-  return sanitizeErrorText(base, 240) || fallback;
+function clientErrorObserved(code: string, errorName: string): string {
+  if (code === 'react_render') return `خطای رندر (${errorName}) در نمایش صفحه رخ داد.`;
+  if (code === 'unhandled_rejection') return `وعدهٔ ناهم‌زمان مدیریت‌نشده (${errorName}) رخ داد.`;
+  return `خطای مهارنشدهٔ جاوااسکریپت (${errorName}) رخ داد.`;
 }
 
 function cleanContext(raw?: Record<string, string | number | boolean | undefined>): Record<string, string | number | boolean> | undefined {
   if (!raw) return undefined;
   const out: Record<string, string | number | boolean> = {};
   for (const [k, v] of Object.entries(raw)) {
-    if (v === undefined) continue;
+    if (!CLIENT_ALLOWED_CONTEXT_KEYS.has(k) || v === undefined) continue;
     if (typeof v === 'boolean' || typeof v === 'number') out[k] = v;
     else {
       const cleaned =
         k === 'stack' || k === 'component_stack'
           ? sanitizeStack(v, 1400)
-          : k === 'error_message'
-            ? sanitizeErrorText(v, 300)
+          : k === 'error_name' || k === 'exception_type'
+            ? sanitizeErrorName(v)
             : cleanString(v, 300);
       if (cleaned) out[k] = cleaned;
     }
@@ -230,11 +248,17 @@ export async function getInstallId(): Promise<string> {
 }
 
 export function addBreadcrumb(type: string, name: string, detail?: string) {
+  const cleanedDetail = detail ? cleanString(detail, 120) : '';
+  const safeDetail = cleanedDetail
+    ? /^(?:[A-Za-z0-9_.:=\-/]{1,64}|\[(?:PHONE|EMAIL|REDACTED)\])$/.test(cleanedDetail)
+      ? cleanedDetail
+      : '[REDACTED]'
+    : '';
   breadcrumbs.push({
     at: new Date().toISOString(),
     type: cleanString(type, 30),
     name: cleanString(name, 80),
-    ...(detail ? { detail: sanitizeErrorText(detail, 120) } : {}),
+    ...(safeDetail ? { detail: safeDetail } : {}),
   });
   if (breadcrumbs.length > MAX_BREADCRUMBS) {
     breadcrumbs.splice(0, breadcrumbs.length - MAX_BREADCRUMBS);
@@ -279,16 +303,18 @@ export async function reportDiagnostic(input: ReportDiagnosticInput): Promise<st
     const eventId = cleanString(input.event_id || newEventId(), 64) || newEventId();
     const isClientError = input.kind === 'client_error';
     const cleanCode = cleanString(input.code, 80) || 'client_error';
+    const cleanedContext = cleanContext(input.context);
+    const errorName = typeof cleanedContext?.error_name === 'string' ? cleanedContext.error_name : 'Error';
     const payload: DiagnosticEventPayload = {
       event_id: eventId,
       kind: input.kind,
       severity: input.severity ?? 'error',
       code: cleanCode,
-      title: isClientError ? sanitizeClientTitle(input.title, cleanCode) : cleanString(input.title, 240) || cleanCode,
+      title: isClientError ? clientErrorTitle(cleanCode, errorName) : cleanString(input.title, 240) || cleanCode,
       route: cleanString(input.route ?? currentRoute, 200),
       operation: cleanString(input.operation, 80),
       expected: cleanString(input.expected, 1000),
-      observed: isClientError ? sanitizeErrorText(input.observed, 1000) : cleanString(input.observed, 1000),
+      observed: isClientError ? clientErrorObserved(cleanCode, errorName) : cleanString(input.observed, 1000),
       request_id: cleanString(input.request_id, 64),
       op_id: cleanString(input.op_id, 64),
       install_id: installId,
@@ -298,7 +324,7 @@ export async function reportDiagnostic(input: ReportDiagnosticInput): Promise<st
       web_commit: meta.webCommit || undefined,
       is_offline: input.is_offline ?? !isOnlineFlag,
       breadcrumbs: breadcrumbs.length ? [...breadcrumbs] : undefined,
-      context: cleanContext(input.context),
+      context: cleanedContext,
       created_at_ms: Date.now(),
     };
 
@@ -377,18 +403,18 @@ export function installGlobalErrorHandlers() {
     const prev = g.ErrorUtils.getGlobalHandler?.();
     g.ErrorUtils.setGlobalHandler((err: unknown, isFatal?: boolean) => {
       const e = err instanceof Error ? err : new Error(String(err ?? 'Unknown JS error'));
-      const safeName = sanitizeErrorText(e.name, 60) || 'Error';
-      const safeMsg = sanitizeErrorText(e.message, 240);
-      const key = `rn:${safeName}:${safeMsg.slice(0, 80)}`;
+      const safeName = sanitizeErrorName(e.name);
+      const topFrame = sanitizeStack(e.stack).split('\n')[0] ?? '';
+      const key = `rn:${safeName}:${topFrame.slice(0, 80)}`;
       if (!shouldSkipDuplicate(key)) {
         void reportDiagnostic({
           kind: 'client_error',
           severity: isFatal ? 'critical' : 'error',
           code: 'js_error',
-          title: `خطای اجرای جاوااسکریپت: ${safeName}`,
+          title: clientErrorTitle('js_error', safeName),
           expected: 'اجرای بدون استثنای مهارنشده در اپ.',
-          observed: safeMsg ? `${safeName}: ${safeMsg}` : safeName,
-          context: { error_name: safeName, error_message: safeMsg, stack: sanitizeStack(e.stack) },
+          observed: clientErrorObserved('js_error', safeName),
+          context: { error_name: safeName, stack: sanitizeStack(e.stack) },
           deferFlush: true,
         });
       }
@@ -399,20 +425,19 @@ export function installGlobalErrorHandlers() {
   if (g.window?.addEventListener) {
     g.window.addEventListener('error', (ev: any) => {
       const err = ev?.error instanceof Error ? ev.error : null;
-      const safeName = sanitizeErrorText(err?.name || 'Error', 60) || 'Error';
-      const safeMsg = sanitizeErrorText(err?.message || String(ev?.message || 'Script error'), 240);
-      const key = `web:${safeMsg.slice(0, 80)}`;
+      const safeName = sanitizeErrorName(err?.name || 'Error');
+      const topFrame = sanitizeStack(err?.stack).split('\n')[0] ?? '';
+      const key = `web:${safeName}:${topFrame.slice(0, 80)}`;
       if (shouldSkipDuplicate(key)) return;
       void reportDiagnostic({
         kind: 'client_error',
         severity: 'error',
         code: 'js_error',
-        title: `خطای مرورگر: ${safeName}`,
+        title: clientErrorTitle('js_error', safeName),
         expected: 'اجرای بدون خطای رندر یا اسکریپت در وب‌اپ.',
-        observed: safeMsg ? `${safeName}: ${safeMsg}` : safeName,
+        observed: clientErrorObserved('js_error', safeName),
         context: {
           error_name: safeName,
-          error_message: safeMsg,
           stack: sanitizeStack(err?.stack),
         },
       });
@@ -421,20 +446,19 @@ export function installGlobalErrorHandlers() {
     g.window.addEventListener('unhandledrejection', (ev: any) => {
       const reason = ev?.reason;
       const err = reason instanceof Error ? reason : null;
-      const safeName = sanitizeErrorText(err?.name || 'PromiseRejection', 60) || 'PromiseRejection';
-      const safeMsg = sanitizeErrorText(err?.message || String(reason ?? 'Unhandled promise rejection'), 240);
-      const key = `rej:${safeMsg.slice(0, 80)}`;
+      const safeName = sanitizeErrorName(err?.name || 'PromiseRejection');
+      const topFrame = sanitizeStack(err?.stack).split('\n')[0] ?? '';
+      const key = `rej:${safeName}:${topFrame.slice(0, 80)}`;
       if (shouldSkipDuplicate(key)) return;
       void reportDiagnostic({
         kind: 'client_error',
         severity: 'error',
         code: 'unhandled_rejection',
-        title: 'وعدهٔ مدیریت‌نشده (Unhandled Rejection)',
+        title: clientErrorTitle('unhandled_rejection', safeName),
         expected: 'همهٔ عملیات ناهم‌زمان خطاها را مدیریت کنند.',
-        observed: safeMsg ? `${safeName}: ${safeMsg}` : safeName,
+        observed: clientErrorObserved('unhandled_rejection', safeName),
         context: {
           error_name: safeName,
-          error_message: safeMsg,
           stack: sanitizeStack(err?.stack),
         },
       });

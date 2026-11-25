@@ -19,7 +19,6 @@ ALLOWED_CONTEXT_KEYS = frozenset({
     "attempt_id",
     "status_code",
     "error_name",
-    "error_message",
     "stack",
     "component_stack",
     "previous_intact",
@@ -139,18 +138,24 @@ def scrub_untrusted_error(raw: object, max_len: int = 400) -> str:
     return text.strip()[:max_len]
 
 
+def scrub_error_name(raw: object, fallback: str = "Error") -> str:
+    s = str(raw or "").strip()
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,60}", s):
+        return s
+    return fallback
+
+
 def scrub_stack(raw: object, max_len: int = 1600) -> str:
+    """Keep ONLY stack frame locations (file, line, function/component), never exception message headers or source lines."""
     if not raw:
         return ""
     lines: list[str] = []
-    for line in str(raw).splitlines()[-14:]:
+    for line in str(raw).splitlines()[-16:]:
         stripped = line.rstrip()
         if not stripped:
             continue
-        if re.match(r"^\s*(?:at\s+|File\s+\")", stripped):
+        if re.match(r'^\s*(?:at\s+|@\S+|in\s+[A-Za-z_]\w*|File\s+"[^"]+",\s+line\s+\d+)', stripped):
             lines.append(scrub_text(stripped, max_len=240))
-        else:
-            lines.append(scrub_untrusted_error(stripped, max_len=240))
     return "\n".join(lines)[:max_len]
 
 
@@ -181,8 +186,8 @@ def sanitize_context(raw: object) -> dict:
             continue
         if key in ("stack", "component_stack"):
             cleaned = scrub_stack(val, max_len=1600)
-        elif key == "error_message":
-            cleaned = scrub_untrusted_error(val, max_len=400)
+        elif key in ("error_name", "exception_type"):
+            cleaned = scrub_error_name(val)
         else:
             cleaned = sanitize_scalar(val, max_len=400)
         if cleaned not in ("", None, []):
@@ -201,7 +206,12 @@ def sanitize_breadcrumbs(raw: object) -> list[dict]:
         for key in ALLOWED_BREADCRUMB_KEYS:
             if key in item and item[key] is not None:
                 if key == "detail":
-                    entry[key] = scrub_untrusted_error(item[key], max_len=160)
+                    detail_str = scrub_text(item[key], max_len=160)
+                    entry[key] = (
+                        detail_str
+                        if re.fullmatch(r"(?:[A-Za-z0-9_.:=\-/]{1,64}|\[(?:PHONE|EMAIL|REDACTED)\])", detail_str)
+                        else "[REDACTED]"
+                    )
                 else:
                     entry[key] = sanitize_scalar(item[key], max_len=160)
         if entry:
