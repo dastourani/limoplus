@@ -3,16 +3,28 @@
 (function () {
   var P = window.LimoPreview;
 
+  function formatRating(rating, count) {
+    if (typeof rating !== 'number' || !isFinite(rating) || rating <= 0 || !count) return '';
+    var rounded = Math.round(rating * 10) / 10;
+    var text = (rounded % 1 === 0 ? String(rounded) : rounded.toFixed(1).replace('.', '٫'))
+      .replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[Number(d)]; });
+    return text;
+  }
+
   function covers() {
     document.querySelectorAll('.cover[data-cover]').forEach(function (el) {
       var data;
       try { data = JSON.parse(el.getAttribute('data-cover')); } catch (e) { return; }
       var w = Number(el.getAttribute('data-w')) || el.clientWidth || 170;
       if (el.clientWidth && el.clientWidth < w) w = el.clientWidth;
+      var ratingText = w >= 100 ? formatRating(data.rating, data.rating_count) : '';
+      var ratingHtml = ratingText
+        ? '<span class="cover-rating" aria-label="امتیاز ' + ratingText + ' از ۵"><span class="cover-rating-star" aria-hidden="true">★</span><span>' + ratingText + '</span></span>'
+        : '';
       if (data.image) {
-        el.innerHTML = '<img alt="" loading="lazy" src="' + data.image.replace(/"/g, '&quot;') + '">';
+        el.innerHTML = '<img alt="" loading="lazy" src="' + data.image.replace(/"/g, '&quot;') + '">' + ratingHtml;
       } else if (P && P.coverHtml) {
-        el.innerHTML = P.coverHtml(data, 'dark', w);
+        el.innerHTML = P.coverHtml(data, 'dark', w) + ratingHtml;
       }
     });
   }

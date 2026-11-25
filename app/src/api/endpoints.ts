@@ -48,6 +48,9 @@ export type BookListItem = {
   notify: boolean;
   /** «خبرم کن» can be cancelled once; after asking again it stays on. */
   notify_can_cancel?: boolean;
+  /** Average reader rating (1–5) from approved reviews, null when no reviews exist yet. */
+  rating?: number | null;
+  rating_count?: number;
 };
 export type NodeSummary = {
   id: number;

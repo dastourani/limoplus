@@ -59,6 +59,7 @@ def major_books(request, slug):
     entitlements = active_rows(request.user)
     prices = book_price_quotes(books)
     _prefetch_user_rows(request)
+    _prefetch_book_ratings(request, books)
     maps = AccessMap.bulk_for_books(request.user, books, entitlements=entitlements, card_only=True)
     return Response([book_card(request, book, maps[book.pk], prices[book.pk]) for book in books])
 
@@ -81,6 +82,7 @@ def all_books(request):
     entitlements = active_rows(request.user)
     prices = book_price_quotes(books)
     _prefetch_user_rows(request)
+    _prefetch_book_ratings(request, books)
     maps = AccessMap.bulk_for_books(request.user, books, entitlements=entitlements, card_only=True)
     payload = []
     for book in books:
@@ -128,6 +130,7 @@ def shelves(request):
 
     prices = book_price_quotes(all_home_books)
     _prefetch_user_rows(request)
+    _prefetch_book_ratings(request, all_home_books)
     maps = AccessMap.bulk_for_books(request.user, all_home_books, entitlements=entitlements, card_only=True)
     cards: dict[int, dict] = {}
 
@@ -197,8 +200,50 @@ def book_card(request, book, access, price_quote=None) -> dict:
         "owned": access.owned,
         "access": access.access,
         "progress": round(len(done) / len(sections), 3) if done and sections else None,
+        "rating": (rating := _book_rating(request, book))[0],
+        "rating_count": rating[1],
         **_notify(request.user, book, request),
     }
+
+
+def _prefetch_book_ratings(request, books) -> None:
+    """Batch-fetch approved reader rating averages and counts in one query so shelf/list endpoints stay O(1) queries."""
+    from django.db.models import Avg
+
+    from .models import BookOpinion
+
+    existing = getattr(request, "_limo_ratings", None)
+    ratings: dict[int, tuple[float | None, int]] = dict(existing) if existing is not None else {}
+    book_ids = [b.id for b in books if b.id not in ratings]
+    if book_ids:
+        for book_id in book_ids:
+            ratings[book_id] = (None, 0)
+        rows = (
+            BookOpinion.objects.filter(book_id__in=book_ids, status=BookOpinion.Status.APPROVED)
+            .values("book_id")
+            .annotate(avg=Avg("rating"), count=Count("id"))
+        )
+        for row in rows:
+            if row["count"] and row["avg"] is not None:
+                ratings[row["book_id"]] = (round(float(row["avg"]), 1), row["count"])
+    request._limo_ratings = ratings
+
+
+def _book_rating(request, book) -> tuple[float | None, int]:
+    cached = getattr(request, "_limo_ratings", None) if request is not None else None
+    if cached is not None:
+        return cached.get(book.id, (None, 0))
+    from django.db.models import Avg
+
+    from .models import BookOpinion
+
+    agg = BookOpinion.objects.filter(book=book, status=BookOpinion.Status.APPROVED).aggregate(
+        avg=Avg("rating"), count=Count("id")
+    )
+    count = agg["count"] or 0
+    if not count or agg["avg"] is None:
+        return (None, 0)
+    return (round(float(agg["avg"]), 1), count)
 
 
 def _prefetch_user_rows(request) -> None:
@@ -272,6 +317,14 @@ def book_detail(request, slug):
         item["flashcard_count"] = sum(s["flashcard_count"] for s in item["sections"])
         item["term_count"] = _term_count(access, chapter)
         chapters.append(item)
+    community_reviews = _book_reviews_data(book, request.user)
+    request._limo_ratings = {
+        book.id: (
+            (community_reviews["average_rating"], community_reviews["total_count"])
+            if community_reviews["total_count"] > 0
+            else (None, 0)
+        )
+    }
     return Response(
         {
             **book_card(request, book, access),
@@ -294,7 +347,7 @@ def book_detail(request, slug):
             # «N از M لغت»: word cards learned (Leitner box 4+), when the book has word cards.
             "words": word_counts(request.user, access, book),
             "author_profile": _teacher_info(book, request),
-            "community_reviews": _book_reviews_data(book, request.user),
+            "community_reviews": community_reviews,
         }
     )
 
@@ -797,11 +850,14 @@ def submit_book_review(request, slug):
     """ثبت یا ویرایش نظر و امتیاز کاربر برای کتاب با محاسبه خودکار درصد پیشرفت مطالعه"""
     from django.shortcuts import get_object_or_404
     book = get_object_or_404(ContentNode, kind=ContentNode.Kind.BOOK, slug=slug, depth=1)
-    
-    rating = int(request.data.get("rating", 5))
-    rating = max(1, min(5, rating))
-    satisfaction = int(request.data.get("satisfaction_percent", 100))
-    satisfaction = max(0, min(100, satisfaction))
+
+    try:
+        raw_rating = request.data.get("rating", 5)
+        raw_sat = request.data.get("satisfaction_percent", 100)
+        rating = max(1, min(5, int(5 if raw_rating is None else raw_rating)))
+        satisfaction = max(0, min(100, int(100 if raw_sat is None else raw_sat)))
+    except (TypeError, ValueError):
+        return Response({"error": "مقدار امتیاز یا درصد رضایت نامعتبر است."}, status=status.HTTP_400_BAD_REQUEST)
     body = str(request.data.get("body", "")).strip()[:2000]
 
     if not body:

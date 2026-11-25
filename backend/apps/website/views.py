@@ -25,6 +25,7 @@ from apps.catalog.jalali import jalali_date as fa_date
 from apps.catalog.labels import all_labels
 from apps.catalog.media import media_urls
 from apps.catalog.models import ContentNode, Major
+from apps.catalog.views import _book_rating, _prefetch_book_ratings
 from config.links import app_base_url
 
 from .models import FaqItem, SiteNavItem, SitePage, SiteSettings
@@ -95,11 +96,14 @@ def _published():
 def _cover(request, book) -> str:
     """What the browser needs to draw the cover (the same template as the app's)."""
     major = min(book.majors.all(), key=lambda m: (m.order, m.name), default=None)
+    rating, rating_count = _book_rating(request, book)
     data = {
         "title": book.title, "title_en": book.title_en, "author": book.author, "edition": book.edition,
         "motif": book.cover_motif, "drawing": loads_drawing(book.cover_drawing),
         "major": major.name if major else "", "strip": major.color if major else "",
         "image": request.build_absolute_uri(book.cover.url) if book.cover else "",
+        "rating": rating,
+        "rating_count": rating_count,
     }
     return json.dumps(data, ensure_ascii=False)
 
@@ -319,6 +323,7 @@ def home(request):
     from apps.commerce.pricing import ProductStatus, book_price_quotes, campaign_banner_links, campaign_banner_payloads
 
     pub_books = list(_published())
+    _prefetch_book_ratings(request, pub_books)
     price_quotes = book_price_quotes(pub_books)
     books = [_card(request, b, price_quotes[b.pk]) for b in pub_books]
     majors = Major.objects.filter(books__in=pub_books).distinct().order_by("order", "name")
@@ -447,6 +452,7 @@ def books(request):
     paginator = Paginator(book_list, BOOKS_PER_PAGE)
     page_obj = paginator.get_page(request.GET.get("page"))
     books_on_page = list(page_obj.object_list)
+    _prefetch_book_ratings(request, books_on_page)
     quotes = book_price_quotes(books_on_page)
     cards = [_card(request, book, quotes[book.pk]) for book in books_on_page]
     page_summary = ""
@@ -535,8 +541,11 @@ def book(request, slug):
     related_books = []
     if is_preparing:
         other = [x for x in _published() if x.id != b.id and not x.is_coming_soon][:6]
+        _prefetch_book_ratings(request, [b, *other])
         other_quotes = book_price_quotes(other)
         related_books = [_card(request, item, other_quotes[item.pk]) for item in other]
+    else:
+        _prefetch_book_ratings(request, [b])
     book_discount = None
     if product_status["promotion"] == "discount":
         book_discount = {
