@@ -22,6 +22,7 @@ import { ReadingCards, type ReadingItem } from '../../components/home/ReadingCar
 import { SectionHeader } from '../../components/home/SectionHeader';
 import { TodayTiles } from '../../components/home/TodayTiles';
 import { BookPill } from '../../components/home/BookPill';
+import { openReview, reviewLabel } from '../../lib/reviews';
 import { storage, type ReadingSpot } from '../../lib/storage';
 import { useLocalStudySeconds } from '../../lib/studyTime';
 import { keepIfSame, useApi } from '../../lib/useApi';
@@ -104,6 +105,7 @@ export default function Home() {
     }, []),
   );
   const [today, setToday] = useState<Today | null>(null);
+  const [extraOpen, setExtraOpen] = useState(false);
   useFocusEffect(
     useCallback(() => {
       if (user) {
@@ -292,7 +294,8 @@ export default function Home() {
           </View>
       ),
     });
-  if (user && today && (today.tasks?.length || today.needs_review?.items.length || today.comeback))
+  const scheduledReviewsDone = Boolean(today?.reviews_done_today && !(today?.reviews?.length));
+  if (user && today && (today.tasks?.length || today.needs_review?.items.length || today.comeback || today.reviews_done_today || today.reviews_waiting))
     blocks.push({
       key: 'today',
       el: (
@@ -316,7 +319,16 @@ export default function Home() {
                 خوش برگشتی! {toPersianDigits(today.away_days)} روز نبودی؛ یک شروع کوتاه برایت چیدیم، نه همه‌ی کارهای عقب‌افتاده.
               </Text>
             )}
-            <TodayTiles tasks={today.tasks ?? []} onError={() => toast('شروع مرور ممکن نشد؛ دوباره امتحان کن.')} />
+            <TodayTiles
+              tasks={today.tasks ?? []}
+              onError={() => toast('شروع مرور ممکن نشد؛ دوباره امتحان کن.')}
+              doneMessage={scheduledReviewsDone || today.reviews_waiting ? 'مرورهای برنامه‌ریزی‌شدهٔ امروز تمام شد.' : undefined}
+            />
+            {scheduledReviewsDone && !!(today.tasks?.length) && (
+              <Text style={[styles.note, rtl, { color: colors.greenDark, fontWeight: '700' }]}>
+                مرورهای برنامه‌ریزی‌شدهٔ امروز تمام شد.
+              </Text>
+            )}
             {!!today.needs_review?.items.length && (
               <View style={styles.needsList}>
                 <Text style={[styles.planSub, rtl]}>یک نگاه دوباره</Text>
@@ -348,7 +360,39 @@ export default function Home() {
               </View>
             )}
             {!!today.reviews_waiting && (
-              <Text style={[styles.note, rtl]}>{toPersianDigits(today.reviews_waiting)} مرور دیگر هم منتظر است؛ فردا نوبت آن‌هاست.</Text>
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <Text style={[styles.note, rtl, { flex: 1 }]}>
+                    {toPersianDigits(today.reviews_waiting)} مرور دیگر برای ادامهٔ اختیاری داری؛ وگرنه فردا نوبت آن‌هاست.
+                  </Text>
+                  {!!today.extra_reviews?.length && (
+                    <Pressable onPress={() => setExtraOpen((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: extraOpen }}>
+                      <Text style={[styles.guestLinkText, rtl]}>
+                        {extraOpen ? 'بستن ▴' : 'ادامهٔ اختیاری ▾'}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+                {extraOpen && !!today.extra_reviews?.length && (
+                  <View style={styles.needsList}>
+                    {today.extra_reviews.map((item, i) => (
+                      <Pressable
+                        key={`${item.kind}-${item.id}`}
+                        onPress={() => openReview(item).catch(() => toast('شروع مرور ممکن نشد؛ دوباره امتحان کن.'))}
+                        style={[styles.needsRow, i > 0 && styles.needsRowLine]}
+                        accessibilityRole="button"
+                      >
+                        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                          <Text style={[styles.needsTitle, rtl]} numberOfLines={1}>{reviewLabel(item)}</Text>
+                        </View>
+                        <View style={styles.needsPill}>
+                          <Text style={styles.needsPillText}>ادامه</Text>
+                        </View>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
             )}
           </View>
         </View>

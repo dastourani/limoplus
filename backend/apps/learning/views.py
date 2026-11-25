@@ -209,6 +209,11 @@ def answer(request, question_id):
                         answered_before=answered_before,
                     )
                 )
+            if review_session.finished_at is not None:
+                return Response(
+                    {"code": "session_finished", "message": "این جلسهٔ مرور قبلاً پایان یافته است."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         if request.user.is_authenticated:
             from apps.study.mistakes import fixed_info
