@@ -440,19 +440,35 @@ export default function Book() {
           {isPreparing ? (
             <View style={styles.cta}>
               <View style={styles.ctaHead}>
-                <IconBadge name="bell" size={30} />
+                <IconBadge name={book.product_status.state === 'preparing' ? 'calendar' : 'bell'} size={30} />
                 <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={[styles.ctaTitle, rtl]}>این کتاب در حال آماده‌سازی است و به‌زودی منتشر می‌شود</Text>
-                  {!!book.release_estimate && (
+                  <Text style={[styles.ctaTitle, rtl]}>
+                    {book.product_status.state === 'preparing'
+                      ? 'این کتاب در حال برنامه‌ریزی است'
+                      : 'این کتاب در حال آماده‌سازی است و به‌زودی منتشر می‌شود'}
+                  </Text>
+                  {!!book.release_estimate ? (
                     <Text style={[styles.ctaSmall, rtl, { color: colors.greenDark, fontWeight: '800' }]}>
                       زمان حدودی انتشار: {book.release_estimate}
                     </Text>
+                  ) : (
+                    book.product_status.state === 'preparing' && (
+                      <Text style={[styles.ctaSmall, rtl]}>قرارداد تألیف ثبت شده و در صف تولید محتوا قرار دارد.</Text>
+                    )
                   )}
                 </View>
                 <HelpTip
                   size={22}
-                  title={`زمان حدودی انتشار: ${book.release_estimate || 'به‌زودی'}`}
-                  text="با زدن دکمه‌ی «خبرم کن»، به محض انتشار فصل اول رایگان این کتاب، یک پیامک اطلاع‌رسانی برای شما ارسال می‌شود."
+                  title={
+                    book.product_status.state === 'preparing'
+                      ? 'این کتاب در حال برنامه‌ریزی است'
+                      : `زمان حدودی انتشار: ${book.release_estimate || 'به‌زودی'}`
+                  }
+                  text={
+                    book.product_status.state === 'preparing'
+                      ? `قرارداد تألیف این منبع ثبت شده و در صف تولید محتوا قرار دارد.${book.release_estimate ? ` پیش‌بینی انتشار: ${book.release_estimate}.` : ''} با زدن دکمه‌ی «خبرم کن»، به محض انتشار فصل اول رایگان با پیامک به شما اطلاع می‌دهیم.`
+                      : 'با زدن دکمه‌ی «خبرم کن»، به محض انتشار فصل اول رایگان این کتاب، یک پیامک اطلاع‌رسانی برای شما ارسال می‌شود.'
+                  }
                 />
               </View>
               <Button
@@ -493,36 +509,37 @@ export default function Book() {
             </View>
           ) : (
             <View style={[styles.cta, totalBookSeconds >= 60 && { marginBottom: 16 }]}>
-              {!!firstPreview && (
+              {(!!validLast || !!firstPreview) && (
                 <View style={styles.ctaHead}>
-                  <IconBadge name="gift" size={30} />
-                  <Text style={[styles.ctaTitle, rtl, { flex: 1 }]}>
-                    {previewLabel === 'بخشی رایگان'
-                      ? 'بخشی از کتاب رایگان است؛ بدون خرید شروع کن'
-                      : `${previewLabel} است؛ بدون خرید شروع کن`}
+                  <IconBadge name={validLast ? 'book-open' : 'gift'} size={30} />
+                  <Text style={[styles.ctaTitle, rtl, { flex: 1 }]} numberOfLines={1}>
+                    {validLast
+                      ? `آخرین مطالعه (رایگان): «${validLast.title}»`
+                      : previewLabel === 'بخشی رایگان'
+                        ? 'بخشی از کتاب رایگان است؛ بدون خرید امتحان کن'
+                        : `${previewLabel} است؛ بدون خرید امتحان کن`}
                   </Text>
                 </View>
               )}
-              {!!validLast && (
-                <View style={styles.resumeRow}>
-                  <View style={styles.resumeInfo}>
-                    <Icon name="book-open" size={18} color={colors.greenDark} />
-                    <Text style={[styles.resumeLineText, rtl]} numberOfLines={1}>ادامه از «{validLast.title}»</Text>
-                  </View>
-                  <Pressable onPress={() => router.push(`/section/${validLast.id}`)} style={styles.resumeAction} accessibilityRole="button">
-                    <Text style={styles.ctaButtonText}>ادامه بده</Text>
-                  </Pressable>
-                </View>
-              )}
-              {(!!(firstPreview && !validLast) || book.product_status.state === 'paid') && (
-                <View style={[styles.ctaActions, wideCta && firstPreview && !validLast && book.product_status.state === 'paid' && styles.ctaActionsRow]}>
-                  {!!firstPreview && !validLast && (
+              {(!!validLast || !!firstPreview || book.product_status.state === 'paid') && (
+                <View
+                  style={[
+                    styles.ctaActions,
+                    wideCta && (!!validLast || !!firstPreview) && book.product_status.state === 'paid' && styles.ctaActionsRow,
+                  ]}
+                >
+                  {(!!validLast || !!firstPreview) && (
                     <Pressable
-                      onPress={startFree}
-                      style={[styles.startFreeBtn, wideCta && book.product_status.state === 'paid' && styles.ctaActionFlex]}
+                      onPress={() => (validLast ? router.push(`/section/${validLast.id}`) : startFree())}
+                      style={[
+                        styles.startFreeBtn,
+                        wideCta && book.product_status.state === 'paid' && styles.ctaActionFlex,
+                      ]}
                       accessibilityRole="button"
                     >
-                      <Text style={styles.startFreeBtnText}>شروع رایگان از فصل {toPersianDigits(firstOpenIndex)}</Text>
+                      <Text style={styles.startFreeBtnText}>
+                        {validLast ? 'ادامه بده' : `خواندن رایگان فصل ${toPersianDigits(firstOpenIndex)}`}
+                      </Text>
                     </Pressable>
                   )}
                   {book.product_status.state === 'paid' && (
@@ -531,7 +548,7 @@ export default function Book() {
                       style={[
                         styles.unlock,
                         !(firstPreview || validLast) && styles.unlockMain,
-                        wideCta && firstPreview && !validLast && styles.ctaActionFlex,
+                        wideCta && (!!validLast || !!firstPreview) && styles.ctaActionFlex,
                       ]}
                       accessibilityRole="button"
                     >
@@ -555,15 +572,23 @@ export default function Book() {
                         <Text style={styles.discountChip}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
                       </View>
                     </View>
-                    <Text style={[styles.saving, rtl]}>
-                      صرفه‌جویی {formatToman(bookPrice.discount.amount)} · یا با اشتراک لیمو
-                    </Text>
+                    <Pressable onPress={() => router.push('/subscribe')} accessibilityRole="link">
+                      <Text style={[styles.saving, rtl]}>
+                        صرفه‌جویی {formatToman(bookPrice.discount.amount)} · یا با اشتراک لیمو
+                      </Text>
+                    </Pressable>
                   </View>
                 ) : (
-                  <Text style={[styles.ctaSmall, { textAlign: 'center' }]}>
-                    {formatToman(bookPrice.price)}، یا با اشتراک ماهانه‌ی لیمو
-                    {!firstPreview && !!previewLabel && <Text style={styles.samplePriceText}> · {previewLabel}</Text>}
-                  </Text>
+                  <View style={styles.priceLineCenter}>
+                    <Text style={styles.ctaSmall}>
+                      <Text style={styles.ctaPriceStrong}>{formatToman(bookPrice.price)}</Text>
+                      {'، یا با '}
+                      <Text onPress={() => router.push('/subscribe')} style={styles.ctaSubLink}>
+                        اشتراک ماهانه‌ی لیمو
+                      </Text>
+                      {!firstPreview && !!previewLabel && <Text style={styles.samplePriceText}> · {previewLabel}</Text>}
+                    </Text>
+                  </View>
                 )
               )}
               {book.product_status.state === 'unpriced' && <Text style={[styles.ctaSmall, rtl]}>قیمت نسخه‌ی کامل هنوز تعیین نشده است.</Text>}
@@ -1411,14 +1436,13 @@ const styles = StyleSheet.create({
   ctaActionFlex: { flex: 1 },
   startFreeBtn: { minHeight: 52, borderRadius: radius.md, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
   startFreeBtnText: { fontSize: 15, fontWeight: '900', color: colors.ink },
-  unlock: { minHeight: 52, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.ink, backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
-  // The one main action of the box is lemon; next to «شروع رایگان» or «ادامه بده» it is the outlined second.
+  unlock: { minHeight: 52, borderRadius: radius.md, borderWidth: 1.5, borderColor: '#BAC4B4', backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
+  // The one main action of the box is lemon; next to «خواندن رایگان» or «ادامه بده» it is the outlined second.
   unlockMain: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   unlockText: { fontSize: 15, fontWeight: '900', color: colors.ink },
-  resumeRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, backgroundColor: colors.greenSoft, borderRadius: radius.md, padding: 6, paddingRight: 12 },
-  resumeInfo: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, minWidth: 0 },
-  resumeAction: { backgroundColor: colors.lemon, borderRadius: 10, paddingHorizontal: 16, minHeight: 40, justifyContent: 'center', alignItems: 'center' },
-  resumeLineText: { flex: 1, fontSize: 14.5, fontWeight: '800', color: colors.greenDark },
+  priceLineCenter: { alignItems: 'center' },
+  ctaPriceStrong: { fontWeight: '800', color: colors.ink },
+  ctaSubLink: { color: colors.greenDark, fontWeight: '800', textDecorationLine: 'underline' },
   shortcuts: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
   shortcut: { flexGrow: 1, flexBasis: '45%', minHeight: 46, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
   timeRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 4 },

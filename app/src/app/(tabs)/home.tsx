@@ -170,6 +170,7 @@ export default function Home() {
     endpoints.bannerClick(id).catch(() => undefined);
     if (link.startsWith('book/')) router.push(`/book/${link.slice(5)}`);
     else if (link.startsWith('buy/')) router.push(`/buy/${link.slice(4)}`);
+    else if (link === 'subscribe') router.push('/subscribe');
     else if (link.startsWith('exam/')) router.push(`/exam/${link.slice(5)}`);
     else if (link === 'review') router.push('/review');
     else if (/^https?:\/\//.test(link)) Linking.openURL(link);
@@ -533,10 +534,11 @@ export default function Home() {
 }
 
 /** One look per kind of shelf label. */
-const RIBBON: Record<'soon' | 'access' | 'free' | 'locked', { box: object; color: string; icon?: 'circle-check' | 'lock' | 'gift' }> = {
+const RIBBON: Record<'soon' | 'access' | 'free' | 'planning' | 'locked', { box: object; color: string; icon?: 'circle-check' | 'lock' | 'gift' | 'calendar' }> = {
   soon: { box: { backgroundColor: '#8A938C' }, color: '#FFFFFF' },
   access: { box: { backgroundColor: '#3FB8A9' }, color: '#FFFFFF', icon: 'circle-check' },
   free: { box: { backgroundColor: colors.lemon }, color: colors.ink, icon: 'gift' },
+  planning: { box: { backgroundColor: '#56655B' }, color: '#FFFFFF', icon: 'calendar' },
   locked: { box: { backgroundColor: colors.ink }, color: colors.ground, icon: 'lock' },
 };
 

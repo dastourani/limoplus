@@ -327,9 +327,9 @@ class PaymentTests(TestCase):
         with CaptureQueriesContext(connection) as queries:
             links = campaign_banner_links(campaigns)
 
-        self.assertEqual(len(queries), 1)
-        self.assertEqual(links[campaigns[0].pk], links[campaigns[1].pk])
-        self.assertTrue(links[campaigns[0].pk].startswith("buy/"))
+        self.assertEqual(len(queries), 0)
+        self.assertEqual(links[campaigns[0].pk], "subscribe")
+        self.assertEqual(links[campaigns[1].pk], "subscribe")
 
     def test_campaign_banner_uses_the_same_schedule_and_price_as_checkout(self):
         now = timezone.now()

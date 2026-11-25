@@ -283,41 +283,17 @@ def plan_price_quote(plan: Plan, now=None) -> PriceQuote:
 
 
 def campaign_banner_link(campaign: SaleCampaign) -> str:
-    """A book campaign opens that book's checkout; a plan campaign opens an active book's shared offer screen."""
+    """A book campaign opens that book's checkout; a plan campaign opens the dedicated subscription screen."""
     if campaign.book_id:
         return f"buy/{campaign.book.slug}"
     if campaign.plan_id:
-        slug = (
-            ContentNode.objects.filter(
-                kind=ContentNode.Kind.BOOK,
-                depth=1,
-                is_published=True,
-                is_archived=False,
-                is_inbox=False,
-                is_coming_soon=False,
-            )
-            .order_by("position", "title", "pk")
-            .values_list("slug", flat=True)
-            .first()
-        )
-        return f"buy/{slug}" if slug else ""
+        return "subscribe"
     return ""
 
 
 def campaign_banner_links(campaigns) -> dict[int, str]:
-    """Resolve links for a banner batch, querying the shared plan destination only once."""
-    campaigns = list(campaigns)
-    plan_campaign = next((campaign for campaign in campaigns if campaign.plan_id), None)
-    shared_plan_link = campaign_banner_link(plan_campaign) if plan_campaign else ""
-    links = {}
-    for campaign in campaigns:
-        if campaign.book_id:
-            links[campaign.pk] = campaign_banner_link(campaign)
-        elif campaign.plan_id:
-            links[campaign.pk] = shared_plan_link
-        else:
-            links[campaign.pk] = ""
-    return links
+    """Resolve links for a banner batch without querying extra books for subscription campaigns."""
+    return {campaign.pk: campaign_banner_link(campaign) for campaign in campaigns}
 
 
 def _campaign_banner_payload(campaign: SaleCampaign, quote: PriceQuote | None, now) -> dict | None:
