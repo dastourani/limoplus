@@ -459,6 +459,10 @@ class PublicationRequest(models.Model):
     def __str__(self):
         return f"بازبینی انتشار · {self.book} · #{self.pk or 'جدید'}"
 
+    @classmethod
+    def pending_queue_q(cls):
+        return models.Q(status__in=(cls.Status.PENDING, cls.Status.NEEDS_INFO))
+
 
 class PublicationRequestEvent(models.Model):
     """Append-only audit trail of submissions and independent public-release decisions."""

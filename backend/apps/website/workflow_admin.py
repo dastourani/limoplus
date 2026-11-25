@@ -482,13 +482,26 @@ class PublicationRequestAdminForm(forms.ModelForm):
         return data
 
 
+class PublicationQueueFilter(admin.SimpleListFilter):
+    title = "صف بررسی"
+    parameter_name = "queue"
+
+    def lookups(self, request, model_admin):
+        return [("pending", "منتظر اقدام مدیر")]
+
+    def queryset(self, request, queryset):
+        if self.value() == "pending":
+            return queryset.filter(PublicationRequest.pending_queue_q())
+        return queryset
+
+
 @admin.register(PublicationRequest)
 class PublicationRequestAdmin(admin.ModelAdmin):
     """Teachers may submit a version for review; only the superuser can release it publicly."""
 
     form = PublicationRequestAdminForm
     list_display = ("book", "requester", "status_label", "submitted_at", "reviewed_at", "digest_short")
-    list_filter = ("status", "book")
+    list_filter = (PublicationQueueFilter, "status", "book")
     search_fields = ("book__title", "requested_by__phone", "request_note")
     list_select_related = ("book", "requested_by", "reviewed_by")
     ordering = ("-submitted_at", "-pk")

@@ -84,6 +84,27 @@
     color: var(--body-fg);
     font-weight: 700;
   }
+  .admin-kpi-sub-link {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dashed rgba(100, 116, 139, 0.45);
+    transition: color .15s ease, border-color .15s ease;
+  }
+  .admin-kpi-sub-link:hover {
+    color: var(--body-fg);
+    border-bottom-color: currentColor;
+    text-decoration: none;
+  }
+  .admin-kpi-links {
+    margin-inline-start: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .admin-kpi-links .admin-kpi-link {
+    margin-inline-start: 0;
+  }
   .admin-kpi-link {
     font-size: 11.5px;
     font-weight: 800;
@@ -231,7 +252,7 @@
     position: fixed;
     z-index: 99999;
     pointer-events: none;
-    max-width: 290px;
+    max-width: min(290px, calc(100vw - 24px));
     background: #17201A;
     color: #FFFFFF;
     border: 1px solid rgba(245, 197, 24, 0.4);
@@ -252,6 +273,7 @@
   .lp-menu-bubble.visible {
     opacity: 1;
     transform: translateY(0);
+    pointer-events: auto;
   }
   .lp-menu-bubble::after {
     content: "";
@@ -491,13 +513,18 @@
       <div class="admin-kpi-card">
         <div class="admin-kpi-header">
           <span class="admin-kpi-title"><span class="admin-kpi-icon">💳</span> درآمد و فروش</span>
-          <a href="{% url 'admin:commerce_order_changelist' %}" class="admin-kpi-link">سفارش‌ها ›</a>
+          <span class="admin-kpi-links">
+            <a href="{% url 'admin:commerce_order_report' %}?range=30" class="admin-kpi-link">گزارش فروش ›</a>
+            <a href="{% url 'admin:commerce_order_report_csv' %}?range=30" class="admin-kpi-link" title="دریافت فایل CSV سفارش‌های ۳۰ روز اخیر">خروجی CSV ⤓</a>
+          </span>
         </div>
         <div class="admin-kpi-main-val">{{ kpi_rev_month }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">تومان در ۳۰ روز</span></div>
         <div class="admin-kpi-sub">
           <span>امروز: <b>{{ kpi_rev_today }} تومان</b></span>
           <span>•</span>
           <span>کل درآمد: <b>{{ kpi_rev_total }} تومان</b></span>
+          <span>•</span>
+          <a href="{% url 'admin:commerce_order_changelist' %}" class="admin-kpi-sub-link">فهرست سفارش‌ها ›</a>
         </div>
       </div>
 
@@ -523,17 +550,20 @@
       <div class="admin-kpi-card">
         <div class="admin-kpi-header">
           <span class="admin-kpi-title"><span class="admin-kpi-icon">📚</span> کتب تألیفی و گلوگاه‌ها</span>
-          <a href="{% url 'admin:catalog_book_changelist' %}" class="admin-kpi-link">کتاب‌ها ›</a>
+          <span class="admin-kpi-links">
+            <a href="{% url 'admin:catalog_book_study_analytics_index' %}" class="admin-kpi-link">گزارش مطالعهٔ کتاب‌ها ›</a>
+            <a href="{% url 'admin:catalog_book_changelist' %}" class="admin-kpi-link">کتاب‌ها ›</a>
+          </span>
         </div>
         <div class="admin-kpi-main-val">{{ kpi_draft_books }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">کتاب پیش‌نویس (Draft)</span></div>
         <div class="admin-kpi-sub">
           <span>منتشرشده: <b>{{ kpi_published_books }}</b></span>
           <span>•</span>
-          <span title="درخواست‌های انتشار منتظر بررسی مدیر کل">درخواست انتشار: <b style="color:#b45309;">{{ kpi_pending_pubs }}</b></span>
+          <a href="{% url 'admin:website_publicationrequest_changelist' %}?queue=pending" title="مشاهدهٔ درخواست‌های انتشار منتظر بررسی مدیر کل" class="admin-kpi-sub-link">درخواست انتشار: <b style="color:#b45309;">{{ kpi_pending_pubs }}</b></a>
           <span>•</span>
-          <span title="درخواست‌های جدید همکاری آموزشی">درخواست همکاری: <b style="color:#0284c7;">{{ kpi_pending_teacher_apps }}</b></span>
+          <a href="{% url 'admin:website_teacherapplication_changelist' %}?status__exact=pending" title="مشاهدهٔ درخواست‌های جدید همکاری آموزشی" class="admin-kpi-sub-link">درخواست همکاری: <b style="color:#0284c7;">{{ kpi_pending_teacher_apps }}</b></a>
           <span>•</span>
-          <a href="{% url 'admin:catalog_bookteamtask_changelist' %}?is_done__exact=0" title="مشاهدهٔ یادداشت‌ها و وظایف انجام‌نشدهٔ تیم‌های تألیف کتاب‌ها" style="color:inherit; text-decoration:none; border-bottom:1px dashed rgba(180,83,9,0.45);">یادداشت‌های باز هماهنگی تیم‌ها: <b style="color:#b45309;">{{ kpi_open_team_tasks }}</b></a>
+          <a href="{% url 'admin:catalog_bookteamtask_changelist' %}?is_done__exact=0" title="مشاهدهٔ یادداشت‌ها و وظایف انجام‌نشدهٔ تیم‌های تألیف کتاب‌ها" class="admin-kpi-sub-link">یادداشت‌های باز هماهنگی تیم‌ها: <b style="color:#b45309;">{{ kpi_open_team_tasks }}</b></a>
         </div>
       </div>
     </div>
@@ -677,8 +707,13 @@
         });
       }
 
-      function showBubble(target, data) {
+      var activeTarget = null;
+      var openSource = null;
+
+      function showBubble(target, data, source) {
         if (!isEnabled || !data) return;
+        activeTarget = target;
+        openSource = source || 'hover';
         var b = document.createElement('b');
         b.textContent = data.title;
         bubble.replaceChildren(b, document.createTextNode(data.desc));
@@ -707,6 +742,8 @@
       }
 
       function hideBubble() {
+        activeTarget = null;
+        openSource = null;
         if (bubble) bubble.classList.remove('visible');
       }
 
@@ -739,19 +776,50 @@
             var icon = document.createElement('span');
             icon.className = 'lp-help-icon';
             icon.textContent = '؟';
+            icon.setAttribute('role', 'button');
             icon.setAttribute('aria-label', 'راهنمای این بخش');
             icon.setAttribute('tabindex', '0');
-            icon.addEventListener('mouseenter', function (e) {
+            icon.addEventListener('pointerenter', function (e) {
+              if (e.pointerType !== 'mouse') return;
               e.stopPropagation();
-              showBubble(icon, data);
+              showBubble(icon, data, 'hover');
             });
-            icon.addEventListener('mouseleave', hideBubble);
-            icon.addEventListener('focus', function () { showBubble(icon, data); });
+            icon.addEventListener('pointerleave', function (e) {
+              if (e.pointerType !== 'mouse') return;
+              if (openSource !== 'click') hideBubble();
+            });
+            icon.addEventListener('click', function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              if (bubble.classList.contains('visible') && activeTarget === icon && openSource === 'click') {
+                hideBubble();
+              } else {
+                showBubble(icon, data, 'click');
+              }
+            });
+            icon.addEventListener('focus', function () {
+              if (openSource !== 'click') showBubble(icon, data, 'focus');
+            });
             icon.addEventListener('blur', hideBubble);
             th.appendChild(icon);
           }
         });
       }
+
+      if (bubble) {
+        bubble.addEventListener('click', function (e) {
+          e.stopPropagation();
+          hideBubble();
+        });
+      }
+      document.addEventListener('click', function (e) {
+        if (!bubble || !bubble.classList.contains('visible')) return;
+        if (activeTarget && (e.target === activeTarget || activeTarget.contains(e.target))) return;
+        hideBubble();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') hideBubble();
+      });
 
       updateToggleUI();
       window.addEventListener('scroll', hideBubble, { passive: true });

@@ -1,0 +1,88 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+  .study-container { max-width: 1040px; margin: 0 auto; padding: 10px 0 30px; }
+  .study-hero { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; border-radius: 14px; padding: 22px 26px; margin-bottom: 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+  .study-hero h1 { margin: 0 0 6px; font-size: 21px; color: #38bdf8; }
+  .study-hero p { margin: 0; color: #94a3b8; font-size: 13.5px; }
+  .study-hero-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  .study-back-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #fff; text-decoration: none; font-size: 12.5px; font-weight: 700; border: 1px solid rgba(255,255,255,0.2); }
+  .study-back-btn:hover { background: rgba(255,255,255,0.22); color: #fff; }
+  .study-box { background: var(--body-bg); border: 1px solid var(--hairline-color); border-radius: 12px; padding: 18px 20px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
+  .study-box h2 { margin: 0 0 12px; font-size: 16px; font-weight: 800; color: var(--body-fg); }
+  .study-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .study-table th { text-align: right; padding: 10px 12px; background: var(--darkened-bg); color: var(--body-quiet-color); font-weight: 700; border-bottom: 2px solid var(--hairline-color); }
+  .study-table td { padding: 11px 12px; border-bottom: 1px solid var(--hairline-color); vertical-align: middle; }
+  .study-table tr:last-child td { border-bottom: 0; }
+  .study-picker-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .study-picker-form select { min-width: 260px; padding: 6px 10px; border-radius: 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="study-container" dir="rtl">
+  <div class="study-hero">
+    <h1>📊 گزارش مطالعهٔ کتاب‌ها</h1>
+    <p>کتاب مورد نظر خود را انتخاب کنید تا آمار پیشرفت فصول، میانگین زمان مطالعه و تست‌های چالش‌برانگیز آن نمایش داده شود.</p>
+    <div class="study-hero-actions">
+      <a href="{% url 'admin:index' %}" class="study-back-btn">← بازگشت به پیشخوان مدیریت</a>
+      <a href="{% url 'admin:catalog_book_changelist' %}" class="study-back-btn">📚 فهرست کتاب‌ها</a>
+    </div>
+  </div>
+
+  <div class="study-box">
+    <h2>انتخاب کتاب برای گزارش مطالعه</h2>
+    {% if books %}
+    <form method="get" class="study-picker-form">
+      <label for="id_study_book">کتاب:</label>
+      <select id="id_study_book" name="book_id" onchange="if(this.value) this.form.submit()">
+        <option value="">انتخاب کتاب…</option>
+        {% for b in books %}
+        <option value="{{ b.pk }}">{{ b.title }}{% if not b.is_published %} (پیش‌نویس){% endif %}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="button">مشاهده گزارش</button>
+    </form>
+
+    <table class="study-table">
+      <thead>
+        <tr>
+          <th>عنوان کتاب</th>
+          <th>مؤلف</th>
+          <th>وضعیت</th>
+          <th>تعداد فصل‌ها</th>
+          <th>خوانندگان فعال</th>
+          <th>گزارش</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in books %}
+        <tr>
+          <td><b>{{ b.title }}</b></td>
+          <td>{{ b.author|default:"—" }}</td>
+          <td>
+            {% if b.is_published %}
+              <span class="lp-badge lp-b-green">منتشرشده</span>
+            {% else %}
+              <span class="lp-badge lp-b-yellow">پیش‌نویس</span>
+            {% endif %}
+          </td>
+          <td>{{ b.chapters_count }} فصل</td>
+          <td>{{ b.readers_count }} نفر</td>
+          <td style="display:flex; gap:6px; flex-wrap:wrap;">
+            <a href="{% url 'admin:catalog_book_study_analytics' b.pk %}" class="button">📊 گزارش مطالعه</a>
+            <a href="{% url 'admin:catalog_book_study_analytics' b.pk %}?format=csv" class="button">📥 CSV</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="text-align:center; color:var(--body-quiet-color); margin:20px 0;">کتابی با دسترسی مشاهدهٔ آمار مطالعه یافت نشد.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

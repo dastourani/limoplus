@@ -315,7 +315,7 @@ class LimoAdminSite(AdminSite):
             try:
                 badges_map = getattr(request, "_limo_admin_badges", None) if request else None
                 if badges_map is None:
-                    from django.db.models import Count, IntegerField, Q, Subquery, Value
+                    from django.db.models import Count, IntegerField, Subquery, Value
                     from django.db.models.functions import Coalesce
                     from django.utils import timezone
                     from apps.accounts.models import User
@@ -326,20 +326,13 @@ class LimoAdminSite(AdminSite):
 
                     today = timezone.localdate()
                     reports_qs = Report.objects.filter(status=Report.Status.OPEN)
-                    pub_qs = PublicationRequest.objects.filter(
-                        status__in=(PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO)
-                    )
+                    pub_qs = PublicationRequest.objects.filter(PublicationRequest.pending_queue_q())
                     teacher_app_qs = TeacherApplication.objects.filter(status=TeacherApplication.Status.PENDING)
                     access_req_qs = BookAccessRequest.objects.filter(status=BookAccessRequest.Status.PENDING)
-                    orders_qs = Order.objects.filter(status=Order.Status.PAID, paid_at__date=today)
-                    payout_qs = PayoutRequest.objects.filter(
-                        status__in=(PayoutRequest.Status.PENDING, PayoutRequest.Status.PROCESSING)
-                    )
-                    opinions_qs = BookOpinion.objects.filter(
-                        Q(status=BookOpinion.Status.PENDING)
-                        | Q(status=BookOpinion.Status.APPROVED, reported_at__isnull=False)
-                    )
-                    tasks_qs = BookTeamTask.objects.filter(is_done=False)
+                    orders_qs = Order.objects.filter(Order.paid_today_q(today))
+                    payout_qs = PayoutRequest.objects.filter(PayoutRequest.pending_queue_q())
+                    opinions_qs = BookOpinion.objects.filter(BookOpinion.pending_queue_q())
+                    tasks_qs = BookTeamTask.objects.filter(BookTeamTask.pending_queue_q())
 
                     def _subcount(qs):
                         return Coalesce(
@@ -380,14 +373,14 @@ class LimoAdminSite(AdminSite):
                         }
 
                     badges_map = {
-                        ("learning", "Report"): (counts["reports_open"], "lp-b-red", "گزارش‌های باز"),
-                        ("teacher_workflows", "PublicationRequest"): (counts["pub_pending"], "lp-b-yellow", "در انتظار بررسی"),
-                        ("teacher_workflows", "TeacherApplication"): (counts["teacher_app_pending"], "lp-b-yellow", "درخواست جدید"),
-                        ("teacher_workflows", "BookAccessRequest"): (counts["access_req_pending"], "lp-b-blue", "درخواست باز"),
-                        ("commerce", "Order"): (counts["orders_today"], "lp-b-green", "خرید امروز"),
-                        ("commerce", "PayoutRequest"): (counts["payout_pending"], "lp-b-yellow", "درخواست تسویه باز"),
-                        ("catalog", "BookOpinion"): (counts["opinions_pending"], "lp-b-yellow", "نظر نیازمند بازبینی یا گزارش‌شده"),
-                        ("catalog", "BookTeamTask"): (counts["open_team_tasks"], "lp-b-yellow", "یادداشت‌های باز هماهنگی"),
+                        ("learning", "Report"): (counts["reports_open"], "lp-b-red", "گزارش‌های باز", f"status__exact={Report.Status.OPEN}"),
+                        ("teacher_workflows", "PublicationRequest"): (counts["pub_pending"], "lp-b-yellow", "در انتظار بررسی", "queue=pending"),
+                        ("teacher_workflows", "TeacherApplication"): (counts["teacher_app_pending"], "lp-b-yellow", "درخواست جدید", f"status__exact={TeacherApplication.Status.PENDING}"),
+                        ("teacher_workflows", "BookAccessRequest"): (counts["access_req_pending"], "lp-b-blue", "درخواست باز", f"status__exact={BookAccessRequest.Status.PENDING}"),
+                        ("commerce", "Order"): (counts["orders_today"], "lp-b-green", "خرید امروز", "queue=paid_today"),
+                        ("commerce", "PayoutRequest"): (counts["payout_pending"], "lp-b-yellow", "درخواست تسویه باز", "queue=pending"),
+                        ("catalog", "BookOpinion"): (counts["opinions_pending"], "lp-b-yellow", "نظر نیازمند بازبینی یا گزارش‌شده", "queue=pending"),
+                        ("catalog", "BookTeamTask"): (counts["open_team_tasks"], "lp-b-yellow", "یادداشت‌های باز هماهنگی", "is_done__exact=0"),
                     }
                     if request is not None:
                         request._limo_admin_badges = badges_map
@@ -399,8 +392,10 @@ class LimoAdminSite(AdminSite):
                     for model in app.get("models", []):
                         key = (app.get("app_label"), model.get("object_name"))
                         if key in badges_map:
-                            cnt, color_cls, title = badges_map[key]
+                            cnt, color_cls, title, query_string = badges_map[key]
                             if cnt > 0:
+                                if query_string and model.get("admin_url") and "?" not in model["admin_url"]:
+                                    model["admin_url"] = f'{model["admin_url"]}?{query_string}'
                                 model["name"] = format_html(
                                     '{} <span class="lp-badge {} lp-menu-badge" title="{}">{}</span>',
                                     model["name"],

@@ -200,6 +200,10 @@ class Order(models.Model):
     def __str__(self):
         return f"#{self.id} {self.title}"
 
+    @classmethod
+    def paid_today_q(cls, day=None):
+        return models.Q(status=cls.Status.PAID, paid_at__date=day or timezone.localdate())
+
 
 class Entitlement(models.Model):
     """Access bought by a user: a book (forever) or a subscription (a major, or all majors, until ends_at)."""
@@ -655,6 +659,10 @@ class PayoutRequest(models.Model):
 
     def __str__(self):
         return f"تسویه #{self.id}: {self.teacher.phone} - {self.amount:,} تومان ({self.get_status_display()})"
+
+    @classmethod
+    def pending_queue_q(cls):
+        return models.Q(status__in=(cls.Status.PENDING, cls.Status.PROCESSING))
 
 
 class SubscriptionPoolPeriod(models.Model):
