@@ -1047,6 +1047,96 @@ class ReviewCycleTests(TestCase):
         self.assertFalse(s_norm["small_chapter"])
         self.assertEqual(s_norm["flashcard_count"], 0)
 
+    def test_book_review_covers_61_chapters_within_seven_sittings(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.commerce.models import Entitlement
+        from apps.learning.models import Choice
+
+        from .models import BookReview, ChapterReview
+
+        book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب ۶۱ فصلی", slug="s3-book-61", position=99, is_published=True)
+        Entitlement.objects.create(user=self.user, book=book)
+
+        q_to_chapter = {}
+        chapters = []
+        now = timezone.now()
+        future = timezone.localdate() + timedelta(days=30)
+        for pos in range(1, 62):
+            ch = book.add_child(kind=ContentNode.Kind.CHAPTER, title=f"فصل {pos}", slug=f"s3-61-ch-{pos}", position=pos, is_published=True)
+            sec = ch.add_child(kind=ContentNode.Kind.SECTION, title=f"بخش {pos}", slug=f"s3-61-sec-{pos}", is_published=True)
+            q = Question.objects.create(node=sec, slug=f"s3-61-q-{pos}", stem=f"سوال {pos}؟", explanation="-", difficulty="easy")
+            Choice.objects.create(question=q, order=0, text="درست", is_correct=True)
+            Choice.objects.create(question=q, order=1, text="غلط", is_correct=False)
+            q_to_chapter[q.id] = ch.id
+            chapters.append(ch)
+
+        ChapterReview.objects.bulk_create(
+            [ChapterReview(user=self.user, chapter=ch, book=book, finished_at=now, due_on=future) for ch in chapters]
+        )
+        br = BookReview.objects.create(user=self.user, book=book, due_on=timezone.localdate() - timedelta(days=1))
+
+        seen_chapters = set()
+        for sitting_idx in range(7):
+            s = self.client.post("/api/v1/me/reviews/start/", {"kind": "book", "id": br.id}, format="json").data
+            s_more = self.client.post(f"/api/v1/me/reviews/{s['id']}/more/").data
+            self.assertEqual(len(s_more["questions"]), 10)
+            for q in s_more["questions"]:
+                seen_chapters.add(q_to_chapter[q["id"]])
+                right = Question.objects.get(pk=q["id"]).choices.get(is_correct=True)
+                self.client.post(
+                    f"/api/v1/questions/{q['id']}/answer/",
+                    {"choice_id": right.id, "review_session": s["id"]},
+                    format="json",
+                )
+            done = self.client.post(f"/api/v1/me/reviews/{s['id']}/finish/").data
+            self.assertTrue(done["finished"], f"sitting {sitting_idx + 1} should finish")
+            BookReview.objects.filter(pk=br.id).update(due_on=timezone.localdate() - timedelta(days=1))
+
+        self.assertEqual(len(seen_chapters), 61, "every one of the 61 eligible chapters must be covered within 7 sittings")
+
+    def test_open_book_review_keeps_full_estimated_minutes_for_remaining_batch(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.commerce.models import Entitlement
+
+        from .models import BookReview, ChapterReview
+        from .reviews import recheck
+
+        book = self.chapter.get_parent()
+        Entitlement.objects.create(user=self.user, book=book)
+        other_ch = ContentNode.objects.get(slug="derivatives")
+        sec_other = other_ch.get_children().first()
+        for k in range(1, 6):
+            q = Question.objects.create(node=sec_other, slug=f"s3-2min-{k}", stem=f"۲ دقیقه‌ای {k}", explanation="-", difficulty="easy")
+            q.choices.create(order=0, text="درست", is_correct=True)
+            q.choices.create(order=1, text="غلط", is_correct=False)
+        Question.objects.filter(node__path__startswith=book.path).update(estimated_seconds=120)
+
+        self.client.post(f"/api/v1/nodes/{self.chapter.id}/finish/")
+        self.client.post(f"/api/v1/nodes/{other_ch.id}/finish/")
+        ChapterReview.objects.update(due_on=timezone.localdate() + timedelta(days=10))
+        br = BookReview.objects.get(user=self.user, book=book)
+        br.due_on = timezone.localdate() - timedelta(days=1)
+        br.save(update_fields=["due_on"])
+        recheck(self.user)
+
+        before = self.client.get("/api/v1/me/today/").data
+        card_before = next(r for r in before["reviews"] if r["kind"] == "book" and r["id"] == br.id)
+        self.assertEqual((card_before["questions"], card_before["minutes"]), (10, 20))
+
+        # Starting serves only 5 questions (of 10 minimum); card estimate must stay 20 minutes, not drop to 10.
+        s = self.client.post("/api/v1/me/reviews/start/", {"kind": "book", "id": br.id}, format="json").data
+        self.assertEqual(len(s["questions"]), 5)
+        recheck(self.user)
+        after = self.client.get("/api/v1/me/today/").data
+        card_after = next(r for r in after["reviews"] if r["kind"] == "book" and r["id"] == br.id)
+        self.assertEqual((card_after["questions"], card_after["minutes"]), (10, 20))
+
     def test_month_step_is_an_exam_without_negative_marking_and_doubts_come_back(self):
         from .models import ChapterReview, ExamAnswer
 
