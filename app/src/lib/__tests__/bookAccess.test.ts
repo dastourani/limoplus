@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { BookDetail, ProductStatus } from '../../api/endpoints';
 import {
   firstReadableNodeId,
+  isAmbiguous403,
   isNodeLockedInBook,
   isSectionAccessibleInBook,
   lockedCtaLabel,
@@ -331,6 +332,24 @@ describe('locked error recovery & errorPresentation', () => {
       { nodeId: 201, book: null },
     );
     expect(missingBook.kind).toBe('restricted');
+  });
+
+  it('403 with specific non-locked server reason + locked section in book -> preserves server message, no purchase prompt', () => {
+    const guestBook = fullBookDetail({ owned: false });
+    expect(isNodeLockedInBook(guestBook, 201)).toBe(true);
+
+    const specific403 = {
+      status: 403,
+      code: 'user_inactive',
+      message: 'حساب کاربری شما موقتاً غیرفعال شده است.',
+      data: { code: 'user_inactive', message: 'حساب کاربری شما موقتاً غیرفعال شده است.' },
+    };
+
+    expect(isAmbiguous403(specific403)).toBe(false);
+    expect(resolveSectionForbidden(specific403, { nodeId: 201, book: guestBook })).toEqual({
+      kind: 'restricted',
+      message: 'حساب کاربری شما موقتاً غیرفعال شده است.',
+    });
   });
 
   it('extracts locked payload and state notes from book metadata', () => {

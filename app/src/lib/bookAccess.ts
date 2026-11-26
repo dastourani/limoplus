@@ -58,12 +58,24 @@ export function lockedPayloadFromBook(
 }
 
 /**
+ * True only for a 403 whose payload carries no specific server error code (e.g. proxy-stripped
+ * HTML/empty 403 where ApiError falls back to `code === 'error'`). Specific server reasons such
+ * as `user_inactive` or `device_limit` must never be treated as a locked-book gate.
+ */
+export function isAmbiguous403(err: { status: number; code: string; data?: Record<string, unknown> }): boolean {
+  if (err.status !== 403) return false;
+  const serverCode = typeof err.data?.code === 'string' ? err.data.code.trim() : '';
+  const effectiveCode = serverCode || err.code.trim();
+  return !effectiveCode || effectiveCode === 'error';
+}
+
+/**
  * Resolves a 403 error on direct `/section/[id]` entry without ever guessing status or price:
  * - Explicit `code === 'locked'` with server-supplied `book` metadata shows the lock/purchase UI.
- * - An ambiguous 403 only shows the lock/purchase UI when fetched `book` metadata confirms
- *   that `nodeId` belongs to `book` and is currently locked for this user.
- * - Otherwise (buyer on an unlocked section, unknown node, or missing book metadata) returns
- *   `restricted` so the UI shows «دسترسی محدود» with Back + Retry instead of a purchase prompt.
+ * - An ambiguous 403 (no specific server error code) only shows the lock/purchase UI when fetched
+ *   `book` metadata confirms that `nodeId` belongs to `book` and is currently locked for this user.
+ * - A 403 with a specific non-locked server code, an unlocked section, an unknown node, or missing
+ *   book metadata returns `restricted` with the server's message and Back + Retry instead of a purchase prompt.
  */
 export function resolveSectionForbidden(
   err: { status: number; code: string; message?: string; data?: Record<string, unknown> },
@@ -91,7 +103,7 @@ export function resolveSectionForbidden(
     };
   }
 
-  if (err.status === 403 && options.book && isNodeLockedInBook(options.book, options.nodeId)) {
+  if (isAmbiguous403(err) && options.book && isNodeLockedInBook(options.book, options.nodeId)) {
     return {
       kind: 'locked',
       book: lockedPayloadFromBook(options.book),

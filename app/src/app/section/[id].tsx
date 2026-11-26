@@ -15,6 +15,7 @@ import { copyLater } from '../../lib/clipboard';
 import { MAX_COPY_CHARS } from '../../lib/renderMarkdown';
 import { requireLogin, useAuth } from '../../lib/auth';
 import {
+  isAmbiguous403,
   lockedCtaLabel,
   productStateNote,
   resolveSectionForbidden,
@@ -138,7 +139,7 @@ export default function Section() {
       const err = e instanceof ApiError ? e : new ApiError(0, 'error', 'خطا');
       if (err.code === 'locked' || err.status === 403) {
         const fallbackBook =
-          err.code !== 'locked' && bookSlugParam ? await endpoints.book(bookSlugParam).catch(() => null) : null;
+          isAmbiguous403(err) && bookSlugParam ? await endpoints.book(bookSlugParam).catch(() => null) : null;
         const resolved = resolveSectionForbidden(err, { nodeId, book: fallbackBook });
         if (resolved.kind === 'locked') {
           setLocked(resolved.book);
