@@ -1,5 +1,9 @@
+import datetime
+
 from django.contrib.auth.models import Group
-from django.test import Client, TestCase, override_settings
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 
 from apps.accounts.models import User
@@ -26,7 +30,7 @@ class TeacherApplicationPublicTests(TestCase):
         response = self.client.post(reverse("website:teacher-application"), self._data(), follow=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "درخواست شما با موفقیت ثبت شد")
+        self.assertContains(response, "درخواست همکاری شما ثبت شد. در صورت تأیید، لینک دعوت به میز تألیف برایتان ارسال می‌شود.")
         application = TeacherApplication.objects.get()
         self.assertEqual(application.phone, "09121234567")
         self.assertEqual(application.status, TeacherApplication.Status.PENDING)
@@ -37,33 +41,48 @@ class TeacherApplicationPublicTests(TestCase):
         self.assertEqual(Group.objects.count(), group_count)
         self.assertFalse(BookEditor.objects.filter(user__phone=application.phone).exists())
 
-    def test_submission_with_resume_url_alone_succeeds_without_long_essays(self):
+    def test_submission_with_only_basic_fields_succeeds(self):
         response = self.client.post(
             reverse("website:teacher-application"),
-            self._data(sample_work="", explanation="", collaboration_scope=TeacherApplication.CollaborationScope.CLASS_ONLY),
+            {
+                "name": "استاد کم‌فرم",
+                "phone": "09121234568",
+                "book_or_link": "ریاضی عمومی ۱",
+                "resume_url": "",
+                "collaboration_scope": "",
+                "sample_work": "",
+                "explanation": "",
+            },
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "درخواست شما با موفقیت ثبت شد")
+        self.assertContains(response, "درخواست همکاری شما ثبت شد. در صورت تأیید، لینک دعوت به میز تألیف برایتان ارسال می‌شود.")
+        self.assertContains(response, "استفادهٔ خصوصی برای دانشجویان خودتان رایگان است.")
         application = TeacherApplication.objects.get()
-        self.assertEqual(application.resume_url, "https://example.com/profile")
-        self.assertEqual(application.collaboration_scope, TeacherApplication.CollaborationScope.CLASS_ONLY)
+        self.assertEqual(application.phone, "09121234568")
+        self.assertEqual(application.resume_url, "")
+        self.assertEqual(application.collaboration_scope, "")
+        self.assertEqual(application.sample_work, "")
+        self.assertEqual(application.explanation, "")
+        self.assertEqual(User.objects.count(), 0)
+        self.assertFalse(BookEditor.objects.filter(user__phone=application.phone).exists())
 
-    def test_invalid_phone_and_missing_evidence_do_not_create_a_record(self):
+    def test_top_copy_does_not_promise_guaranteed_invite(self):
+        response = self.client.get(reverse("website:teacher-application"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "در صورت تأیید، لینک دعوت به میز تألیف برایتان ارسال می‌شود.")
+        self.assertNotContains(response, "پس از بررسی، لینک ورود")
+
+    def test_invalid_phone_does_not_create_a_record(self):
         response = self.client.post(reverse("website:teacher-application"), self._data(phone="02112345678"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "شماره موبایل معتبر نیست")
         self.assertFalse(TeacherApplication.objects.exists())
 
-        response = self.client.post(reverse("website:teacher-application"), self._data(resume_url="", sample_work=""))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "لطفاً لینک صفحهٔ معرفی/رزومه یا توضیح کوتاهی")
-        self.assertFalse(TeacherApplication.objects.exists())
-
     def test_honeypot_is_silent_and_does_not_store_a_submission(self):
         response = self.client.post(reverse("website:teacher-application"), self._data(website="spam"), follow=True)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "درخواست شما با موفقیت ثبت شد")
+        self.assertContains(response, "درخواست همکاری شما ثبت شد. در صورت تأیید، لینک دعوت به میز تألیف برایتان ارسال می‌شود.")
         self.assertFalse(TeacherApplication.objects.exists())
         self.assertEqual(User.objects.count(), 0)
 
@@ -77,8 +96,8 @@ class TeacherApplicationPublicTests(TestCase):
             self._data(phone="+98 912 123 4567"),
             follow=True,
         )
-        self.assertContains(first_response, "درخواست شما با موفقیت ثبت شد")
-        self.assertContains(second_response, "درخواست شما با موفقیت ثبت شد")
+        self.assertContains(first_response, "درخواست همکاری شما ثبت شد. در صورت تأیید، لینک دعوت به میز تألیف برایتان ارسال می‌شود.")
+        self.assertContains(second_response, "درخواست همکاری شما ثبت شد. در صورت تأیید، لینک دعوت به میز تألیف برایتان ارسال می‌شود.")
         self.assertEqual(TeacherApplication.objects.filter(phone="09121234567").count(), 1)
 
     @override_settings(TEACHER_APPLICATIONS_PER_IP_PER_HOUR=1)
@@ -152,3 +171,91 @@ class TeacherApplicationReviewTests(TestCase):
         self.assertFalse(User.objects.filter(phone=self.application.phone).exists())
         self.assertFalse(BookEditor.objects.filter(user__phone=self.application.phone).exists())
         self.assertFalse(self.manager.edited_books.filter(book__isnull=False).exists())
+
+    def test_unspecified_collaboration_scope_displays_not_declared_in_admin(self):
+        self.assertEqual(self.application.collaboration_scope, "")
+        client = Client()
+        client.force_login(self.manager)
+        changelist = client.get(self.list_url)
+        change = client.get(self.change_url)
+        self.assertEqual(changelist.status_code, 200)
+        self.assertEqual(change.status_code, 200)
+        self.assertContains(changelist, "اعلام نشده")
+        self.assertContains(change, "اعلام نشده")
+
+
+class TeacherApplicationMigrationTests(TransactionTestCase):
+    def test_upgrade_from_0012_keeps_existing_applications_unspecified_even_after_cutoff(self):
+        executor = MigrationExecutor(connection)
+        old_apps = executor.loader.project_state([("website", "0012_sitesettings_coming_soon_note_and_more")]).apps
+        executor.migrate([("website", "0012_sitesettings_coming_soon_note_and_more")])
+
+        try:
+            OldApp = old_apps.get_model("website", "TeacherApplication")
+            early = OldApp.objects.create(
+                name="استاد قدیمی",
+                phone="09120009001",
+                book_or_link="ریاضی ۱",
+            )
+            late = OldApp.objects.create(
+                name="استاد پس از ساعت ثابت",
+                phone="09120009002",
+                book_or_link="فیزیک ۱",
+            )
+            OldApp.objects.filter(pk=early.pk).update(
+                submitted_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.timezone.utc)
+            )
+            OldApp.objects.filter(pk=late.pk).update(
+                submitted_at=datetime.datetime(2026, 11, 27, 2, 0, tzinfo=datetime.timezone.utc)
+            )
+
+            forward_executor = MigrationExecutor(connection)
+            forward_executor.migrate([("website", "0015_alter_teacherapplication_collaboration_scope")])
+            NewApp = forward_executor.loader.project_state(
+                [("website", "0015_alter_teacherapplication_collaboration_scope")]
+            ).apps.get_model("website", "TeacherApplication")
+
+            self.assertEqual(NewApp.objects.get(pk=early.pk).collaboration_scope, "")
+            self.assertEqual(NewApp.objects.get(pk=late.pk).collaboration_scope, "")
+        finally:
+            TeacherApplication.objects.filter(phone__in=["09120009001", "09120009002"]).delete()
+            MigrationExecutor(connection).migrate([("website", "0015_alter_teacherapplication_collaboration_scope")])
+
+    def test_upgrade_from_0013_preserves_real_teacher_scope_choices(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate([("website", "0012_sitesettings_coming_soon_note_and_more")])
+
+        try:
+            unreplaced_executor = MigrationExecutor(connection)
+            unreplaced_executor.loader.replace_migrations = False
+            unreplaced_executor.loader.build_graph()
+            unreplaced_executor.migrate([("website", "0013_teacherapplication_collaboration_scope_and_more")])
+
+            App0013 = unreplaced_executor.loader.project_state(
+                [("website", "0013_teacherapplication_collaboration_scope_and_more")]
+            ).apps.get_model("website", "TeacherApplication")
+            chosen_public = App0013.objects.create(
+                name="استاد ویترین",
+                phone="09120009003",
+                book_or_link="شیمی",
+                collaboration_scope="public_and_class",
+            )
+            chosen_class = App0013.objects.create(
+                name="استاد کلاس",
+                phone="09120009004",
+                book_or_link="زیست",
+                collaboration_scope="class_only",
+            )
+
+            forward_executor = MigrationExecutor(connection)
+            forward_executor.migrate([("website", "0015_alter_teacherapplication_collaboration_scope")])
+            NewApp = forward_executor.loader.project_state(
+                [("website", "0015_alter_teacherapplication_collaboration_scope")]
+            ).apps.get_model("website", "TeacherApplication")
+
+            self.assertEqual(NewApp.objects.get(pk=chosen_public.pk).collaboration_scope, "public_and_class")
+            self.assertEqual(NewApp.objects.get(pk=chosen_class.pk).collaboration_scope, "class_only")
+        finally:
+            TeacherApplication.objects.filter(phone__in=["09120009003", "09120009004"]).delete()
+            MigrationExecutor(connection).migrate([("website", "0012_sitesettings_coming_soon_note_and_more")])
+            MigrationExecutor(connection).migrate([("website", "0015_alter_teacherapplication_collaboration_scope")])

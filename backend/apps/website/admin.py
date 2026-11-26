@@ -136,22 +136,41 @@ class SiteNavItemAdmin(admin.ModelAdmin):
     fields = ("parent", "title", "url", "order", "is_hidden")
 
 
+class CollaborationScopeFilter(admin.SimpleListFilter):
+    title = "نحوه استفاده پیشنهادی"
+    parameter_name = "collaboration_scope"
+
+    def lookups(self, request, model_admin):
+        return [("__unspecified__", "اعلام نشده"), *TeacherApplication.CollaborationScope.choices]
+
+    def queryset(self, request, queryset):
+        if self.value() == "__unspecified__":
+            return queryset.filter(collaboration_scope="")
+        if self.value():
+            return queryset.filter(collaboration_scope=self.value())
+        return queryset
+
+
 @admin.register(TeacherApplication)
 class TeacherApplicationAdmin(admin.ModelAdmin):
     """A superuser-only review queue; decisions never create staff or grant book access."""
 
-    list_display = ("name", "phone", "book_or_link", "collaboration_scope", "status", "submitted_at", "reviewed_by", "reviewed_at", "invite_action")
+    list_display = ("name", "phone", "book_or_link", "collaboration_scope_display", "status", "submitted_at", "reviewed_by", "reviewed_at", "invite_action")
     # The normal date_hierarchy is Gregorian; the relative date filter keeps the panel fully Persian-calendar-facing.
-    list_filter = ("status", "collaboration_scope", "submitted_at")
+    list_filter = ("status", CollaborationScopeFilter, "submitted_at")
     search_fields = ("name", "phone", "book_or_link", "resume_url", "explanation", "sample_work")
     ordering = ("-submitted_at", "-pk")
     list_per_page = 50
     actions = None
     fields = (
-        "name", "phone", "book_or_link", "resume_url", "collaboration_scope", "explanation", "sample_work",
+        "name", "phone", "book_or_link", "resume_url", "collaboration_scope_display", "explanation", "sample_work",
         "status", "review_note", "submitted_at", "reviewed_by", "reviewed_at",
     )
-    readonly_fields = ("name", "phone", "book_or_link", "resume_url", "collaboration_scope", "explanation", "sample_work", "submitted_at", "reviewed_by", "reviewed_at")
+    readonly_fields = ("name", "phone", "book_or_link", "resume_url", "collaboration_scope_display", "explanation", "sample_work", "submitted_at", "reviewed_by", "reviewed_at")
+
+    @admin.display(description="نحوه استفاده پیشنهادی", ordering="collaboration_scope")
+    def collaboration_scope_display(self, obj):
+        return obj.get_collaboration_scope_display() or "اعلام نشده"
 
     @admin.display(description="دعوت استاد")
     def invite_action(self, obj):

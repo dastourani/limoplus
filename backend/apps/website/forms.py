@@ -32,12 +32,20 @@ class TeacherApplicationForm(forms.ModelForm):
             "explanation": forms.Textarea(attrs={"rows": 3, "maxlength": 2000, "placeholder": "هر نکته تکمیلی درباره کلاس، دانشجویان یا زمان‌بندی دارید..."}),
         }
         help_texts = {
-            "phone": "برای هماهنگی و ارسال لینک ورود به میز تألیف.",
+            "phone": "برای هماهنگی و ارسال لینک دعوت در صورت تأیید.",
             "book_or_link": "عنوان درس، کتاب یا حوزهٔ تخصصی که مایل به تألیف یا برگزاری کلاس آن هستید.",
-            "resume_url": "صفحه دانشگاهی، لینکدین، وب‌سایت شخصی، گوگل‌درایو نمونه جزوه یا کانال آموزشی (اختیاری).",
-            "sample_work": "اگر لینک رزومه یا صفحهٔ معرفی وارد کرده‌اید، پر کردن این بخش اختیاری است.",
+            "resume_url": "اختیاری — صفحه دانشگاهی، لینکدین، وب‌سایت شخصی، گوگل‌درایو نمونه جزوه یا کانال آموزشی.",
+            "collaboration_scope": "اختیاری — فقط برای آشنایی اولیه با هدف شما؛ اجازهٔ انتشار هر کتاب در مرحلهٔ بعد جداگانه بررسی می‌شود.",
+            "sample_work": "اختیاری — اگر مایلید، توضیح کوتاهی دربارهٔ نمونه جزوه، کتاب یا سوابق تدریس بنویسید.",
             "explanation": "اختیاری — پیام یا توضیح اضافه برای تیم لیموخوان.",
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        scope_field = self.fields.get("collaboration_scope")
+        if scope_field is not None:
+            scope_field.required = False
+            scope_field.choices = [("", "اعلام نشده (اختیاری)"), *TeacherApplication.CollaborationScope.choices]
 
     def clean_name(self):
         return " ".join(self.cleaned_data["name"].split())
@@ -54,20 +62,14 @@ class TeacherApplicationForm(forms.ModelForm):
     def clean_resume_url(self):
         return (self.cleaned_data.get("resume_url") or "").strip()
 
+    def clean_collaboration_scope(self):
+        return (self.cleaned_data.get("collaboration_scope") or "").strip()
+
     def clean_explanation(self):
         return (self.cleaned_data.get("explanation") or "").strip()
 
     def clean_sample_work(self):
         return (self.cleaned_data.get("sample_work") or "").strip()
-
-    def clean(self):
-        cleaned = super().clean()
-        resume_url = cleaned.get("resume_url")
-        sample_work = cleaned.get("sample_work")
-        if not resume_url and not sample_work:
-            msg = "لطفاً لینک صفحهٔ معرفی/رزومه یا توضیح کوتاهی از نمونه‌کار و سوابق آموزشی خود وارد کنید."
-            self.add_error("sample_work", msg)
-        return cleaned
 
 
 MAX_GROUP_ACCESS_MEMBERS = 500

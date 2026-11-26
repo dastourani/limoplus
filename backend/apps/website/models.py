@@ -115,7 +115,8 @@ class TeacherApplication(models.Model):
         "نحوه استفاده پیشنهادی",
         max_length=20,
         choices=CollaborationScope.choices,
-        default=CollaborationScope.PUBLIC_AND_CLASS,
+        blank=True,
+        default="",
     )
     explanation = models.TextField("توضیحات تکمیلی یا سابقه تدریس", max_length=2000, blank=True, default="")
     sample_work = models.TextField("توضیح کوتاه نمونه‌کار یا شواهد", max_length=3000, blank=True, default="")
