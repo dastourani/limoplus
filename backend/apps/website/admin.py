@@ -233,14 +233,13 @@ class ContactMessageAdmin(admin.ModelAdmin):
         "priority",
         "name",
         "phone",
-        "email",
         "order_reference",
         "status",
         "created_at_fa",
         "handled_by",
     )
     list_filter = ("status", "topic", "priority", "created_at")
-    search_fields = ("tracking_code", "name", "phone", "email", "order_reference", "related_item", "message")
+    search_fields = ("tracking_code", "name", "phone", "order_reference", "related_item", "message")
     ordering = ("-created_at", "-pk")
     list_per_page = 50
     actions = None
@@ -251,7 +250,6 @@ class ContactMessageAdmin(admin.ModelAdmin):
         "status",
         "name",
         "phone",
-        "email",
         "order_reference",
         "related_item",
         "message",
@@ -266,7 +264,6 @@ class ContactMessageAdmin(admin.ModelAdmin):
         "topic",
         "name",
         "phone",
-        "email",
         "order_reference",
         "related_item",
         "message",

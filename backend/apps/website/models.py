@@ -1263,6 +1263,7 @@ class ContactMessage(models.Model):
         Topic.REFUND,
         Topic.ACCOUNT_ACCESS,
         Topic.PRIVACY,
+        Topic.TEACHER_ORG,
     })
 
     tracking_code = models.CharField(
@@ -1289,7 +1290,6 @@ class ContactMessage(models.Model):
     )
     name = models.CharField("نام و نام خانوادگی", max_length=120)
     phone = models.CharField("شماره موبایل", max_length=11, blank=True, db_index=True)
-    email = models.EmailField("ایمیل", blank=True)
     order_reference = models.CharField("شماره سفارش یا کد پیگیری پرداخت", max_length=120, blank=True)
     related_item = models.CharField("کتاب، بخش یا صفحهٔ مرتبط", max_length=160, blank=True)
     message = models.TextField("شرح پیام", max_length=4000)

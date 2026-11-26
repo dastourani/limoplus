@@ -317,6 +317,7 @@
       var guideText = form.querySelector('[data-guide-text]');
       var guideLink = form.querySelector('[data-guide-link]');
       var phoneReqMark = form.querySelector('[data-phone-req-mark]');
+      var phoneHelp = form.querySelector('[data-phone-help]');
       var orderField = form.querySelector('[data-order-field]');
       var msgField = form.querySelector('textarea[name="message"]');
       var msgCount = form.querySelector('[data-msg-count]');
@@ -337,7 +338,10 @@
           if (span) span.textContent = radio.getAttribute('data-topic-link-label') || '';
         }
         if (phoneReqMark) {
-          phoneReqMark.textContent = radio.getAttribute('data-phone-required') === '1' ? '*' : '(در صورت نیاز یا نداشتن ایمیل)';
+          phoneReqMark.textContent = radio.getAttribute('data-phone-required') === '1' ? '*' : '(اختیاری)';
+        }
+        if (phoneHelp) {
+          phoneHelp.textContent = radio.getAttribute('data-phone-help') || '';
         }
         if (orderField) {
           orderField.classList.toggle('contact-field-highlight', radio.getAttribute('data-show-order') === '1');

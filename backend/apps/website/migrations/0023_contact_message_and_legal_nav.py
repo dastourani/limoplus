@@ -111,7 +111,6 @@ class Migration(migrations.Migration):
                 ('priority', models.CharField(choices=[('high', 'بالا'), ('normal', 'عادی')], db_index=True, default='normal', max_length=10, verbose_name='اولویت')),
                 ('name', models.CharField(max_length=120, verbose_name='نام و نام خانوادگی')),
                 ('phone', models.CharField(blank=True, db_index=True, max_length=11, verbose_name='شماره موبایل')),
-                ('email', models.EmailField(blank=True, max_length=254, verbose_name='ایمیل')),
                 ('order_reference', models.CharField(blank=True, max_length=120, verbose_name='شماره سفارش یا کد پیگیری پرداخت')),
                 ('related_item', models.CharField(blank=True, max_length=160, verbose_name='کتاب، بخش یا صفحهٔ مرتبط')),
                 ('message', models.TextField(max_length=4000, verbose_name='شرح پیام')),

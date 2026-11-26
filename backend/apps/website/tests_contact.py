@@ -17,16 +17,14 @@ class ContactPageAndFormTests(TestCase):
             "topic": ContactMessage.Topic.ORDER_PAYMENT,
             "name": "سارا محمدی",
             "phone": "۰۹۱۲۱۲۳۴۵۶۷",
-            "email": "sara@example.com",
             "order_reference": "ZB-88421",
             "related_item": "ریاضی عمومی ۱",
             "message": "مبلغ از حسابم کسر شده اما دسترسی کتاب هنوز فعال نشده است.",
             **overrides,
         }
 
-    def test_contact_page_renders_structured_support_form_and_official_channels(self):
+    def test_contact_page_renders_structured_support_form_without_email_input(self):
         s = SiteSettings.get()
-        s.email = "support@limookhan.ir"
         s.phone = "021-88112233"
         s.address = "تهران، خیابان آزادی"
         s.save()
@@ -34,19 +32,23 @@ class ContactPageAndFormTests(TestCase):
         r = self.client.get(self.url)
         self.assertEqual(r.status_code, 200)
         self.assertNotContains(r, "این متن نمونه است")
+        self.assertNotContains(r, 'name="email"')
         self.assertContains(r, "ارسال پیام به پشتیبانی")
         self.assertContains(r, "پرداخت ناموفق")
         self.assertContains(r, "۷ روز کاری")
-        self.assertContains(r, "support@limookhan.ir")
         self.assertContains(r, "021-88112233")
         self.assertContains(r, "تهران، خیابان آزادی")
         self.assertContains(r, reverse("website:teacher-application"))
         self.assertContains(r, reverse("teacher-login"))
 
-    def test_query_param_preselects_valid_topic(self):
-        r = self.client.get(self.url, {"topic": "refund"})
+    def test_query_param_preselects_topic_and_shows_optional_phone_help_for_feedback(self):
+        r = self.client.get(self.url, {"topic": "other"})
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.context["contact_active_topic"]["value"], ContactMessage.Topic.REFUND)
+        self.assertEqual(r.context["contact_active_topic"]["value"], ContactMessage.Topic.OTHER)
+        self.assertContains(
+            r,
+            "اگر مایلید دربارهٔ این پیام با شما تماس بگیریم، شمارهٔ موبایلتان را وارد کنید. برای ثبت پیشنهاد یا گزارش اشکال، می‌توانید این قسمت را خالی بگذارید.",
+        )
 
     @patch("apps.catalog.backups.notify_bale_after_commit")
     def test_valid_payment_submission_creates_high_priority_ticket_and_tracking_code(self, mock_bale):
@@ -64,37 +66,30 @@ class ContactPageAndFormTests(TestCase):
         mock_bale.assert_called_once()
         self.assertIn(msg.tracking_code, mock_bale.call_args.args[0])
 
-    def test_phone_required_for_sensitive_topics_even_if_email_is_given(self):
+    def test_phone_required_for_account_financial_privacy_and_teacher_org_topics(self):
         for topic in (
             ContactMessage.Topic.ORDER_PAYMENT,
             ContactMessage.Topic.REFUND,
             ContactMessage.Topic.ACCOUNT_ACCESS,
             ContactMessage.Topic.PRIVACY,
+            ContactMessage.Topic.TEACHER_ORG,
         ):
-            r = self.client.post(self.url, self._data(topic=topic, phone="", email="user@example.com"))
+            r = self.client.post(self.url, self._data(topic=topic, phone=""))
             self.assertEqual(r.status_code, 200)
-            self.assertContains(r, "شماره موبایل ثبت‌شده یا شماره تماس معتبر الزامی است")
+            self.assertContains(r, "شمارهٔ موبایل الزامی است")
         self.assertFalse(ContactMessage.objects.exists())
 
-    def test_general_topics_accept_email_only_and_reject_when_both_phone_and_email_missing(self):
-        bad = self.client.post(
-            self.url,
-            self._data(topic=ContactMessage.Topic.OTHER, phone="", email=""),
-        )
-        self.assertEqual(bad.status_code, 200)
-        self.assertContains(bad, "دست‌کم شماره موبایل یا نشانی ایمیل را وارد کنید")
-        self.assertFalse(ContactMessage.objects.exists())
-
-        good = self.client.post(
-            self.url,
-            self._data(topic=ContactMessage.Topic.CONTENT_COPYRIGHT, phone="", email="Reader@Example.com", order_reference=""),
-            follow=True,
-        )
-        self.assertEqual(good.status_code, 200)
-        msg = ContactMessage.objects.get()
-        self.assertEqual(msg.email, "reader@example.com")
-        self.assertEqual(msg.priority, ContactMessage.Priority.NORMAL)
-        self.assertContains(good, msg.tracking_code)
+    def test_public_feedback_topics_allow_empty_phone(self):
+        for idx, topic in enumerate((ContactMessage.Topic.CONTENT_COPYRIGHT, ContactMessage.Topic.OTHER), start=1):
+            r = self.client.post(
+                self.url,
+                self._data(topic=topic, phone="", order_reference="", message=f"پیشنهاد یا گزارش شماره {idx} برای بهبود درسنامه."),
+                follow=True,
+            )
+            self.assertEqual(r.status_code, 200)
+            self.assertContains(r, "در صف بررسی تیم لیموخوان قرار گرفت")
+        self.assertEqual(ContactMessage.objects.count(), 2)
+        self.assertTrue(all(m.phone == "" and m.priority == ContactMessage.Priority.NORMAL for m in ContactMessage.objects.all()))
 
     def test_honeypot_is_silent_and_does_not_store_a_message(self):
         r = self.client.post(self.url, self._data(website="https://spam.invalid"), follow=True)

@@ -81,19 +81,19 @@ TOPIC_META = {
     ContactMessage.Topic.TEACHER_ORG: {
         "icon": "graduation-cap",
         "short": "همکاری مؤلفان، کلاس یا خرید دانشگاهی",
-        "hint": "اگر قصد تألیف کتاب یا برگزاری کلاس اختصاصی دارید، فرم تخصصی «درخواست همکاری آموزشی» سریع‌ترین مسیر است؛ برای خریدهای گروهی و دانشگاهی هم می‌توانید همین‌جا پیام بگذارید.",
+        "hint": "اگر قصد تألیف کتاب یا برگزاری کلاس اختصاصی دارید، فرم تخصصی «درخواست همکاری آموزشی» سریع‌ترین مسیر است؛ برای خریدهای گروهی و دانشگاهی هم می‌توانید همین‌جا با ثبت شماره موبایل پیام بگذارید.",
         "link_label": "رفتن به فرم تخصصی درخواست همکاری آموزشی",
         "link_url_name": "website:teacher-application",
         "link_arg": "",
         "link_hash": "",
-        "phone_required": False,
+        "phone_required": True,
         "show_order": False,
         "placeholder": "نام دانشگاه/مؤسسه، عنوان درس یا تعداد دانشجویان مورد نظر را بنویسید...",
     },
     ContactMessage.Topic.OTHER: {
         "icon": "message-circle",
         "short": "پیشنهاد، انتقاد یا پرسش عمومی",
-        "hint": "هر پیشنهاد برای بهبود لیموخوان، پرسش دربارهٔ کتاب‌های آینده یا موضوع دیگری دارید، برای ما بنویسید.",
+        "hint": "هر پیشنهاد برای بهبود لیموخوان، پرسش دربارهٔ کتاب‌های آینده یا موضوع دیگری دارید، برای ما بنویسید. اگر مایل به دریافت تماس یا پیگیری هستید، شماره موبایلتان را هم ثبت کنید.",
         "link_label": "مشاهدهٔ پرسش‌های پرتکرار",
         "link_url_name": "website:faq",
         "link_arg": "",
@@ -116,11 +116,10 @@ def _ip_is_limited(request) -> bool:
     return False
 
 
-def _sender_is_limited(phone: str, email: str) -> bool:
-    sender = phone or email
-    if not sender:
+def _sender_is_limited(phone: str) -> bool:
+    if not phone:
         return False
-    key = f"contact-message-sender:{sender}"
+    key = f"contact-message-sender:{phone}"
     with transaction.atomic():
         ratelimit.lock(key)
         if ratelimit.count(key) >= settings.CONTACT_MESSAGES_PER_SENDER_PER_HOUR:
@@ -148,7 +147,7 @@ def _create_message(form: ContactMessageForm, user) -> ContactMessage:
                 obj.save()
                 from apps.catalog.backups import notify_bale_after_commit
 
-                contact_line = " / ".join(p for p in (obj.phone, obj.email) if p) or "ثبت نشده"
+                contact_line = obj.phone or "ثبت نشده (بازخورد عمومی)"
                 order_line = f"\nشماره سفارش/رهگیری: {obj.order_reference}" if obj.order_reference else ""
                 item_line = f"\nمرتبط با: {obj.related_item}" if obj.related_item else ""
                 snippet = obj.message.strip().replace("\n", " ")
@@ -159,7 +158,7 @@ def _create_message(form: ContactMessageForm, user) -> ContactMessage:
                     f"موضوع: {obj.get_topic_display()}\n"
                     f"اولویت: {obj.get_priority_display()}\n"
                     f"نام: {obj.name}\n"
-                    f"راه ارتباطی: {contact_line}"
+                    f"شماره تماس: {contact_line}"
                     f"{order_line}{item_line}\n"
                     f"متن: {snippet}",
                     log_label=f"Bale contact message alert for {obj.tracking_code}",
@@ -188,6 +187,11 @@ def _topic_cards():
                 "link_label": meta["link_label"],
                 "link_href": href,
                 "phone_required": meta["phone_required"],
+                "phone_help": (
+                    ContactMessageForm.PHONE_REQUIRED_HELP
+                    if meta["phone_required"]
+                    else ContactMessageForm.PHONE_OPTIONAL_HELP
+                ),
                 "show_order": meta["show_order"],
                 "placeholder": meta["placeholder"],
             }
@@ -261,10 +265,11 @@ def contact_page(request, page_obj):
                 "tracking_code": generate_contact_tracking_code(),
                 "topic_label": dict(ContactMessage.Topic.choices).get(form.cleaned_data["topic"], ""),
                 "is_high_priority": False,
+                "has_phone": bool(form.cleaned_data["phone"]),
             }
             return redirect("website:page", slug="contact")
 
-        if _sender_is_limited(form.cleaned_data["phone"], form.cleaned_data["email"]):
+        if _sender_is_limited(form.cleaned_data["phone"]):
             return _render_contact_page(request, page_obj, form, rate_limited=True, status=429)
 
         created = _create_message(form, getattr(request, "user", None))
@@ -272,6 +277,7 @@ def contact_page(request, page_obj):
             "tracking_code": created.tracking_code,
             "topic_label": created.get_topic_display(),
             "is_high_priority": created.priority == ContactMessage.Priority.HIGH,
+            "has_phone": bool(created.phone),
         }
         return redirect(reverse("website:page", args=["contact"]) + "#contact-result")
 

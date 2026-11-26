@@ -51,8 +51,10 @@
         <p class="contact-success-note">
           {% if contact_submitted.is_high_priority %}
           این درخواست با اولویت بالا ثبت شده است. در صورت نیاز به پیگیری بعدی، همین کد پیگیری را اعلام کنید.
+          {% elif contact_submitted.has_phone %}
+          تیم پشتیبانی درخواست شما را بررسی می‌کند و در صورت نیاز از طریق شمارهٔ موبایل ثبت‌شده با شما تماس می‌گیرد (حداکثر تا ۷ روز کاری).
           {% else %}
-          تیم پشتیبانی درخواست شما را بررسی می‌کند و از طریق شماره موبایل یا ایمیل ثبت‌شده پاسخ می‌دهد (حداکثر تا ۷ روز کاری).
+          پیام شما ثبت شد و در صف بررسی تیم لیموخوان قرار گرفت. در صورت نیاز به پیگیری بعدی، همین کد پیگیری را نگهداری کنید.
           {% endif %}
         </p>
         <div class="contact-success-actions">
@@ -94,6 +96,7 @@
                 data-topic-link-label="{{ t.link_label }}"
                 data-topic-link-href="{{ t.link_href }}"
                 data-phone-required="{{ t.phone_required|yesno:'1,0' }}"
+                data-phone-help="{{ t.phone_help }}"
                 data-show-order="{{ t.show_order|yesno:'1,0' }}"
                 data-placeholder="{{ t.placeholder }}"
               >
@@ -131,18 +134,11 @@
           <div class="teacher-application-field{% if contact_form.phone.errors %} has-errors{% endif %}">
             <label for="{{ contact_form.phone.id_for_label }}">
               {{ contact_form.phone.label }}
-              <span data-phone-req-mark>{% if contact_active_topic.phone_required %}*{% else %}(در صورت نیاز یا نداشتن ایمیل){% endif %}</span>
+              <span data-phone-req-mark>{% if contact_active_topic.phone_required %}*{% else %}(اختیاری){% endif %}</span>
             </label>
             {{ contact_form.phone }}
-            <small class="teacher-application-help" data-phone-help>{{ contact_form.phone.help_text }}</small>
+            <small class="teacher-application-help" data-phone-help>{{ contact_active_topic.phone_help }}</small>
             {% if contact_form.phone.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.phone.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
-          </div>
-
-          <div class="teacher-application-field{% if contact_form.email.errors %} has-errors{% endif %}">
-            <label for="{{ contact_form.email.id_for_label }}">{{ contact_form.email.label }} <span class="mut">(اختیاری)</span></label>
-            {{ contact_form.email }}
-            {% if contact_form.email.help_text %}<small class="teacher-application-help">{{ contact_form.email.help_text }}</small>{% endif %}
-            {% if contact_form.email.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.email.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
           </div>
 
           <div class="teacher-application-field{% if contact_active_topic.show_order %} contact-field-highlight{% endif %}{% if contact_form.order_reference.errors %} has-errors{% endif %}" data-order-field>
@@ -151,13 +147,13 @@
             {% if contact_form.order_reference.help_text %}<small class="teacher-application-help">{{ contact_form.order_reference.help_text }}</small>{% endif %}
             {% if contact_form.order_reference.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.order_reference.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
           </div>
-        </div>
 
-        <div class="teacher-application-field{% if contact_form.related_item.errors %} has-errors{% endif %}">
-          <label for="{{ contact_form.related_item.id_for_label }}">{{ contact_form.related_item.label }}</label>
-          {{ contact_form.related_item }}
-          {% if contact_form.related_item.help_text %}<small class="teacher-application-help">{{ contact_form.related_item.help_text }}</small>{% endif %}
-          {% if contact_form.related_item.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.related_item.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+          <div class="teacher-application-field{% if contact_form.related_item.errors %} has-errors{% endif %}">
+            <label for="{{ contact_form.related_item.id_for_label }}">{{ contact_form.related_item.label }}</label>
+            {{ contact_form.related_item }}
+            {% if contact_form.related_item.help_text %}<small class="teacher-application-help">{{ contact_form.related_item.help_text }}</small>{% endif %}
+            {% if contact_form.related_item.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.related_item.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+          </div>
         </div>
 
         <div class="teacher-application-field{% if contact_form.message.errors %} has-errors{% endif %}">

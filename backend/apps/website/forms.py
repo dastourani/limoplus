@@ -255,7 +255,13 @@ class ClassroomAddMembersForm(forms.Form):
 
 
 class ContactMessageForm(forms.ModelForm):
-    """Public support/contact intake form with topic-based conditional requirements and honeypot."""
+    """Public support/contact intake form with topic-based phone requirements and honeypot."""
+
+    PHONE_REQUIRED_HELP = "شمارهٔ موبایل برای بررسی حساب، پیگیری سفارش یا تماس با شما الزامی است."
+    PHONE_OPTIONAL_HELP = (
+        "اگر مایلید دربارهٔ این پیام با شما تماس بگیریم، شمارهٔ موبایلتان را وارد کنید. "
+        "برای ثبت پیشنهاد یا گزارش اشکال، می‌توانید این قسمت را خالی بگذارید."
+    )
 
     phone = forms.CharField(
         label="شماره موبایل",
@@ -269,7 +275,7 @@ class ContactMessageForm(forms.ModelForm):
                 "placeholder": "09123456789",
             }
         ),
-        help_text="برای پیگیری پرداخت، استرداد، حساب کاربری یا درخواست‌های حریم خصوصی الزامی است.",
+        help_text=PHONE_REQUIRED_HELP,
     )
     website = forms.CharField(
         label="وب‌سایت",
@@ -279,11 +285,10 @@ class ContactMessageForm(forms.ModelForm):
 
     class Meta:
         model = ContactMessage
-        fields = ("topic", "name", "phone", "email", "order_reference", "related_item", "message")
+        fields = ("topic", "name", "phone", "order_reference", "related_item", "message")
         widgets = {
             "topic": forms.RadioSelect(),
             "name": forms.TextInput(attrs={"autocomplete": "name", "maxlength": 120, "placeholder": "مثلاً: سارا محمدی"}),
-            "email": forms.EmailInput(attrs={"autocomplete": "email", "dir": "ltr", "placeholder": "name@example.com"}),
             "order_reference": forms.TextInput(
                 attrs={
                     "maxlength": 120,
@@ -306,7 +311,6 @@ class ContactMessageForm(forms.ModelForm):
             ),
         }
         help_texts = {
-            "email": "اختیاری؛ در صورت نداشتن شماره موبایل یا تمایل به دریافت پاسخ مکتوب از ایمیل استفاده می‌کنیم.",
             "order_reference": "برای پیگیری پرداخت ناموفق یا درخواست بازپرداخت بسیار کمک‌کننده است؛ اگر در دسترس نیست خالی بگذارید.",
             "related_item": "اختیاری — عنوان کتاب، اشتراک یا بخش مورد نظر.",
             "message": "حداقل ۱۰ کاراکتر بنویسید. لطفاً از ارسال رمز، کد یک‌بارمصرف یا اطلاعات کارت بانکی خودداری کنید.",
@@ -327,9 +331,6 @@ class ContactMessageForm(forms.ModelForm):
         except InvalidPhone as exc:
             raise forms.ValidationError(str(exc)) from exc
 
-    def clean_email(self):
-        return (self.cleaned_data.get("email") or "").strip().lower()
-
     def clean_order_reference(self):
         return " ".join((self.cleaned_data.get("order_reference") or "").split())
 
@@ -346,15 +347,9 @@ class ContactMessageForm(forms.ModelForm):
         cleaned = super().clean()
         topic = cleaned.get("topic")
         phone = cleaned.get("phone", "")
-        email = cleaned.get("email", "")
         if topic in ContactMessage.PHONE_REQUIRED_TOPICS and not phone:
             self.add_error(
                 "phone",
-                "برای این موضوع، شماره موبایل ثبت‌شده یا شماره تماس معتبر الزامی است تا حساب یا سفارش قابل بررسی باشد.",
-            )
-        elif not phone and not email:
-            self.add_error(
-                "phone",
-                "برای ارسال پاسخ، دست‌کم شماره موبایل یا نشانی ایمیل را وارد کنید.",
+                "برای این موضوع، شمارهٔ موبایل الزامی است تا حساب یا سفارش شما قابل بررسی و پیگیری باشد.",
             )
         return cleaned
