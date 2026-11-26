@@ -519,6 +519,7 @@ class PublicationRequestAdminForm(forms.ModelForm):
                     "campaign_discount_cap": 0 if cap is None else int(cap),
                     "rate_validity_note": (data.get("offer_rate_validity_note") or PublicationRequest.DEFAULT_RATE_VALIDITY_NOTE).strip(),
                     "technical_deliverable": (data.get("offer_technical_deliverable") or PublicationRequest.DEFAULT_TECH_DELIVERABLE).strip(),
+                    "technical_export_disabled": bool(data.get("offer_technical_export_disabled")),
                     "offer_note": offer_note,
                 }
                 candidate_digest = (
@@ -648,6 +649,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
                         "offer_campaign_discount_cap",
                         "offer_rate_validity_note",
                         "offer_technical_deliverable",
+                        "offer_technical_export_disabled",
                         "offer_note",
                     ),
                 }),
@@ -688,7 +690,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
                 *fixed,
                 "offer_platform_fee_percent", "offer_prep_mode", "offer_distribution_scope",
                 "offer_campaign_discount_cap", "offer_rate_validity_note", "offer_technical_deliverable",
-                "offer_note", "status", "content_feedback", "review_note",
+                "offer_technical_export_disabled", "offer_note", "status", "content_feedback", "review_note",
             )
         return fixed
 
@@ -834,13 +836,15 @@ class PublicationRequestAdmin(admin.ModelAdmin):
                 campaign_discount_cap=form.cleaned_data["offer_campaign_discount_cap"],
                 rate_validity_note=form.cleaned_data.get("offer_rate_validity_note") or "",
                 technical_deliverable=form.cleaned_data.get("offer_technical_deliverable") or "",
+                technical_export_disabled=bool(form.cleaned_data.get("offer_technical_export_disabled")),
                 offer_note=form.cleaned_data["offer_note"],
             )
             for attr in (
                 "offer_platform_fee_percent", "offer_prep_mode", "offer_distribution_scope",
                 "offer_campaign_discount_cap", "offer_rate_validity_note", "offer_technical_deliverable",
-                "offer_note", "sent_offer_version", "sent_offer_digest", "sent_offer_snapshot",
-                "offer_sent_at", "offer_sent_by", "status", "teacher_response", "teacher_response_note",
+                "offer_technical_export_disabled", "offer_note", "sent_offer_version", "sent_offer_digest",
+                "sent_offer_snapshot", "offer_sent_at", "offer_sent_by", "status", "teacher_response",
+                "teacher_response_note",
             ):
                 setattr(obj, attr, getattr(sent, attr))
             if sent.sent_offer_version == prev_version:
@@ -858,7 +862,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
         offer_fields = (
             "offer_platform_fee_percent", "offer_prep_mode", "offer_distribution_scope",
             "offer_campaign_discount_cap", "offer_rate_validity_note", "offer_technical_deliverable",
-            "offer_note",
+            "offer_technical_export_disabled", "offer_note",
         )
         offer_draft_changed = any(getattr(obj, f) != getattr(previous, f) for f in offer_fields)
         if offer_draft_changed:

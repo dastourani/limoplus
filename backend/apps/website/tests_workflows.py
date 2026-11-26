@@ -1154,7 +1154,10 @@ class PublicationWorkflowTests(WorkflowFixture):
         valid_discount.full_clean()
         valid_discount.save()
 
+        from django.test import override_settings
         from rest_framework.test import APIClient
+        from apps.commerce.models import OrderAuthorRevenue, OrderRevenueSnapshot, TeacherWallet, WalletTransaction
+
         shopper = User.objects.create_user("09120000100")
         shopper_client = APIClient()
         shopper_client.force_authenticate(user=shopper)
@@ -1169,7 +1172,157 @@ class PublicationWorkflowTests(WorkflowFixture):
         self.assertEqual(created_order.amount, 360_000)
         self.assertEqual(created_order.regular_amount, 400_000)
         self.assertEqual(created_order.discount_amount, 40_000)
+
+        # End-to-end payment settlement through Zibal callback -> Entitlement -> RevenueSnapshot -> TeacherWallet.
+        with override_settings(PAYMENTS_ENABLED=True):
+            with patch(
+                "apps.commerce.zibal.verify",
+                return_value={"result": 100, "amount": 360_000 * 10, "refNumber": "REF-CAP-1", "cardNumber": "6037****1234"},
+            ):
+                cb_res = self.client.get("/api/v1/payments/zibal/callback/?trackId=track-cap-1&success=1")
+        self.assertEqual(cb_res.status_code, 200)
+        created_order.refresh_from_db()
+        self.assertEqual(created_order.status, Order.Status.PAID)
+        self.assertTrue(owns_book(shopper, self.book))
+
+        cb_snapshot = OrderRevenueSnapshot.objects.get(order=created_order)
+        self.assertEqual(cb_snapshot.platform_share_amount, 90_000)   # 25% of 360,000
+        self.assertEqual(cb_snapshot.total_authors_amount, 270_000)   # 75% of 360,000
+        author_rev = OrderAuthorRevenue.objects.get(snapshot=cb_snapshot, author=self.teacher)
+        self.assertEqual(author_rev.amount, 270_000)
+        wallet = TeacherWallet.objects.get(teacher=self.teacher)
+        # Order #1 (400k * 75% = 300k) + Order #2 via Zibal callback (360k * 75% = 270k) = 570k
+        self.assertEqual(wallet.pending_balance, 570_000)
+        tx = WalletTransaction.objects.get(
+            wallet=wallet,
+            author_revenue=author_rev,
+            event_type=WalletTransaction.EventType.EARN_PENDING,
+        )
+        self.assertEqual(tx.amount, 270_000)
         plan.delete()
+
+    def test_model_b_technical_export_disabled_enforced_across_downloads_emails_and_ui(self):
+        from apps.catalog.models import ChapterRevision
+
+        # Grant content-edit capability so teacher normally has export/email permissions before Model B lock.
+        BookEditor.objects.filter(book=self.book, user=self.teacher).update(can_edit_content=True)
+        # Ensure email is verified on teacher so email-export buttons are visible before lock.
+        self.teacher.email = "author@example.com"
+        self.teacher.email_verified_at = timezone.now()
+        self.teacher.save(update_fields=["email", "email_verified_at"])
+        rev = ChapterRevision.objects.create(
+            chapter=self.chapter,
+            text="نسخه آزمایشی فصل",
+            source=ChapterRevision.Source.PANEL,
+            note="تست",
+            user=self.teacher,
+        )
+
+        export_urls = [
+            reverse("admin:catalog_book_export", args=[self.book.pk]),
+            reverse("admin:catalog_book_tex_export", args=[self.book.pk]),
+            reverse("admin:catalog_book_email_export", args=[self.book.pk]),
+            reverse("admin:catalog_chapter_export", args=[self.chapter.pk]),
+            reverse("admin:catalog_chapter_tex", args=[self.chapter.pk]),
+            reverse("admin:catalog_chapter_email_tex", args=[self.chapter.pk]),
+        ]
+        rev_url = reverse("admin:catalog_revision_text", args=[self.chapter.pk, rev.pk])
+
+        teacher_client = Client()
+        teacher_client.force_login(self.teacher)
+        # Before approval with technical_export_disabled=True, exports and links are available.
+        before_book_page = teacher_client.get(reverse("admin:catalog_book_change", args=[self.book.pk]))
+        self.assertEqual(before_book_page.status_code, 200)
+        for url in export_urls:
+            self.assertContains(before_book_page, url)
+        self.assertEqual(teacher_client.get(export_urls[0]).status_code, 200)
+        self.assertEqual(teacher_client.get(export_urls[1]).status_code, 200)
+        self.assertEqual(teacher_client.get(rev_url).status_code, 200)
+
+        request = PublicationRequest.objects.create(
+            book=self.book,
+            requested_by=self.teacher,
+            author_prep_preference=PublicationRequest.PrepPreference.NEEDS_PREP,
+            content_digest=publication_content_digest(self.book),
+        )
+        # v1 with export allowed; then v2 toggles technical_export_disabled=True -> must bump version.
+        send_publication_offer(
+            request.pk,
+            actor=self.manager,
+            platform_fee_percent=30,
+            prep_mode=PublicationRequest.OfferPrepMode.PLATFORM_PREP,
+            distribution_scope=PublicationRequest.DistributionScope.STANDARD,
+            campaign_discount_cap=20,
+            technical_export_disabled=False,
+            offer_note="نسخه ۱ بدون قفل خروجی.",
+        )
+        request.refresh_from_db()
+        respond_to_publication_offer(
+            request.pk,
+            actor=self.teacher,
+            decision=PublicationRequest.TeacherResponse.ACCEPTED,
+            expected_offer_digest=request.sent_offer_digest,
+            expected_offer_version=request.sent_offer_version,
+        )
+        send_publication_offer(
+            request.pk,
+            actor=self.manager,
+            platform_fee_percent=30,
+            prep_mode=PublicationRequest.OfferPrepMode.PLATFORM_PREP,
+            distribution_scope=PublicationRequest.DistributionScope.STANDARD,
+            campaign_discount_cap=20,
+            technical_deliverable="دریافت فایل فنی این کتاب غیرفعال است.",
+            technical_export_disabled=True,
+            offer_note="مدل ب با آماده‌سازی کامل و مسدودسازی خروجی فنی.",
+        )
+        request.refresh_from_db()
+        self.assertEqual(request.sent_offer_version, 2)
+        self.assertFalse(request.is_current_offer_accepted)
+
+        offer_page = teacher_client.get(reverse("admin:catalog_book_request_publication", args=[self.book.pk]))
+        self.assertContains(offer_page, "دریافت و ارسال ایمیلی فایل‌های فنی (Markdown / LaTeX) پس از تأیید انتشار غیرفعال خواهد بود")
+
+        respond_to_publication_offer(
+            request.pk,
+            actor=self.teacher,
+            decision=PublicationRequest.TeacherResponse.ACCEPTED,
+            expected_offer_digest=request.sent_offer_digest,
+            expected_offer_version=request.sent_offer_version,
+        )
+        review_publication_request(
+            request.pk,
+            actor=self.manager,
+            status=PublicationRequest.Status.APPROVED,
+            review_note="انتشار مدل ب با قفل خروجی‌های فنی.",
+        )
+        self.book.refresh_from_db()
+        self.assertTrue(self.book.technical_export_disabled)
+
+        # Book page & chapter history must hide all export/email links and show restriction notice.
+        book_page = teacher_client.get(reverse("admin:catalog_book_change", args=[self.book.pk]))
+        self.assertEqual(book_page.status_code, 200)
+        self.assertContains(book_page, "دریافت و ارسال ایمیلی فایل‌های فنی (Markdown / LaTeX) برای این کتاب غیرفعال شده است")
+        for url in export_urls:
+            self.assertNotContains(book_page, url)
+            self.assertEqual(teacher_client.get(url).status_code, 403, f"Expected 403 for teacher on {url}")
+
+        history_page = teacher_client.get(reverse("admin:catalog_chapter_history", args=[self.chapter.pk]))
+        self.assertEqual(history_page.status_code, 200)
+        self.assertNotContains(history_page, rev_url)
+        self.assertEqual(teacher_client.get(rev_url).status_code, 403)
+
+        # Superuser in teacher-preview mode is also blocked; normal superuser can still export.
+        manager_client = Client()
+        manager_client.force_login(self.manager)
+        session = manager_client.session
+        session["admin_view_mode"] = "teacher"
+        session.save()
+        self.assertEqual(manager_client.get(export_urls[0]).status_code, 403)
+        session["admin_view_mode"] = "admin"
+        session.save()
+        self.assertEqual(manager_client.get(export_urls[0]).status_code, 200)
+        self.assertEqual(manager_client.get(export_urls[1]).status_code, 200)
+        self.assertEqual(manager_client.get(rev_url).status_code, 200)
 
     def test_changed_snapshot_cannot_be_approved(self):
         request = PublicationRequest.objects.create(

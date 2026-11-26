@@ -9,10 +9,12 @@
     {% if can_edit_book_content %}
       <li><a href="{% url 'admin:catalog_book_trace' original.pk %}" style="background:#047857;color:#fff;font-weight:700;" title="ردیابی اثرانگشت نامرئی متون کپی‌شده از این کتاب و شناسایی کاربر متخلف">🛡️ ردیاب متن و اصالت اثر</a></li>
     {% endif %}
-    <li><a href="{% url 'admin:catalog_book_export' original.pk %}">دریافت کل کتاب (Markdown ZIP)</a></li>
-    <li><a href="{% url 'admin:catalog_book_tex_export' original.pk %}" style="font-weight:700;" title="پروژه چندفصلی کامل LaTeX به همراه تصاویر و فایل تنظیمات">📥 خروجی کامل LaTeX کتاب</a></li>
-    {% if request.user.email and request.user.is_email_verified %}
-      <li><a href="{% url 'admin:catalog_book_email_export' original.pk %}" title="ارسال فایل زیپ کامل کتاب به ایمیل شما">📧 ارسال کل کتاب به ایمیل</a></li>
+    {% if can_export_technical_files %}
+      <li><a href="{% url 'admin:catalog_book_export' original.pk %}">دریافت کل کتاب (Markdown ZIP)</a></li>
+      <li><a href="{% url 'admin:catalog_book_tex_export' original.pk %}" style="font-weight:700;" title="پروژه چندفصلی کامل LaTeX به همراه تصاویر و فایل تنظیمات">📥 خروجی کامل LaTeX کتاب</a></li>
+      {% if request.user.email and request.user.is_email_verified %}
+        <li><a href="{% url 'admin:catalog_book_email_export' original.pk %}" title="ارسال فایل زیپ کامل کتاب به ایمیل شما">📧 ارسال کل کتاب به ایمیل</a></li>
+      {% endif %}
     {% endif %}
     {% if can_request_publication %}<li><a href="{% url 'admin:website_publicationrequest_add' %}?book={{ original.pk }}">درخواست بازبینی انتشار عمومی</a></li>{% endif %}
     {% if can_request_group_access %}<li><a href="{% url 'admin:website_bookaccessrequest_add' %}?book={{ original.pk }}">پیشنهاد دسترسی گروهی</a></li>{% endif %}
@@ -94,6 +96,11 @@
   <h2>فصل‌های کتاب</h2>
   <p class="hint">ترتیب این فهرست، ترتیب فصل‌ها در اپ است. «رایگان» یعنی کاربر بدون خرید هم این فصل را می‌خواند.
     فصل منتشرنشده در اپ دیده نمی‌شود. بایگانی یعنی پنهان شدن، نه پاک شدن.</p>
+  {% if original.technical_export_disabled and not can_export_technical_files %}
+    <p class="hint" style="color:#b45309; font-weight:700;">
+      مطابق توافق انتشار، دریافت و ارسال ایمیلی فایل‌های فنی (Markdown / LaTeX) برای این کتاب غیرفعال شده است.
+    </p>
+  {% endif %}
   <table class="lp-table">
     <thead><tr><th>#</th><th>فصل</th><th>بخش</th><th>تست</th><th>فلش‌کارت</th><th>رایگان</th><th>منتشر</th><th></th></tr></thead>
     <tbody>
@@ -133,12 +140,14 @@
               <input type="hidden" name="chapter" value="{{ c.node.pk }}"><input type="hidden" name="action" value="down">
               <button class="btn small icon" type="submit" title="پایین">▼</button></form>
           {% endif %}
-          <a class="btn small" href="{% url 'admin:catalog_chapter_export' c.node.pk %}">دریافت فایل</a>
-          <a class="btn small" href="{% url 'admin:catalog_chapter_tex' c.node.pk %}"
-             title="همین فصل برای Overleaf: فایل .tex و تصویرها">📥 .tex</a>
-          {% if request.user.email and request.user.is_email_verified %}
-            <a class="btn small" href="{% url 'admin:catalog_chapter_email_tex' c.node.pk %}"
-               title="ارسال فایل .tex این فصل به ایمیل شما">📧 ایمیل TeX</a>
+          {% if can_export_technical_files %}
+            <a class="btn small" href="{% url 'admin:catalog_chapter_export' c.node.pk %}">دریافت فایل</a>
+            <a class="btn small" href="{% url 'admin:catalog_chapter_tex' c.node.pk %}"
+               title="همین فصل برای Overleaf: فایل .tex و تصویرها">📥 .tex</a>
+            {% if request.user.email and request.user.is_email_verified %}
+              <a class="btn small" href="{% url 'admin:catalog_chapter_email_tex' c.node.pk %}"
+                 title="ارسال فایل .tex این فصل به ایمیل شما">📧 ایمیل TeX</a>
+            {% endif %}
           {% endif %}
           {% if can_manage_access %}
             <form class="inline" method="post" action="{% url 'admin:catalog_book_chapter_action' original.pk %}">{% csrf_token %}

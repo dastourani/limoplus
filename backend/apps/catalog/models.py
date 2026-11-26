@@ -129,6 +129,11 @@ class ContentNode(MP_Node):
         blank=True,
         help_text="حداکثر درصد تخفیف مجاز برای کمپین‌های فروش تکی این کتاب مطابق توافق انتشار.",
     )
+    technical_export_disabled = models.BooleanField(
+        "مسدودسازی دریافت و ایمیل فایل‌های فنی (Markdown / LaTeX)",
+        default=False,
+        help_text="اگر فعال باشد، دانلود و ارسال ایمیلی خروجی‌های فنی کتاب و فصل‌ها (Markdown/ZIP/TeX) برای استاد و همکاران کتاب مسدود می‌شود.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
     # «مطلب تازه»: the last time the panel marked this text as worth a second look («به‌روز شده» in the app).
     refreshed_at = models.DateTimeField("به‌روزرسانی مهم", null=True, blank=True, editable=False)

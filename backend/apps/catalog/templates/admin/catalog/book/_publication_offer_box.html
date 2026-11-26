@@ -70,7 +70,14 @@
           (سقف مجاز تخفیف کمپین‌های فروش تکی: <strong>{{ publication_offer.sent_offer.campaign_discount_cap }}٪</strong>؛ کمپین همان فروش تکی با تخفیف در حدود توافق است و کارمزد از مبلغ واقعیِ پرداخت‌شده محاسبه می‌شود.)
         </li>
         <li><strong>مدت اعتبار نرخ:</strong> {{ publication_offer.sent_offer.rate_validity_note }}</li>
-        <li><strong>وضعیت تحویل خروجی فنی:</strong> {{ publication_offer.sent_offer.technical_deliverable }}</li>
+        <li>
+          <strong>وضعیت تحویل خروجی فنی:</strong> {{ publication_offer.sent_offer.technical_deliverable }}
+          {% if publication_offer.sent_offer.technical_export_disabled %}
+            <span style="display:inline-block; margin-top:4px; padding:2px 8px; border-radius:999px; background:#fef3c7; color:#92400e; font-size:12px; font-weight:700;">
+              دریافت و ارسال ایمیلی فایل‌های فنی (Markdown / LaTeX) پس از تأیید انتشار غیرفعال خواهد بود
+            </span>
+          {% endif %}
+        </li>
       </ul>
 
       {% if publication_offer.sent_offer.offer_note %}

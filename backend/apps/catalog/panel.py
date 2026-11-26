@@ -95,6 +95,13 @@ def _can_edit_draft(request, chapter):
         raise PermissionDenied("استاد فقط پیش‌نویس آماده می‌کند؛ محتوای منتشرشده را فقط مدیر کل تغییر می‌دهد.")
 
 
+def _require_technical_export(request, book):
+    """Enforce per-book technical export restrictions (Markdown/LaTeX/ZIP/email) agreed on publication."""
+    _can_edit(request, book)
+    if not access.can_export_book_technical_files(request.user, book, request=request):
+        raise PermissionDenied("دریافت یا ارسال ایمیلی فایل‌های فنی این کتاب مطابق توافق انتشار غیرفعال شده است.")
+
+
 def _require_superuser(request):
     if not request.user.is_superuser:
         raise PermissionDenied("این کار از این صفحه فقط برای مدیر کل است.")
@@ -836,7 +843,7 @@ def whole_file_body(text: str) -> str:
 
 def chapter_export(request, chapter_id):
     chapter = _chapter(chapter_id)
-    _can_edit(request, chapter.book())
+    _require_technical_export(request, chapter.book())
     name, data, content_type = chapter_bundle(chapter)
     response = HttpResponse(data, content_type=content_type)
     response["Content-Disposition"] = f'attachment; filename="{name}"'
@@ -846,7 +853,7 @@ def chapter_export(request, chapter_id):
 def chapter_tex(request, chapter_id):
     """The chapter as a LaTeX project: a .tex alone, or a ZIP with the .tex and its images/ — for Overleaf."""
     chapter = _chapter(chapter_id)
-    _can_edit(request, chapter.book())
+    _require_technical_export(request, chapter.book())
     name, data, content_type = chapter_tex_bundle(chapter)
     response = HttpResponse(data, content_type=content_type)
     response["Content-Disposition"] = f'attachment; filename="{name}"'
@@ -860,7 +867,7 @@ def chapter_email_tex(request, chapter_id):
     from django.shortcuts import redirect
 
     chapter = _chapter(chapter_id)
-    _can_edit(request, chapter.book())
+    _require_technical_export(request, chapter.book())
     user = request.user
 
     if not user.email:
@@ -892,7 +899,7 @@ def chapter_email_tex(request, chapter_id):
 
 def book_export(request, book_id):
     book = _book(book_id)
-    _can_edit(request, book)
+    _require_technical_export(request, book)
     response = HttpResponse(book_bundle(book), content_type="application/zip")
     response["Content-Disposition"] = f'attachment; filename="{book.slug}.zip"'
     return response
@@ -902,7 +909,7 @@ def book_tex_export(request, book_id):
     """Download the complete multi-chapter LaTeX project of the book."""
     from .latex_export import book_tex_bundle
     book = _book(book_id)
-    _can_edit(request, book)
+    _require_technical_export(request, book)
     name, data, content_type = book_tex_bundle(book)
     response = HttpResponse(data, content_type=content_type)
     response["Content-Disposition"] = f'attachment; filename="{name}"'
@@ -916,7 +923,7 @@ def book_email_export(request, book_id):
     from django.shortcuts import redirect
 
     book = _book(book_id)
-    _can_edit(request, book)
+    _require_technical_export(request, book)
     user = request.user
 
     if not user.email:
@@ -958,15 +965,20 @@ def chapter_history(admin_site, request, chapter_id):
         compare = get_object_or_404(ChapterRevision, pk=request.GET["compare"], chapter=chapter)
         diff = editing.text_diff(compare.text, current)
         compare = {"r": compare, "when": jalali_datetime(compare.updated_at)}
+    book = chapter.book()
     return TemplateResponse(
         request,
         "admin/catalog/book/chapter_history.html",
-        _context(admin_site, request, f"نسخه‌های فصل: {chapter.title}", book=chapter.book(), chapter=chapter, rows=rows, compare=compare, diff=diff),
+        _context(
+            admin_site, request, f"نسخه‌های فصل: {chapter.title}",
+            book=book, chapter=chapter, rows=rows, compare=compare, diff=diff,
+            can_export_technical_files=access.can_export_book_technical_files(request.user, book, request=request),
+        ),
     )
 
 
 def revision_text(request, chapter_id, revision_id):
-    _can_edit(request, _chapter(chapter_id).book())
+    _require_technical_export(request, _chapter(chapter_id).book())
     revision = get_object_or_404(ChapterRevision, pk=revision_id, chapter_id=chapter_id)
     response = HttpResponse(revision.text, content_type="text/markdown; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{revision.chapter.slug}-v{revision.pk}.md"'

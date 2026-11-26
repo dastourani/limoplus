@@ -569,6 +569,11 @@ class PublicationRequest(models.Model):
         blank=True,
         default=DEFAULT_TECH_DELIVERABLE,
     )
+    offer_technical_export_disabled = models.BooleanField(
+        "مسدودسازی دریافت و ایمیل فایل‌های فنی برای استاد (مدل ب)",
+        default=False,
+        help_text="اگر فعال باشد، پس از تأیید انتشار، دانلود و ارسال ایمیلی فایل‌های فنی Markdown و LaTeX برای این کتاب غیرفعال می‌شود.",
+    )
     offer_note = models.TextField(
         "باکس شرایط و پیام مدیر به استاد",
         blank=True,
@@ -660,6 +665,7 @@ class PublicationRequest(models.Model):
             "campaign_discount_cap": cap,
             "rate_validity_note": validity,
             "technical_deliverable": deliverable,
+            "technical_export_disabled": bool(self.offer_technical_export_disabled),
             "offer_note": (self.offer_note or "").strip(),
         }
 
@@ -673,6 +679,7 @@ class PublicationRequest(models.Model):
             "campaign_discount_cap": payload.get("campaign_discount_cap"),
             "rate_validity_note": payload.get("rate_validity_note", ""),
             "technical_deliverable": payload.get("technical_deliverable", ""),
+            "technical_export_disabled": bool(payload.get("technical_export_disabled")),
             "offer_note": payload.get("offer_note", ""),
         }
         raw = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
@@ -695,6 +702,7 @@ class PublicationRequest(models.Model):
                 self.offer_platform_fee_percent is not None,
                 bool((self.offer_prep_mode or "").strip()),
                 bool((self.offer_distribution_scope or "").strip()),
+                bool(self.offer_technical_export_disabled),
                 bool((self.offer_note or "").strip()),
             ])
         return self.current_draft_offer_digest != self.sent_offer_digest

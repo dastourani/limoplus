@@ -125,6 +125,7 @@ class BookAdmin(admin.ModelAdmin):
         # checkbox in a form cannot tell the two apart. Publishing goes through the button below the title, which
         # asks can_publish_book (see publish_book view).
         ("فروش و نمایش", {"fields": ("price", "is_free", "is_coming_soon", "release_estimate", "release_note", "position", "is_archived")}),
+        ("شرایط عرضه و خروجی فنی (توافق انتشار)", {"fields": ("single_sale_only", "campaign_discount_cap_percent", "technical_export_disabled")}),
         ("اشتراک‌گذاری", {"fields": ("share_link",)}),
     )
 
@@ -320,6 +321,7 @@ class BookAdmin(admin.ModelAdmin):
             )
             extra["can_view_study"] = can_view_study
             extra["can_edit_book_content"] = access.can_edit_book(request.user, book)
+            extra["can_export_technical_files"] = access.can_export_book_technical_files(request.user, book, request=request)
             if not is_panel_su and access.acts_as_panel_teacher(request):
                 editor = BookEditor.objects.filter(book=book, user=request.user).first()
                 is_preview = access.is_teacher_preview(request)
@@ -908,6 +910,7 @@ class BookAdmin(admin.ModelAdmin):
                 "campaign_discount_cap": snap.get("campaign_discount_cap"),
                 "rate_validity_note": snap.get("rate_validity_note") or "",
                 "technical_deliverable": snap.get("technical_deliverable") or "",
+                "technical_export_disabled": bool(snap.get("technical_export_disabled")),
                 "offer_note": snap.get("offer_note") or "",
             }
 

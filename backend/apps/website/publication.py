@@ -128,6 +128,7 @@ def send_publication_offer(
     campaign_discount_cap: int = 30,
     rate_validity_note: str = "",
     technical_deliverable: str = "",
+    technical_export_disabled: bool = False,
     offer_note: str = "",
 ) -> PublicationRequest:
     """Explicitly publish a versioned offer to the teacher; draft saves never invoke this."""
@@ -156,6 +157,7 @@ def send_publication_offer(
         item.offer_campaign_discount_cap = int(campaign_discount_cap)
         item.offer_rate_validity_note = (rate_validity_note or PublicationRequest.DEFAULT_RATE_VALIDITY_NOTE).strip()
         item.offer_technical_deliverable = (technical_deliverable or PublicationRequest.DEFAULT_TECH_DELIVERABLE).strip()
+        item.offer_technical_export_disabled = bool(technical_export_disabled)
         item.offer_note = offer_note
 
         payload = item.build_draft_offer_payload()
@@ -333,6 +335,7 @@ def _sync_accepted_terms_to_book_and_commerce(item: PublicationRequest, book: Co
     ContentNode.objects.filter(pk=book.pk).update(
         single_sale_only=(scope == PublicationRequest.DistributionScope.SINGLE_SALE_ONLY),
         campaign_discount_cap_percent=cap_value,
+        technical_export_disabled=bool(snapshot.get("technical_export_disabled")),
     )
 
 

@@ -47,6 +47,17 @@ def acts_as_panel_teacher(request) -> bool:
     return bool(is_book_teacher(user) or is_teacher_preview(request))
 
 
+def can_export_book_technical_files(user, book, *, request=None) -> bool:
+    """True when `user` may download or email Markdown/LaTeX/revision technical exports of `book`."""
+    if not can_edit_book(user, book):
+        return False
+    if getattr(book, "technical_export_disabled", False):
+        if request is not None:
+            return acts_as_panel_superuser(request)
+        return bool(user and user.is_authenticated and user.is_active and user.is_superuser)
+    return True
+
+
 def teacher_assigned_books(user, capability="can_edit_content"):
     """Active non-archived, non-inbox books explicitly assigned via BookEditor (never bypassed by is_superuser)."""
     if not (user and user.is_authenticated and user.is_active):
