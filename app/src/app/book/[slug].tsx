@@ -16,9 +16,9 @@ import { useCelebrate } from '../../components/Celebrate';
 import { LemonProgress } from '../../components/LemonProgress';
 import { PageTurn } from '../../components/PageTurn';
 import { Icon, IconBadge } from '../../components/Icon';
-import { Button, Chip, ErrorState, Header, Loading, Screen, usePullRefresh } from '../../components/ui';
+import { Button, Chip, ErrorState, Header, Loading, Screen, Sheet, usePullRefresh } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
-import { isSectionAccessibleInBook, resolveBookCta } from '../../lib/bookAccess';
+import { firstReadableNodeId, isSectionAccessibleInBook, lockedCtaLabel, productStateNote, resolveBookCta } from '../../lib/bookAccess';
 import { coverByline } from '../../lib/cover';
 import { jalaliDate } from '../../lib/jalali';
 import { offlineBookDetail, offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
@@ -134,6 +134,7 @@ export default function Book() {
   const [reviewBody, setReviewBody] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
+  const [lockedSection, setLockedSection] = useState<NodeSummary | null>(null);
 
   useEffect(() => {
     setAboutOpen(null);
@@ -246,7 +247,7 @@ export default function Book() {
         {!!titleParam && <PageTurn kind="cover" title={titleParam} hold />}
       </Screen>
     );
-  if (error || !data) return <Screen><Header subtitle="کتاب" /><ErrorState message={error?.message ?? ''} onRetry={retry} /></Screen>;
+  if (error || !data) return <Screen><Header subtitle="کتاب" /><ErrorState message={error?.message ?? ''} status={error?.status} onRetry={retry} /></Screen>;
 
   const book = data;
   const localChapterSeconds: Record<string, number> = {};
@@ -341,6 +342,7 @@ export default function Book() {
               return next;
             });
           }}
+          onLockedPress={(sec) => setLockedSection(sec)}
         />
       )}
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -556,20 +558,28 @@ export default function Book() {
                         <Text style={styles.discountChip}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
                       </View>
                     </View>
-                    <Pressable onPress={() => router.push('/subscribe')} accessibilityRole="link">
-                      <Text style={[styles.saving, rtl]}>
-                        {formatToman(bookPrice.discount.amount)} تخفیف · یا با اشتراک لیمو
-                      </Text>
-                    </Pressable>
+                    {book.single_sale_only ? (
+                      <Text style={[styles.saving, rtl]}>{formatToman(bookPrice.discount.amount)} تخفیف</Text>
+                    ) : (
+                      <Pressable onPress={() => router.push('/subscribe')} accessibilityRole="link">
+                        <Text style={[styles.saving, rtl]}>
+                          {formatToman(bookPrice.discount.amount)} تخفیف · یا با اشتراک لیمو
+                        </Text>
+                      </Pressable>
+                    )}
                   </View>
                 ) : (
                   <View style={styles.priceLineCenter}>
                     <Text style={styles.ctaSmall}>
                       <Text style={styles.ctaPriceStrong}>{formatToman(bookPrice.price)}</Text>
-                      {'، یا با '}
-                      <Text onPress={() => router.push('/subscribe')} style={styles.ctaSubLink}>
-                        اشتراک ماهانه‌ی لیمو
-                      </Text>
+                      {!book.single_sale_only && (
+                        <>
+                          {'، یا با '}
+                          <Text onPress={() => router.push('/subscribe')} style={styles.ctaSubLink}>
+                            اشتراک ماهانه‌ی لیمو
+                          </Text>
+                        </>
+                      )}
                     </Text>
                   </View>
                 )
@@ -1069,6 +1079,7 @@ export default function Book() {
               seconds={(book.mine?.chapter_seconds?.[String(chapter.id)] ?? 0) + (localChapterSeconds[String(chapter.id)] ?? 0)}
               review={book.reviews?.chapters[String(chapter.id)] ?? null}
               canFinish={!!user && !!book.reviews}
+              onLockedPress={(sec) => setLockedSection(sec)}
               onFinish={async () => {
                 const ok = await confirm({
                   title: 'این فصل را تمام کردی؟',
@@ -1113,6 +1124,56 @@ export default function Book() {
       </View>
       </View>
       </View>
+      <Sheet
+        visible={!!lockedSection}
+        onClose={() => setLockedSection(null)}
+        title={lockedSection?.title ?? 'بخش قفل'}
+      >
+        <View style={styles.lockedSheetBody}>
+          <IconBadge name="lock" size={56} />
+          <Text style={[styles.lockedSheetTitle, rtl]}>این بخش در نسخه‌ی کامل کتاب است</Text>
+          {!!productStateNote(book.product_status.state) && (
+            <Text style={[styles.lockedSheetNote, rtl]}>{productStateNote(book.product_status.state)}</Text>
+          )}
+          {book.product_status.state === 'paid' && bookPrice.price != null && (
+            <View style={styles.lockedPriceBox}>
+              {bookPrice.discount && (
+                <Text style={styles.lockedOldPrice}>{formatToman(bookPrice.regularPrice ?? bookPrice.price)}</Text>
+              )}
+              <Text style={styles.lockedPrice}>{formatToman(bookPrice.price)}</Text>
+              {bookPrice.discount && (
+                <Text style={styles.lockedSaving}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
+              )}
+            </View>
+          )}
+          {book.product_status.state === 'paid' && (
+            <Button
+              label={lockedCtaLabel(book.single_sale_only)}
+              onPress={() => {
+                setLockedSection(null);
+                router.push(`/buy/${book.slug}`);
+              }}
+              style={{ alignSelf: 'stretch' }}
+            />
+          )}
+          {(() => {
+            const sampleId = firstReadableNodeId(book);
+            if (sampleId == null || book.product_status.preview !== 'sample') return null;
+            return (
+              <Button
+                label="مطالعه‌ی بخش رایگان"
+                variant="outline"
+                onPress={() => {
+                  setLockedSection(null);
+                  router.push({ pathname: '/section/[id]', params: { id: String(sampleId), bookSlug: book.slug } });
+                }}
+                style={{ alignSelf: 'stretch' }}
+              />
+            );
+          })()}
+          <Button label="بستن" variant="outline" onPress={() => setLockedSection(null)} style={{ alignSelf: 'stretch' }} />
+        </View>
+      </Sheet>
       {cover && <View style={StyleSheet.absoluteFill}>{cover}</View>}
     </Screen>
   );
@@ -1131,6 +1192,7 @@ function ChapterCard({
   review,
   canFinish,
   onFinish,
+  onLockedPress,
   seconds,
 }: {
   seconds: number;
@@ -1139,6 +1201,7 @@ function ChapterCard({
   review: { id?: number; step: number; days: number; done: number } | null;
   canFinish: boolean;
   onFinish: () => void;
+  onLockedPress: (section: NodeSummary) => void;
   chapter: ChapterSummary;
   number: number;
   open: boolean;
@@ -1217,9 +1280,11 @@ function ChapterCard({
                     )}
                     <SectionRow
                       section={section}
+                      bookSlug={bookSlug}
                       state={done.has(section.id) ? 'done' : read.has(section.id) ? 'read' : 'none'}
                       firstWithoutTopBorder={isFirstRow && !header}
                       extraTopPadding={isFirstRow && !header && seconds >= 60}
+                      onLockedPress={onLockedPress}
                     />
                   </View>
                 );
@@ -1329,20 +1394,30 @@ function ChapterCard({
 /** none: not started; read: half (the notes read, or most of its questions answered); done: «تمام شد» (green tick: both). */
 function SectionRow({
   section,
+  bookSlug,
   state,
   firstWithoutTopBorder = false,
   extraTopPadding = false,
+  onLockedPress,
 }: {
   section: NodeSummary;
+  bookSlug: string;
   state: 'none' | 'read' | 'done';
   firstWithoutTopBorder?: boolean;
   extraTopPadding?: boolean;
+  onLockedPress?: (section: NodeSummary) => void;
 }) {
   const done = state === 'done';
   const { toast } = useFeedback();
   return (
     <Pressable
-      onPress={() => router.push(`/section/${section.id}`)}
+      onPress={() => {
+        if (section.is_locked && onLockedPress) {
+          onLockedPress(section);
+        } else {
+          router.push({ pathname: '/section/[id]', params: { id: String(section.id), bookSlug, title: section.title } });
+        }
+      }}
       onLongPress={() => toast(section.title)}
       delayLongPress={350}
       style={({ pressed }) => [
@@ -1544,6 +1619,13 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
   action: { flexGrow: 1, flexBasis: '45%', backgroundColor: colors.ground, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   actionText: { fontWeight: '700', color: colors.ink, fontSize: 15 },
+  lockedSheetBody: { alignItems: 'center', gap: 10, paddingVertical: 6 },
+  lockedSheetTitle: { fontSize: 16, fontWeight: '800', color: colors.ink, textAlign: 'center' },
+  lockedSheetNote: { fontSize: 13.5, color: colors.muted, textAlign: 'center', lineHeight: 22 },
+  lockedPriceBox: { alignItems: 'center', gap: 2, paddingVertical: 6 },
+  lockedOldPrice: { fontSize: 13, color: colors.muted, textDecorationLine: 'line-through' },
+  lockedPrice: { fontSize: 22, fontWeight: '900', color: colors.ink },
+  lockedSaving: { fontSize: 12, fontWeight: '800', color: colors.greenDark },
 });
 
 /** A short «درباره‌ی کتاب» (about three lines) is shown whole, without «بیشتر». */

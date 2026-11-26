@@ -100,7 +100,7 @@ export default function Flashcards() {
   }, [data, user, nodeId]);
 
   if (loading || (data && !order)) return <Screen><Header title={title} /><Loading /></Screen>;
-  if (error) return <Screen><Header title={title} /><ErrorState message={error.message} onRetry={retry} /></Screen>;
+  if (error) return <Screen><Header title={title} /><ErrorState message={error.message} status={error.status} onRetry={retry} /></Screen>;
   if (!cards || cards.length === 0) {
     return (
       <Screen>

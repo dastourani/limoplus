@@ -12,6 +12,7 @@ import { LemonSlice } from './LemonSlice';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radius, rtl } from '../theme';
+import { errorPresentation } from '../lib/errors';
 import { refreshAll } from '../lib/useApi';
 
 export function Screen({
@@ -111,7 +112,21 @@ export function Loading() {
   );
 }
 
-export function ErrorState({ message, onRetry, icon }: { message: string; onRetry?: () => void; icon?: IconName }) {
+export function ErrorState({
+  message,
+  onRetry,
+  onBack,
+  icon,
+  title,
+  status,
+}: {
+  message: string;
+  onRetry?: () => void;
+  onBack?: () => void;
+  icon?: IconName;
+  title?: string;
+  status?: number;
+}) {
   const [retrying, setRetrying] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -139,18 +154,25 @@ export function ErrorState({ message, onRetry, icon }: { message: string; onRetr
     onRetry();
   };
 
+  const presentation = errorPresentation(status);
+  const resolvedIcon = icon ?? presentation.icon;
+  const resolvedTitle = title ?? presentation.title;
+
   return (
     <View style={styles.center}>
       <View style={styles.errorCard}>
         <View style={styles.errorEmblem}>
           <LemonSlice size={68} />
           <View style={styles.errorBadge}>
-            <Icon name={icon ?? 'cloud-off'} size={15} color={colors.ink} strokeWidth={2.2} />
+            <Icon name={resolvedIcon} size={15} color={colors.ink} strokeWidth={2.2} />
           </View>
         </View>
-        <Text style={[styles.errorTitle, rtl]}>ارتباط برقرار نشد</Text>
+        <Text style={[styles.errorTitle, rtl]}>{resolvedTitle}</Text>
         <Text style={[styles.errorText, rtl]}>{message}</Text>
         <Button label="تلاش دوباره" variant="outline" onPress={handleRetry} loading={retrying} style={{ marginTop: 8, minWidth: 170 }} />
+        {onBack && (
+          <Button label="بازگشت" variant="outline" onPress={onBack} style={{ minWidth: 170 }} />
+        )}
         {offlineSupported && (
           <Pressable onPress={() => router.push('/offline')} style={{ marginTop: 6 }} accessibilityRole="link">
             <Text style={styles.link}>کتاب‌های آفلاین</Text>
