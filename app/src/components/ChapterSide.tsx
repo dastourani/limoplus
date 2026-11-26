@@ -6,7 +6,7 @@
 import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { endpoints, type BookDetail } from '../api/endpoints';
+import { endpoints, type BookDetail, type NodeSummary } from '../api/endpoints';
 import { useApi } from '../lib/useApi';
 import { colors, radius, rtl, toPersianDigits } from '../theme';
 import { Icon } from './Icon';
@@ -21,10 +21,12 @@ export function BookSide({
   book,
   openId,
   onSelect,
+  onLockedPress,
 }: {
   book: BookDetail;
   openId: number | null | undefined;
   onSelect: (chapterId: number) => void;
+  onLockedPress?: (section: NodeSummary) => void;
 }) {
   const done = new Set(book.done_ids);
   const read = new Set(book.read_ids ?? []);
@@ -75,7 +77,13 @@ export function BookSide({
                     return (
                       <Pressable
                         key={sec.id}
-                        onPress={() => router.push(`/section/${sec.id}`)}
+                        onPress={() => {
+                          if (sec.is_locked && onLockedPress) {
+                            onLockedPress(sec);
+                          } else {
+                            router.push({ pathname: '/section/[id]', params: { id: String(sec.id), bookSlug: book.slug, title: sec.title } });
+                          }
+                        }}
                         style={styles.subRow}
                         accessibilityRole="button"
                       >

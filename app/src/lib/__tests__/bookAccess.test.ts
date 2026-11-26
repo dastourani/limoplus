@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import type { BookDetail, ProductStatus } from '../../api/endpoints';
-import { firstReadableNodeId, isSectionAccessibleInBook, resolveBookCta } from '../bookAccess';
+import {
+  firstReadableNodeId,
+  isLockedApiError,
+  isSectionAccessibleInBook,
+  lockedPayloadFromBook,
+  productStateNote,
+  resolveBookCta,
+} from '../bookAccess';
+import { errorPresentation } from '../errors';
 
 function sampleBook(): Pick<BookDetail, 'chapters'> {
   return {
@@ -203,5 +211,39 @@ describe('resolveBookCta', () => {
     expect(resolveBookCta(preparing, { isAuthenticated: false, lastSection: null })).toEqual({
       kind: 'preparing',
     });
+  });
+});
+
+describe('locked error recovery & errorPresentation', () => {
+  it('treats both explicit code=locked and proxy-stripped 403s as locked responses', () => {
+    expect(isLockedApiError({ status: 403, code: 'locked', data: { code: 'locked' } })).toBe(true);
+    expect(isLockedApiError({ status: 403, code: 'error', data: {} })).toBe(true);
+    expect(isLockedApiError({ status: 403, code: 'user_inactive', data: { code: 'user_inactive' } })).toBe(false);
+    expect(isLockedApiError({ status: 500, code: 'error', data: {} })).toBe(false);
+    expect(isLockedApiError({ status: 0, code: 'network', data: {} })).toBe(false);
+  });
+
+  it('extracts locked payload and state notes from book metadata', () => {
+    const info = lockedPayloadFromBook({
+      slug: 'math-1',
+      title: 'ریاضی عمومی ۱',
+      price: 200000,
+      regular_price: 250000,
+      discount: null,
+      product_status: makeStatus('paid', 'sample'),
+    });
+    expect(info.slug).toBe('math-1');
+    expect(info.price).toBe(200000);
+    expect(info.regular_price).toBe(250000);
+    expect(productStateNote('coming_soon')).toContain('به‌زودی');
+    expect(productStateNote('paid')).toBeNull();
+  });
+
+  it('never shows «ارتباط برقرار نشد» for 403 or 404 errors', () => {
+    expect(errorPresentation(403)).toEqual({ title: 'دسترسی محدود', icon: 'lock' });
+    expect(errorPresentation(404)).toEqual({ title: 'پیدا نشد', icon: 'search' });
+    expect(errorPresentation(500)).toEqual({ title: 'ارتباط برقرار نشد', icon: 'cloud-off' });
+    expect(errorPresentation(0)).toEqual({ title: 'ارتباط برقرار نشد', icon: 'cloud-off' });
+    expect(errorPresentation(undefined)).toEqual({ title: 'ارتباط برقرار نشد', icon: 'cloud-off' });
   });
 });

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { ApiError } from '../../api/client';
-import { endpoints, type NodeDetail, type Note, type ProductStatus } from '../../api/endpoints';
+import { endpoints, type NodeDetail, type Note } from '../../api/endpoints';
 import { MarkdownView, type MarkdownViewHandle, type ReaderEvent } from '../../components/MarkdownView';
 import { ReportSheet, type ReportKind } from '../../components/ReportSheet';
 import { Text, TextInput } from '../../components/Text';
@@ -14,6 +14,7 @@ import { useFeedback } from '../../components/Feedback';
 import { copyLater } from '../../lib/clipboard';
 import { MAX_COPY_CHARS } from '../../lib/renderMarkdown';
 import { requireLogin, useAuth } from '../../lib/auth';
+import { isLockedApiError, lockedPayloadFromBook, productStateNote, type LockedBookInfo } from '../../lib/bookAccess';
 import { currentPrice, percentLabel } from '../../lib/pricing';
 import { useGuestNudge } from '../../lib/guestNudge';
 import { useStudyTimer } from '../../lib/studyTime';
@@ -52,28 +53,12 @@ const NOTE_COLORS: [string, string][] = [
   ['pink', '#FFD0DF'],
 ];
 
-type Locked = {
-  title?: string;
-  price: number | null;
-  regular_price?: number | null;
-  discount?: import('../../api/endpoints').PriceDiscount | null;
-  product_status: ProductStatus;
-  slug?: string;
-};
-
-function productStateNote(state: ProductStatus['state']): string | null {
-  if (state === 'coming_soon') return 'این کتاب به‌زودی منتشر می‌شود.';
-  if (state === 'preparing') return 'محتوای کتاب هنوز برای مطالعه آماده نشده است.';
-  if (state === 'unpriced') return 'قیمت نسخه‌ی کامل هنوز تعیین نشده است؛ خرید مستقیم فعلاً ممکن نیست.';
-  if (state === 'unavailable') return 'این کتاب فعلاً برای مطالعه در دسترس نیست.';
-  return null;
-}
-
 export default function Section() {
-  const { id, from, title: titleParam, resume, find, mode: modeParam } = useLocalSearchParams<{
+  const { id, from, title: titleParam, bookSlug: bookSlugParam, resume, find, mode: modeParam } = useLocalSearchParams<{
     id: string;
     from?: string;
     title?: string;
+    bookSlug?: string;
     resume?: string;
     /** From search: these words, lit up where they are, in this mode. */
     find?: string;
@@ -100,7 +85,7 @@ export default function Section() {
 
   const [node, setNode] = useState<NodeDetail | null>(null);
   const [offline, setOffline] = useState(false);
-  const [locked, setLocked] = useState<Locked | null>(null);
+  const [locked, setLocked] = useState<LockedBookInfo | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -146,8 +131,31 @@ export default function Section() {
       setNode(await endpoints.node(nodeId));
     } catch (e) {
       const err = e instanceof ApiError ? e : new ApiError(0, 'error', 'خطا');
-      if (err.code === 'locked') setLocked((err.data.book as Locked) ?? {});
-      else if (err.status === 0) {
+      if (err.code === 'locked') {
+        const bookInfo = err.data.book as LockedBookInfo | undefined;
+        setLocked(
+          bookInfo ?? {
+            title: titleParam,
+            slug: bookSlugParam,
+            price: null,
+            product_status: { state: 'paid', preview: 'none', promotion: 'none' },
+          },
+        );
+      } else if (isLockedApiError(err)) {
+        if (bookSlugParam) {
+          const fallbackBook = await endpoints.book(bookSlugParam).catch(() => null);
+          if (fallbackBook) {
+            setLocked(lockedPayloadFromBook(fallbackBook));
+            return;
+          }
+        }
+        setLocked({
+          title: titleParam,
+          slug: bookSlugParam,
+          price: null,
+          product_status: { state: 'paid', preview: 'none', promotion: 'none' },
+        });
+      } else if (err.status === 0) {
         // No internet: read the encrypted offline copy if this book was downloaded.
         const copy = await offlineSection(nodeId);
         if (copy) {
@@ -185,7 +193,7 @@ export default function Section() {
     } finally {
       setLoading(false);
     }
-  }, [nodeId]);
+  }, [nodeId, bookSlugParam, titleParam]);
 
   useEffect(() => {
     load();
@@ -584,7 +592,9 @@ export default function Section() {
     );
 
   if (locked) {
-    const stateNote = productStateNote(locked.product_status.state);
+    const state = locked.product_status?.state;
+    const preview = locked.product_status?.preview;
+    const stateNote = productStateNote(state);
     return (
       <Screen>
         <Header title={locked.title} />
@@ -592,12 +602,12 @@ export default function Section() {
           <IconBadge name="lock" size={72} />
           <Text style={styles.lockTitle}>این بخش در نسخه‌ی کامل کتاب است</Text>
           {!!stateNote && <Text style={[styles.lockStateNote, rtl]}>{stateNote}</Text>}
-          {locked.product_status.preview === 'sample' && locked.slug && (
+          {preview === 'sample' && locked.slug && (
             <Button label="دیدن نمونه‌ی رایگان" variant="outline" onPress={() => router.push(`/book/${locked.slug}`)} style={{ alignSelf: 'stretch' }} />
           )}
           {(() => {
             const price = currentPrice(locked);
-            if (locked.product_status.state !== 'paid' || price.price == null) return null;
+            if (state !== 'paid' || price.price == null) return null;
             return (
               <View style={styles.lockPriceBox}>
                 {price.discount && <Text style={styles.lockOldPrice}>{formatToman(price.regularPrice ?? price.price)}</Text>}
@@ -606,13 +616,13 @@ export default function Section() {
               </View>
             );
           })()}
-          {locked.slug && locked.product_status.state === 'paid' && <Button label="خرید یا اشتراک" onPress={() => router.push(`/buy/${locked.slug}`)} style={{ alignSelf: 'stretch' }} />}
+          {locked.slug && state === 'paid' && <Button label="خرید یا اشتراک" onPress={() => router.push(`/buy/${locked.slug}`)} style={{ alignSelf: 'stretch' }} />}
           <Button label="بازگشت" variant="outline" onPress={() => router.back()} style={{ alignSelf: 'stretch' }} />
         </View>
       </Screen>
     );
   }
-  if (error || !node) return <Screen><Header /><ErrorState message={error?.message ?? 'پیدا نشد.'} onRetry={load} /></Screen>;
+  if (error || !node) return <Screen><Header /><ErrorState message={error?.message ?? 'پیدا نشد.'} status={error?.status ?? 404} onRetry={load} /></Screen>;
 
   const chapter = node.breadcrumb[node.breadcrumb.length - 1];
   const isIntro = node.kind === 'chapter';

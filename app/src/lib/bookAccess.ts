@@ -1,4 +1,48 @@
-import type { BookDetail } from '../api/endpoints';
+import type { BookDetail, PriceDiscount, ProductStatus } from '../api/endpoints';
+
+export type LockedBookInfo = {
+  title?: string;
+  price: number | null;
+  regular_price?: number | null;
+  discount?: PriceDiscount | null;
+  product_status: ProductStatus;
+  slug?: string;
+};
+
+export function productStateNote(state?: ProductStatus['state']): string | null {
+  if (state === 'coming_soon') return 'این کتاب به‌زودی منتشر می‌شود.';
+  if (state === 'preparing') return 'محتوای کتاب هنوز برای مطالعه آماده نشده است.';
+  if (state === 'unpriced') return 'قیمت نسخه‌ی کامل هنوز تعیین نشده است؛ خرید مستقیم فعلاً ممکن نیست.';
+  if (state === 'unavailable') return 'این کتاب فعلاً برای مطالعه در دسترس نیست.';
+  return null;
+}
+
+/**
+ * Treats both explicit `code === 'locked'` responses and proxy-stripped 403 responses
+ * (where an upstream web server/CDN replaced the JSON payload with an HTML/empty 403)
+ * as a locked-content gate rather than a generic network failure.
+ */
+export function isLockedApiError(err: { status: number; code: string; data?: Record<string, unknown> }): boolean {
+  if (err.code === 'locked') return true;
+  if (err.status === 403) {
+    const serverCode = typeof err.data?.code === 'string' ? err.data.code : '';
+    return !serverCode || serverCode === 'error';
+  }
+  return false;
+}
+
+export function lockedPayloadFromBook(
+  book: Pick<BookDetail, 'slug' | 'title' | 'price' | 'regular_price' | 'discount' | 'product_status'>,
+): LockedBookInfo {
+  return {
+    slug: book.slug,
+    title: book.title,
+    price: book.price,
+    regular_price: book.regular_price ?? null,
+    discount: book.discount ?? null,
+    product_status: book.product_status,
+  };
+}
 
 /**
  * Checks whether a locally remembered section/chapter ID is still present and unlocked

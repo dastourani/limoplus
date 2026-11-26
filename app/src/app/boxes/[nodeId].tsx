@@ -54,7 +54,7 @@ export default function Boxes() {
   };
 
   if (loading && !data) return <Screen><Header title="کادرهای کتاب" /><Loading /></Screen>;
-  if (error || !data) return <Screen><Header title="کادرهای کتاب" /><ErrorState message={error?.message ?? ''} onRetry={retry} /></Screen>;
+  if (error || !data) return <Screen><Header title="کادرهای کتاب" /><ErrorState message={error?.message ?? ''} status={error?.status} onRetry={retry} /></Screen>;
 
   return (
     <Screen>

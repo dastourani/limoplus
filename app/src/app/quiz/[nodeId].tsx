@@ -264,7 +264,7 @@ export default function Quiz() {
   useStudyTimer(questions[Math.min(index, questions.length - 1)]?.node_id, review ? 'review' : 'quiz', !showSummary);
 
   if (loading || !order) return <Screen><Header title="تست" /><Loading /></Screen>;
-  if (error) return <Screen><Header title="تست" /><ErrorState message={error.message} onRetry={retry} /></Screen>;
+  if (error) return <Screen><Header title="تست" /><ErrorState message={error.message} status={error.status} onRetry={retry} /></Screen>;
   if (questions.length === 0) {
     return (
       <Screen>
