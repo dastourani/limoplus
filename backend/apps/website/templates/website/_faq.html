@@ -1,1 +1,13 @@
-<div class="faq">{% for f in faq %}<details{% if forloop.first %} open{% endif %}><summary>{{ f.question }}</summary><div class="faq-ans" data-md="{{ f.answer }}"><p>{{ f.answer|linebreaksbr }}</p></div></details>{% endfor %}</div>
+<div class="faq">
+  {% for f in faq %}
+  <details{% if forloop.first and not keep_closed %} open{% endif %}>
+    <summary>{{ f.question }}</summary>
+    <div class="faq-ans" data-md="{{ f.answer }}"><p>{{ f.answer|linebreaksbr }}</p></div>
+    {% if f.action_label and f.resolved_action_url %}
+    <div class="faq-act-row">
+      <a class="faq-action" href="{{ f.resolved_action_url }}">{{ f.action_label }} ←</a>
+    </div>
+    {% endif %}
+  </details>
+  {% endfor %}
+</div>

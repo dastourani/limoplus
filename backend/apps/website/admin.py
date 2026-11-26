@@ -122,8 +122,11 @@ class HelpPageAdmin(admin.ModelAdmin):
 
 @admin.register(FaqItem)
 class FaqItemAdmin(admin.ModelAdmin):
-    list_display = ("question", "order", "is_hidden")
-    list_editable = ("order", "is_hidden")
+    list_display = ("question", "group", "order", "is_hidden")
+    list_filter = ("group", "is_hidden")
+    list_editable = ("group", "order", "is_hidden")
+    search_fields = ("question", "answer")
+    fields = ("group", "question", "answer", "action_label", "action_url", "order", "is_hidden")
 
     def has_delete_permission(self, request, obj=None):
         return False

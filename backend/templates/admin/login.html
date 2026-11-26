@@ -385,6 +385,8 @@
     {% if is_teacher_login %}
       <a href="{% url 'website:teacher-application' %}">هنوز دعوت‌نامه دریافت نکرده‌اید؟ ثبت درخواست همکاری آموزشی</a>
       <span> · </span>
+      <a href="{% url 'website:faq' %}#teachers">راهنمای اساتید و مؤلفان (پرسش‌های پرتکرار)</a>
+      <span> · </span>
     {% else %}
       <a href="{% url 'teacher-login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">استاد یا مؤلف هستید؟ ورود از درگاه اساتید</a>
       <span> · </span>

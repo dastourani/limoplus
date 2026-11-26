@@ -930,8 +930,25 @@ class HelpPage(models.Model):
 class FaqItem(models.Model):
     """«پرسش‌های پرتکرار». Never deleted: hidden instead."""
 
+    class Group(models.TextChoices):
+        TOP = "top", "پرسش‌های اصلی (بالای صفحه)"
+        BOOKS = "books", "کتاب‌ها، نمونه‌ی رایگان و خرید"
+        ACCOUNT_PAYMENT = "account_payment", "ورود، دستگاه‌ها و پرداخت"
+        STUDY_OFFLINE = "study_offline", "مطالعه، یادداشت و آفلاین"
+        REVIEW_QUIZ = "review_quiz", "تست، فلش‌کارت و برنامه‌ی مرور"
+        CLASSROOM = "classroom", "کلاس و دعوت استاد"
+        TEACHERS = "teachers", "استاد یا مؤلف هستید؟"
+
+    group = models.CharField("دسته", max_length=24, choices=Group.choices, default=Group.TOP, db_index=True)
     question = models.CharField("پرسش", max_length=200)
     answer = models.TextField("پاسخ")
+    action_label = models.CharField("عنوان دکمه‌ی اقدام (اختیاری)", max_length=80, blank=True)
+    action_url = models.CharField(
+        "مسیر دکمه‌ی اقدام (اختیاری)",
+        max_length=200,
+        blank=True,
+        help_text="نام بخش داخلی («books»، «pricing»، «download»، «webapp»، «teacher-application»، «teacher-login»)، صفحه («page:contact»، «page:protection») یا نشانی کامل.",
+    )
     order = models.PositiveIntegerField("ترتیب", default=0)
     is_hidden = models.BooleanField("پنهان", default=False)
 

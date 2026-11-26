@@ -10,7 +10,10 @@
         <h1 class="h2">همکاری با لیموخوان به‌عنوان استاد و مؤلف</h1>
         <p class="mut">اگر کتاب، جزوه یا بانک تست دارید یا برای دانشجویان خود کلاس برگزار می‌کنید، مشخصاتتان را ثبت کنید. در صورت تأیید، لینک دعوت به میز تألیف برایتان ارسال می‌شود.</p>
       </div>
-      <a class="btn ghost small" href="{% url 'teacher-login' %}">ورود به درگاه اساتید</a>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a class="btn ghost small" href="{% url 'website:faq' %}#teachers">پرسش‌های اساتید و مؤلفان</a>
+        <a class="btn ghost small" href="{% url 'teacher-login' %}">ورود به درگاه اساتید</a>
+      </div>
     </header>
 
     {% if submitted %}
