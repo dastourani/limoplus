@@ -134,6 +134,18 @@ class SaleCampaign(models.Model):
             errors["discounted_price"] = "محصول باید قیمت عادیِ مثبت داشته باشد."
         elif self.discounted_price is not None and self.discounted_price >= regular_price:
             errors["discounted_price"] = "قیمت ویژه باید از قیمت عادی کمتر باشد؛ تخفیفِ ۱۰۰٪ یا رایگان‌کردن اینجا مجاز نیست."
+        elif (
+            self.book_id
+            and self.discounted_price is not None
+            and self.book.campaign_discount_cap_percent is not None
+        ):
+            from decimal import Decimal
+
+            discount_pct = (Decimal(regular_price - self.discounted_price) * Decimal(100)) / Decimal(regular_price)
+            if discount_pct > Decimal(self.book.campaign_discount_cap_percent):
+                errors["discounted_price"] = (
+                    f"درصد تخفیف کمپین نباید از سقف مصوب کتاب ({self.book.campaign_discount_cap_percent}٪) بیشتر باشد."
+                )
 
         if self.is_active and self.starts_at and self.ends_at and (self.book_id or self.plan_id):
             overlapping = SaleCampaign.objects.filter(

@@ -893,7 +893,9 @@ def _available_library_books(user, *, entitlements=None):
     eligible = []
     for book in candidates:
         major_ids = {major.pk for major in book.majors.all()}
-        access_kind = access_kind_from(entitlements, user, book.pk, major_ids)
+        access_kind = access_kind_from(
+            entitlements, user, book.pk, major_ids, single_sale_only=bool(book.single_sale_only)
+        )
         if book.is_free or access_kind:
             eligible.append(book)
     maps = AccessMap.bulk_for_books(user, eligible, entitlements=entitlements, card_only=True)

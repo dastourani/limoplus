@@ -1,0 +1,35 @@
+{% extends "admin/change_form.html" %}
+{% block content %}
+{% if pub_workflow_summary %}
+<div style="margin-bottom: 16px; padding: 14px 18px; border-radius: 10px; border: 1px solid var(--hairline-color, #d1d5db); background: var(--darkened-bg, #f8fafc);" dir="rtl">
+  <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between;">
+    <div>
+      <strong>وضعیت تبادل با استاد:</strong>
+      <span class="lp-badge {{ pub_workflow_summary.badge_class }}">{{ pub_workflow_summary.stage_label }}</span>
+    </div>
+    <div style="font-size:13px;">
+      <strong>نوبت اقدام:</strong> {{ pub_workflow_summary.next_actor }}
+    </div>
+  </div>
+  <p style="margin:8px 0 0; font-size:12.5px; color:var(--body-quiet-color, #475569);">{{ pub_workflow_summary.next_hint }}</p>
+  {% if original.has_unsent_offer_changes %}
+    <p style="margin:8px 0 0; font-size:12.5px; color:#b45309; font-weight:700;">
+      تغییرات باکس پیشنهاد فقط به صورت پیش‌نویس ذخیره شده‌اند و هنوز برای استاد قابل مشاهده نیستند. برای ارسال به استاد دکمه «ارسال پیشنهاد به استاد» را بزنید.
+    </p>
+  {% endif %}
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}
+
+{% block submit_buttons_bottom %}
+{% if pub_can_send_offer %}
+<div class="submit-row" style="justify-content:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:10px;" dir="rtl">
+  <input type="submit" value="ارسال پیشنهاد به استاد" name="_send_offer" class="default" style="background:#0f766e; color:#fff; border:none;">
+  <span style="font-size:12.5px; color:var(--body-quiet-color, #475569); align-self:center;">
+    با زدن این دکمه، نسخهٔ جدیدی از شرایط باکس پیشنهاد ثبت و برای استاد قابل مشاهده می‌شود (یادداشت داخلی مدیر تغییری در پذیرش استاد ایجاد نمی‌کند).
+  </span>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

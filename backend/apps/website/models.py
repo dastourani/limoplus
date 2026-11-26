@@ -2,6 +2,7 @@
 database as the app, so books, prices and sample tests appear by themselves."""
 import hashlib
 import hmac
+import json
 import secrets
 from datetime import datetime, time, timedelta
 
@@ -453,11 +454,36 @@ class BookAccessRequestEvent(models.Model):
 class PublicationRequest(models.Model):
     """A teacher's request to publish one exact content snapshot; only a superuser may approve and release it."""
 
+    DEFAULT_RATE_VALIDITY_NOTE = (
+        "برای دورهٔ انتشار فعلی کتاب؛ هر تغییر نرخ منوط به ارسال پیشنهاد تازه و پذیرش نسخهٔ جدید است."
+    )
+    DEFAULT_TECH_DELIVERABLE = (
+        "فایل منبع اصلی در اختیار مؤلف می‌ماند؛ خروجی فنی آماده‌شده برای عرضه در لیموخوان طبق توافق نگهداری می‌شود."
+    )
+
     class Status(models.TextChoices):
         PENDING = "pending", "در انتظار بازبینی"
-        NEEDS_INFO = "needs_info", "نیازمند اصلاح یا اطلاعات"
+        NEEDS_INFO = "needs_info", "نیازمند اصلاح محتوای کتاب"
         APPROVED = "approved", "تأیید و انتشار شد"
         REJECTED = "rejected", "ردشده"
+
+    class PrepPreference(models.TextChoices):
+        READY_FILES = "ready_files", "فایل آماده دارم (مایل به کارمزد پایین‌تر)"
+        NEEDS_PREP = "needs_prep", "نیاز به آماده‌سازی فنی توسط تیم لیموخوان دارم"
+        UNDECIDED = "undecided", "مطمئن نیستم؛ مدیر پیشنهاد بدهد"
+
+    class DistributionScope(models.TextChoices):
+        STANDARD = "standard", "فروش تکی + اشتراک + کمپین‌های مصوب (پیش‌فرض)"
+        SINGLE_SALE_ONLY = "single_sale_only", "فقط فروش تکی (استثنای خارج از اشتراک)"
+
+    class OfferPrepMode(models.TextChoices):
+        READY_FILES = "ready_files", "فایل آماده توسط مؤلف (کارمزد پایین‌تر)"
+        PLATFORM_PREP = "platform_prep", "آماده‌سازی فنی و صفحه‌آرایی توسط لیموخوان"
+        CUSTOM = "custom", "توافق ترکیبی / اختصاصی (مطابق شرح باکس)"
+
+    class TeacherResponse(models.TextChoices):
+        ACCEPTED = "accepted", "پذیرفته‌شده"
+        REVISION_REQUESTED = "revision_requested", "درخواست بازنگری"
 
     book = models.ForeignKey(
         "catalog.ContentNode", on_delete=models.PROTECT, related_name="publication_requests", verbose_name="کتاب"
@@ -466,15 +492,133 @@ class PublicationRequest(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="submitted_publication_requests", verbose_name="درخواست‌دهنده"
     )
     request_note = models.TextField("توضیح برای مدیر", blank=True, max_length=1000)
+    author_prep_preference = models.CharField(
+        "ترجیح آماده‌سازی از نگاه مؤلف",
+        max_length=20,
+        choices=PrepPreference.choices,
+        blank=True,
+        default="",
+    )
+    requested_distribution_scope = models.CharField(
+        "نوع عرضه درخواستی مؤلف",
+        max_length=20,
+        choices=DistributionScope.choices,
+        default=DistributionScope.STANDARD,
+    )
+    single_sale_exception_reason = models.TextField(
+        "دلیل درخواست استثنای «فقط فروش تکی»",
+        blank=True,
+        max_length=1000,
+    )
     content_digest = models.CharField("شناسه‌ی نسخه‌ی درخواستی", max_length=64, editable=False)
     status = models.CharField("وضعیت", max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
-    review_note = models.TextField("یادداشت داخلی/علت تصمیم", blank=True, max_length=2000)
+    content_feedback = models.TextField(
+        "پیام اصلاح محتوا / نتیجهٔ بررسی برای استاد",
+        blank=True,
+        max_length=2000,
+        help_text="در صورت نیاز به اصلاح محتوا یا رد درخواست، این پیام برای استاد نمایش داده می‌شود.",
+    )
+    review_note = models.TextField(
+        "یادداشت داخلی مدیر",
+        blank=True,
+        max_length=2000,
+        help_text="فقط برای استفادهٔ داخلی مدیر کل است و هرگز در صفحات استاد نمایش داده نمی‌شود.",
+    )
     submitted_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
         related_name="reviewed_publication_requests", verbose_name="تصمیم‌گیرنده", editable=False,
     )
     reviewed_at = models.DateTimeField("زمان آخرین تصمیم", null=True, blank=True, editable=False)
+
+    # Manager offer draft fields (never exposed to teacher until explicitly sent via «ارسال پیشنهاد به استاد»).
+    offer_platform_fee_percent = models.PositiveSmallIntegerField(
+        "سهم پلتفرم از فروش تکی این کتاب (٪)",
+        null=True,
+        blank=True,
+        help_text="بازهٔ مجاز بین ۱۰ تا ۴۰ درصد؛ مبنا مبلغ خالص پرداخت‌شده در فروش تکی است.",
+    )
+    offer_prep_mode = models.CharField(
+        "خدمات آماده‌سازی پیشنهادی",
+        max_length=20,
+        choices=OfferPrepMode.choices,
+        blank=True,
+        default="",
+    )
+    offer_distribution_scope = models.CharField(
+        "نوع عرضه پیشنهادی",
+        max_length=20,
+        choices=DistributionScope.choices,
+        blank=True,
+        default="",
+    )
+    offer_campaign_discount_cap = models.PositiveSmallIntegerField(
+        "سقف مجاز تخفیف کمپین‌های فروش تکی (٪)",
+        default=30,
+        help_text="حداکثر درصد تخفیف مجاز برای کمپین‌های فروش تکی این کتاب (۰ تا ۸۰ درصد).",
+    )
+    offer_rate_validity_note = models.CharField(
+        "مدت اعتبار نرخ",
+        max_length=250,
+        blank=True,
+        default=DEFAULT_RATE_VALIDITY_NOTE,
+    )
+    offer_technical_deliverable = models.CharField(
+        "وضعیت تحویل خروجی فنی",
+        max_length=300,
+        blank=True,
+        default=DEFAULT_TECH_DELIVERABLE,
+    )
+    offer_technical_export_disabled = models.BooleanField(
+        "مسدودسازی دریافت و ایمیل فایل‌های فنی برای استاد (مدل ب)",
+        default=False,
+        help_text="اگر فعال باشد، پس از تأیید انتشار، دانلود و ارسال ایمیلی فایل‌های فنی Markdown و LaTeX برای این کتاب غیرفعال می‌شود.",
+    )
+    offer_note = models.TextField(
+        "باکس شرایط و پیام مدیر به استاد",
+        blank=True,
+        max_length=2000,
+        help_text="این متن همراه با درصد و شرایط پس از زدن دکمه «ارسال پیشنهاد به استاد» برای مؤلف نمایش داده می‌شود.",
+    )
+
+    # Sent offer snapshot (frozen only when manager explicitly clicks «ارسال پیشنهاد به استاد»).
+    sent_offer_version = models.PositiveIntegerField("نسخهٔ پیشنهاد ارسال‌شده", default=0, editable=False)
+    sent_offer_digest = models.CharField("شناسهٔ نسخهٔ پیشنهاد ارسال‌شده", max_length=64, blank=True, editable=False)
+    sent_offer_snapshot = models.JSONField("تصویر دقیق پیشنهاد ارسال‌شده", default=dict, blank=True, editable=False)
+    offer_sent_at = models.DateTimeField("زمان ارسال پیشنهاد به استاد", null=True, blank=True, editable=False)
+    offer_sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sent_publication_offers",
+        verbose_name="ارسال‌کنندهٔ پیشنهاد",
+        editable=False,
+    )
+
+    # Teacher response & accepted offer snapshot.
+    teacher_response = models.CharField(
+        "پاسخ استاد به پیشنهاد فعلی",
+        max_length=20,
+        choices=TeacherResponse.choices,
+        blank=True,
+        default="",
+        editable=False,
+    )
+    teacher_response_note = models.TextField("یادداشت پاسخ استاد", blank=True, max_length=1000, editable=False)
+    teacher_responded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="responded_publication_offers",
+        verbose_name="پاسخ‌دهندهٔ پیشنهاد",
+        editable=False,
+    )
+    teacher_responded_at = models.DateTimeField("زمان پاسخ استاد", null=True, blank=True, editable=False)
+    accepted_offer_version = models.PositiveIntegerField("آخرین نسخهٔ پذیرفته‌شده", null=True, blank=True, editable=False)
+    accepted_offer_digest = models.CharField("شناسهٔ نسخهٔ پذیرفته‌شده", max_length=64, blank=True, editable=False)
+    accepted_offer_snapshot = models.JSONField("تصویر دقیق شرایط پذیرفته‌شده", default=dict, blank=True, editable=False)
 
     class Meta:
         verbose_name = "درخواست بازبینی انتشار عمومی"
@@ -490,12 +634,165 @@ class PublicationRequest(models.Model):
         ]
 
     def clean(self):
+        errors = {}
         if self.book_id and (
             self.book.kind != "book" or self.book.depth != 1 or self.book.is_inbox or self.book.is_archived
         ):
-            raise ValidationError({"book": "فقط یک کتاب فعال (نه فصل، بخش یا صندوق تست) را انتخاب کنید."})
+            errors["book"] = "فقط یک کتاب فعال (نه فصل، بخش یا صندوق تست) را انتخاب کنید."
         if self.content_digest and len(self.content_digest) != 64:
-            raise ValidationError({"content_digest": "شناسه‌ی نسخه معتبر نیست."})
+            errors["content_digest"] = "شناسه‌ی نسخه معتبر نیست."
+        if self.offer_platform_fee_percent is not None and not (10 <= self.offer_platform_fee_percent <= 40):
+            errors["offer_platform_fee_percent"] = "سهم پلتفرم از فروش تکی باید بین ۱۰ تا ۴۰ درصد باشد."
+        if self.offer_campaign_discount_cap is not None and not (0 <= self.offer_campaign_discount_cap <= 80):
+            errors["offer_campaign_discount_cap"] = "سقف مجاز تخفیف کمپین باید بین ۰ تا ۸۰ درصد باشد."
+        if errors:
+            raise ValidationError(errors)
+
+    def build_draft_offer_payload(self) -> dict:
+        prep_mode = (self.offer_prep_mode or "").strip()
+        dist_scope = (self.offer_distribution_scope or "").strip()
+        fee = self.offer_platform_fee_percent
+        cap = 0 if self.offer_campaign_discount_cap is None else int(self.offer_campaign_discount_cap)
+        validity = (self.offer_rate_validity_note or self.DEFAULT_RATE_VALIDITY_NOTE).strip()
+        deliverable = (self.offer_technical_deliverable or self.DEFAULT_TECH_DELIVERABLE).strip()
+        return {
+            "platform_fee_percent": int(fee) if fee is not None else None,
+            "authors_total_percent": (100 - int(fee)) if fee is not None else None,
+            "prep_mode": prep_mode,
+            "prep_mode_label": dict(self.OfferPrepMode.choices).get(prep_mode, ""),
+            "distribution_scope": dist_scope,
+            "distribution_scope_label": dict(self.DistributionScope.choices).get(dist_scope, ""),
+            "campaign_discount_cap": cap,
+            "rate_validity_note": validity,
+            "technical_deliverable": deliverable,
+            "technical_export_disabled": bool(self.offer_technical_export_disabled),
+            "offer_note": (self.offer_note or "").strip(),
+        }
+
+    @staticmethod
+    def compute_offer_digest(payload: dict) -> str:
+        # Exclude internal review_note and labels; hash exact contractual terms shown to teacher.
+        canonical = {
+            "platform_fee_percent": payload.get("platform_fee_percent"),
+            "prep_mode": payload.get("prep_mode", ""),
+            "distribution_scope": payload.get("distribution_scope", ""),
+            "campaign_discount_cap": payload.get("campaign_discount_cap"),
+            "rate_validity_note": payload.get("rate_validity_note", ""),
+            "technical_deliverable": payload.get("technical_deliverable", ""),
+            "technical_export_disabled": bool(payload.get("technical_export_disabled")),
+            "offer_note": payload.get("offer_note", ""),
+        }
+        raw = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        return hashlib.sha256(raw).hexdigest()
+
+    @property
+    def current_draft_offer_digest(self) -> str:
+        if self.offer_platform_fee_percent is None:
+            return ""
+        return self.compute_offer_digest(self.build_draft_offer_payload())
+
+    @property
+    def has_sent_offer(self) -> bool:
+        return bool(self.sent_offer_version and self.sent_offer_digest and self.offer_sent_at)
+
+    @property
+    def has_unsent_offer_changes(self) -> bool:
+        if not self.has_sent_offer:
+            return any([
+                self.offer_platform_fee_percent is not None,
+                bool((self.offer_prep_mode or "").strip()),
+                bool((self.offer_distribution_scope or "").strip()),
+                bool(self.offer_technical_export_disabled),
+                bool((self.offer_note or "").strip()),
+            ])
+        return self.current_draft_offer_digest != self.sent_offer_digest
+
+    @property
+    def is_current_offer_accepted(self) -> bool:
+        return bool(
+            self.has_sent_offer
+            and self.teacher_response == self.TeacherResponse.ACCEPTED
+            and self.accepted_offer_version
+            and self.accepted_offer_version == self.sent_offer_version
+            and self.accepted_offer_digest
+            and self.accepted_offer_digest == self.sent_offer_digest
+        )
+
+    @property
+    def has_superseded_acceptance(self) -> bool:
+        return bool(
+            self.has_sent_offer
+            and self.accepted_offer_version
+            and (
+                self.accepted_offer_version != self.sent_offer_version
+                or self.accepted_offer_digest != self.sent_offer_digest
+            )
+        )
+
+    @property
+    def is_offer_ready_for_approval(self) -> bool:
+        if not self.is_current_offer_accepted or self.has_unsent_offer_changes:
+            return False
+        fee = (self.sent_offer_snapshot or {}).get("platform_fee_percent")
+        return fee is not None and 10 <= int(fee) <= 40
+
+    def workflow_summary(self) -> dict:
+        """One clear answer for what stage this request is in and whose turn it is to act next."""
+        if self.status == self.Status.APPROVED:
+            return {
+                "code": "approved",
+                "badge_class": "lp-b-green",
+                "stage_label": "منتشرشده در ویترین عمومی",
+                "next_actor": "تکمیل‌شده",
+                "next_hint": "کتاب با شرایط توافق‌شده منتشر شده است.",
+            }
+        if self.status == self.Status.REJECTED:
+            return {
+                "code": "rejected",
+                "badge_class": "lp-b-red",
+                "stage_label": "ردشده",
+                "next_actor": "شما (مؤلف)",
+                "next_hint": "در صورت رفع موارد مطرح‌شده می‌توانید درخواست تازه‌ای ثبت کنید.",
+            }
+        if self.status == self.Status.NEEDS_INFO:
+            return {
+                "code": "content_fix",
+                "badge_class": "lp-b-red",
+                "stage_label": "نیازمند اصلاح محتوای کتاب توسط استاد",
+                "next_actor": "شما (مؤلف — اصلاح محتوا)",
+                "next_hint": "ابتدا محتوای کتاب را طبق یادداشت مدیر اصلاح کنید و سپس درخواست بازبینی را دوباره بفرستید.",
+            }
+        if self.is_current_offer_accepted:
+            return {
+                "code": "offer_accepted",
+                "badge_class": "lp-b-green",
+                "stage_label": f"نسخهٔ #{self.accepted_offer_version} پذیرفته‌شده",
+                "next_actor": "مدیر کل (تأیید و انتشار نهایی)",
+                "next_hint": "شما آخرین پیشنهاد را پذیرفته‌اید؛ نوبت مدیر کل است تا انتشار عمومی را نهایی کند.",
+            }
+        if self.has_sent_offer and self.teacher_response == self.TeacherResponse.REVISION_REQUESTED:
+            return {
+                "code": "revision_requested",
+                "badge_class": "lp-b-blue",
+                "stage_label": f"درخواست بازنگری روی پیشنهاد نسخهٔ #{self.sent_offer_version}",
+                "next_actor": "مدیر کل (بررسی نظر شما و ارسال پیشنهاد اصلاح‌شده)",
+                "next_hint": "نظر شما ثبت شده و منتظر ارسال نسخهٔ جدید یا پاسخ مدیر کل است.",
+            }
+        if self.has_sent_offer:
+            return {
+                "code": "offer_pending",
+                "badge_class": "lp-b-yellow",
+                "stage_label": f"پیشنهاد مالی نسخهٔ #{self.sent_offer_version} آمادهٔ پاسخ شماست",
+                "next_actor": "شما (مؤلف — پاسخ به پیشنهاد)",
+                "next_hint": "جزئیات باکس زیر را بررسی کنید و این نسخه از پیشنهاد را بپذیرید یا درخواست بازنگری بدهید.",
+            }
+        return {
+            "code": "manager_review",
+            "badge_class": "lp-b-blue",
+            "stage_label": "در انتظار بررسی کتاب و ارسال پیشنهاد توسط مدیر",
+            "next_actor": "مدیر کل",
+            "next_hint": "درخواست شما در صف بررسی است؛ پس از بررسی، پیشنهاد همکاری توسط مدیر کل ارسال می‌شود.",
+        }
 
     def __str__(self):
         return f"بازبینی انتشار · {self.book} · #{self.pk or 'جدید'}"
@@ -510,7 +807,10 @@ class PublicationRequestEvent(models.Model):
 
     class Action(models.TextChoices):
         SUBMITTED = "submitted", "ثبت نسخه برای بازبینی"
-        NEEDS_INFO = "needs_info", "درخواست اصلاح یا اطلاعات"
+        NEEDS_INFO = "needs_info", "درخواست اصلاح محتوای کتاب"
+        OFFER_SENT = "offer_sent", "ارسال پیشنهاد مالی به استاد"
+        OFFER_ACCEPTED = "offer_accepted", "پذیرش نسخهٔ پیشنهاد توسط استاد"
+        OFFER_REVISION = "offer_revision", "درخواست بازنگری پیشنهاد توسط استاد"
         APPROVED = "approved", "تأیید و انتشار"
         REJECTED = "rejected", "رد انتشار"
         REOPENED = "reopened", "بازگشایی برای بازبینی"
@@ -526,6 +826,9 @@ class PublicationRequestEvent(models.Model):
     )
     reason = models.CharField("دلیل/یادداشت تصمیم", max_length=500, blank=True)
     content_digest = models.CharField("شناسه‌ی نسخه", max_length=64)
+    offer_version = models.PositiveIntegerField("نسخهٔ پیشنهاد", null=True, blank=True)
+    offer_digest = models.CharField("شناسهٔ نسخهٔ پیشنهاد", max_length=64, blank=True)
+    offer_snapshot = models.JSONField("شرایط ثبت‌شده در این رویداد", default=dict, blank=True)
     created_at = models.DateTimeField("زمان", auto_now_add=True)
 
     class Meta:

@@ -36,7 +36,9 @@
             <a class="btn small" href="?compare={{ row.r.pk }}">مقایسه</a>
             <a class="btn small" href="{% url 'admin:catalog_chapter_file' chapter.pk %}?revision={{ row.r.pk }}">بازگرداندن</a>
           {% endif %}
-          <a class="btn small" href="{% url 'admin:catalog_revision_text' chapter.pk row.r.pk %}">دریافت</a>
+          {% if can_export_technical_files %}
+            <a class="btn small" href="{% url 'admin:catalog_revision_text' chapter.pk row.r.pk %}">دریافت</a>
+          {% endif %}
         </td>
       </tr>
     {% empty %}

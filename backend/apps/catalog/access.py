@@ -47,6 +47,17 @@ def acts_as_panel_teacher(request) -> bool:
     return bool(is_book_teacher(user) or is_teacher_preview(request))
 
 
+def can_export_book_technical_files(user, book, *, request=None) -> bool:
+    """True when `user` may download or email Markdown/LaTeX/revision technical exports of `book`."""
+    if not can_edit_book(user, book):
+        return False
+    if getattr(book, "technical_export_disabled", False):
+        if request is not None:
+            return acts_as_panel_superuser(request)
+        return bool(user and user.is_authenticated and user.is_active and user.is_superuser)
+    return True
+
+
 def teacher_assigned_books(user, capability="can_edit_content"):
     """Active non-archived, non-inbox books explicitly assigned via BookEditor (never bypassed by is_superuser)."""
     if not (user and user.is_authenticated and user.is_active):
@@ -145,11 +156,14 @@ def acts_as_staff(user) -> bool:
 
 
 def book_coverage_q(book: ContentNode):
-    """Query filter matching any Entitlement that covers `book` (direct, major-scoped, or all-majors)."""
+    """Query filter matching any Entitlement that covers `book` (direct, or major/all-majors unless single_sale_only)."""
     from django.db.models import Q
 
+    q = Q(book=book)
+    if getattr(book, "single_sale_only", False):
+        return q
     majors = list(book.majors.values_list("id", flat=True))
-    q = Q(book=book) | Q(all_majors=True)
+    q |= Q(all_majors=True)
     if majors:
         q |= Q(major_id__in=majors, book__isnull=True)
     return q
@@ -185,7 +199,7 @@ def _teacher_can_read_book(user, book_id) -> bool:
     return BookEditor.objects.filter(user_id=user.pk, book_id=book_id, can_edit_content=True).exists()
 
 
-def access_kind_from(rows, user, book_id, major_ids) -> str | None:
+def access_kind_from(rows, user, book_id, major_ids, *, single_sale_only: bool = False) -> str | None:
     """access_kind from rows already read (see active_rows)."""
     if not (user and user.is_authenticated):
         return None
@@ -198,7 +212,7 @@ def access_kind_from(rows, user, book_id, major_ids) -> str | None:
         return "purchase"
     if own:
         return "gift"
-    if any(r[2] or (r[0] is None and r[1] in major_ids) for r in rows):
+    if not single_sale_only and any(r[2] or (r[0] is None and r[1] in major_ids) for r in rows):
         return "subscription"
     return None
 
@@ -209,7 +223,13 @@ def access_kind(user, book: ContentNode) -> str | None:
         return None
     if acts_as_staff(user):
         return "staff"
-    return access_kind_from(active_rows(user), user, book.id, set(book.majors.values_list("id", flat=True)))
+    return access_kind_from(
+        active_rows(user),
+        user,
+        book.id,
+        set(book.majors.values_list("id", flat=True)),
+        single_sale_only=bool(getattr(book, "single_sale_only", False)),
+    )
 
 
 def access_until(user, book: ContentNode):
@@ -377,7 +397,9 @@ class AccessMap:
                     kinds[b.pk] = "purchase"
                 elif own:
                     kinds[b.pk] = "gift"
-                elif any(r[2] or (r[0] is None and r[1] in major_ids) for r in rows):
+                elif not getattr(b, "single_sale_only", False) and any(
+                    r[2] or (r[0] is None and r[1] in major_ids) for r in rows
+                ):
                     kinds[b.pk] = "subscription"
                 else:
                     kinds[b.pk] = None
