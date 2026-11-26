@@ -555,6 +555,48 @@ class AdminOTPLoginTests(TestCase):
         admin_login_page = fresh.get(no_cookie_res["Location"])
         self.assertContains(admin_login_page, "/teacher/login/?next=/admin/website/classroom/")
 
+    def test_teacher_logout_get_preserves_django_405_and_active_session(self):
+        from django.contrib.auth.models import Group
+
+        from apps.catalog.access import BOOK_EDITOR_GROUP
+
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        teacher = User.objects.create_user("09120000655", is_staff=True)
+        teacher.groups.add(group)
+
+        self.client.force_login(teacher)
+        self.assertEqual(self.client.get("/admin/website/classroom/").status_code, 200)
+
+        get_logout = self.client.get("/admin/logout/")
+        self.assertEqual(get_logout.status_code, 405)
+        self.assertEqual(int(self.client.session["_auth_user_id"]), teacher.pk)
+        self.assertEqual(self.client.get("/admin/website/classroom/").status_code, 200)
+
+    def test_teacher_logout_post_closes_session_redirects_to_teacher_login_and_requires_relogin(self):
+        from django.contrib.auth.models import Group
+
+        from apps.catalog.access import BOOK_EDITOR_GROUP
+
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        teacher = User.objects.create_user("09120000656", is_staff=True)
+        teacher.groups.add(group)
+
+        self.client.force_login(teacher)
+        self.assertEqual(self.client.get("/admin/website/classroom/").status_code, 200)
+
+        post_logout = self.client.post("/admin/logout/")
+        self.assertEqual(post_logout.status_code, 302)
+        self.assertEqual(post_logout["Location"], "/teacher/login/")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        portal_res = self.client.get(post_logout["Location"])
+        self.assertEqual(portal_res.status_code, 200)
+        self.assertContains(portal_res, "ورود اساتید و مؤلفان")
+
+        previous_page = self.client.get("/admin/website/classroom/")
+        self.assertEqual(previous_page.status_code, 302)
+        self.assertEqual(previous_page["Location"], "/teacher/login/?next=/admin/website/classroom/")
+
 
 class OtpHashSettingTests(TestCase):
     def test_hash_line_can_be_turned_off(self):

@@ -105,7 +105,7 @@ class LimoAdminSite(AdminSite):
             and not request.user.is_superuser
         )
         response = super().logout(request, extra_context=extra_context)
-        if was_teacher:
+        if was_teacher and request.method == "POST" and not getattr(request.user, "is_authenticated", False):
             from django.http import HttpResponseRedirect
 
             redirect_res = HttpResponseRedirect(reverse("teacher-login"))
