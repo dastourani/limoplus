@@ -162,16 +162,22 @@ def send_publication_offer(
         digest = item.compute_offer_digest(payload)
         now = timezone.now()
 
-        item.sent_offer_version = (item.sent_offer_version or 0) + 1
-        item.sent_offer_digest = digest
-        item.sent_offer_snapshot = {**payload, "version": item.sent_offer_version, "digest": digest}
-        item.offer_sent_at = now
-        item.offer_sent_by = actor
-        item.status = PublicationRequest.Status.PENDING
-        if item.accepted_offer_digest != digest:
+        if item.has_sent_offer and item.sent_offer_digest == digest:
+            # Re-sending identical terms is a reminder of the same version; preserve existing version & acceptance.
+            item.offer_sent_at = now
+            item.offer_sent_by = actor
+            item.status = PublicationRequest.Status.PENDING
+            item.save(update_fields=["offer_sent_at", "offer_sent_by", "status"])
+        else:
+            item.sent_offer_version = (item.sent_offer_version or 0) + 1
+            item.sent_offer_digest = digest
+            item.sent_offer_snapshot = {**payload, "version": item.sent_offer_version, "digest": digest}
+            item.offer_sent_at = now
+            item.offer_sent_by = actor
+            item.status = PublicationRequest.Status.PENDING
             item.teacher_response = ""
             item.teacher_response_note = ""
-        item.save()
+            item.save()
 
         record_publication_request(
             item,
@@ -192,13 +198,16 @@ def respond_to_publication_offer(
     decision: str,
     note: str = "",
     expected_offer_digest: str = "",
+    expected_offer_version: int | None = None,
 ) -> PublicationRequest:
-    """Record a book teacher's acceptance or revision request bound strictly to the exact sent offer digest."""
+    """Record an authorized book teacher's response strictly bound to the exact offer version and digest."""
     from apps.catalog import access
     from apps.catalog.models import BookEditor
 
     if not actor or not actor.is_authenticated or not actor.is_active:
         raise PermissionError("برای پاسخ به پیشنهاد باید وارد حساب خود شوید.")
+    if actor.is_superuser:
+        raise PermissionError("مدیر کل نمی‌تواند از طرف استاد به پیشنهاد مالی پاسخ دهد؛ فقط استاد مجاز کتاب باید پاسخ دهد.")
     if decision not in (
         PublicationRequest.TeacherResponse.ACCEPTED,
         PublicationRequest.TeacherResponse.REVISION_REQUESTED,
@@ -213,19 +222,30 @@ def respond_to_publication_offer(
 
     with transaction.atomic():
         item = PublicationRequest.objects.select_for_update().select_related("book").get(pk=request_id)
+        if item.offer_sent_by_id and actor.pk == item.offer_sent_by_id:
+            raise PermissionError("فرستندهٔ پیشنهاد نمی‌تواند جای استاد به پیشنهاد خودش پاسخ دهد.")
         has_right = (
             access.is_book_teacher(actor)
             and BookEditor.objects.filter(book=item.book, user=actor, can_request_publication=True).exists()
         )
-        if not has_right and not actor.is_superuser:
+        if not has_right:
             raise PermissionError("شما دسترسی پاسخ به پیشنهاد انتشار این کتاب را ندارید.")
         if item.status not in (PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO):
             raise ValidationError("این درخواست قبلاً نهایی شده است.")
         if not item.has_sent_offer:
             raise ValidationError("هنوز پیشنهاد رسمی از سوی مدیر کل ارسال نشده است.")
-        if expected_offer_digest and expected_offer_digest != item.sent_offer_digest:
+        try:
+            parsed_version = None if expected_offer_version in (None, "") else int(expected_offer_version)
+        except (TypeError, ValueError):
+            parsed_version = None
+        if (
+            not expected_offer_digest
+            or parsed_version is None
+            or expected_offer_digest != item.sent_offer_digest
+            or parsed_version != int(item.sent_offer_version)
+        ):
             raise ValidationError(
-                "نسخهٔ پیشنهاد پس از بازکردن صفحه تغییر کرده است؛ لطفاً صفحه را تازه کرده و نسخهٔ جدید را بررسی کنید."
+                "نسخهٔ پیشنهاد پس از بازکردن صفحه تغییر کرده یا مشخصات نسخه ناقص است؛ لطفاً صفحه را تازه کرده و نسخهٔ فعلی را بررسی کنید."
             )
 
         now = timezone.now()
@@ -270,6 +290,25 @@ def respond_to_publication_offer(
         return item
 
 
+def incompatible_campaigns_for_book(book: ContentNode, discount_cap_percent: int | None) -> list[tuple[object, float]]:
+    """Return active or upcoming SaleCampaign rows for `book` whose discount exceeds `discount_cap_percent`."""
+    if discount_cap_percent is None or not book or not book.price or book.price <= 0:
+        return []
+    from decimal import Decimal
+    from apps.commerce.models import SaleCampaign
+
+    now = timezone.now()
+    cap_dec = Decimal(discount_cap_percent)
+    conflicts = []
+    campaigns = SaleCampaign.objects.filter(book=book, is_active=True, ends_at__gt=now).order_by("starts_at", "pk")
+    for c in campaigns:
+        if c.discounted_price is not None and c.discounted_price < book.price:
+            pct = (Decimal(book.price - c.discounted_price) * Decimal(100)) / Decimal(book.price)
+            if pct > cap_dec:
+                conflicts.append((c, float(round(pct, 1))))
+    return conflicts
+
+
 def _sync_accepted_terms_to_book_and_commerce(item: PublicationRequest, book: ContentNode) -> None:
     """Apply the teacher-accepted commercial terms atomically onto live catalog & royalty rules."""
     from apps.commerce.models import BookRoyaltyRule
@@ -297,7 +336,7 @@ def _sync_accepted_terms_to_book_and_commerce(item: PublicationRequest, book: Co
     )
 
 
-def review_publication_request(request_id: int, *, actor, status: str, review_note=""):
+def review_publication_request(request_id: int, *, actor, status: str, review_note="", content_feedback=""):
     """Record a manager decision; approval atomically releases only the exact submitted content + accepted offer."""
     if not actor or not actor.is_active or not actor.is_superuser:
         raise PermissionError("فقط مدیر کل می‌تواند انتشار عمومی را بررسی کند.")
@@ -310,10 +349,13 @@ def review_publication_request(request_id: int, *, actor, status: str, review_no
     if status not in allowed:
         raise ValidationError("وضعیت تصمیم معتبر نیست.")
     review_note = (review_note or "").strip()
-    if status in (PublicationRequest.Status.NEEDS_INFO, PublicationRequest.Status.APPROVED, PublicationRequest.Status.REJECTED) and not review_note:
-        raise ValidationError("برای ثبت تصمیم انتشار، دلیل یا یادداشت را وارد کنید.")
-    if len(review_note) > 2000:
-        raise ValidationError("یادداشت تصمیم نباید بیش از ۲۰۰۰ نویسه باشد.")
+    content_feedback = (content_feedback or "").strip()
+    if status in (PublicationRequest.Status.NEEDS_INFO, PublicationRequest.Status.REJECTED) and not content_feedback:
+        raise ValidationError("برای درخواست اصلاح محتوا یا رد انتشار، پیام قابل مشاهده برای استاد را وارد کنید.")
+    if status == PublicationRequest.Status.APPROVED and not review_note and not content_feedback:
+        raise ValidationError("برای ثبت تصمیم انتشار، یادداشت تصمیم یا پیام بررسی را وارد کنید.")
+    if len(review_note) > 2000 or len(content_feedback) > 2000:
+        raise ValidationError("متن یادداشت یا پیام بررسی نباید بیش از ۲۰۰۰ نویسه باشد.")
 
     with transaction.atomic():
         item = PublicationRequest.objects.select_for_update().get(pk=request_id)
@@ -341,6 +383,13 @@ def review_publication_request(request_id: int, *, actor, status: str, review_no
                 raise ValidationError(
                     "استاد هنوز آخرین نسخهٔ پیشنهاد مالی و شرایط عرضه را نپذیرفته است؛ انتشار عمومی تا پذیرش نسخهٔ فعلی متوقف است."
                 )
+            accepted_cap = (item.accepted_offer_snapshot or item.sent_offer_snapshot or {}).get("campaign_discount_cap")
+            conflicts = incompatible_campaigns_for_book(book, accepted_cap)
+            if conflicts:
+                summary_txt = "، ".join(f"«{c.title}» ({pct}٪)" for c, pct in conflicts)
+                raise ValidationError(
+                    f"کمپین فعال یا زمان‌بندی‌شدهٔ ناسازگار با سقف تخفیف توافق‌شده ({accepted_cap}٪) وجود دارد: {summary_txt}. پیش از تأیید انتشار، کمپین را اصلاح یا غیرفعال کنید."
+                )
             event_offer_version = item.accepted_offer_version
             event_offer_digest = item.accepted_offer_digest
             event_offer_snapshot = item.accepted_offer_snapshot
@@ -356,10 +405,11 @@ def review_publication_request(request_id: int, *, actor, status: str, review_no
 
         now = timezone.now()
         item.status = status
+        item.content_feedback = content_feedback
         item.review_note = review_note
         item.reviewed_by = actor
         item.reviewed_at = now
-        item.save(update_fields=["status", "review_note", "reviewed_by", "reviewed_at"])
+        item.save(update_fields=["status", "content_feedback", "review_note", "reviewed_by", "reviewed_at"])
 
         if status == PublicationRequest.Status.APPROVED:
             _sync_accepted_terms_to_book_and_commerce(item, book)
@@ -371,7 +421,7 @@ def review_publication_request(request_id: int, *, actor, status: str, review_no
             item,
             actor=actor,
             action=action,
-            reason=review_note,
+            reason=content_feedback or review_note,
             offer_version=event_offer_version,
             offer_digest=event_offer_digest,
             offer_snapshot=event_offer_snapshot,

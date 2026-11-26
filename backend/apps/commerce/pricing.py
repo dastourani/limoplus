@@ -173,6 +173,22 @@ def _quote(
     )
 
 
+def campaign_exceeds_book_cap(book: ContentNode, campaign: SaleCampaign) -> bool:
+    """True when a book campaign's discount exceeds the agreed campaign_discount_cap_percent."""
+    if (
+        not book
+        or book.campaign_discount_cap_percent is None
+        or not book.price
+        or book.price <= 0
+        or campaign is None
+        or campaign.discounted_price is None
+        or campaign.discounted_price >= book.price
+    ):
+        return False
+    discount_pct = (Decimal(book.price - campaign.discounted_price) * Decimal(100)) / Decimal(book.price)
+    return discount_pct > Decimal(book.campaign_discount_cap_percent)
+
+
 def book_price_quotes(books, now=None) -> dict[int, PriceQuote]:
     """Resolve book states and campaign prices in batches for shelves and the catalogue."""
     books = list(books)
@@ -243,6 +259,7 @@ def book_price_quotes(books, now=None) -> dict[int, PriceQuote]:
             book
             and statuses.get(book.pk) == ProductStatus.PAID
             and campaign.discounted_price < book.price
+            and not campaign_exceeds_book_cap(book, campaign)
         ):
             campaign_by_id.setdefault(book.pk, campaign)
     return {

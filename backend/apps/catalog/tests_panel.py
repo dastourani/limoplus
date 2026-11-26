@@ -2609,21 +2609,50 @@ class TeacherAssistantTests(TestCase):
         self.assertContains(offer_page, "این کتاب چندمؤلفی است")
         self.assertNotContains(offer_page, "سهم شخصی شما")
 
-        # Teacher accepts offer via /respond-offer/.
+        # Teacher sees v1 (25%), then manager sends v2 (30%) before teacher clicks submit on stale v1 page.
+        stale_v1_version = req.sent_offer_version
+        stale_v1_digest = req.sent_offer_digest
+        send_publication_offer(
+            req.pk,
+            actor=manager,
+            platform_fee_percent=30,
+            prep_mode=PublicationRequest.OfferPrepMode.PLATFORM_PREP,
+            distribution_scope=PublicationRequest.DistributionScope.STANDARD,
+            campaign_discount_cap=30,
+            offer_note="نسخه دوم با نرخ ۳۰ درصد.",
+        )
+        req.refresh_from_db()
+        self.assertEqual(req.sent_offer_version, 2)
+
+        # Clicking accept from the stale v1 page must NOT accept v2 (core author acceptance criterion).
+        stale_res = self.client.post(f"/admin/catalog/book/{self.book.pk}/respond-offer/", {
+            "request_id": req.pk,
+            "decision": "accepted",
+            "expected_offer_version": stale_v1_version,
+            "expected_offer_digest": stale_v1_digest,
+            "response_note": "کلیک روی صفحه قدیمی نسخه ۱",
+        })
+        self.assertEqual(stale_res.status_code, 302)
+        req.refresh_from_db()
+        self.assertFalse(req.is_current_offer_accepted)
+        self.assertIsNone(req.accepted_offer_version)
+
+        # After refreshing, teacher accepts v2 (30%) via /respond-offer/.
         accept_res = self.client.post(f"/admin/catalog/book/{self.book.pk}/respond-offer/", {
             "request_id": req.pk,
             "decision": "accepted",
+            "expected_offer_version": req.sent_offer_version,
             "expected_offer_digest": req.sent_offer_digest,
-            "response_note": "شرایط نسخه ۱ پذیرفته شد.",
+            "response_note": "شرایط نسخه ۲ پذیرفته شد.",
         })
         self.assertEqual(accept_res.status_code, 302)
         req.refresh_from_db()
         self.assertTrue(req.is_current_offer_accepted)
-        self.assertEqual(req.accepted_offer_version, 1)
+        self.assertEqual(req.accepted_offer_version, 2)
 
         after_page = self.client.get(f"/admin/catalog/book/{self.book.pk}/request-publication/")
         self.assertContains(after_page, "مدیر کل")
-        self.assertContains(after_page, "<strong>#1</strong>")
+        self.assertContains(after_page, "<strong>#2</strong>")
 
     def test_teacher_create_book_with_optional_initial_file(self):
         from django.core.files.uploadedfile import SimpleUploadedFile

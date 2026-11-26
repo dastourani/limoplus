@@ -11,10 +11,10 @@
   </div>
   <p style="margin:8px 0 0; color:var(--body-fg);">{{ publication_offer.summary.next_hint }}</p>
 
-  {% if pub_req.review_note %}
+  {% if pub_req.content_feedback %}
     <div style="margin-top:10px; padding:10px 12px; border-radius:8px; background:var(--body-bg, #fff); border:1px solid var(--hairline-color, #e2e8f0);">
-      <strong>یادداشت مدیر دربارهٔ محتوا / بررسی کتاب:</strong>
-      <p style="margin:4px 0 0; white-space:pre-line;">{{ pub_req.review_note }}</p>
+      <strong>پیام مدیر دربارهٔ محتوای کتاب / نتیجهٔ بررسی:</strong>
+      <p style="margin:4px 0 0; white-space:pre-line;">{{ pub_req.content_feedback }}</p>
     </div>
   {% endif %}
 
@@ -90,6 +90,7 @@
         <form method="post" action="{% url 'admin:catalog_book_respond_offer' book.pk %}" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--hairline-color, #e2e8f0);">
           {% csrf_token %}
           <input type="hidden" name="request_id" value="{{ pub_req.pk }}">
+          <input type="hidden" name="expected_offer_version" value="{{ publication_offer.sent_offer.version }}">
           <input type="hidden" name="expected_offer_digest" value="{{ publication_offer.sent_offer.digest }}">
           <input type="hidden" name="return_to" value="{{ offer_return_to|default:'book_page' }}">
           <div style="margin-bottom:10px;">
@@ -107,6 +108,10 @@
             </button>
           </div>
         </form>
+      {% elif publication_offer.is_superuser_preview and not publication_offer.accepted_offer.is_current %}
+        <p style="margin:12px 0 0; font-size:12px; color:var(--body-quiet-color, #64748b);">
+          در نمای پیش‌نمایش مدیر، امکان ثبت پاسخ مالی به جای استاد وجود ندارد.
+        </p>
       {% endif %}
     </div>
   {% else %}

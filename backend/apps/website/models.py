@@ -512,7 +512,18 @@ class PublicationRequest(models.Model):
     )
     content_digest = models.CharField("شناسه‌ی نسخه‌ی درخواستی", max_length=64, editable=False)
     status = models.CharField("وضعیت", max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
-    review_note = models.TextField("یادداشت داخلی مدیر (محتوا / علت تصمیم)", blank=True, max_length=2000)
+    content_feedback = models.TextField(
+        "پیام اصلاح محتوا / نتیجهٔ بررسی برای استاد",
+        blank=True,
+        max_length=2000,
+        help_text="در صورت نیاز به اصلاح محتوا یا رد درخواست، این پیام برای استاد نمایش داده می‌شود.",
+    )
+    review_note = models.TextField(
+        "یادداشت داخلی مدیر",
+        blank=True,
+        max_length=2000,
+        help_text="فقط برای استفادهٔ داخلی مدیر کل است و هرگز در صفحات استاد نمایش داده نمی‌شود.",
+    )
     submitted_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
@@ -693,6 +704,8 @@ class PublicationRequest(models.Model):
         return bool(
             self.has_sent_offer
             and self.teacher_response == self.TeacherResponse.ACCEPTED
+            and self.accepted_offer_version
+            and self.accepted_offer_version == self.sent_offer_version
             and self.accepted_offer_digest
             and self.accepted_offer_digest == self.sent_offer_digest
         )
@@ -702,8 +715,10 @@ class PublicationRequest(models.Model):
         return bool(
             self.has_sent_offer
             and self.accepted_offer_version
-            and self.accepted_offer_digest
-            and self.accepted_offer_digest != self.sent_offer_digest
+            and (
+                self.accepted_offer_version != self.sent_offer_version
+                or self.accepted_offer_digest != self.sent_offer_digest
+            )
         )
 
     @property

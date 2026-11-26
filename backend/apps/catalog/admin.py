@@ -926,7 +926,8 @@ class BookAdmin(admin.ModelAdmin):
             }
 
         can_respond = bool(
-            pub_req.has_sent_offer
+            not getattr(user, "is_superuser", False)
+            and pub_req.has_sent_offer
             and pub_req.status in (PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO)
             and not pub_req.is_current_offer_accepted
         )
@@ -937,6 +938,7 @@ class BookAdmin(admin.ModelAdmin):
             "is_multi_author": is_multi_author,
             "user_share_percent": user_share_percent,
             "can_respond": can_respond,
+            "is_superuser_preview": bool(getattr(user, "is_superuser", False)),
             "teacher_response": pub_req.teacher_response,
             "teacher_response_note": pub_req.teacher_response_note,
         }
@@ -956,6 +958,11 @@ class BookAdmin(admin.ModelAdmin):
         decision = (request.POST.get("decision") or "").strip()
         note = (request.POST.get("response_note") or "").strip()
         expected_digest = (request.POST.get("expected_offer_digest") or "").strip()
+        raw_version = (request.POST.get("expected_offer_version") or "").strip()
+        try:
+            expected_version = int(raw_version) if raw_version else None
+        except (TypeError, ValueError):
+            expected_version = None
         return_to = (request.POST.get("return_to") or "").strip()
         req_obj = get_object_or_404(PublicationRequest, pk=req_id, book=book)
 
@@ -966,6 +973,7 @@ class BookAdmin(admin.ModelAdmin):
                 decision=decision,
                 note=note,
                 expected_offer_digest=expected_digest,
+                expected_offer_version=expected_version,
             )
             if updated.teacher_response == PublicationRequest.TeacherResponse.ACCEPTED:
                 messages.success(

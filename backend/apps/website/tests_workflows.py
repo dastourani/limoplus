@@ -756,6 +756,46 @@ class PublicationWorkflowTests(WorkflowFixture):
         self.assertEqual(request.sent_offer_version, 1)
         self.assertFalse(request.is_current_offer_accepted)
 
+        # Manager cannot accept or respond on behalf of the teacher (Finding 1).
+        with self.assertRaises(PermissionError):
+            respond_to_publication_offer(
+                request.pk,
+                actor=self.manager,
+                decision=PublicationRequest.TeacherResponse.ACCEPTED,
+                expected_offer_digest=request.sent_offer_digest,
+                expected_offer_version=request.sent_offer_version,
+            )
+        manager_respond_res = manager_client.post(
+            reverse("admin:catalog_book_respond_offer", args=[self.book.pk]),
+            {
+                "request_id": request.pk,
+                "decision": PublicationRequest.TeacherResponse.ACCEPTED,
+                "expected_offer_version": request.sent_offer_version,
+                "expected_offer_digest": request.sent_offer_digest,
+            },
+        )
+        self.assertEqual(manager_respond_res.status_code, 403)
+        request.refresh_from_db()
+        self.assertFalse(request.is_current_offer_accepted)
+
+        # Missing version or digest must be rejected (Finding 2).
+        with self.assertRaisesMessage(ValidationError, "تغییر کرده"):
+            respond_to_publication_offer(
+                request.pk,
+                actor=self.teacher,
+                decision=PublicationRequest.TeacherResponse.ACCEPTED,
+                expected_offer_digest="",
+                expected_offer_version=request.sent_offer_version,
+            )
+        with self.assertRaisesMessage(ValidationError, "تغییر کرده"):
+            respond_to_publication_offer(
+                request.pk,
+                actor=self.teacher,
+                decision=PublicationRequest.TeacherResponse.ACCEPTED,
+                expected_offer_digest=request.sent_offer_digest,
+                expected_offer_version=None,
+            )
+
         # Teacher accepts exact version 1 offer.
         respond_to_publication_offer(
             request.pk,
@@ -763,7 +803,24 @@ class PublicationWorkflowTests(WorkflowFixture):
             decision=PublicationRequest.TeacherResponse.ACCEPTED,
             note="موافقم.",
             expected_offer_digest=request.sent_offer_digest,
+            expected_offer_version=request.sent_offer_version,
         )
+
+        # Re-sending identical offer terms acts as a reminder of v1 without breaking acceptance (Finding 2).
+        send_publication_offer(
+            request.pk,
+            actor=self.manager,
+            platform_fee_percent=25,
+            prep_mode=PublicationRequest.OfferPrepMode.PLATFORM_PREP,
+            distribution_scope=PublicationRequest.DistributionScope.STANDARD,
+            campaign_discount_cap=30,
+            rate_validity_note=PublicationRequest.DEFAULT_RATE_VALIDITY_NOTE,
+            technical_deliverable=PublicationRequest.DEFAULT_TECH_DELIVERABLE,
+            offer_note="شرایط نسخه ۱: ۲۵٪ کارمزد آماده‌سازی کامل.",
+        )
+        request.refresh_from_db()
+        self.assertEqual(request.sent_offer_version, 1)
+        self.assertTrue(request.is_current_offer_accepted)
 
         response = manager_client.post(change_url, {
             "offer_platform_fee_percent": 25,
@@ -857,11 +914,12 @@ class PublicationWorkflowTests(WorkflowFixture):
             actor=self.teacher,
             decision=PublicationRequest.TeacherResponse.ACCEPTED,
             expected_offer_digest=request.sent_offer_digest,
+            expected_offer_version=request.sent_offer_version,
         )
         request.refresh_from_db()
         self.assertTrue(request.is_current_offer_accepted)
 
-        # Changing internal review_note does NOT invalidate teacher acceptance.
+        # Changing internal review_note does NOT invalidate teacher acceptance AND never renders on teacher pages.
         review_publication_request(
             request.pk,
             actor=self.manager,
@@ -870,6 +928,15 @@ class PublicationWorkflowTests(WorkflowFixture):
         )
         request.refresh_from_db()
         self.assertTrue(request.is_current_offer_accepted)
+        teacher_client = Client()
+        teacher_client.force_login(self.teacher)
+        for url in (
+            reverse("admin:catalog_book_change", args=[self.book.pk]),
+            reverse("admin:catalog_book_request_publication", args=[self.book.pk]),
+        ):
+            page = teacher_client.get(url)
+            self.assertEqual(page.status_code, 200)
+            self.assertNotContains(page, "یادداشت داخلی مدیر: در حال کنترل نهایی جلد")
 
         # Sending v2 with 25% MUST invalidate v1 acceptance and block approval until re-accepted.
         send_publication_offer(
@@ -896,42 +963,83 @@ class PublicationWorkflowTests(WorkflowFixture):
                 review_note="تلاش با پذیرش قبلی",
             )
 
-        # Stale expected_offer_digest from v1 must be rejected too.
-        with self.assertRaisesMessage(ValidationError, "تغییر کرده است"):
+        # Stale expected_offer_digest or stale expected_offer_version from v1 must be rejected too.
+        with self.assertRaisesMessage(ValidationError, "تغییر کرده"):
             respond_to_publication_offer(
                 request.pk,
                 actor=self.teacher,
                 decision=PublicationRequest.TeacherResponse.ACCEPTED,
                 expected_offer_digest="0" * 64,
+                expected_offer_version=2,
+            )
+        with self.assertRaisesMessage(ValidationError, "تغییر کرده"):
+            respond_to_publication_offer(
+                request.pk,
+                actor=self.teacher,
+                decision=PublicationRequest.TeacherResponse.ACCEPTED,
+                expected_offer_digest=request.sent_offer_digest,
+                expected_offer_version=1,
             )
 
-    def test_needs_info_content_fix_is_distinct_from_financial_offer(self):
+    def test_needs_info_content_fix_is_distinct_from_financial_offer_and_hides_internal_note(self):
         request = PublicationRequest.objects.create(
             book=self.book,
             requested_by=self.teacher,
             content_digest=publication_content_digest(self.book),
         )
+        # NEEDS_INFO requires teacher-facing content_feedback, keeping internal review_note private.
+        with self.assertRaisesMessage(ValidationError, "پیام قابل مشاهده برای استاد"):
+            review_publication_request(
+                request.pk,
+                actor=self.manager,
+                status=PublicationRequest.Status.NEEDS_INFO,
+                review_note="فقط یادداشت داخلی",
+            )
         review_publication_request(
             request.pk,
             actor=self.manager,
             status=PublicationRequest.Status.NEEDS_INFO,
-            review_note="فصل اول نیاز به اصلاح فرمول‌ها دارد.",
+            content_feedback="فصل اول نیاز به اصلاح فرمول‌ها دارد.",
+            review_note="یادداشت محرمانه داخلی شماره دو",
         )
         request.refresh_from_db()
         summary = request.workflow_summary()
         self.assertEqual(summary["code"], "content_fix")
         self.assertIn("اصلاح محتوای کتاب", summary["stage_label"])
 
+        teacher_client = Client()
+        teacher_client.force_login(self.teacher)
+        for url in (
+            reverse("admin:catalog_book_change", args=[self.book.pk]),
+            reverse("admin:catalog_book_request_publication", args=[self.book.pk]),
+        ):
+            page = teacher_client.get(url)
+            self.assertEqual(page.status_code, 200)
+            self.assertContains(page, "فصل اول نیاز به اصلاح فرمول‌ها دارد.")
+            self.assertNotContains(page, "یادداشت محرمانه داخلی شماره دو")
+
     def test_accepted_terms_execute_immediately_in_commerce_and_single_sale_access(self):
+        from unittest.mock import patch
         from apps.catalog.access import access_kind, owns_book
         from apps.catalog.models import Major
         from apps.commerce.models import Order, Plan, SaleCampaign
+        from apps.commerce.pricing import book_price_quote
         from apps.commerce.royalty import calculate_and_save_order_royalty
 
         major = Major.objects.create(name="ریاضی", slug="math-workflow")
         self.book.majors.add(major)
         self.book.price = 400_000
         self.book.save(update_fields=["price"])
+
+        # Pre-existing active/scheduled 30% campaign (> agreed 15% cap) MUST block final approval.
+        incompatible = SaleCampaign.objects.create(
+            title="کمپین قدیمی ۳۰ درصد",
+            book=self.book,
+            discounted_price=280_000,
+            starts_at=timezone.now() - timedelta(hours=1),
+            ends_at=timezone.now() + timedelta(days=5),
+            is_active=True,
+        )
 
         request = PublicationRequest.objects.create(
             book=self.book,
@@ -955,7 +1063,21 @@ class PublicationWorkflowTests(WorkflowFixture):
             actor=self.teacher,
             decision=PublicationRequest.TeacherResponse.ACCEPTED,
             expected_offer_digest=request.sent_offer_digest,
+            expected_offer_version=request.sent_offer_version,
         )
+        with self.assertRaisesMessage(ValidationError, "کمپین قدیمی ۳۰ درصد"):
+            review_publication_request(
+                request.pk,
+                actor=self.manager,
+                status=PublicationRequest.Status.APPROVED,
+                review_note="انتشار با کمپین ناسازگار",
+            )
+        self.book.refresh_from_db()
+        self.assertFalse(self.book.is_published)
+
+        # Deactivating the incompatible campaign lets approval succeed.
+        incompatible.is_active = False
+        incompatible.save(update_fields=["is_active"])
         review_publication_request(
             request.pk,
             actor=self.manager,
@@ -997,7 +1119,7 @@ class PublicationWorkflowTests(WorkflowFixture):
         self.assertEqual(offers_res.json()["plans"], [])
         self.assertTrue(offers_res.json()["book"]["single_sale_only"])
 
-        # Campaign discount exceeding agreed 15% cap is blocked.
+        # Campaign discount exceeding agreed 15% cap is blocked by validation.
         too_high_discount = SaleCampaign(
             title="تخفیف غیرمجاز",
             book=self.book,
@@ -1008,14 +1130,45 @@ class PublicationWorkflowTests(WorkflowFixture):
         with self.assertRaises(ValidationError):
             too_high_discount.full_clean()
 
+        # Runtime safety net: even if an out-of-cap campaign exists directly in DB, quotes & real orders enforce the cap.
+        SaleCampaign.objects.create(
+            title="کمپین خارج از سقف در دیتابیس",
+            book=self.book,
+            discounted_price=280_000,  # 30% > 15% cap
+            starts_at=timezone.now() - timedelta(minutes=5),
+            ends_at=timezone.now() + timedelta(days=2),
+            is_active=True,
+        )
+        self.assertEqual(book_price_quote(self.book).price, 400_000)
+
+        # Valid 10% campaign (<= 15% cap) creates a real order at 360,000 Toman.
+        SaleCampaign.objects.filter(book=self.book).update(is_active=False)
         valid_discount = SaleCampaign(
             title="تخفیف مجاز",
             book=self.book,
             discounted_price=360_000,  # 10% <= 15% cap
-            starts_at=timezone.now(),
+            starts_at=timezone.now() - timedelta(minutes=5),
             ends_at=timezone.now() + timedelta(days=3),
+            is_active=True,
         )
         valid_discount.full_clean()
+        valid_discount.save()
+
+        from rest_framework.test import APIClient
+        shopper = User.objects.create_user("09120000100")
+        shopper_client = APIClient()
+        shopper_client.force_authenticate(user=shopper)
+        with patch("apps.commerce.zibal.request_payment", return_value="track-cap-1"):
+            order_res = shopper_client.post(
+                "/api/v1/orders/",
+                data={"book": self.book.slug},
+                format="json",
+            )
+        self.assertEqual(order_res.status_code, 201)
+        created_order = Order.objects.get(pk=order_res.json()["order_id"])
+        self.assertEqual(created_order.amount, 360_000)
+        self.assertEqual(created_order.regular_amount, 400_000)
+        self.assertEqual(created_order.discount_amount, 40_000)
         plan.delete()
 
     def test_changed_snapshot_cannot_be_approved(self):

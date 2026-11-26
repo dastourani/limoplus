@@ -39,6 +39,7 @@ from .models import (
     TeacherInvitation,
 )
 from .publication import (
+    incompatible_campaigns_for_book,
     publication_content_digest,
     record_publication_request,
     review_publication_request,
@@ -471,6 +472,7 @@ class PublicationRequestAdminForm(forms.ModelForm):
         data = super().clean()
         status = data.get("status")
         note = (data.get("review_note") or "").strip()
+        content_feedback = (data.get("content_feedback") or "").strip()
         fee = data.get("offer_platform_fee_percent")
         prep_mode = (data.get("offer_prep_mode") or "").strip()
         dist_scope = (data.get("offer_distribution_scope") or "").strip()
@@ -536,7 +538,18 @@ class PublicationRequestAdminForm(forms.ModelForm):
                         "status",
                         "استاد هنوز آخرین نسخهٔ پیشنهاد مالی و شرایط عرضه را نپذیرفته است؛ انتشار عمومی تا پذیرش نسخهٔ فعلی متوقف است.",
                     )
-            if status in (PublicationRequest.Status.NEEDS_INFO, PublicationRequest.Status.APPROVED, PublicationRequest.Status.REJECTED) and not note:
+                else:
+                    accepted_cap = (self.instance.accepted_offer_snapshot or self.instance.sent_offer_snapshot or {}).get("campaign_discount_cap")
+                    conflicts = incompatible_campaigns_for_book(book, accepted_cap)
+                    if conflicts:
+                        summary_txt = "، ".join(f"«{c.title}» ({pct}٪)" for c, pct in conflicts)
+                        self.add_error(
+                            "status",
+                            f"کمپین فعال یا زمان‌بندی‌شدهٔ ناسازگار با سقف تخفیف توافق‌شده ({accepted_cap}٪) وجود دارد: {summary_txt}. پیش از تأیید انتشار، کمپین را اصلاح یا غیرفعال کنید.",
+                        )
+            if status in (PublicationRequest.Status.NEEDS_INFO, PublicationRequest.Status.REJECTED) and not content_feedback:
+                self.add_error("content_feedback", "برای درخواست اصلاح محتوا یا رد انتشار، پیام قابل مشاهده برای استاد را وارد کنید.")
+            if status == PublicationRequest.Status.APPROVED and not note and not content_feedback:
                 self.add_error("review_note", "برای ثبت تصمیم انتشار، دلیل یا یادداشت را وارد کنید.")
         return data
 
@@ -650,17 +663,17 @@ class PublicationRequestAdmin(admin.ModelAdmin):
                         "offer_sent_by",
                     ),
                 }),
-                ("تصمیم انتشار و یادداشت داخلی مدیر", {
-                    "fields": ("status", "review_note", "reviewed_by", "reviewed_at"),
+                ("تصمیم انتشار، پیام به استاد و یادداشت داخلی مدیر", {
+                    "fields": ("status", "content_feedback", "review_note", "reviewed_by", "reviewed_at"),
                 }),
             )
-        return ((None, {"fields": ("book", "request_note", "content_digest", "status", "submitted_at", "reviewed_at")}),)
+        return ((None, {"fields": ("book", "request_note", "content_digest", "status", "content_feedback", "submitted_at", "reviewed_at")}),)
 
     def get_readonly_fields(self, request, obj=None):
         if obj is None:
             return ()
         if not access.acts_as_panel_superuser(request):
-            return ("book", "request_note", "content_digest", "status", "submitted_at", "reviewed_at")
+            return ("book", "request_note", "content_digest", "status", "content_feedback", "submitted_at", "reviewed_at")
         fixed = (
             "book", "requested_by", "request_note",
             "author_prep_preference", "requested_distribution_scope", "single_sale_exception_reason",
@@ -675,7 +688,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
                 *fixed,
                 "offer_platform_fee_percent", "offer_prep_mode", "offer_distribution_scope",
                 "offer_campaign_discount_cap", "offer_rate_validity_note", "offer_technical_deliverable",
-                "offer_note", "status", "review_note",
+                "offer_note", "status", "content_feedback", "review_note",
             )
         return fixed
 
@@ -798,6 +811,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
                 obj.requested_by = request.user
                 obj.content_digest = digest
                 obj.status = PublicationRequest.Status.PENDING
+                obj.content_feedback = ""
                 obj.review_note = ""
                 super().save_model(request, obj, form, change)
                 record_publication_request(obj, actor=request.user, action=PublicationRequestEvent.Action.SUBMITTED, reason=obj.request_note)
@@ -810,6 +824,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
             raise ValidationError("درخواست نهایی‌شده قابل ویرایش نیست.")
 
         if "_send_offer" in request.POST:
+            prev_version = previous.sent_offer_version or 0
             sent = send_publication_offer(
                 obj.pk,
                 actor=request.user,
@@ -828,10 +843,16 @@ class PublicationRequestAdmin(admin.ModelAdmin):
                 "offer_sent_at", "offer_sent_by", "status", "teacher_response", "teacher_response_note",
             ):
                 setattr(obj, attr, getattr(sent, attr))
-            messages.success(
-                request,
-                f"پیشنهاد نسخه #{sent.sent_offer_version} (سهم پلتفرم {sent.offer_platform_fee_percent}٪) برای استاد ارسال شد.",
-            )
+            if sent.sent_offer_version == prev_version:
+                messages.info(
+                    request,
+                    f"یادآوری پیشنهاد نسخه #{sent.sent_offer_version} بدون تغییر شرایط برای استاد ثبت شد.",
+                )
+            else:
+                messages.success(
+                    request,
+                    f"پیشنهاد نسخه #{sent.sent_offer_version} (سهم پلتفرم {sent.offer_platform_fee_percent}٪) برای استاد ارسال شد.",
+                )
             return
 
         offer_fields = (
@@ -847,15 +868,24 @@ class PublicationRequestAdmin(admin.ModelAdmin):
                 "تغییرات پیشنهاد به‌صورت پیش‌نویس ذخیره شد و هنوز برای استاد نمایش داده نمی‌شود؛ برای ارائه به استاد دکمه «ارسال پیشنهاد به استاد» را بزنید.",
             )
 
-        if obj.status == previous.status and obj.review_note == previous.review_note:
+        if (
+            obj.status == previous.status
+            and obj.review_note == previous.review_note
+            and obj.content_feedback == previous.content_feedback
+        ):
             if not offer_draft_changed:
                 super().save_model(request, obj, form, change)
             return
 
         reviewed = review_publication_request(
-            obj.pk, actor=request.user, status=obj.status, review_note=obj.review_note
+            obj.pk,
+            actor=request.user,
+            status=obj.status,
+            review_note=obj.review_note,
+            content_feedback=obj.content_feedback,
         )
         obj.status = reviewed.status
+        obj.content_feedback = reviewed.content_feedback
         obj.review_note = reviewed.review_note
         obj.reviewed_by = reviewed.reviewed_by
         obj.reviewed_at = reviewed.reviewed_at
