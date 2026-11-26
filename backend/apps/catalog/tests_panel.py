@@ -806,10 +806,11 @@ class MaintenanceTests(_Base):
         DeviceSession.objects.filter(pk=s.pk).update(revoked_at=now - timedelta(days=200))
         q = Question.objects.get(slug="q1")
         QuizAnswer.objects.create(user=self.admin, question=q, choice_order=0, was_correct=False)
-        # Versions: many old ones in the same week, one recent.
+        # Versions: many old ones in the same week (anchored at midday so midnight cannot split a week), one recent.
+        same_week_midday = timezone.localtime(now).replace(hour=12, minute=0, second=0, microsecond=0) - timedelta(days=60)
         for i in range(4):
             r = ChapterRevision.objects.create(chapter=self.chapter, text=f"v{i}", source="panel")
-            ChapterRevision.objects.filter(pk=r.pk).update(updated_at=now - timedelta(days=60, minutes=i * 10))
+            ChapterRevision.objects.filter(pk=r.pk).update(updated_at=same_week_midday - timedelta(minutes=i * 10))
         ChapterRevision.objects.create(chapter=self.chapter, text="now", source="panel")
         # Pictures: one used, one unused and old, one unused but new.
         folder = os.path.join(settings.MEDIA_ROOT, "content", "test-book", "ch1")

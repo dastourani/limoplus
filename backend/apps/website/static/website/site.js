@@ -264,6 +264,22 @@
     });
   }
 
+  function faqAnchors() {
+    function openTarget(hash) {
+      if (!hash || hash.length < 2) return;
+      var target = document.getElementById(hash.slice(1));
+      if (!target) return;
+      if (target.tagName === 'DETAILS') target.open = true;
+      var parentDetails = target.closest('details');
+      if (parentDetails) parentDetails.open = true;
+    }
+    openTarget(window.location.hash);
+    window.addEventListener('hashchange', function () { openTarget(window.location.hash); });
+    document.querySelectorAll('.faq-nav a[href^="#"]').forEach(function (link) {
+      link.addEventListener('click', function () { openTarget(link.getAttribute('href')); });
+    });
+  }
+
   function start() {
     P = window.LimoPreview;
     covers();
@@ -274,6 +290,7 @@
     samples();
     homeRandomSample();
     device();
+    faqAnchors();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();

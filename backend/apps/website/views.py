@@ -40,7 +40,71 @@ from .models import FaqItem, SiteNavItem, SitePage, SiteSettings
 FA = "۰۱۲۳۴۵۶۷۸۹"
 BOOKS_PER_PAGE = 12
 PAGE_ORDER = {"terms": 0, "privacy": 1, "protection": 2, "about": 3, "contact": 4}
-NAMED_URLS = {"home": "website:home", "books": "website:books", "pricing": "website:pricing", "download": "website:download", "faq": "website:faq"}
+NAMED_URLS = {
+    "home": "website:home",
+    "books": "website:books",
+    "pricing": "website:pricing",
+    "download": "website:download",
+    "faq": "website:faq",
+    "teacher-application": "website:teacher-application",
+    "teacher-login": "teacher-login",
+}
+
+FAQ_STUDENT_GROUPS = [
+    (
+        FaqItem.Group.BOOKS,
+        "books",
+        "کتاب‌ها، نمونه‌ی رایگان و خرید",
+        "نمونه‌ی رایگان، کتاب‌های تک‌فروش، اشتراک‌ها، وضعیت انتشار و گزارش اشکال علمی",
+    ),
+    (
+        FaqItem.Group.ACCOUNT_PAYMENT,
+        "account-payment",
+        "ورود، دستگاه‌ها و پرداخت",
+        "کد پیامکی، دستگاه‌های مجاز، تغییر شماره، خرید از سایت و پیگیری پرداخت یا بازپرداخت",
+    ),
+    (
+        FaqItem.Group.STUDY_OFFLINE,
+        "study-offline",
+        "مطالعه، یادداشت و آفلاین",
+        "سابقه‌ی مهمان، دانلود آفلاین، کپی متن و یادداشت‌ها، اسکرین‌شات و ظاهر صفحهٔ مطالعه",
+    ),
+    (
+        FaqItem.Group.REVIEW_QUIZ,
+        "review-quiz",
+        "تست، فلش‌کارت و برنامه‌ی مرور",
+        "برنامه‌ی امروز، فرق تمرین آزاد و مرور، ۵ تست دیگر، ادامهٔ اختیاری و لیموها",
+    ),
+    (
+        FaqItem.Group.CLASSROOM,
+        "classroom",
+        "کلاس و دعوت استاد",
+        "عضویت با لینک دعوت، شمارهٔ ثبت‌شده، پایان کلاس و دسترسی‌های کتاب",
+    ),
+]
+
+
+def _resolve_faq_action_url(raw: str) -> str:
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    if raw == "webapp":
+        return app_base_url()
+    if raw.startswith("#"):
+        return raw
+    if "#" in raw and not raw.startswith(("http://", "https://", "/")):
+        base, frag = raw.split("#", 1)
+        resolved = _resolve_faq_action_url(base)
+        return f"{resolved}#{frag}" if resolved else f"#{frag}"
+    resolved, _ = _resolve_nav_url(raw)
+    return resolved
+
+
+def _attach_faq_actions(items):
+    out = list(items)
+    for item in out:
+        item.resolved_action_url = _resolve_faq_action_url(item.action_url)
+    return out
 
 
 def fa(n) -> str:
@@ -474,12 +538,16 @@ def home(request):
             for ch in raw_changes
         ]
 
+    top_faqs = list(FaqItem.objects.filter(is_hidden=False, group=FaqItem.Group.TOP)[:4])
+    if not top_faqs:
+        top_faqs = list(FaqItem.objects.filter(is_hidden=False)[:4])
+
     return render(request, "website/home.html", _base(
         request, books=books[:12], more=len(books) > 12, majors=majors, plans=_plans(),
         min_price=toman(min(paid)) if paid else None,
         site_stats=site_stats, editorial_banners=editorial_banners, offers=offers, updates=updates,
         home_sample=home_sample, home_samples=pool_samples,
-        faq=FaqItem.objects.filter(is_hidden=False)[:4],
+        faq=_attach_faq_actions(top_faqs),
     ))
 
 
@@ -647,13 +715,47 @@ def pricing(request):
     books = list(_published())
     quotes = book_price_quotes(books)
     paid = [quotes[b.pk].price for b in books if quotes[b.pk].product_status == ProductStatus.PAID]
+    top_faqs = list(FaqItem.objects.filter(is_hidden=False, group=FaqItem.Group.TOP)[:6])
+    if not top_faqs:
+        top_faqs = list(FaqItem.objects.filter(is_hidden=False)[:6])
     return render(request, "website/pricing.html", _base(
-        request, plans=_plans(), min_price=toman(min(paid)) if paid else None, faq=FaqItem.objects.filter(is_hidden=False)[:6],
+        request, plans=_plans(), min_price=toman(min(paid)) if paid else None, faq=_attach_faq_actions(top_faqs),
     ))
 
 
 def faq(request):
-    return render(request, "website/faq.html", _base(request, faq=FaqItem.objects.filter(is_hidden=False)))
+    all_items = _attach_faq_actions(FaqItem.objects.filter(is_hidden=False))
+    by_group: dict[str, list[FaqItem]] = {}
+    for item in all_items:
+        by_group.setdefault(item.group, []).append(item)
+
+    top_faqs = by_group.get(FaqItem.Group.TOP, [])
+    student_groups = []
+    for group_key, anchor, title, subtitle in FAQ_STUDENT_GROUPS:
+        items = by_group.get(group_key, [])
+        if items:
+            student_groups.append(
+                {
+                    "key": group_key,
+                    "anchor": anchor,
+                    "title": title,
+                    "subtitle": subtitle,
+                    "items": items,
+                }
+            )
+    teacher_faqs = by_group.get(FaqItem.Group.TEACHERS, [])
+    return render(
+        request,
+        "website/faq.html",
+        _base(
+            request,
+            faq=all_items,
+            top_faqs=top_faqs,
+            student_groups=student_groups,
+            teacher_faqs=teacher_faqs,
+            webapp_url=app_base_url(),
+        ),
+    )
 
 
 def page(request, slug):

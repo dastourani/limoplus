@@ -200,6 +200,45 @@ class WebsiteTests(TestCase):
         self.assertContains(custom_r, "راهنمای کنکور ۱۴۰۵")
         self.assertContains(custom_r, "لینک سفارشی منو")
 
+    def test_categorized_faq_and_teacher_links(self):
+        from .models import FaqItem
+
+        faq_r = Client().get("/site/faq/")
+        self.assertEqual(faq_r.status_code, 200)
+        self.assertContains(faq_r, "پاسخ‌های فوری و پرسش‌های اصلی")
+        self.assertContains(faq_r, "لیموخوان چیست و داخل هر کتاب چه امکاناتی دارم؟")
+        self.assertNotContains(faq_r, "هر کتاب یک خلاصه، یک درسنامه‌ی کامل، تست با پاسخ تشریحی")
+        self.assertContains(faq_r, 'id="books"')
+        self.assertContains(faq_r, 'id="account-payment"')
+        self.assertContains(faq_r, 'id="study-offline"')
+        self.assertContains(faq_r, 'id="review-quiz"')
+        self.assertContains(faq_r, 'id="classroom"')
+        self.assertContains(faq_r, 'id="teachers"')
+        self.assertContains(faq_r, "استاد یا مؤلف هستید؟")
+        self.assertContains(faq_r, "معنای «لیموهای من» و رنگ برش‌های لیمو")
+        self.assertContains(faq_r, 'href="/site/download/"')
+        self.assertContains(faq_r, 'href="/site/p/contact/"')
+        self.assertContains(faq_r, 'href="/site/p/protection/"')
+
+        self.assertEqual(FaqItem.objects.filter(is_hidden=False, group=FaqItem.Group.TOP).count(), 8)
+        self.assertEqual(FaqItem.objects.filter(is_hidden=False, group=FaqItem.Group.TEACHERS).count(), 10)
+
+        home_r = Client().get("/site/")
+        self.assertContains(home_r, "لیموخوان چیست و داخل هر کتاب چه امکاناتی دارم؟")
+        self.assertNotContains(home_r, "اگر گوشی عوض کنم، کتاب‌ها، یادداشت‌ها و پیشرفتم چه می‌شود؟")
+
+        pricing_r = Client().get("/site/pricing/")
+        self.assertContains(pricing_r, "اگر گوشی عوض کنم، کتاب‌ها، یادداشت‌ها و پیشرفتم چه می‌شود؟")
+        self.assertNotContains(pricing_r, "پول از حسابم کم شده ولی کتاب یا اشتراکم فعال نشده؛ چه کنم؟")
+
+        teacher_login_r = Client().get("/teacher/login/")
+        self.assertEqual(teacher_login_r.status_code, 200)
+        self.assertContains(teacher_login_r, "/site/faq/#teachers")
+
+        teacher_app_r = Client().get("/site/teacher-application/")
+        self.assertEqual(teacher_app_r.status_code, 200)
+        self.assertContains(teacher_app_r, "/site/faq/#teachers")
+
     def test_home_separates_updates_from_vertical_offers_and_does_not_drop_valid_banners_after_four(self):
         from apps.catalog.models import Banner, BookChange
         from apps.commerce.models import SaleCampaign
