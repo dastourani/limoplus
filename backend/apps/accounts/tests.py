@@ -255,6 +255,24 @@ class AdminOTPLoginTests(TestCase):
         self.assertContains(page, "lp-login-admin")
         self.assertEqual(page.content.decode().count("<h1>ورود به پنل مدیریت</h1>"), 1)
 
+    def test_teacher_login_shows_friendly_invite_note_and_non_contradictory_otp_copy(self):
+        get_page = self.client.get("/teacher/login/")
+        self.assertEqual(get_page.status_code, 200)
+        self.assertContains(get_page, "ورود مستقیم مخصوص اساتیدی است که دعوت‌نامه را پذیرفته‌اند")
+        self.assertContains(get_page, "/site/teacher-application/")
+
+        with mock.patch("apps.accounts.admin_login.send_login_code"):
+            post_page = self.client.post(
+                "/teacher/login/",
+                {"action": "send_otp", "phone": "09150635565"},
+                follow=True,
+            )
+        self.assertEqual(post_page.status_code, 200)
+        self.assertContains(post_page, "شماره‌ی واردشده:")
+        self.assertNotContains(post_page, "کد ارسال‌شده به")
+        self.assertNotContains(post_page, 'placeholder="••••••"')
+        self.assertContains(post_page, 'placeholder="123456"')
+
     def test_active_superuser_can_sign_in_with_a_single_use_otp(self):
         response, code, send = self.request_code(phone=self.superuser.phone, next_url="https://evil.example/steal")
         self.assertEqual(response.status_code, 302)

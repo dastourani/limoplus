@@ -102,11 +102,23 @@ class TeacherApplication(models.Model):
         APPROVED = "approved", "تأیید درخواست (بدون دسترسی)"
         REJECTED = "rejected", "ردشده"
 
+    class CollaborationScope(models.TextChoices):
+        PUBLIC_AND_CLASS = "public_and_class", "عرضه در ویترین لیموخوان و کلاس‌های اختصاصی"
+        CLASS_ONLY = "class_only", "استفاده در کلاس اختصاصی دانشجویان خودم (رایگان)"
+        PUBLIC_ONLY = "public_only", "عرضهٔ عمومی در ویترین لیموخوان"
+
     name = models.CharField("نام و نام خانوادگی", max_length=120)
     phone = models.CharField("شماره‌ی موبایل", max_length=11, db_index=True)
-    book_or_link = models.CharField("کتاب یا لینک مرتبط", max_length=300)
-    explanation = models.TextField("توضیح درخواست", max_length=2000)
-    sample_work = models.TextField("شواهد یا نمونه‌کار", max_length=3000)
+    book_or_link = models.CharField("رشته و عنوان کتاب یا درس پیشنهادی", max_length=300)
+    resume_url = models.URLField("لینک صفحه معرفی یا رزومه", max_length=500, blank=True, default="")
+    collaboration_scope = models.CharField(
+        "نحوه استفاده پیشنهادی",
+        max_length=20,
+        choices=CollaborationScope.choices,
+        default=CollaborationScope.PUBLIC_AND_CLASS,
+    )
+    explanation = models.TextField("توضیحات تکمیلی یا سابقه تدریس", max_length=2000, blank=True, default="")
+    sample_work = models.TextField("توضیح کوتاه نمونه‌کار یا شواهد", max_length=3000, blank=True, default="")
     status = models.CharField(
         "وضعیت",
         max_length=20,

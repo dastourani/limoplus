@@ -579,17 +579,17 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 /* Teacher application */
 .teacher-application-form { display: grid; gap: 18px; margin-top: 8px; }
 .teacher-application-field label { display: block; margin-bottom: 6px; font-weight: 900; }
-.teacher-application-field input, .teacher-application-field textarea {
+.teacher-application-field input, .teacher-application-field textarea, .teacher-application-field select {
   display: block; width: 100%; border: 1px solid #CBD5C8; border-radius: 12px; background: #fff; color: var(--ink);
   padding: 11px 13px; font: inherit; line-height: 1.8; transition: border-color .15s, box-shadow .15s;
 }
-.teacher-application-field input { min-height: 48px; }
-.teacher-application-field input[name="phone"] { text-align: left; }
+.teacher-application-field input, .teacher-application-field select { min-height: 48px; }
+.teacher-application-field input[name="phone"], .teacher-application-field input[type="url"] { text-align: left; }
 .teacher-application-field textarea { min-height: 120px; resize: vertical; }
-.teacher-application-field input:focus, .teacher-application-field textarea:focus {
+.teacher-application-field input:focus, .teacher-application-field textarea:focus, .teacher-application-field select:focus {
   outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(47,125,79,.14);
 }
-.teacher-application-field.has-errors input, .teacher-application-field.has-errors textarea { border-color: #C1443D; }
+.teacher-application-field.has-errors input, .teacher-application-field.has-errors textarea, .teacher-application-field.has-errors select { border-color: #C1443D; }
 .teacher-application-help { display: block; margin-top: 5px; color: var(--muted); font-size: 13px; }
 .teacher-application-errors { list-style: none; margin-top: 5px; color: #A52B25; font-size: 13px; }
 .teacher-application-note { padding: 12px 15px; border-radius: 12px; background: var(--ground); color: var(--muted); font-size: 13px; line-height: 1.9; }

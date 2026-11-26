@@ -14,6 +14,8 @@ class TeacherApplicationPublicTests(TestCase):
             "name": "نسترن پژوهشگر",
             "phone": "۰۹۱۲۱۲۳۴۵۶۷",
             "book_or_link": "کتاب زیست‌شناسی یا پیوند معرفی کتاب",
+            "resume_url": "https://example.com/profile",
+            "collaboration_scope": TeacherApplication.CollaborationScope.PUBLIC_AND_CLASS,
             "explanation": "برای تدوین محتوای آموزشی و بازبینی آن درخواست همکاری دارم.",
             "sample_work": "شرح نمونه‌کار آموزشی و پیوند آن: https://example.com/work",
             **overrides,
@@ -24,14 +26,28 @@ class TeacherApplicationPublicTests(TestCase):
         response = self.client.post(reverse("website:teacher-application"), self._data(), follow=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "درخواست برای بازبینی دریافت شد")
+        self.assertContains(response, "درخواست شما با موفقیت ثبت شد")
         application = TeacherApplication.objects.get()
         self.assertEqual(application.phone, "09121234567")
         self.assertEqual(application.status, TeacherApplication.Status.PENDING)
         self.assertEqual(application.name, "نسترن پژوهشگر")
+        self.assertEqual(application.resume_url, "https://example.com/profile")
+        self.assertEqual(application.collaboration_scope, TeacherApplication.CollaborationScope.PUBLIC_AND_CLASS)
         self.assertEqual(User.objects.count(), 0)
         self.assertEqual(Group.objects.count(), group_count)
         self.assertFalse(BookEditor.objects.filter(user__phone=application.phone).exists())
+
+    def test_submission_with_resume_url_alone_succeeds_without_long_essays(self):
+        response = self.client.post(
+            reverse("website:teacher-application"),
+            self._data(sample_work="", explanation="", collaboration_scope=TeacherApplication.CollaborationScope.CLASS_ONLY),
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "درخواست شما با موفقیت ثبت شد")
+        application = TeacherApplication.objects.get()
+        self.assertEqual(application.resume_url, "https://example.com/profile")
+        self.assertEqual(application.collaboration_scope, TeacherApplication.CollaborationScope.CLASS_ONLY)
 
     def test_invalid_phone_and_missing_evidence_do_not_create_a_record(self):
         response = self.client.post(reverse("website:teacher-application"), self._data(phone="02112345678"))
@@ -39,15 +55,15 @@ class TeacherApplicationPublicTests(TestCase):
         self.assertContains(response, "شماره موبایل معتبر نیست")
         self.assertFalse(TeacherApplication.objects.exists())
 
-        response = self.client.post(reverse("website:teacher-application"), self._data(sample_work=""))
+        response = self.client.post(reverse("website:teacher-application"), self._data(resume_url="", sample_work=""))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "این مقدار لازم است")
+        self.assertContains(response, "لطفاً لینک صفحهٔ معرفی/رزومه یا توضیح کوتاهی")
         self.assertFalse(TeacherApplication.objects.exists())
 
     def test_honeypot_is_silent_and_does_not_store_a_submission(self):
         response = self.client.post(reverse("website:teacher-application"), self._data(website="spam"), follow=True)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "درخواست برای بازبینی دریافت شد")
+        self.assertContains(response, "درخواست شما با موفقیت ثبت شد")
         self.assertFalse(TeacherApplication.objects.exists())
         self.assertEqual(User.objects.count(), 0)
 
@@ -61,8 +77,8 @@ class TeacherApplicationPublicTests(TestCase):
             self._data(phone="+98 912 123 4567"),
             follow=True,
         )
-        self.assertContains(first_response, "درخواست برای بازبینی دریافت شد")
-        self.assertContains(second_response, "درخواست برای بازبینی دریافت شد")
+        self.assertContains(first_response, "درخواست شما با موفقیت ثبت شد")
+        self.assertContains(second_response, "درخواست شما با موفقیت ثبت شد")
         self.assertEqual(TeacherApplication.objects.filter(phone="09121234567").count(), 1)
 
     @override_settings(TEACHER_APPLICATIONS_PER_IP_PER_HOUR=1)

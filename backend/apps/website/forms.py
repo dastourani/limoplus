@@ -23,16 +23,20 @@ class TeacherApplicationForm(forms.ModelForm):
 
     class Meta:
         model = TeacherApplication
-        fields = ("name", "phone", "book_or_link", "explanation", "sample_work")
+        fields = ("name", "phone", "book_or_link", "resume_url", "collaboration_scope", "sample_work", "explanation")
         widgets = {
-            "name": forms.TextInput(attrs={"autocomplete": "name", "maxlength": 120}),
-            "book_or_link": forms.TextInput(attrs={"maxlength": 300}),
-            "explanation": forms.Textarea(attrs={"rows": 4, "maxlength": 2000}),
-            "sample_work": forms.Textarea(attrs={"rows": 5, "maxlength": 3000}),
+            "name": forms.TextInput(attrs={"autocomplete": "name", "maxlength": 120, "placeholder": "مثلاً: دکتر مریم احمدی"}),
+            "book_or_link": forms.TextInput(attrs={"maxlength": 300, "placeholder": "مثلاً: ریاضی عمومی ۱، حقوق مدنی، یا جزوه و تست فیزیک"}),
+            "resume_url": forms.URLInput(attrs={"dir": "ltr", "maxlength": 500, "placeholder": "https://..."}),
+            "sample_work": forms.Textarea(attrs={"rows": 3, "maxlength": 3000, "placeholder": "در صورت نیاز، توضیح کوتاهی درباره نمونه جزوه، کتاب یا سوابق تدریس بنویسید..."}),
+            "explanation": forms.Textarea(attrs={"rows": 3, "maxlength": 2000, "placeholder": "هر نکته تکمیلی درباره کلاس، دانشجویان یا زمان‌بندی دارید..."}),
         }
         help_texts = {
-            "book_or_link": "کتاب مرتبط، یا لینک صفحه‌ی کتاب/زمینه‌ی پیشنهادی را بنویسید.",
-            "sample_work": "شرح کوتاه یا پیوند نمونه‌کار/شواهد؛ فایل پیوست دریافت نمی‌شود.",
+            "phone": "برای هماهنگی و ارسال لینک ورود به میز تألیف.",
+            "book_or_link": "عنوان درس، کتاب یا حوزهٔ تخصصی که مایل به تألیف یا برگزاری کلاس آن هستید.",
+            "resume_url": "صفحه دانشگاهی، لینکدین، وب‌سایت شخصی، گوگل‌درایو نمونه جزوه یا کانال آموزشی (اختیاری).",
+            "sample_work": "اگر لینک رزومه یا صفحهٔ معرفی وارد کرده‌اید، پر کردن این بخش اختیاری است.",
+            "explanation": "اختیاری — پیام یا توضیح اضافه برای تیم لیموخوان.",
         }
 
     def clean_name(self):
@@ -47,11 +51,23 @@ class TeacherApplicationForm(forms.ModelForm):
     def clean_book_or_link(self):
         return self.cleaned_data["book_or_link"].strip()
 
+    def clean_resume_url(self):
+        return (self.cleaned_data.get("resume_url") or "").strip()
+
     def clean_explanation(self):
-        return self.cleaned_data["explanation"].strip()
+        return (self.cleaned_data.get("explanation") or "").strip()
 
     def clean_sample_work(self):
-        return self.cleaned_data["sample_work"].strip()
+        return (self.cleaned_data.get("sample_work") or "").strip()
+
+    def clean(self):
+        cleaned = super().clean()
+        resume_url = cleaned.get("resume_url")
+        sample_work = cleaned.get("sample_work")
+        if not resume_url and not sample_work:
+            msg = "لطفاً لینک صفحهٔ معرفی/رزومه یا توضیح کوتاهی از نمونه‌کار و سوابق آموزشی خود وارد کنید."
+            self.add_error("sample_work", msg)
+        return cleaned
 
 
 MAX_GROUP_ACCESS_MEMBERS = 500

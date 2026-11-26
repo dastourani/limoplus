@@ -147,13 +147,17 @@ def _send_otp(request, next_url, *, mode="admin"):
             otp.delete()
 
     # Same response for an unknown/non-staff number, a throttled number, and a sent code.
+    notice = (
+        "درخواست کد برای این شماره ثبت شد. اگر حساب استادی شما فعال شده باشد، "
+        "پیامک تا لحظاتی دیگر می‌رسد."
+        if mode == "teacher"
+        else "درخواست کد ثبت شد. اگر این شماره متعلق به حساب فعال مدیر کل باشد، "
+        "پیامک تا لحظاتی دیگر می‌رسد."
+    )
     return _redirect_with_flash(
         request,
         mode=mode,
-        notice=(
-            "اگر این شماره متعلق به حساب فعال پنل باشد، کد ارسال می‌شود. "
-            "اگر پیامکی دریافت نکردید، شماره را بررسی و کمی بعد دوباره تلاش کنید."
-        ),
+        notice=notice,
     )
 
 
