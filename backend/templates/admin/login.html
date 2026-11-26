@@ -3,10 +3,26 @@
 
 {% block extrastyle %}{{ block.super }}
 <style>
-  /* Align the login shell with LimoKhan's panel palette in both light and dark modes, without sidebar clutter. */
+  /* Align the login shell with LimoKhan's panel palette in both light and dark modes, without sidebar clutter or Django blue defaults. */
   body.login {
     --lp-accent: #F5C518;
     --lp-ink: #17201A;
+    --header-bg: #17201A;
+    --header-color: #FFFFFF;
+    --header-link-color: #FEFCE8;
+    --header-branding-color: #F5C518;
+    --primary: #15803D;
+    --secondary: #166534;
+    --primary-fg: #FFFFFF;
+    --link-fg: #15803D;
+    --link-hover-color: #166534;
+    --link-selected-fg: #15803D;
+    --body-bg: #FFFFFF;
+    --darkened-bg: #F5F6F2;
+    --body-fg: #17201A;
+    --body-quiet-color: #526056;
+    --border-color: #D7DDD6;
+    --hairline-color: #E3E7E1;
     --lp-surface: var(--body-bg);
     --lp-surface-alt: var(--darkened-bg);
     --lp-card-shadow: 0 14px 36px rgba(23, 32, 26, 0.08);
@@ -21,8 +37,32 @@
     --lp-error-border: rgba(214, 69, 69, 0.34);
     background: var(--darkened-bg);
     min-height: 100vh;
+    padding: 0 !important;
+  }
+  body.login #container {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+  }
+  body.login.lp-login-teacher {
+    --header-bg: #133A28;
+    --lp-btn-bg: #15803D;
+    --lp-btn-fg: #FFFFFF;
+    --lp-btn-hover: #166534;
   }
   html[data-theme="dark"] body.login {
+    --header-bg: #111713;
+    --primary: #F5C518;
+    --primary-fg: #17201A;
+    --link-fg: #F5C518;
+    --link-hover-color: #FFD84A;
+    --link-selected-fg: #F5C518;
+    --body-bg: #1B231E;
+    --darkened-bg: #131915;
+    --body-fg: #F3F6F4;
+    --body-quiet-color: #B4C0B7;
+    --border-color: #2E3A32;
+    --hairline-color: #263129;
     --lp-surface: #1B231E;
     --lp-surface-alt: #131915;
     --lp-card-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
@@ -36,8 +76,25 @@
     --lp-error-fg: #FF9E9E;
     --lp-error-border: rgba(255, 154, 154, 0.32);
   }
+  html[data-theme="dark"] body.login.lp-login-teacher {
+    --header-bg: #0F291E;
+    --link-fg: #4ADE80;
+    --link-hover-color: #86EFAC;
+  }
   @media (prefers-color-scheme: dark) {
     html:not([data-theme="light"]) body.login {
+      --header-bg: #111713;
+      --primary: #F5C518;
+      --primary-fg: #17201A;
+      --link-fg: #F5C518;
+      --link-hover-color: #FFD84A;
+      --link-selected-fg: #F5C518;
+      --body-bg: #1B231E;
+      --darkened-bg: #131915;
+      --body-fg: #F3F6F4;
+      --body-quiet-color: #B4C0B7;
+      --border-color: #2E3A32;
+      --hairline-color: #263129;
       --lp-surface: #1B231E;
       --lp-surface-alt: #131915;
       --lp-card-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
@@ -51,22 +108,49 @@
       --lp-error-fg: #FF9E9E;
       --lp-error-border: rgba(255, 154, 154, 0.32);
     }
+    html:not([data-theme="light"]) body.login.lp-login-teacher {
+      --header-bg: #0F291E;
+      --link-fg: #4ADE80;
+      --link-hover-color: #86EFAC;
+    }
   }
   body.login #header {
-    background: #17201A;
-    color: #fff;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--header-bg);
+    color: var(--header-color);
     border-bottom: 3px solid #F5C518;
     padding: 12px 24px;
   }
+  body.login #header #branding {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+  }
+  body.login #header #site-name { margin: 0; }
   body.login #header #site-name a { color: #F5C518; font-weight: 800; }
   body.login #nav-sidebar,
   body.login #toggle-nav-sidebar,
   body.login .breadcrumbs { display: none !important; }
   body.login .main { display: block; }
-  body.login #content { padding: 28px 16px 48px; }
+  body.login #content {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 36px 16px 56px;
+  }
+  body.login #content-main {
+    float: none !important;
+    width: 100%;
+    max-width: 440px;
+    margin: 8px auto 0 !important;
+  }
 
-  .lp-login { max-width: 440px; margin: 12px auto 0; }
-  .lp-login-hero { text-align: center; margin-bottom: 18px; }
+  .lp-login { width: 100%; }
+  .lp-login-hero { text-align: center; margin-bottom: 20px; }
   .lp-login-mark {
     display: inline-flex;
     align-items: center;
@@ -204,7 +288,8 @@
 </style>
 {% endblock %}
 
-{% block bodyclass %}{{ block.super }} login{% endblock %}
+{% block bodyclass %}{{ block.super }} login {% if is_teacher_login %}lp-login-teacher{% else %}lp-login-admin{% endif %}{% endblock %}
+{% block content_title %}{% endblock %}
 {% block nav-sidebar %}{% endblock %}
 {% block breadcrumbs %}{% endblock %}
 

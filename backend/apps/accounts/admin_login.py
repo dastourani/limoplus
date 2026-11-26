@@ -78,7 +78,7 @@ def _render_login(request, *, mode="admin", error="", notice="", next_url=None, 
     context = {
         **admin.site.each_context(request),
         "title": "ورود اساتید و مؤلفان" if is_teacher else "ورود به پنل مدیریت",
-        "site_header": "پنل اساتید و مؤلفان لیموخوان" if is_teacher else admin.site.site_header,
+        "site_header": "لیموخوان",
         "login_url": _login_url(mode),
         "is_teacher_login": is_teacher,
         "wrong_role": wrong_role,

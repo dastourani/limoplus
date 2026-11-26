@@ -252,6 +252,8 @@ class AdminOTPLoginTests(TestCase):
         self.assertContains(page, "ورود با پیامک")
         self.assertContains(page, "ورود اضطراری با گذرواژه (فقط مدیر کل)")
         self.assertContains(page, 'name="action" value="send_otp"')
+        self.assertContains(page, "lp-login-admin")
+        self.assertEqual(page.content.decode().count("<h1>ورود به پنل مدیریت</h1>"), 1)
 
     def test_active_superuser_can_sign_in_with_a_single_use_otp(self):
         response, code, send = self.request_code(phone=self.superuser.phone, next_url="https://evil.example/steal")
@@ -361,6 +363,8 @@ class AdminOTPLoginTests(TestCase):
         page = self.client.get("/teacher/login/")
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, "ورود اساتید و مؤلفان")
+        self.assertContains(page, "lp-login-teacher")
+        self.assertEqual(page.content.decode().count("<h1>ورود اساتید و مؤلفان</h1>"), 1)
         self.assertContains(page, "ورود با پیامک")
         self.assertContains(page, 'name="action" value="send_otp"')
         self.assertNotContains(page, "ورود اضطراری با گذرواژه (فقط مدیر کل)")
