@@ -328,16 +328,16 @@ class AccessMap:
 
     @staticmethod
     def _resolve_private_unpublished(user, book: ContentNode, access) -> bool:
-        if access == "gift" and not book.is_published:
+        if book.is_published or book.is_archived or book.is_inbox:
+            return False
+        if access in ("gift", "purchase"):
             return True
-        if access is not None and not book.is_published and user and user.is_authenticated:
+        if access is not None and user and user.is_authenticated:
             from apps.commerce.models import Entitlement
 
-            # Purchase access outranks a simultaneous gift in the card label; the private-grant check is still
-            # independent so a group member with both entitlement kinds can open an unpublished group book.
-            return Entitlement.active_for(user).filter(
-                book=book, order__isnull=True, granted_by__isnull=False
-            ).exists()
+            # Preserve access to an unpublished book for any active direct book entitlement (private classroom
+            # gift or prior single-book purchase whose book was later withdrawn from public storefront sales).
+            return Entitlement.active_for(user).filter(book=book).exists()
         return False
 
     def _init_from_nodes(self, nodes, access, private_unpublished_book: bool) -> None:
@@ -406,14 +406,15 @@ class AccessMap:
 
         private_ids: set[int] = set()
         need_private_check = [
-            b.pk for b in unique_books if not b.is_published and kinds[b.pk] not in (None, "gift")
+            b.pk for b in unique_books
+            if not b.is_published and not b.is_archived and not b.is_inbox and kinds[b.pk] not in (None, "gift", "purchase")
         ]
         if need_private_check and is_authed:
             from apps.commerce.models import Entitlement
 
             private_ids = set(
                 Entitlement.active_for(user)
-                .filter(book_id__in=need_private_check, order__isnull=True, granted_by__isnull=False)
+                .filter(book_id__in=need_private_check)
                 .values_list("book_id", flat=True)
             )
 
@@ -436,7 +437,9 @@ class AccessMap:
             am = cls.__new__(cls)
             am.book = b
             access = kinds[b.pk]
-            priv = (access == "gift" and not b.is_published) or (b.pk in private_ids)
+            priv = (not b.is_published and not b.is_archived and not b.is_inbox) and (
+                access in ("gift", "purchase") or (b.pk in private_ids)
+            )
             am._init_from_nodes(by_root.get(b.path, [b]), access, priv)
             maps[b.pk] = am
         return maps

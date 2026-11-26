@@ -11,6 +11,7 @@ import { Text } from '../../components/Text';
 import { Button, ErrorState, Header, Loading, Screen } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
 import { coverByline } from '../../lib/cover';
+import { jalaliDate } from '../../lib/jalali';
 import { currentPrice, percentLabel } from '../../lib/pricing';
 import { useApi } from '../../lib/useApi';
 import { colors, formatToman, radius, rtl, toPersianDigits, toPersianOrdinal } from '../../theme';
@@ -170,7 +171,7 @@ export default function Buy() {
           <Option
             on={choice?.kind === 'book'}
             title="فقط همین کتاب"
-            sub="یک‌بار پرداخت، همیشه مال تو؛ همه‌ی فصل‌های فعلی و فصل‌هایی که بعداً اضافه می‌شوند."
+            sub="دسترسی شخصی به همین کتاب در حساب لیموخوان شما، بدون تاریخ انقضای اشتراک؛ شامل فصل‌های فعلی و فصل‌های بعدی همین کتاب."
             price={data.book.price}
             regularPrice={data.book.regular_price}
             discount={data.book.discount}
@@ -178,21 +179,27 @@ export default function Buy() {
             onPress={() => setChoice({ kind: 'book' })}
           />
         )}
-        {data.plans.map((plan, i) => (
-          <Option
-            key={plan.id}
-            on={choice?.kind === 'plan' && choice.plan.id === plan.id}
-            title={plan.title}
-            sub={`همه‌ی کتاب‌های لیموخوان تا وقتی اشتراک داری (${toPersianDigits(plan.months)} ماه)؛ کتاب‌های تازه هم خودکار اضافه می‌شوند.`}
-            price={plan.price}
-            regularPrice={plan.regular_price}
-            discount={plan.discount}
-            productStatus={plan.product_status}
-            unit={plan.months === 1 ? 'تومان برای یک ماه' : `تومان برای ${toPersianDigits(plan.months)} ماه`}
-            badge={i === 0 ? 'برای چند کتاب به‌صرفه‌تر' : undefined}
-            onPress={() => setChoice({ kind: 'plan', plan })}
-          />
-        ))}
+        {data.plans.map((plan, i) => {
+          const days = plan.days ?? plan.months * 30;
+          const period = plan.starts_at && plan.ends_at
+            ? ` ${plan.is_renewal ? '· تمدید از پایان دورهٔ فعلی: ' : '· '}از ${jalaliDate(plan.starts_at)} تا ${jalaliDate(plan.ends_at)}`
+            : '';
+          return (
+            <Option
+              key={plan.id}
+              on={choice?.kind === 'plan' && choice.plan.id === plan.id}
+              title={plan.title}
+              sub={`همه‌ی کتاب‌های مشمول اشتراک در لیموخوان (${toPersianDigits(plan.months)} ماه، معادل ${toPersianDigits(days)} روز)${period}؛ کتاب‌های تازه هم خودکار اضافه می‌شوند.`}
+              price={plan.price}
+              regularPrice={plan.regular_price}
+              discount={plan.discount}
+              productStatus={plan.product_status}
+              unit={plan.months === 1 ? 'تومان برای یک ماه (۳۰ روز)' : `تومان برای ${toPersianDigits(plan.months)} ماه (${toPersianDigits(days)} روز)`}
+              badge={i === 0 ? 'برای چند کتاب به‌صرفه‌تر' : undefined}
+              onPress={() => setChoice({ kind: 'plan', plan })}
+            />
+          );
+        })}
         {!!choice && (
           <View style={styles.summary}>
             {selectedPrice?.discount && (
@@ -212,11 +219,25 @@ export default function Buy() {
               <Text style={[styles.summaryTotal, rtl]}>قابل پرداخت</Text>
               <Text style={styles.summaryTotal}>{formatToman(amount)}</Text>
             </View>
+            <Text style={[styles.summaryMeta, rtl]}>
+              {choice.kind === 'book'
+                ? `دسترسی شخصی به کتاب «${data.book.title}» در لیموخوان · بدون تاریخ انقضای اشتراک · مبلغ نهایی ${formatToman(amount)}`
+                : `اشتراک ${choice.plan.title} · شامل همه‌ی کتاب‌های مشمول اشتراک در لیموخوان${choice.plan.starts_at && choice.plan.ends_at ? ` · از ${jalaliDate(choice.plan.starts_at)} تا ${jalaliDate(choice.plan.ends_at)}` : ''} · مبلغ نهایی ${formatToman(amount)}`}
+            </Text>
           </View>
         )}
         <Text style={[styles.sub, rtl, { textAlign: 'center' }]}>
           به درگاه بانکی زیبال می‌روی و بعد از پرداخت خودکار به اپ برمی‌گردی؛ قفل باز می‌شود و از همان‌جا ادامه می‌دهی.
         </Text>
+        <View style={styles.legalLinks}>
+          <Pressable onPress={() => router.push('/page/terms')} accessibilityRole="link">
+            <Text style={styles.legalLink}>شرایط انصراف و بازپرداخت</Text>
+          </Pressable>
+          <Text style={styles.legalDot}>·</Text>
+          <Pressable onPress={() => router.push('/page/contact')} accessibilityRole="link">
+            <Text style={styles.legalLink}>پیگیری سفارش</Text>
+          </Pressable>
+        </View>
         {!!message && <Text style={[styles.message, rtl]}>{message}</Text>}
       </ScrollView>
       <View style={styles.bar}>
@@ -256,6 +277,10 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   summaryValue: { fontSize: 13, color: colors.ink },
   summaryTotal: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  summaryMeta: { fontSize: 12, color: colors.muted, lineHeight: 21, paddingTop: 2 },
+  legalLinks: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  legalLink: { fontSize: 12.5, fontWeight: '700', color: colors.greenDark, textDecorationLine: 'underline' },
+  legalDot: { fontSize: 12.5, color: colors.muted },
   rule: { height: 1, backgroundColor: colors.line },
   message: { backgroundColor: colors.lemonSoft, padding: 12, borderRadius: 12, color: '#6B5200', lineHeight: 24 },
   bar: { padding: 12, gap: 8, borderTopWidth: 1, borderTopColor: colors.line },

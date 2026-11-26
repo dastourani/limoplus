@@ -874,8 +874,6 @@ def _available_library_books(user, *, entitlements=None):
         book__is_published=False,
         book__is_archived=False,
         book__is_inbox=False,
-        order__isnull=True,
-        granted_by__isnull=False,
     ).values("book_id")
     candidates = list(
         ContentNode.objects.filter(
@@ -991,7 +989,7 @@ def library(request):
     missing_books = []
     seen_missing = set()
     for p in recent:
-        if p.book_id in hidden_book_ids or p.book_id in map_cache or p.book_id in seen_missing or p.book.is_archived or not p.book.is_published:
+        if p.book_id in hidden_book_ids or p.book_id in map_cache or p.book_id in seen_missing or p.book.is_archived or p.book.is_inbox:
             continue
         seen_missing.add(p.book_id)
         missing_books.append(p.book)
@@ -1002,7 +1000,7 @@ def library(request):
 
     reading, seen_books = [], set()
     for p in recent:
-        if p.book_id in hidden_book_ids or p.book_id in seen_books or p.book.is_archived or not p.book.is_published:
+        if p.book_id in hidden_book_ids or p.book_id in seen_books or p.book.is_archived or p.book.is_inbox:
             continue
         access = map_cache[p.book_id]
         # A section hidden or no longer readable: fall back to the next accessible section of that book.

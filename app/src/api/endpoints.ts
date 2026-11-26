@@ -531,6 +531,10 @@ export type Plan = {
   title: string;
   scope: 'major' | 'all';
   months: number;
+  days?: number;
+  starts_at?: string;
+  ends_at?: string;
+  is_renewal?: boolean;
   /** Total payable for the whole term, after any active campaign. */
   price: number;
   regular_price: number;
@@ -541,6 +545,7 @@ export type Offers = {
   book: {
     slug: string;
     title: string;
+    single_sale_only?: boolean;
     price: number | null;
     regular_price: number | null;
     discount: PriceDiscount | null;
@@ -552,6 +557,7 @@ export type Offers = {
 };
 export type OrderStatus = {
   id: number;
+  kind?: 'book' | 'subscription';
   title: string;
   amount: number;
   regular_amount: number;
@@ -560,10 +566,14 @@ export type OrderStatus = {
   status: 'pending' | 'paid' | 'failed';
   ref_number: string;
   book_slug: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  created_at?: string;
+  paid_at?: string | null;
 };
 export type Purchases = {
   active: { id: number; kind: 'book' | 'subscription'; title: string; book_slug: string | null; major_slug: string | null; starts_at: string; ends_at: string | null }[];
-  orders: { id: number; title: string; amount: number; regular_amount: number; discount_amount: number; campaign_title: string; paid_at: string; ref_number: string }[];
+  orders: { id: number; kind?: 'book' | 'subscription'; title: string; book_slug?: string | null; amount: number; regular_amount: number; discount_amount: number; campaign_title: string; paid_at: string; ref_number: string; starts_at?: string | null; ends_at?: string | null }[];
 };
 export type OfflineMediaItem = {
   ref: string;

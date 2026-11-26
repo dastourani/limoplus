@@ -769,8 +769,21 @@ def page(request, slug):
     ))
 
 
+def _parse_pipe_row(line: str) -> list[str]:
+    inner = line.strip()
+    if inner.startswith("|"):
+        inner = inner[1:]
+    if inner.endswith("|"):
+        inner = inner[:-1]
+    return [cell.strip() for cell in inner.split("|")]
+
+
+def _is_pipe_separator(cells: list[str]) -> bool:
+    return bool(cells) and all(c and set(c) <= {"-", ":"} and "-" in c for c in cells)
+
+
 def simple_text(body: str, *, with_ids: bool = False) -> str:
-    """The panel's plain text as HTML: blank lines between paragraphs, «## » headings, «- » lists. Everything escaped."""
+    """The panel's plain text as HTML: blank lines between paragraphs, «## » headings, «- » lists, pipe tables. Everything escaped."""
     out, items = [], []
     sec_idx = 0
 
@@ -780,10 +793,25 @@ def simple_text(body: str, *, with_ids: bool = False) -> str:
             items.clear()
 
     for block in (body or "").replace("\r", "").split("\n\n"):
-        for line in block.split("\n"):
-            t = line.strip()
-            if not t:
-                continue
+        lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
+        if (
+            len(lines) >= 2
+            and lines[0].startswith("|")
+            and lines[1].startswith("|")
+            and _is_pipe_separator(_parse_pipe_row(lines[1]))
+        ):
+            flush()
+            headers = _parse_pipe_row(lines[0])
+            thead = "".join(f"<th>{escape(h)}</th>" for h in headers)
+            body_rows = []
+            for rline in lines[2:]:
+                if not rline.startswith("|"):
+                    continue
+                cells = _parse_pipe_row(rline)
+                body_rows.append("<tr>" + "".join(f"<td>{escape(c)}</td>" for c in cells) + "</tr>")
+            out.append(f'<div class="prose-table"><table><thead><tr>{thead}</tr></thead><tbody>{"".join(body_rows)}</tbody></table></div>')
+            continue
+        for t in lines:
             if t.startswith("- "):
                 items.append(escape(t[2:]))
                 continue

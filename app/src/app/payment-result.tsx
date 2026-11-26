@@ -1,12 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { endpoints, type OrderStatus } from '../api/endpoints';
 import { useCelebrate } from '../components/Celebrate';
 import { Text } from '../components/Text';
 import { Icon } from '../components/Icon';
 import { Button, Loading, Screen } from '../components/ui';
+import { jalaliDate } from '../lib/jalali';
 import { colors, formatToman, toPersianDigits } from '../theme';
 
 /** Landing page after the gateway (deep link limookhan://payment-result?order=…). Asks the server, never trusts the link. */
@@ -33,6 +34,13 @@ export default function PaymentResult() {
 
   if (!status && !failed) return <Screen><Loading /></Screen>;
   const paid = status?.status === 'paid';
+  const accessLine = paid
+    ? status?.starts_at && status?.ends_at
+      ? `\nبازهٔ دسترسی: از ${jalaliDate(status.starts_at)} تا ${jalaliDate(status.ends_at)}`
+      : status?.kind === 'book' || status?.book_slug
+        ? '\nدسترسی شخصی به کتاب، بدون تاریخ انقضای اشتراک'
+        : ''
+    : '';
   return (
     <Screen>
       <View style={styles.page}>
@@ -41,10 +49,12 @@ export default function PaymentResult() {
         {status && (
           <Text style={styles.text}>
             {status.title}
+            {`\nشمارهٔ سفارش: #${toPersianDigits(status.id)}`}
             {'\n'}
             {status.regular_amount > status.amount
               ? `قیمت عادی: ${formatToman(status.regular_amount)}\n${status.campaign_title ? `${status.campaign_title} · ` : ''}تخفیف: ${formatToman(status.discount_amount)}\nمبلغ پرداخت‌شده: ${formatToman(status.amount)}`
               : `مبلغ: ${formatToman(status.amount)}`}
+            {accessLine}
             {status.ref_number ? `\nشماره‌ی پیگیری: ${toPersianDigits(status.ref_number)}` : ''}
           </Text>
         )}
@@ -53,6 +63,15 @@ export default function PaymentResult() {
           <Button label="رفتن به کتاب" onPress={() => router.replace(`/book/${status.book_slug}`)} style={{ alignSelf: 'stretch' }} />
         ) : null}
         <Button label="خانه" variant={paid && status?.book_slug ? 'outline' : 'primary'} onPress={() => router.replace('/home')} style={{ alignSelf: 'stretch' }} />
+        <View style={styles.legalLinks}>
+          <Pressable onPress={() => router.push('/page/terms')} accessibilityRole="link">
+            <Text style={styles.legalLink}>شرایط انصراف و بازپرداخت</Text>
+          </Pressable>
+          <Text style={styles.legalDot}>·</Text>
+          <Pressable onPress={() => router.push('/page/contact')} accessibilityRole="link">
+            <Text style={styles.legalLink}>پیگیری سفارش</Text>
+          </Pressable>
+        </View>
       </View>
     </Screen>
   );
@@ -63,4 +82,7 @@ const styles = StyleSheet.create({
   icon: { fontSize: 64, fontWeight: '900' },
   title: { fontSize: 22, fontWeight: '800', color: colors.ink },
   text: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 26 },
+  legalLinks: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 4 },
+  legalLink: { fontSize: 12.5, fontWeight: '700', color: colors.greenDark, textDecorationLine: 'underline' },
+  legalDot: { fontSize: 12.5, color: colors.muted },
 });

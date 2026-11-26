@@ -63,7 +63,7 @@ export default function Login() {
         <Button label="دریافت کد" onPress={send} disabled={!valid} loading={busy} />
         <Text style={[styles.terms, rtl]}>
           با ورود،{' '}
-          <Text style={styles.termsLink} onPress={() => router.push('/page/terms')} accessibilityRole="link">قوانین</Text>
+          <Text style={styles.termsLink} onPress={() => router.push('/page/terms')} accessibilityRole="link">شرایط استفاده و خرید</Text>
           {' و '}
           <Text style={styles.termsLink} onPress={() => router.push('/page/privacy')} accessibilityRole="link">حریم خصوصی</Text>
           {' را می‌پذیرید.'}

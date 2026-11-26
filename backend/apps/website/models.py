@@ -846,7 +846,7 @@ class SitePage(models.Model):
     class Kind(models.TextChoices):
         ABOUT = "about", "درباره‌ی ما"
         CONTACT = "contact", "تماس با ما"
-        TERMS = "terms", "قوانین"
+        TERMS = "terms", "شرایط استفاده و خرید در لیموخوان"
         PRIVACY = "privacy", "حریم خصوصی"
         PROTECTION = "protection", "حفاظت از محتوا"
 

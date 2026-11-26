@@ -111,7 +111,7 @@ export default function Profile() {
                   <IconBadge name={p.kind === 'subscription' ? 'badge-check' : 'book-open'} size={30} />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.ownedTitle, rtl]} numberOfLines={1}>{p.title}</Text>
-                    <Text style={[styles.rowHint, rtl]}>{p.ends_at ? `تا ${jalaliDate(p.ends_at)}` : 'همیشگی'}</Text>
+                    <Text style={[styles.rowHint, rtl]}>{p.ends_at ? `تا ${jalaliDate(p.ends_at)}` : 'بدون تاریخ انقضای اشتراک'}</Text>
                   </View>
                   <Icon name="chevron-left" size={18} color={colors.muted} />
                 </Pressable>
