@@ -182,11 +182,13 @@ class WebsiteTests(TestCase):
         # Content protection page renders on the website and in the app API.
         prot_r = Client().get("/site/p/protection/")
         self.assertEqual(prot_r.status_code, 200)
-        self.assertContains(prot_r, "حفاظت از محتوا")
-        self.assertContains(prot_r, "انگشت‌نگاری دیجیتال")
+        self.assertContains(prot_r, "حقوق مؤلفان و ناشران و حفاظت از محتوا")
+        self.assertContains(prot_r, "AES-256-GCM")
+        self.assertContains(prot_r, "رویداد کپی ثبت‌شده")
         api_prot = Client().get("/api/v1/app/pages/protection/")
         self.assertEqual(api_prot.status_code, 200)
-        self.assertEqual(api_prot.json()["title"], "حفاظت از محتوا")
+        self.assertEqual(api_prot.json()["title"], "حقوق مؤلفان و ناشران و حفاظت از محتوا")
+        self.assertIsNotNone(api_prot.json()["important_at"])
 
         # Admin can add custom pages and custom navigation items.
         from .models import SiteNavItem, SitePage
