@@ -13,7 +13,6 @@
   .admin-kpi-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 22px; }
   @media (min-width: 760px) {
     .admin-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .admin-kpi-card--wide { grid-column: 1 / -1; }
   }
   .admin-kpi-card {
     background: var(--body-bg);
@@ -616,7 +615,7 @@
       </div>
 
       <!-- کارت خط تولید محتوا و تألیف -->
-      <div class="admin-kpi-card admin-kpi-card--wide">
+      <div class="admin-kpi-card">
         <div class="admin-kpi-header">
           <span class="admin-kpi-title"><span class="admin-kpi-icon">📚</span> کتب تألیفی و گلوگاه‌ها</span>
           <span class="admin-kpi-links">
@@ -630,6 +629,22 @@
           <a href="{% url 'admin:website_publicationrequest_changelist' %}?queue=pending" title="مشاهدهٔ درخواست‌های انتشار منتظر بررسی مدیر کل" class="lp-kpi-pill">درخواست انتشار <span class="lp-kpi-cnt{% if kpi_pending_pubs_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_pending_pubs }}</span></a>
           <a href="{% url 'admin:website_teacherapplication_changelist' %}?status__exact=pending" title="مشاهدهٔ درخواست‌های جدید همکاری آموزشی" class="lp-kpi-pill">درخواست همکاری <span class="lp-kpi-cnt{% if kpi_pending_teacher_apps_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_pending_teacher_apps }}</span></a>
           <a href="{% url 'admin:catalog_bookteamtask_changelist' %}?is_done__exact=0" title="مشاهدهٔ یادداشت‌ها و وظایف انجام‌نشدهٔ تیم‌های تألیف کتاب‌ها" class="lp-kpi-pill">یادداشت‌های باز هماهنگی تیم‌ها <span class="lp-kpi-cnt{% if kpi_open_team_tasks_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_open_team_tasks }}</span></a>
+        </div>
+      </div>
+
+      <!-- کارت سلامت، پشتیبانی و صف اقدام مدیر -->
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-header">
+          <span class="admin-kpi-title"><span class="admin-kpi-icon">🩺</span> سلامت و صف اقدام مدیر</span>
+          <a href="{% url 'admin:diagnostics_errorgroup_changelist' %}?status__exact=open" class="admin-kpi-link">مرکز خطاها ›</a>
+        </div>
+        <div class="admin-kpi-main-val">{{ kpi_action_queue_total }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">مورد نیازمند رسیدگی</span></div>
+        <div class="admin-kpi-sub">
+          <a href="{% url 'admin:commerce_payoutrequest_changelist' %}?queue=pending" title="مشاهدهٔ درخواست‌های تسویه حساب اساتید در انتظار بررسی یا واریز" class="lp-kpi-pill">درخواست تسویه اساتید <span class="lp-kpi-cnt{% if kpi_pending_payouts_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_pending_payouts }}</span></a>
+          <a href="{% url 'admin:learning_report_changelist' %}?status__exact=open" title="مشاهدهٔ گزارش‌های باز اشکال تست‌ها، فلش‌کارت‌ها و درسنامه" class="lp-kpi-pill">گزارش‌های اشکال <span class="lp-kpi-cnt{% if kpi_open_reports_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_open_reports }}</span></a>
+          <a href="{% url 'admin:diagnostics_errorgroup_changelist' %}?status__exact=open" title="مشاهدهٔ خطاهای باز و مغایرت‌های ثبت‌شده در اپ و سرور" class="lp-kpi-pill">خطاهای باز سیستم <span class="lp-kpi-cnt{% if kpi_open_errors_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_open_errors }}</span></a>
+          <a href="{% url 'admin:catalog_bookopinion_changelist' %}?queue=pending" title="مشاهدهٔ نظرات دانشجویان در انتظار بازبینی یا گزارش‌شده" class="lp-kpi-pill">نظرات در انتظار بازبینی <span class="lp-kpi-cnt{% if kpi_pending_opinions_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_pending_opinions }}</span></a>
+          <a href="{% url 'admin:website_bookaccessrequest_changelist' %}?status__exact=pending" title="مشاهدهٔ درخواست‌های باز دسترسی گروهی به کتاب‌ها" class="lp-kpi-pill">درخواست دسترسی گروهی <span class="lp-kpi-cnt{% if kpi_pending_access_requests_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_pending_access_requests }}</span></a>
         </div>
       </div>
     </div>
