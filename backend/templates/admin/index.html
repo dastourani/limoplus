@@ -4,7 +4,15 @@
 {% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "admin/css/dashboard.css" %}">
 <style>
   .admin-kpi-section { margin-bottom: 24px; }
-  .admin-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 22px; }
+  .admin-kpi-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 22px; }
+  @media (min-width: 760px) {
+    .admin-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .admin-kpi-card--wide { grid-column: 1 / -1; }
+  }
+  @media (min-width: 1440px) {
+    .admin-kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .admin-kpi-card--wide { grid-column: 1 / -1; }
+  }
   .admin-kpi-card {
     background: var(--body-bg);
     border: 1px solid var(--hairline-color);
@@ -13,6 +21,8 @@
     box-shadow: 0 2px 6px rgba(0,0,0,0.03);
     position: relative;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
     transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
   }
   .admin-kpi-card:hover {
@@ -33,17 +43,20 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 10px;
+    min-height: 28px;
     margin-bottom: 12px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--hairline-color);
   }
   .admin-kpi-title {
-    font-size: 15px;
+    font-size: 14.5px;
     font-weight: 800;
     color: var(--body-fg);
     display: flex;
     align-items: center;
     gap: 8px;
+    white-space: nowrap;
   }
   .admin-kpi-icon {
     font-size: 17px;
@@ -100,13 +113,14 @@
     align-items: center;
     gap: 6px;
     max-width: 100%;
-    padding: 3px 10px;
-    border-radius: 999px;
+    padding: 4px 10px;
+    border-radius: 10px;
     background: var(--darkened-bg);
     border: 1px solid var(--hairline-color);
     color: var(--body-quiet-color);
     font-size: 11.5px;
     font-weight: 600;
+    line-height: 1.45;
     text-decoration: none;
     transition: background .15s ease, border-color .15s ease, color .15s ease;
   }
@@ -131,18 +145,23 @@
     font-size: 10.5px;
     font-weight: 800;
     line-height: 1;
-    background: rgba(214, 69, 69, 0.16);
-    color: #B33A3A;
-    border: 1px solid rgba(214, 69, 69, 0.28);
+    background: rgba(148, 163, 184, 0.14);
+    color: var(--body-quiet-color);
+    border: 1px solid var(--hairline-color);
     font-variant-numeric: tabular-nums;
   }
-  html[data-theme="dark"] .lp-kpi-cnt {
+  .lp-kpi-cnt--alert {
+    background: rgba(214, 69, 69, 0.16);
+    color: #B33A3A;
+    border-color: rgba(214, 69, 69, 0.28);
+  }
+  html[data-theme="dark"] .lp-kpi-cnt--alert {
     background: rgba(214, 69, 69, 0.22);
     color: #FF9A9A;
     border-color: rgba(255, 154, 154, 0.30);
   }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .lp-kpi-cnt {
+    :root:not([data-theme="light"]) .lp-kpi-cnt--alert {
       background: rgba(214, 69, 69, 0.22);
       color: #FF9A9A;
       border-color: rgba(255, 154, 154, 0.30);
@@ -153,7 +172,8 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
   }
   .admin-kpi-links .admin-kpi-link {
     margin-inline-start: 0;
@@ -164,10 +184,12 @@
     color: #0284c7;
     background: rgba(2, 132, 199, 0.12);
     border: 1px solid rgba(2, 132, 199, 0.25);
-    padding: 2px 8px;
+    padding: 2px 9px;
     border-radius: 999px;
     text-decoration: none;
     margin-inline-start: auto;
+    white-space: nowrap;
+    flex-shrink: 0;
     transition: all .15s ease;
   }
   .admin-kpi-link:hover {
@@ -564,16 +586,14 @@
       <div class="admin-kpi-card">
         <div class="admin-kpi-header">
           <span class="admin-kpi-title"><span class="admin-kpi-icon">💳</span> درآمد و فروش</span>
-          <span class="admin-kpi-links">
-            <a href="{% url 'admin:commerce_order_report' %}?range=30" class="admin-kpi-link">گزارش فروش ›</a>
-            <a href="{% url 'admin:commerce_order_report_csv' %}?range=30" class="admin-kpi-link" title="دریافت فایل CSV سفارش‌های ۳۰ روز اخیر">خروجی CSV ⤓</a>
-          </span>
+          <a href="{% url 'admin:commerce_order_report' %}?range=30" class="admin-kpi-link">گزارش فروش ›</a>
         </div>
         <div class="admin-kpi-main-val">{{ kpi_rev_month }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">تومان در ۳۰ روز</span></div>
         <div class="admin-kpi-sub">
           <span class="lp-kpi-pill">امروز <b>{{ kpi_rev_today }} تومان</b></span>
           <span class="lp-kpi-pill">کل درآمد <b>{{ kpi_rev_total }} تومان</b></span>
           <a href="{% url 'admin:commerce_order_changelist' %}" class="lp-kpi-pill">فهرست سفارش‌ها ›</a>
+          <a href="{% url 'admin:commerce_order_report_csv' %}?range=30" class="lp-kpi-pill" title="دریافت فایل CSV سفارش‌های ۳۰ روز اخیر">خروجی CSV ⤓</a>
         </div>
       </div>
 
@@ -585,16 +605,16 @@
         </div>
         <div class="admin-kpi-main-val">{{ kpi_teachers_total }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">استاد</span></div>
         <div class="admin-kpi-sub">
-          <span class="lp-kpi-pill" title="اساتیدی که در ۳۰ روز اخیر هیچ ویرایش ثبت‌شده‌ای روی کتاب، فصل، بخش، تست یا فلش‌کارت نداشته‌اند">بدون ویرایش تألیفیِ ثبت‌شده در ۳۰ روز اخیر <span class="lp-kpi-cnt">{{ kpi_teachers_inactive }}</span></span>
+          <span class="lp-kpi-pill" title="اساتیدی که در ۳۰ روز اخیر هیچ ویرایش ثبت‌شده‌ای روی کتاب، فصل، بخش، تست یا فلش‌کارت نداشته‌اند">بدون ویرایش تألیفیِ ثبت‌شده در ۳۰ روز اخیر <span class="lp-kpi-cnt{% if kpi_teachers_inactive_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_teachers_inactive }}</span></span>
           <span class="lp-kpi-pill">کلاس‌ها <b>{{ kpi_active_classes }}</b> ({{ kpi_class_students }} دانشجو)</span>
           {% if kpi_unattributed_edits_count %}
-          <span class="lp-kpi-pill" title="ویرایش‌های قدیمی بدون شناسهٔ کاربر در ۳۰ روز اخیر که به هیچ استادی نسبت داده نشده‌اند">سوابق بدون هویت ویرایشگر <span class="lp-kpi-cnt">{{ kpi_unattributed_edits }}</span></span>
+          <span class="lp-kpi-pill" title="ویرایش‌های قدیمی بدون شناسهٔ کاربر در ۳۰ روز اخیر که به هیچ استادی نسبت داده نشده‌اند">سوابق بدون هویت ویرایشگر <span class="lp-kpi-cnt lp-kpi-cnt--alert">{{ kpi_unattributed_edits }}</span></span>
           {% endif %}
         </div>
       </div>
 
       <!-- کارت خط تولید محتوا و تألیف -->
-      <div class="admin-kpi-card">
+      <div class="admin-kpi-card admin-kpi-card--wide">
         <div class="admin-kpi-header">
           <span class="admin-kpi-title"><span class="admin-kpi-icon">📚</span> کتب تألیفی و گلوگاه‌ها</span>
           <span class="admin-kpi-links">
@@ -602,12 +622,12 @@
             <a href="{% url 'admin:catalog_book_changelist' %}" class="admin-kpi-link">کتاب‌ها ›</a>
           </span>
         </div>
-        <div class="admin-kpi-main-val">{{ kpi_draft_books }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">کتاب پیش‌نویس (Draft)</span></div>
+        <div class="admin-kpi-main-val">{{ kpi_draft_books }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">کتاب پیش‌نویس</span></div>
         <div class="admin-kpi-sub">
           <span class="lp-kpi-pill">منتشرشده <b>{{ kpi_published_books }}</b></span>
-          <a href="{% url 'admin:website_publicationrequest_changelist' %}?queue=pending" title="مشاهدهٔ درخواست‌های انتشار منتظر بررسی مدیر کل" class="lp-kpi-pill">درخواست انتشار <span class="lp-kpi-cnt">{{ kpi_pending_pubs }}</span></a>
-          <a href="{% url 'admin:website_teacherapplication_changelist' %}?status__exact=pending" title="مشاهدهٔ درخواست‌های جدید همکاری آموزشی" class="lp-kpi-pill">درخواست همکاری <span class="lp-kpi-cnt">{{ kpi_pending_teacher_apps }}</span></a>
-          <a href="{% url 'admin:catalog_bookteamtask_changelist' %}?is_done__exact=0" title="مشاهدهٔ یادداشت‌ها و وظایف انجام‌نشدهٔ تیم‌های تألیف کتاب‌ها" class="lp-kpi-pill">یادداشت‌های باز هماهنگی تیم‌ها <span class="lp-kpi-cnt">{{ kpi_open_team_tasks }}</span></a>
+          <a href="{% url 'admin:website_publicationrequest_changelist' %}?queue=pending" title="مشاهدهٔ درخواست‌های انتشار منتظر بررسی مدیر کل" class="lp-kpi-pill">درخواست انتشار <span class="lp-kpi-cnt{% if kpi_pending_pubs_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_pending_pubs }}</span></a>
+          <a href="{% url 'admin:website_teacherapplication_changelist' %}?status__exact=pending" title="مشاهدهٔ درخواست‌های جدید همکاری آموزشی" class="lp-kpi-pill">درخواست همکاری <span class="lp-kpi-cnt{% if kpi_pending_teacher_apps_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_pending_teacher_apps }}</span></a>
+          <a href="{% url 'admin:catalog_bookteamtask_changelist' %}?is_done__exact=0" title="مشاهدهٔ یادداشت‌ها و وظایف انجام‌نشدهٔ تیم‌های تألیف کتاب‌ها" class="lp-kpi-pill">یادداشت‌های باز هماهنگی تیم‌ها <span class="lp-kpi-cnt{% if kpi_open_team_tasks_count %} lp-kpi-cnt--alert{% endif %}">{{ kpi_open_team_tasks }}</span></a>
         </div>
       </div>
     </div>
