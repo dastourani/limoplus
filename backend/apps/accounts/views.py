@@ -335,7 +335,15 @@ def verify_otp(request):
             return _error(message, "invitation_unavailable")
         from django.urls import reverse
 
-        return Response({"accepted": True, "redirect": reverse("teacher-login"), "user": _user_payload(user)})
+        response = Response({"accepted": True, "redirect": reverse("teacher-login"), "user": _user_payload(user)})
+        response.set_cookie(
+            "lp_panel_role",
+            "teacher",
+            max_age=60 * 60 * 24 * 365,
+            httponly=True,
+            samesite="Lax",
+        )
+        return response
 
     try:
         with transaction.atomic():

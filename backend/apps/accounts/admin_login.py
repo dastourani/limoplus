@@ -50,7 +50,28 @@ def _login_url(mode):
     return reverse("teacher-login" if mode == "teacher" else "admin:login")
 
 
-def _render_login(request, *, mode="admin", error="", notice="", next_url=None):
+def _is_eligible_for_mode(user, mode: str) -> bool:
+    if user is None or not user.is_active or not user.is_staff:
+        return False
+    if mode == "admin":
+        return bool(user.is_superuser)
+    if mode == "teacher":
+        return not user.is_superuser
+    return False
+
+
+def _set_panel_role_cookie(response, user):
+    response.set_cookie(
+        "lp_panel_role",
+        "admin" if user.is_superuser else "teacher",
+        max_age=60 * 60 * 24 * 365,
+        httponly=True,
+        samesite="Lax",
+    )
+    return response
+
+
+def _render_login(request, *, mode="admin", error="", notice="", next_url=None, wrong_role=False):
     request.current_app = admin.site.name
     is_teacher = mode == "teacher"
     raw_next = next_url if next_url is not None else (request.session.get(_NEXT_SESSION) or request.GET.get("next") or "")
@@ -60,6 +81,7 @@ def _render_login(request, *, mode="admin", error="", notice="", next_url=None):
         "site_header": "پنل اساتید و مؤلفان لیموخوان" if is_teacher else admin.site.site_header,
         "login_url": _login_url(mode),
         "is_teacher_login": is_teacher,
+        "wrong_role": wrong_role,
         "next": _explicit_safe_next(request, raw_next),
         "otp_phone": request.session.get(_PHONE_SESSION, ""),
         "error": error or request.session.pop(_ERROR_SESSION, ""),
@@ -105,11 +127,10 @@ def _send_otp(request, next_url, *, mode="admin"):
         request.session.pop(_NEXT_SESSION, None)
 
     otp = code = None
-    allow_superuser = mode == "admin"
     with transaction.atomic():
         ratelimit.lock(f"otp:{phone}")
         user = User.objects.select_for_update().filter(phone=phone).first()
-        if user is not None and user.is_active and user.is_staff and (allow_superuser or not user.is_superuser):
+        if _is_eligible_for_mode(user, mode):
             now = timezone.now()
             recent = OTPCode.objects.filter(phone=phone, created_at__gte=now - timedelta(hours=1))
             last = recent.order_by("-created_at").first()
@@ -154,7 +175,7 @@ def _password_login(request, next_url, *, mode="admin"):
         request.session.pop(_PHONE_SESSION, None)
         request.session.pop(_NEXT_SESSION, None)
         login(request, user)
-        return HttpResponseRedirect(destination)
+        return _set_panel_role_cookie(HttpResponseRedirect(destination), user)
 
     if user is not None:
         _record_rejected_password(request, identifier)
@@ -177,7 +198,6 @@ def _verify_otp(request, next_url, *, mode="admin"):
 
     code = (request.POST.get("code") or "").strip().translate(_DIGITS)
     ip_key = f"otp-wrong-ip:{_client_ip(request)}"
-    allow_superuser = mode == "admin"
     user = None
     error = ""
     with transaction.atomic():
@@ -187,7 +207,7 @@ def _verify_otp(request, next_url, *, mode="admin"):
         else:
             ratelimit.lock(f"otp:{phone}")
             user = User.objects.select_for_update().filter(phone=phone).first()
-            if user is None or not user.is_active or not user.is_staff or (not allow_superuser and user.is_superuser):
+            if not _is_eligible_for_mode(user, mode):
                 ratelimit.hit(ip_key)
                 error = "کد نامعتبر یا منقضی است؛ دوباره تلاش کنید یا کد تازه بگیرید."
             else:
@@ -223,7 +243,7 @@ def _verify_otp(request, next_url, *, mode="admin"):
     request.session.pop(_PHONE_SESSION, None)
     request.session.pop(_NEXT_SESSION, None)
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
-    return HttpResponseRedirect(destination)
+    return _set_panel_role_cookie(HttpResponseRedirect(destination), user)
 
 
 def _panel_login(request, *, mode):
@@ -233,12 +253,18 @@ def _panel_login(request, *, mode):
     raw_next = request.POST.get("next") or request.GET.get("next") or request.session.get(_NEXT_SESSION) or ""
     next_url = _safe_next(request, raw_next)
     if request.user.is_authenticated and request.user.is_active and request.user.is_staff:
-        if mode == "teacher" and request.user.is_superuser:
+        if not _is_eligible_for_mode(request.user, mode):
+            error = (
+                "ورود مدیر کل فقط از مسیر مدیریت انجام می‌شود."
+                if mode == "teacher"
+                else "ورود به مسیر مدیریت فقط برای مدیر کل است؛ برای ورود به پنل اساتید از درگاه اساتید استفاده کنید."
+            )
             return _render_login(
                 request,
                 mode=mode,
-                error="ورود مدیر کل فقط از مسیر مدیریت انجام می‌شود.",
+                error=error,
                 next_url="",
+                wrong_role=True,
             )
         return HttpResponseRedirect(next_url)
 
@@ -250,7 +276,13 @@ def _panel_login(request, *, mode):
             return _verify_otp(request, raw_next, mode=mode)
         if action == "reset_phone":
             request.session.pop(_PHONE_SESSION, None)
-            return HttpResponseRedirect(_login_url(mode))
+            explicit_next = _explicit_safe_next(request, raw_next)
+            target = _login_url(mode)
+            if explicit_next:
+                from django.utils.http import urlencode
+
+                target = f"{target}?{urlencode({'next': explicit_next})}"
+            return HttpResponseRedirect(target)
         if action in ("", "password"):
             if mode == "teacher":
                 return _render_login(

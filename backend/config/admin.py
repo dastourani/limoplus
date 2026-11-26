@@ -57,6 +57,70 @@ _TEACHER_VISIBLE_MODELS = frozenset({
 class LimoAdminSite(AdminSite):
     """Group author, invitation, publication-review, and group-access workflows separately."""
 
+    def admin_view(self, view, cacheable=False):
+        from functools import update_wrapper
+
+        from django.http import HttpResponseRedirect
+        from django.views.decorators.cache import never_cache
+        from django.views.decorators.csrf import csrf_protect
+
+        def inner(request, *args, **kwargs):
+            if not self.has_permission(request):
+                if request.path == reverse("admin:logout", current_app=self.name):
+                    index_path = reverse("admin:index", current_app=self.name)
+                    return HttpResponseRedirect(index_path)
+                from django.contrib.auth.views import redirect_to_login
+
+                login_target = (
+                    reverse("teacher-login")
+                    if request.COOKIES.get("lp_panel_role") == "teacher"
+                    else reverse("admin:login", current_app=self.name)
+                )
+                return redirect_to_login(request.get_full_path(), login_target)
+            response = view(request, *args, **kwargs)
+            user = getattr(request, "user", None)
+            if user is not None and user.is_authenticated and user.is_staff and hasattr(response, "set_cookie"):
+                expected_role = "admin" if user.is_superuser else "teacher"
+                if request.COOKIES.get("lp_panel_role") != expected_role:
+                    response.set_cookie(
+                        "lp_panel_role",
+                        expected_role,
+                        max_age=60 * 60 * 24 * 365,
+                        httponly=True,
+                        samesite="Lax",
+                    )
+            return response
+
+        if not cacheable:
+            inner = never_cache(inner)
+        if not getattr(view, "csrf_exempt", False):
+            inner = csrf_protect(inner)
+        return update_wrapper(inner, view)
+
+    def logout(self, request, extra_context=None):
+        was_teacher = bool(
+            getattr(request, "user", None)
+            and request.user.is_authenticated
+            and request.user.is_staff
+            and not request.user.is_superuser
+        )
+        response = super().logout(request, extra_context=extra_context)
+        if was_teacher:
+            from django.http import HttpResponseRedirect
+
+            redirect_res = HttpResponseRedirect(reverse("teacher-login"))
+            for k, morsel in response.cookies.items():
+                redirect_res.cookies[k] = morsel
+            redirect_res.set_cookie(
+                "lp_panel_role",
+                "teacher",
+                max_age=60 * 60 * 24 * 365,
+                httponly=True,
+                samesite="Lax",
+            )
+            return redirect_res
+        return response
+
     def _transform_teacher_app_list(self, raw_apps):
         """Re-organize app groups, rename categories, and order models specifically for teacher ergonomics."""
         # Buckets for teacher models

@@ -224,13 +224,14 @@
       <p class="lp-login-help">برای ورود به میز تألیف و کلاس‌های لیموخوان، کد تأیید پیامکی دریافت کنید.</p>
     {% else %}
       <h1>ورود به پنل مدیریت</h1>
-      <p class="lp-login-help">ورود همکاران و مدیران با کد تأیید پیامکی انجام می‌شود.</p>
+      <p class="lp-login-help">ورود مدیر کل با کد تأیید پیامکی انجام می‌شود.</p>
     {% endif %}
   </div>
 
   {% if notice %}<div class="lp-login-notice" role="status">{{ notice }}</div>{% endif %}
   {% if error %}<div class="lp-login-error" role="alert">{{ error }}</div>{% endif %}
 
+  {% if not wrong_role %}
   <section class="lp-login-card" aria-labelledby="otp-login-heading">
     <h2 id="otp-login-heading">ورود با پیامک</h2>
 
@@ -240,6 +241,7 @@
         <form method="post" action="{{ login_url }}">
           {% csrf_token %}
           <input type="hidden" name="action" value="reset_phone">
+          <input type="hidden" name="next" value="{{ next }}">
           <button type="submit" class="lp-link-btn">تغییر شماره</button>
         </form>
       </div>
@@ -289,8 +291,13 @@
     </form>
   </details>
   {% endif %}
+  {% endif %}
 
   <div class="lp-login-footer">
+    {% if not is_teacher_login %}
+      <a href="{% url 'teacher-login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">استاد یا مؤلف هستید؟ ورود از درگاه اساتید</a>
+      <span> · </span>
+    {% endif %}
     <a href="{% url 'website:home' %}">بازگشت به وب‌سایت لیموخوان</a>
   </div>
 </div>
