@@ -3567,6 +3567,12 @@ class StepFourAdminPanelTests(TestCase):
         self.assertContains(dash, "/admin/website/teacherapplication/?status__exact=pending")
         self.assertEqual(dash.context["kpi_pending_pubs"], "۲")
         self.assertEqual(dash.context["kpi_pending_teacher_apps"], "۱")
+        self.assertContains(dash, "admin-kpi-card--wide")
+        self.assertContains(dash, "کتاب پیش‌نویس")
+        self.assertNotContains(dash, "(Draft)")
+        self.assertContains(dash, 'lp-kpi-cnt lp-kpi-cnt--alert">۲</span>')
+        self.assertContains(dash, 'lp-kpi-cnt lp-kpi-cnt--alert">۱</span>')
+        self.assertContains(dash, 'lp-kpi-cnt">۰</span>')
 
         self.assertEqual(self.client.get("/admin/commerce/order/report/?range=30").status_code, 200)
         csv_res = self.client.get("/admin/commerce/order/report/csv/?range=30")

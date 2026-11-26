@@ -1952,6 +1952,7 @@ def _admin_kpis_payload():
         # شاخص‌های اساتید و خط تولید محتوا
         "kpi_teachers_total": fa_number(all_teachers_count),
         "kpi_teachers_inactive": fa_number(inactive_teachers_count),
+        "kpi_teachers_inactive_count": inactive_teachers_count,
         "kpi_unattributed_edits": fa_number(unattributed_edits_count),
         "kpi_unattributed_edits_count": unattributed_edits_count,
         "kpi_draft_books": fa_number(draft_books_count),
@@ -1959,8 +1960,11 @@ def _admin_kpis_payload():
         "kpi_active_classes": fa_number(active_classrooms_count),
         "kpi_class_students": fa_number(classroom_students_count),
         "kpi_pending_pubs": fa_number(pending_pubs),
+        "kpi_pending_pubs_count": pending_pubs,
         "kpi_pending_teacher_apps": fa_number(pending_teacher_apps),
+        "kpi_pending_teacher_apps_count": pending_teacher_apps,
         "kpi_open_team_tasks": fa_number(open_team_tasks),
+        "kpi_open_team_tasks_count": open_team_tasks,
     }
 
 
