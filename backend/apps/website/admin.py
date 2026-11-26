@@ -7,7 +7,7 @@ from django.utils.html import format_html
 
 from apps.catalog.jalali import jalali_date as fa_date
 
-from .models import FaqItem, HelpPage, SiteNavItem, SitePage, SiteSettings, TeacherApplication, TeacherInvitation
+from .models import ContactMessage, FaqItem, HelpPage, SiteNavItem, SitePage, SiteSettings, TeacherApplication, TeacherInvitation
 
 
 @admin.register(SiteSettings)
@@ -220,6 +220,89 @@ class TeacherApplicationAdmin(admin.ModelAdmin):
                     revoked_at=now,
                     revocation_reason="درخواست استاد از وضعیت تأیید خارج شد.",
                 )
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(ContactMessage)
+class ContactMessageAdmin(admin.ModelAdmin):
+    """Superuser-only support/contact inbox; append-only audit log for order, refund, privacy & support tickets."""
+
+    list_display = (
+        "tracking_code",
+        "topic",
+        "priority",
+        "name",
+        "phone",
+        "order_reference",
+        "status",
+        "created_at_fa",
+        "handled_by",
+    )
+    list_filter = ("status", "topic", "priority", "created_at")
+    search_fields = ("tracking_code", "name", "phone", "order_reference", "related_item", "message")
+    ordering = ("-created_at", "-pk")
+    list_per_page = 50
+    actions = None
+    fields = (
+        "tracking_code",
+        "topic",
+        "priority",
+        "status",
+        "name",
+        "phone",
+        "order_reference",
+        "related_item",
+        "message",
+        "user",
+        "admin_note",
+        "created_at",
+        "handled_by",
+        "handled_at",
+    )
+    readonly_fields = (
+        "tracking_code",
+        "topic",
+        "name",
+        "phone",
+        "order_reference",
+        "related_item",
+        "message",
+        "user",
+        "created_at",
+        "handled_by",
+        "handled_at",
+    )
+
+    @admin.display(description="زمان ثبت", ordering="created_at")
+    def created_at_fa(self, obj):
+        return fa_date(obj.created_at)
+
+    @staticmethod
+    def _is_manager(request):
+        user = request.user
+        return user.is_active and user.is_staff and user.is_superuser
+
+    def has_module_permission(self, request):
+        return self._is_manager(request)
+
+    def has_view_permission(self, request, obj=None):
+        return self._is_manager(request)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return self._is_manager(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            prev = ContactMessage.objects.only("status", "priority", "admin_note").get(pk=obj.pk)
+            if prev.status != obj.status or prev.priority != obj.priority or prev.admin_note != obj.admin_note:
+                obj.handled_by = request.user
+                obj.handled_at = timezone.now()
         super().save_model(request, obj, form, change)
 
 

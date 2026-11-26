@@ -1,6 +1,9 @@
 {% extends "website/base.html" %}{% load site_icons %}
 {% block title %}{{ page.title }}، لیموخوان{% endblock %}
 {% block main %}
+{% if page.slug == "contact" %}
+{% include "website/_contact_page.html" %}
+{% else %}
 <section class="sec wrap narrow">
   <article class="page-card prose">
     <header class="page-head">
@@ -27,8 +30,8 @@
       <p><b>مسئول پاسخ‌گویی:</b> بهره‌بردار لیموخوان · <b>مهلت پاسخ‌گویی به درخواست‌ها:</b> حداکثر ۷ روز کاری</p>
       <p class="mut" style="margin-bottom: 12px;">اگر به گوشی یا شماره‌ی قبلی خود دسترسی ندارید نیز می‌توانید درخواست خود را از مسیر تماس با ما ارسال کنید.</p>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <a class="btn lemon small" href="{% url 'website:page' 'contact' %}">درخواست دربارهٔ اطلاعات حساب من</a>
-        <a class="btn dark small" href="{% url 'website:page' 'contact' %}">گزارش مشاهدهٔ اطلاعات شخص دیگری</a>
+        <a class="btn lemon small" href="{% url 'website:page' 'contact' %}?topic=privacy">درخواست دربارهٔ اطلاعات حساب من</a>
+        <a class="btn dark small" href="{% url 'website:page' 'contact' %}?topic=privacy">گزارش مشاهدهٔ اطلاعات شخص دیگری</a>
       </div>
     </div>
     {% endif %}
@@ -44,20 +47,13 @@
       {% endif %}
       <p class="mut" style="margin-bottom: 12px;">برای پیگیری پرداخت ناموفق، درخواست انصراف تا ۷ روز کاری یا بازیابی دسترسی حساب، شمارهٔ سفارش یا موبایل ثبت‌نام را از مسیر تماس با ما بفرستید.</p>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <a class="btn lemon small" href="{% url 'website:page' 'contact' %}">پیگیری سفارش یا درخواست استرداد</a>
-        <a class="btn dark small" href="{% url 'website:page' 'contact' %}">گزارش مشکل حساب یا دسترسی</a>
+        <a class="btn lemon small" href="{% url 'website:page' 'contact' %}?topic=refund">پیگیری سفارش یا درخواست استرداد</a>
+        <a class="btn dark small" href="{% url 'website:page' 'contact' %}?topic=account_access">گزارش مشکل حساب یا دسترسی</a>
       </div>
-    </div>
-    {% endif %}
-    {% if page.slug == "contact" %}
-    <div class="feat contact">
-      {% if s.email %}<p><b>ایمیل پشتیبانی:</b> <a href="mailto:{{ s.email }}" dir="ltr">{{ s.email }}</a></p>{% endif %}
-      {% if s.phone %}<p><b>تلفن:</b> <span dir="ltr">{{ s.phone }}</span></p>{% endif %}
-      {% if s.address %}<p><b>نشانی:</b> {{ s.address }}</p>{% endif %}
-      <a class="btn lemon small" href="{% url 'website:teacher-application' %}">درخواست همکاری آموزشی</a>
     </div>
     {% endif %}
   </article>
 </section>
+{% endif %}
 {% endblock %}
 {% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

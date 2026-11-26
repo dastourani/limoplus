@@ -827,6 +827,29 @@ class AppPagesTests(TestCase):
         self.assertContains(r, "ورود اساتید و مؤلفان")
         self.assertContains(r, reverse("teacher-login"))
 
+    def test_top_nav_contains_legal_and_support_dropdown_with_all_four_pages(self):
+        r = Client().get("/site/p/privacy/")
+        self.assertEqual(r.status_code, 200)
+        nav_items = r.context["nav_items"]
+        legal = next((item for item in nav_items if item["title"] == "قوانین و پشتیبانی"), None)
+        self.assertIsNotNone(legal)
+        self.assertTrue(legal["active"])
+        self.assertEqual(
+            [(sub["title"], sub["href"], sub["active"]) for sub in legal["children"]],
+            [
+                ("شرایط استفاده و خرید", "/site/p/terms/", False),
+                ("حریم خصوصی", "/site/p/privacy/", True),
+                ("حفاظت از محتوا", "/site/p/protection/", False),
+                ("تماس با ما", "/site/p/contact/", False),
+            ],
+        )
+        self.assertContains(r, 'class="nav-dd"')
+        self.assertContains(r, "قوانین و پشتیبانی")
+        self.assertContains(r, 'href="/site/p/terms/"')
+        self.assertContains(r, 'href="/site/p/privacy/"')
+        self.assertContains(r, 'href="/site/p/protection/"')
+        self.assertContains(r, 'href="/site/p/contact/"')
+
     def test_public_book_page_signs_authorized_media_and_blocks_cross_book_and_locked(self):
         import shutil
         import tempfile

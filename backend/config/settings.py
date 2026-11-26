@@ -219,6 +219,10 @@ OTP_WRONG_PER_IP_PER_HOUR = 30
 TEACHER_APPLICATIONS_PER_IP_PER_HOUR = env.int("TEACHER_APPLICATIONS_PER_IP_PER_HOUR", default=5)
 TEACHER_APPLICATIONS_PER_PHONE_PER_HOUR = env.int("TEACHER_APPLICATIONS_PER_PHONE_PER_HOUR", default=1)
 
+# Public contact/support form: database-backed hourly submission limits (accounts.ratelimit).
+CONTACT_MESSAGES_PER_IP_PER_HOUR = env.int("CONTACT_MESSAGES_PER_IP_PER_HOUR", default=8)
+CONTACT_MESSAGES_PER_SENDER_PER_HOUR = env.int("CONTACT_MESSAGES_PER_SENDER_PER_HOUR", default=4)
+
 # Shared secret for GitHub Actions -> /api/v1/releases/sync-github/ webhook (header X-Release-Secret).
 RELEASE_WEBHOOK_SECRET = env("RELEASE_WEBHOOK_SECRET", default="")
 

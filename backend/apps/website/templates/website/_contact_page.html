@@ -1,0 +1,239 @@
+{% load site_icons %}
+<section class="sec wrap contact-wrap">
+  <div class="contact-hero page-card">
+    <div class="contact-hero-top">
+      <div>
+        <span class="contact-kicker">پشتیبانی و پیگیری درخواست‌ها</span>
+        <h1 class="h2">{{ page.title }}</h1>
+      </div>
+      {% if updated_on %}
+      <span class="mut">آخرین به‌روزرسانی: {{ updated_on }}</span>
+      {% endif %}
+    </div>
+    <div class="page-body prose contact-intro" data-md="{{ page.body }}">{{ body }}</div>
+    <div class="contact-sla-row" aria-label="تعهدهای پاسخ‌گویی پشتیبانی">
+      <div class="contact-sla-pill">
+        <span class="contact-sla-ic">{% icon "receipt" 17 %}</span>
+        <div><b>پرداخت ناموفق</b><small>بررسی فوری وضعیت درگاه و فعال‌سازی یا بازگشت وجه</small></div>
+      </div>
+      <div class="contact-sla-pill">
+        <span class="contact-sla-ic">{% icon "clock" 17 %}</span>
+        <div><b>انصراف و حریم خصوصی</b><small>بررسی و اعلام نتیجهٔ مکتوب حداکثر تا ۷ روز کاری</small></div>
+      </div>
+      <div class="contact-sla-pill">
+        <span class="contact-sla-ic">{% icon "shield-check" 17 %}</span>
+        <div><b>محرمانگی پیام‌ها</b><small>اطلاعات فقط برای رسیدگی ثبت و هرگز منتشر نمی‌شود</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="contact-grid">
+    <div class="contact-main page-card" id="contact-result">
+      {% if contact_submitted %}
+      <div class="contact-success" role="status">
+        <div class="contact-success-head">
+          <span class="contact-success-ic">{% icon "circle-check" 24 %}</span>
+          <div>
+            <h2>پیام شما با موفقیت ثبت شد</h2>
+            <p class="mut">موضوع: {{ contact_submitted.topic_label }}</p>
+          </div>
+        </div>
+        <div class="contact-code-box">
+          <div>
+            <span>کد پیگیری شما</span>
+            <strong id="contact-tracking-code" dir="ltr">{{ contact_submitted.tracking_code }}</strong>
+          </div>
+          <button type="button" class="btn ghost-dark small" data-copy-code="contact-tracking-code">
+            {% icon "copy" 15 %}
+            <span>کپی کد پیگیری</span>
+          </button>
+        </div>
+        <p class="contact-success-note">
+          {% if contact_submitted.is_high_priority %}
+          این درخواست با اولویت بالا ثبت شده است. در صورت نیاز به پیگیری بعدی، همین کد پیگیری را اعلام کنید.
+          {% elif contact_submitted.has_phone %}
+          تیم پشتیبانی درخواست شما را بررسی می‌کند و در صورت نیاز از طریق شمارهٔ موبایل ثبت‌شده با شما تماس می‌گیرد (حداکثر تا ۷ روز کاری).
+          {% else %}
+          پیام شما ثبت شد و در صف بررسی تیم لیموخوان قرار گرفت. در صورت نیاز به پیگیری بعدی، همین کد پیگیری را نگهداری کنید.
+          {% endif %}
+        </p>
+        <div class="contact-success-actions">
+          <a class="btn lemon small" href="{% url 'website:page' 'contact' %}">ارسال پیام جدید</a>
+          <a class="btn dark small" href="{% url 'website:home' %}">بازگشت به لیموخوان</a>
+        </div>
+      </div>
+      {% else %}
+      <div class="contact-form-head">
+        <h2>ارسال پیام به پشتیبانی</h2>
+        <p>موضوع دقیق را انتخاب کنید تا راهنمای مرتبط و فیلدهای مناسب برایتان نمایش داده شود.</p>
+      </div>
+
+      {% if contact_rate_limited %}
+      <div class="teacher-application-alert" role="alert">
+        تعداد پیام‌های ارسالی از این نشانی یا با این مشخصات در یک ساعت اخیر زیاد است؛ لطفاً کمی بعد دوباره تلاش کنید یا از راه‌های تماس مستقیم کنار صفحه استفاده کنید.
+      </div>
+      {% endif %}
+
+      {% if contact_form.non_field_errors %}
+      <div class="teacher-application-alert" role="alert">{{ contact_form.non_field_errors }}</div>
+      {% endif %}
+
+      <form class="contact-form" method="post" action="{% url 'website:page' 'contact' %}" data-contact-form>
+        {% csrf_token %}
+        <div class="teacher-application-honeypot" aria-hidden="true">{{ contact_form.website }}</div>
+
+        <fieldset class="contact-fieldset{% if contact_form.topic.errors %} has-errors{% endif %}">
+          <legend>۱. موضوع درخواست شما چیست؟ <span aria-hidden="true">*</span></legend>
+          <div class="contact-topics">
+            {% for t in contact_topics %}
+            <label class="contact-topic-card{% if contact_active_topic.value == t.value %} is-selected{% endif %}">
+              <input
+                type="radio"
+                name="topic"
+                value="{{ t.value }}"
+                {% if contact_active_topic.value == t.value %}checked{% endif %}
+                data-topic-hint="{{ t.hint }}"
+                data-topic-link-label="{{ t.link_label }}"
+                data-topic-link-href="{{ t.link_href }}"
+                data-phone-required="{{ t.phone_required|yesno:'1,0' }}"
+                data-phone-help="{{ t.phone_help }}"
+                data-show-order="{{ t.show_order|yesno:'1,0' }}"
+                data-placeholder="{{ t.placeholder }}"
+              >
+              <span class="contact-topic-ic">{% icon t.icon 18 %}</span>
+              <span class="contact-topic-copy">
+                <b>{{ t.label }}</b>
+                <small>{{ t.short }}</small>
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+          {% if contact_form.topic.errors %}
+          <ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.topic.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+          {% endif %}
+        </fieldset>
+
+        <div class="contact-guide" data-contact-guide aria-live="polite">
+          <div class="contact-guide-body">
+            <b>راهنمای سریع این موضوع</b>
+            <p data-guide-text>{{ contact_active_topic.hint }}</p>
+          </div>
+          <a class="contact-guide-link" data-guide-link href="{{ contact_active_topic.link_href }}">
+            <span>{{ contact_active_topic.link_label }}</span>
+            {% icon "chevron-left" 15 %}
+          </a>
+        </div>
+
+        <div class="contact-fields-grid">
+          <div class="teacher-application-field{% if contact_form.name.errors %} has-errors{% endif %}">
+            <label for="{{ contact_form.name.id_for_label }}">{{ contact_form.name.label }} <span aria-hidden="true">*</span></label>
+            {{ contact_form.name }}
+            {% if contact_form.name.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.name.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+
+          <div class="teacher-application-field{% if contact_form.phone.errors %} has-errors{% endif %}">
+            <label for="{{ contact_form.phone.id_for_label }}">
+              {{ contact_form.phone.label }}
+              <span data-phone-req-mark>{% if contact_active_topic.phone_required %}*{% else %}(اختیاری){% endif %}</span>
+            </label>
+            {{ contact_form.phone }}
+            <small class="teacher-application-help" data-phone-help>{{ contact_active_topic.phone_help }}</small>
+            {% if contact_form.phone.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.phone.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+
+          <div class="teacher-application-field{% if contact_active_topic.show_order %} contact-field-highlight{% endif %}{% if contact_form.order_reference.errors %} has-errors{% endif %}" data-order-field>
+            <label for="{{ contact_form.order_reference.id_for_label }}">{{ contact_form.order_reference.label }} <span class="mut">(برای مسائل مالی)</span></label>
+            {{ contact_form.order_reference }}
+            {% if contact_form.order_reference.help_text %}<small class="teacher-application-help">{{ contact_form.order_reference.help_text }}</small>{% endif %}
+            {% if contact_form.order_reference.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.order_reference.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+
+          <div class="teacher-application-field{% if contact_form.related_item.errors %} has-errors{% endif %}">
+            <label for="{{ contact_form.related_item.id_for_label }}">{{ contact_form.related_item.label }}</label>
+            {{ contact_form.related_item }}
+            {% if contact_form.related_item.help_text %}<small class="teacher-application-help">{{ contact_form.related_item.help_text }}</small>{% endif %}
+            {% if contact_form.related_item.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.related_item.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+        </div>
+
+        <div class="teacher-application-field{% if contact_form.message.errors %} has-errors{% endif %}">
+          <div class="contact-label-row">
+            <label for="{{ contact_form.message.id_for_label }}">{{ contact_form.message.label }} <span aria-hidden="true">*</span></label>
+            <span class="mut" data-msg-count>۰ / ۴۰۰۰</span>
+          </div>
+          {{ contact_form.message }}
+          {% if contact_form.message.help_text %}<small class="teacher-application-help">{{ contact_form.message.help_text }}</small>{% endif %}
+          {% if contact_form.message.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in contact_form.message.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+        </div>
+
+        <p class="teacher-application-note">
+          با ثبت این فرم، پیام شما با کد پیگیری یکتا در سامانهٔ پشتیبانی لیموخوان ذخیره می‌شود و برای سرعت بیشتر رسیدگی، خلاصهٔ آن به کانال بررسی پشتیبانی در پیام‌رسان بله اطلاع‌رسانی می‌گردد. هیچ اطلاعاتی به‌صورت عمومی منتشر نمی‌شود.
+        </p>
+        <button class="btn lemon wide" type="submit">ارسال پیام به پشتیبانی</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <aside class="contact-side">
+      <div class="page-card contact-side-card">
+        <h3>راه‌های تماس مستقیم</h3>
+        {% if s.email or s.phone or s.address or s.telegram_url or s.instagram_url %}
+        <ul class="contact-channel-list">
+          {% if s.email %}
+          <li>
+            <span class="contact-channel-ic">{% icon "mail" 17 %}</span>
+            <div><small>ایمیل پشتیبانی</small><a href="mailto:{{ s.email }}" dir="ltr">{{ s.email }}</a></div>
+          </li>
+          {% endif %}
+          {% if s.phone %}
+          <li>
+            <span class="contact-channel-ic">{% icon "phone" 17 %}</span>
+            <div><small>تلفن پشتیبانی</small><span dir="ltr">{{ s.phone }}</span></div>
+          </li>
+          {% endif %}
+          {% if s.address %}
+          <li>
+            <span class="contact-channel-ic">{% icon "map-pin" 17 %}</span>
+            <div><small>نشانی</small><span>{{ s.address }}</span></div>
+          </li>
+          {% endif %}
+          {% if s.telegram_url %}
+          <li>
+            <span class="contact-channel-ic">{% icon "message-circle" 17 %}</span>
+            <div><small>تلگرام</small><a href="{{ s.telegram_url }}">ارتباط در تلگرام</a></div>
+          </li>
+          {% endif %}
+          {% if s.instagram_url %}
+          <li>
+            <span class="contact-channel-ic">{% icon "sparkles" 17 %}</span>
+            <div><small>اینستاگرام</small><a href="{{ s.instagram_url }}">صفحهٔ لیموخوان</a></div>
+          </li>
+          {% endif %}
+        </ul>
+        {% else %}
+        <p class="mut">در حال حاضر سریع‌ترین راه ارتباط، ثبت پیام از طریق همین فرم است؛ اطلاعات تماس تکمیلی از تنظیمات سایت نمایش داده می‌شود.</p>
+        {% endif %}
+      </div>
+
+      <div class="page-card contact-side-card contact-teacher-box">
+        <div class="contact-teacher-badge">{% icon "graduation-cap" 18 %}<span>اساتید و مؤلفان</span></div>
+        <h3>همکاری تألیف یا برگزاری کلاس</h3>
+        <p>اگر کتاب یا جزوه دارید یا می‌خواهید برای دانشجویان خود کلاس رایگان بسازید، فرم تخصصی همکاری آموزشی را ثبت کنید.</p>
+        <div class="contact-teacher-actions">
+          <a class="btn lemon small" href="{% url 'website:teacher-application' %}">درخواست همکاری آموزشی</a>
+          <a class="btn ghost-dark small" href="{% url 'teacher-login' %}">ورود به درگاه اساتید</a>
+        </div>
+      </div>
+
+      <div class="page-card contact-side-card">
+        <h3>پیش از ارسال پیام</h3>
+        <nav class="contact-quick-links" aria-label="پیوندهای مفید پشتیبانی">
+          <a href="{% url 'website:faq' %}">پرسش‌های پرتکرار {% icon "chevron-left" 15 %}</a>
+          <a href="{% url 'website:page' 'terms' %}">شرایط استفاده و خرید {% icon "chevron-left" 15 %}</a>
+          <a href="{% url 'website:page' 'privacy' %}">حریم خصوصی در لیموخوان {% icon "chevron-left" 15 %}</a>
+          <a href="{% url 'website:page' 'protection' %}">حقوق مؤلفان و حفاظت از محتوا {% icon "chevron-left" 15 %}</a>
+        </nav>
+      </div>
+    </aside>
+  </div>
+</section>

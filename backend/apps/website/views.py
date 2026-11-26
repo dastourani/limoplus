@@ -762,6 +762,10 @@ def page(request, slug):
     p = SitePage.objects.filter(slug=slug).first()
     if not p:
         raise Http404
+    if slug == "contact":
+        from .contacts import contact_page
+
+        return contact_page(request, p)
     return render(request, "website/page.html", _base(
         request, page=p, body=simple_text(p.body, with_ids=True),
         updated_on=fa_date(p.updated_at),
