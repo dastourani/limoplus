@@ -4,7 +4,7 @@ from django import forms
 
 from apps.accounts.phone import InvalidPhone, normalize_phone
 
-from .models import BookAccessRequest, Classroom, TeacherApplication
+from .models import BookAccessRequest, Classroom, ContactMessage, TeacherApplication
 
 
 class TeacherApplicationForm(forms.ModelForm):
@@ -252,3 +252,109 @@ class ClassroomAddMembersForm(forms.Form):
         self.normalized_phones = phones
         self.duplicate_count = duplicates
         return self.cleaned_data["member_phones"]
+
+
+class ContactMessageForm(forms.ModelForm):
+    """Public support/contact intake form with topic-based conditional requirements and honeypot."""
+
+    phone = forms.CharField(
+        label="شماره موبایل",
+        required=False,
+        max_length=20,
+        widget=forms.TelInput(
+            attrs={
+                "autocomplete": "tel",
+                "inputmode": "tel",
+                "dir": "ltr",
+                "placeholder": "09123456789",
+            }
+        ),
+        help_text="برای پیگیری پرداخت، استرداد، حساب کاربری یا درخواست‌های حریم خصوصی الزامی است.",
+    )
+    website = forms.CharField(
+        label="وب‌سایت",
+        required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "tabindex": "-1", "aria-hidden": "true"}),
+    )
+
+    class Meta:
+        model = ContactMessage
+        fields = ("topic", "name", "phone", "email", "order_reference", "related_item", "message")
+        widgets = {
+            "topic": forms.RadioSelect(),
+            "name": forms.TextInput(attrs={"autocomplete": "name", "maxlength": 120, "placeholder": "مثلاً: سارا محمدی"}),
+            "email": forms.EmailInput(attrs={"autocomplete": "email", "dir": "ltr", "placeholder": "name@example.com"}),
+            "order_reference": forms.TextInput(
+                attrs={
+                    "maxlength": 120,
+                    "dir": "ltr",
+                    "placeholder": "مثلاً: کد رهگیری زیبال یا شماره سفارش",
+                }
+            ),
+            "related_item": forms.TextInput(
+                attrs={
+                    "maxlength": 160,
+                    "placeholder": "مثلاً: نام کتاب، اشتراک ۳ ماهه یا شماره فصل",
+                }
+            ),
+            "message": forms.Textarea(
+                attrs={
+                    "rows": 5,
+                    "maxlength": 4000,
+                    "placeholder": "جزئیات درخواست یا پرسش خود را بنویسید...",
+                }
+            ),
+        }
+        help_texts = {
+            "email": "اختیاری؛ در صورت نداشتن شماره موبایل یا تمایل به دریافت پاسخ مکتوب از ایمیل استفاده می‌کنیم.",
+            "order_reference": "برای پیگیری پرداخت ناموفق یا درخواست بازپرداخت بسیار کمک‌کننده است؛ اگر در دسترس نیست خالی بگذارید.",
+            "related_item": "اختیاری — عنوان کتاب، اشتراک یا بخش مورد نظر.",
+            "message": "حداقل ۱۰ کاراکتر بنویسید. لطفاً از ارسال رمز، کد یک‌بارمصرف یا اطلاعات کارت بانکی خودداری کنید.",
+        }
+
+    def clean_name(self):
+        value = " ".join((self.cleaned_data.get("name") or "").split())
+        if len(value) < 2:
+            raise forms.ValidationError("نام و نام خانوادگی را وارد کنید.")
+        return value
+
+    def clean_phone(self):
+        raw = (self.cleaned_data.get("phone") or "").strip()
+        if not raw:
+            return ""
+        try:
+            return normalize_phone(raw)
+        except InvalidPhone as exc:
+            raise forms.ValidationError(str(exc)) from exc
+
+    def clean_email(self):
+        return (self.cleaned_data.get("email") or "").strip().lower()
+
+    def clean_order_reference(self):
+        return " ".join((self.cleaned_data.get("order_reference") or "").split())
+
+    def clean_related_item(self):
+        return " ".join((self.cleaned_data.get("related_item") or "").split())
+
+    def clean_message(self):
+        value = (self.cleaned_data.get("message") or "").strip()
+        if len(value) < 10:
+            raise forms.ValidationError("لطفاً شرح پیام خود را کامل‌تر (دست‌کم ۱۰ کاراکتر) بنویسید.")
+        return value
+
+    def clean(self):
+        cleaned = super().clean()
+        topic = cleaned.get("topic")
+        phone = cleaned.get("phone", "")
+        email = cleaned.get("email", "")
+        if topic in ContactMessage.PHONE_REQUIRED_TOPICS and not phone:
+            self.add_error(
+                "phone",
+                "برای این موضوع، شماره موبایل ثبت‌شده یا شماره تماس معتبر الزامی است تا حساب یا سفارش قابل بررسی باشد.",
+            )
+        elif not phone and not email:
+            self.add_error(
+                "phone",
+                "برای ارسال پاسخ، دست‌کم شماره موبایل یا نشانی ایمیل را وارد کنید.",
+            )
+        return cleaned

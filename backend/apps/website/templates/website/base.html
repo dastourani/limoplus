@@ -11,7 +11,7 @@
 <meta property="og:locale" content="fa_IR">
 <meta name="theme-color" content="#1B2620">
 <link rel="icon" href="{% static 'website/icon.svg' %}" type="image/svg+xml">
-<link rel="stylesheet" href="{% static 'website/site.css' %}?v=19">
+<link rel="stylesheet" href="{% static 'website/site.css' %}?v=20">
 {% block head %}{% endblock %}
 </head>
 <body>
@@ -23,10 +23,10 @@
     <nav class="links">
       {% for item in nav_items %}
         {% if item.children %}
-        <div class="nav-dd">
-          <a href="{{ item.href }}" class="nav-top{% if item.active %} on{% endif %}">{{ item.title }} <small>▾</small></a>
-          <div class="nav-sub">
-            {% for sub in item.children %}<a href="{{ sub.href }}"{% if sub.active %} class="on"{% endif %}>{{ sub.title }}</a>{% endfor %}
+        <div class="nav-dd" data-nav-dd>
+          <a href="{{ item.href }}" class="nav-top{% if item.active %} on{% endif %}" aria-haspopup="true" aria-expanded="false">{{ item.title }}{% icon "chevron-down" 14 %}</a>
+          <div class="nav-sub" role="menu">
+            {% for sub in item.children %}<a href="{{ sub.href }}" role="menuitem"{% if sub.active %} class="on"{% endif %}>{{ sub.title }}</a>{% endfor %}
           </div>
         </div>
         {% else %}

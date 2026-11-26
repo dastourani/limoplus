@@ -1228,3 +1228,115 @@ class ClassroomMember(models.Model):
         from .group_access import is_entitlement_active_now
 
         return bool(self.status == self.Status.ACTIVE and is_entitlement_active_now(self.entitlement))
+
+
+def generate_contact_tracking_code(length: int = 6) -> str:
+    """Readable support tracking code such as LM-7K4M9P (no ambiguous 0/O/1/I)."""
+    return "LM-" + "".join(secrets.choice(_INVITE_CODE_ALPHABET) for _ in range(length))
+
+
+class ContactMessage(models.Model):
+    """Public contact/support ticket submitted via /p/contact/, audited and managed in admin."""
+
+    class Topic(models.TextChoices):
+        ORDER_PAYMENT = "order_payment", "پیگیری پرداخت ناموفق یا فعال‌نشدن خرید"
+        REFUND = "refund", "درخواست انصراف و بازپرداخت (تا ۷ روز)"
+        ACCOUNT_ACCESS = "account_access", "مشکل حساب کاربری، تغییر شماره یا دستگاه‌ها"
+        PRIVACY = "privacy", "درخواست حریم خصوصی (اصلاح، حذف یا گزارش)"
+        CONTENT_COPYRIGHT = "content_copyright", "گزارش خطای علمی، کپی‌رایت یا بازنشر غیرمجاز"
+        TEACHER_ORG = "teacher_org", "همکاری اساتید، کلاس‌های دانشگاهی یا سازمانی"
+        OTHER = "other", "پیشنهاد، انتقاد یا سایر موارد"
+
+    class Status(models.TextChoices):
+        NEW = "new", "جدید (در انتظار بررسی)"
+        IN_PROGRESS = "in_progress", "در حال پیگیری"
+        WAITING_USER = "waiting_user", "در انتظار پاسخ کاربر"
+        RESOLVED = "resolved", "پاسخ‌داده‌شده / حل‌شده"
+        CLOSED = "closed", "بسته‌شده"
+
+    class Priority(models.TextChoices):
+        HIGH = "high", "بالا"
+        NORMAL = "normal", "عادی"
+
+    PHONE_REQUIRED_TOPICS = frozenset({
+        Topic.ORDER_PAYMENT,
+        Topic.REFUND,
+        Topic.ACCOUNT_ACCESS,
+        Topic.PRIVACY,
+    })
+
+    tracking_code = models.CharField(
+        "کد پیگیری",
+        max_length=16,
+        unique=True,
+        db_index=True,
+        default=generate_contact_tracking_code,
+        editable=False,
+    )
+    topic = models.CharField(
+        "موضوع درخواست",
+        max_length=24,
+        choices=Topic.choices,
+        default=Topic.ORDER_PAYMENT,
+        db_index=True,
+    )
+    priority = models.CharField(
+        "اولویت",
+        max_length=10,
+        choices=Priority.choices,
+        default=Priority.NORMAL,
+        db_index=True,
+    )
+    name = models.CharField("نام و نام خانوادگی", max_length=120)
+    phone = models.CharField("شماره موبایل", max_length=11, blank=True, db_index=True)
+    email = models.EmailField("ایمیل", blank=True)
+    order_reference = models.CharField("شماره سفارش یا کد پیگیری پرداخت", max_length=120, blank=True)
+    related_item = models.CharField("کتاب، بخش یا صفحهٔ مرتبط", max_length=160, blank=True)
+    message = models.TextField("شرح پیام", max_length=4000)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="contact_messages",
+        verbose_name="حساب ثبت‌شده هنگام ارسال",
+        editable=False,
+    )
+    status = models.CharField(
+        "وضعیت رسیدگی",
+        max_length=16,
+        choices=Status.choices,
+        default=Status.NEW,
+        db_index=True,
+    )
+    admin_note = models.TextField(
+        "یادداشت و شرح رسیدگی داخلی",
+        max_length=3000,
+        blank=True,
+        help_text="نتیجه بررسی پرداخت، استرداد یا پاسخ ارسال‌شده به کاربر را برای ممیزی ثبت کنید.",
+    )
+    handled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="handled_contact_messages",
+        verbose_name="رسیدگی‌کننده",
+        editable=False,
+    )
+    handled_at = models.DateTimeField("زمان آخرین رسیدگی", null=True, blank=True, editable=False)
+    created_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "پیام تماس با ما"
+        verbose_name_plural = "پیام‌های تماس و پشتیبانی"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["status", "-created_at"], name="contact_msg_status_time_idx"),
+            models.Index(fields=["topic", "-created_at"], name="contact_msg_topic_time_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.tracking_code} · {self.get_topic_display()} · {self.name}"
+

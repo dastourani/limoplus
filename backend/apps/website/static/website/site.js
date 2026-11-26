@@ -287,6 +287,111 @@
     });
   }
 
+  function navDropdowns() {
+    document.querySelectorAll('[data-nav-dd]').forEach(function (dd) {
+      var topLink = dd.querySelector('.nav-top');
+      if (!topLink) return;
+      function setOpen(open) {
+        dd.classList.toggle('is-open', !!open);
+        topLink.setAttribute('aria-expanded', open ? 'true' : 'false');
+      }
+      dd.addEventListener('mouseenter', function () { setOpen(true); });
+      dd.addEventListener('mouseleave', function () { setOpen(false); });
+      dd.addEventListener('focusin', function () { setOpen(true); });
+      dd.addEventListener('focusout', function (e) {
+        if (!dd.contains(e.relatedTarget)) setOpen(false);
+      });
+      dd.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+          setOpen(false);
+          topLink.focus();
+        }
+      });
+    });
+  }
+
+  function contactForm() {
+    var form = document.querySelector('[data-contact-form]');
+    if (form) {
+      var radios = form.querySelectorAll('input[type="radio"][name="topic"]');
+      var guideText = form.querySelector('[data-guide-text]');
+      var guideLink = form.querySelector('[data-guide-link]');
+      var phoneReqMark = form.querySelector('[data-phone-req-mark]');
+      var orderField = form.querySelector('[data-order-field]');
+      var msgField = form.querySelector('textarea[name="message"]');
+      var msgCount = form.querySelector('[data-msg-count]');
+      var toFa = function (n) {
+        return String(n).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[Number(d)]; });
+      };
+
+      function syncTopic(radio) {
+        if (!radio) return;
+        radios.forEach(function (r) {
+          var card = r.closest('.contact-topic-card');
+          if (card) card.classList.toggle('is-selected', r.checked);
+        });
+        if (guideText) guideText.textContent = radio.getAttribute('data-topic-hint') || '';
+        if (guideLink) {
+          guideLink.href = radio.getAttribute('data-topic-link-href') || '#';
+          var span = guideLink.querySelector('span');
+          if (span) span.textContent = radio.getAttribute('data-topic-link-label') || '';
+        }
+        if (phoneReqMark) {
+          phoneReqMark.textContent = radio.getAttribute('data-phone-required') === '1' ? '*' : '(در صورت نیاز یا نداشتن ایمیل)';
+        }
+        if (orderField) {
+          orderField.classList.toggle('contact-field-highlight', radio.getAttribute('data-show-order') === '1');
+        }
+        if (msgField) {
+          var ph = radio.getAttribute('data-placeholder');
+          if (ph) msgField.setAttribute('placeholder', ph);
+        }
+      }
+
+      radios.forEach(function (r) {
+        r.addEventListener('change', function () { if (r.checked) syncTopic(r); });
+      });
+      var checked = form.querySelector('input[type="radio"][name="topic"]:checked');
+      if (checked) syncTopic(checked);
+
+      if (msgField && msgCount) {
+        var syncCount = function () {
+          msgCount.textContent = toFa(msgField.value.length) + ' / ۴۰۰۰';
+        };
+        msgField.addEventListener('input', syncCount);
+        syncCount();
+      }
+    }
+
+    document.querySelectorAll('[data-copy-code]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var target = document.getElementById(btn.getAttribute('data-copy-code'));
+        if (!target) return;
+        var text = (target.textContent || '').trim();
+        var span = btn.querySelector('span');
+        var done = function () {
+          if (!span) return;
+          var prev = span.textContent;
+          span.textContent = 'کپی شد!';
+          window.setTimeout(function () { span.textContent = prev; }, 1800);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () {});
+        } else {
+          var tmp = document.createElement('textarea');
+          tmp.value = text;
+          tmp.setAttribute('readonly', '');
+          tmp.style.position = 'fixed';
+          tmp.style.opacity = '0';
+          document.body.appendChild(tmp);
+          tmp.select();
+          try { document.execCommand('copy'); done(); } catch (e) { /* ignore */ }
+          document.body.removeChild(tmp);
+        }
+      });
+    });
+  }
+
   function start() {
     P = window.LimoPreview;
     covers();
@@ -298,6 +403,8 @@
     homeRandomSample();
     device();
     faqAnchors();
+    navDropdowns();
+    contactForm();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
