@@ -152,3 +152,52 @@ class PersonalLibraryTests(TestCase):
             "/api/v1/me/library/reorder/", {"status": "finished", "book_ids": [first.pk, first.pk]}, format="json"
         )
         self.assertEqual(duplicate.status_code, 400)
+
+    def test_withdrawing_book_from_storefront_preserves_prior_single_book_buyers_but_archive_hides(self):
+        from apps.commerce.models import Order, Plan
+
+        book, section = self.make_book("library-withdrawn")
+        order = Order.objects.create(
+            user=self.user,
+            book=book,
+            title=f"خرید کتاب {book.title}",
+            amount=120_000,
+            status=Order.Status.PAID,
+        )
+        Entitlement.objects.create(user=self.user, book=book, order=order)
+        SectionProgress.objects.create(user=self.user, book=book, node=section, percent=35)
+
+        subscriber = User.objects.create_user("09120001099")
+        _, sub_token = DeviceSession.start(subscriber, "sub-device")
+        sub_client = APIClient()
+        sub_client.credentials(HTTP_AUTHORIZATION=f"Bearer {sub_token}")
+        sub_plan = Plan.objects.create(title="اشتراک ۱ ماهه", scope=Plan.Scope.ALL, months=1, price=100_000)
+        sub_order = Order.objects.create(
+            user=subscriber, plan=sub_plan, title=sub_plan.title, amount=100_000, status=Order.Status.PAID
+        )
+        Entitlement.objects.create(
+            user=subscriber, all_majors=True, ends_at=timezone.now() + timedelta(days=30), order=sub_order
+        )
+
+        # Withdraw from public storefront (equivalent to panel unpublish):
+        ContentNode.objects.filter(path__startswith=book.path).update(is_published=False)
+
+        # Prior buyer keeps library visibility, reading continuity, book detail, and section content:
+        buyer_lib = self.client.get("/api/v1/me/library/")
+        self.assertEqual(buyer_lib.status_code, 200)
+        self.assertIn(book.slug, self.books_by_slug(buyer_lib))
+        self.assertIn(book.slug, [row["book_slug"] for row in buyer_lib.data["reading"]])
+        self.assertEqual(self.client.get(f"/api/v1/books/{book.slug}/").status_code, 200)
+        self.assertEqual(self.client.get(f"/api/v1/nodes/{section.id}/").status_code, 200)
+
+        # New buyers and active subscribers cannot discover, read, or purchase the withdrawn book:
+        self.assertEqual(sub_client.get(f"/api/v1/books/{book.slug}/").status_code, 404)
+        self.assertEqual(sub_client.get(f"/api/v1/nodes/{section.id}/").status_code, 404)
+        self.assertEqual(sub_client.get(f"/api/v1/offers/?book={book.slug}").status_code, 404)
+        self.assertNotIn(book.slug, self.books_by_slug(sub_client.get("/api/v1/me/library/")))
+
+        # Archiving (e.g. legal/copyright takedown) hides it from everyone including the prior buyer:
+        ContentNode.objects.filter(pk=book.pk).update(is_archived=True)
+        self.assertEqual(self.client.get(f"/api/v1/books/{book.slug}/").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/v1/nodes/{section.id}/").status_code, 404)
+        self.assertNotIn(book.slug, self.books_by_slug(self.client.get("/api/v1/me/library/")))

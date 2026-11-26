@@ -238,6 +238,52 @@ class WebsiteTests(TestCase):
         teacher_app_r = Client().get("/site/teacher-application/")
         self.assertEqual(teacher_app_r.status_code, 200)
         self.assertContains(teacher_app_r, "/site/faq/#teachers")
+        self.assertContains(teacher_app_r, "پیام‌رسان بله")
+
+    def test_privacy_page_reflects_live_data_flows_retention_and_support_actions(self):
+        priv_r = Client().get("/site/p/privacy/")
+        self.assertEqual(priv_r.status_code, 200)
+        self.assertContains(priv_r, "حریم خصوصی در لیموخوان")
+        self.assertNotContains(priv_r, "فقط برای خود شما")
+        self.assertContains(priv_r, 'href="#sec-5"')
+        self.assertContains(priv_r, 'id="sec-5"')
+        self.assertContains(priv_r, "پیام‌رسان بله")
+        self.assertContains(priv_r, "ابزار آماده‌سازی محتوای تألیفی")
+        self.assertContains(priv_r, "۷ روز کاری")
+        self.assertContains(priv_r, "درخواست دربارهٔ اطلاعات حساب من")
+        self.assertContains(priv_r, "گزارش مشاهدهٔ اطلاعات شخص دیگری")
+        api_priv = Client().get("/api/v1/app/pages/privacy/")
+        self.assertEqual(api_priv.status_code, 200)
+        self.assertEqual(api_priv.json()["title"], "حریم خصوصی در لیموخوان")
+        self.assertIsNotNone(api_priv.json()["important_at"])
+
+    def test_terms_page_reflects_live_access_refund_and_support_actions(self):
+        from .views import simple_text
+
+        terms_r = Client().get("/site/p/terms/")
+        self.assertEqual(terms_r.status_code, 200)
+        self.assertContains(terms_r, "شرایط استفاده و خرید در لیموخوان")
+        self.assertNotContains(terms_r, "خرید هر کتاب برای همیشه است")
+        self.assertContains(terms_r, 'href="#sec-1"')
+        self.assertContains(terms_r, 'href="#sec-3"')
+        self.assertContains(terms_r, 'href="#sec-6"')
+        self.assertContains(terms_r, 'id="sec-1"')
+        self.assertContains(terms_r, 'id="sec-6"')
+        self.assertContains(terms_r, "<div class=\"prose-table\"><table>")
+        self.assertContains(terms_r, "بدون تاریخ انقضای اشتراک")
+        self.assertContains(terms_r, "معادل ۳۰ روز")
+        self.assertContains(terms_r, "توقف فروش یک کتاب به خریداران جدید، دسترسی خریداران قبلیِ همان کتاب را لغو نمی‌کند")
+        self.assertContains(terms_r, "۷ روز کاری")
+        self.assertContains(terms_r, "پیگیری سفارش یا درخواست استرداد")
+        self.assertContains(terms_r, "گزارش مشکل حساب یا دسترسی")
+        api_terms = Client().get("/api/v1/app/pages/terms/")
+        self.assertEqual(api_terms.status_code, 200)
+        self.assertEqual(api_terms.json()["title"], "شرایط استفاده و خرید در لیموخوان")
+        self.assertIsNotNone(api_terms.json()["important_at"])
+
+        table_html = simple_text("| <b>الف</b> | ب |\n|---|---|\n| <script>x</script> | ۲ |")
+        self.assertIn("<table><thead><tr><th>&lt;b&gt;الف&lt;/b&gt;</th><th>ب</th></tr></thead>", table_html)
+        self.assertIn("<td>&lt;script&gt;x&lt;/script&gt;</td><td>۲</td>", table_html)
 
     def test_home_separates_updates_from_vertical_offers_and_does_not_drop_valid_banners_after_four(self):
         from apps.catalog.models import Banner, BookChange
@@ -715,7 +761,10 @@ class AppPagesTests(TestCase):
     def setUp(self):
         from .models import HelpPage, SitePage
 
-        self.terms, _ = SitePage.objects.update_or_create(slug="terms", defaults={"title": "قوانین", "body": "## یک\n\nمتن", "show_in_app": True})
+        self.terms, _ = SitePage.objects.update_or_create(
+            slug="terms",
+            defaults={"title": "قوانین", "body": "## یک\n\nمتن", "show_in_app": True, "important_at": None},
+        )
         self.about, _ = SitePage.objects.update_or_create(slug="about", defaults={"title": "درباره", "body": "x", "show_in_app": False})
         HelpPage.objects.create(title="دوم", body="b", order=2)
         HelpPage.objects.create(title="اول", body="$x^2$", order=1)

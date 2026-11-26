@@ -7,7 +7,48 @@
       <h1 class="h2">{{ page.title }}</h1>
       {% if updated_on %}<span class="mut">آخرین به‌روزرسانی: {{ updated_on }}{% if important_on %}؛ آخرین تغییر مهم: {{ important_on }}{% endif %}</span>{% endif %}
     </header>
+    {% if page.slug == "privacy" %}
+    <nav class="faq-nav privacy-nav" aria-label="دسترسی سریع بخش‌های حریم خصوصی">
+      <a class="pill" href="#sec-5">استادم چه چیزی می‌بیند؟</a>
+      <a class="pill" href="#sec-4">چه اطلاعاتی از مطالعه و خرید من ثبت می‌شود؟</a>
+      <a class="pill" href="#sec-10">چطور اطلاعاتم را اصلاح یا حذف کنم؟</a>
+    </nav>
+    {% endif %}
+    {% if page.slug == "terms" %}
+    <nav class="faq-nav terms-nav" aria-label="دسترسی سریع شرایط استفاده و خرید">
+      <a class="pill" href="#sec-1">فرق خرید و اشتراک</a>
+      <a class="pill" href="#sec-3">پول کم شده ولی کتاب باز نشده</a>
+      <a class="pill" href="#sec-6">انصراف و بازپرداخت</a>
+    </nav>
+    {% endif %}
     <div class="page-body" data-md="{{ page.body }}">{{ body }}</div>
+    {% if page.slug == "privacy" %}
+    <div class="feat privacy-actions">
+      <p><b>مسئول پاسخ‌گویی:</b> بهره‌بردار لیموخوان · <b>مهلت پاسخ‌گویی به درخواست‌ها:</b> حداکثر ۷ روز کاری</p>
+      <p class="mut" style="margin-bottom: 12px;">اگر به گوشی یا شماره‌ی قبلی خود دسترسی ندارید نیز می‌توانید درخواست خود را از مسیر تماس با ما ارسال کنید.</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn lemon small" href="{% url 'website:page' 'contact' %}">درخواست دربارهٔ اطلاعات حساب من</a>
+        <a class="btn dark small" href="{% url 'website:page' 'contact' %}">گزارش مشاهدهٔ اطلاعات شخص دیگری</a>
+      </div>
+    </div>
+    {% endif %}
+    {% if page.slug == "terms" %}
+    <div class="feat terms-actions">
+      <p><b>بهره‌بردار:</b> لیموخوان · <b>مهلت پاسخ‌گویی به پیگیری سفارش و درخواست‌ها:</b> حداکثر ۷ روز کاری</p>
+      {% if s.email or s.phone or s.address %}
+      <p class="mut" style="margin-bottom: 8px;">
+        {% if s.email %}ایمیل پشتیبانی: <a href="mailto:{{ s.email }}" dir="ltr">{{ s.email }}</a>{% endif %}
+        {% if s.phone %}{% if s.email %} · {% endif %}تلفن: <span dir="ltr">{{ s.phone }}</span>{% endif %}
+        {% if s.address %}{% if s.email or s.phone %} · {% endif %}نشانی: {{ s.address }}{% endif %}
+      </p>
+      {% endif %}
+      <p class="mut" style="margin-bottom: 12px;">برای پیگیری پرداخت ناموفق، درخواست انصراف تا ۷ روز کاری یا بازیابی دسترسی حساب، شمارهٔ سفارش یا موبایل ثبت‌نام را از مسیر تماس با ما بفرستید.</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn lemon small" href="{% url 'website:page' 'contact' %}">پیگیری سفارش یا درخواست استرداد</a>
+        <a class="btn dark small" href="{% url 'website:page' 'contact' %}">گزارش مشکل حساب یا دسترسی</a>
+      </div>
+    </div>
+    {% endif %}
     {% if page.slug == "contact" %}
     <div class="feat contact">
       {% if s.email %}<p><b>ایمیل پشتیبانی:</b> <a href="mailto:{{ s.email }}" dir="ltr">{{ s.email }}</a></p>{% endif %}

@@ -856,5 +856,41 @@ class PaymentReturnChannelTests(TestCase):
         self.assertContains(cb_web, f"https://app.limookhan.ir/payment-result?order={r_web.data['order_id']}&amp;status=paid")
         self.assertNotContains(cb_web, "limookhan://")
 
+    def test_plan_offers_and_order_receipt_expose_exact_subscription_dates_and_renewal_stacking(self):
+        from unittest import mock
+        from apps.commerce.models import Entitlement, Order, Plan
+
+        plan_12 = Plan.objects.create(title="اشتراک ۱۲ ماهه", scope=Plan.Scope.ALL, months=12, price=900_000, order=1)
+        # Initial quote (no active subscription): 12 months = 360 days from now
+        plans_res = self.api.get("/api/v1/plans/")
+        self.assertEqual(plans_res.status_code, 200)
+        p12 = next(p for p in plans_res.data if p["id"] == plan_12.pk)
+        self.assertEqual(p12["days"], 360)
+        self.assertFalse(p12["is_renewal"])
+        self.assertEqual((p12["ends_at"] - p12["starts_at"]).days, 360)
+
+        # With an existing active all-books subscription ending in 10 days, offers & plans preview stacked renewal
+        active_end = timezone.now() + timedelta(days=10)
+        Entitlement.objects.create(user=self.user, all_majors=True, ends_at=active_end)
+        offers_res = self.api.get("/api/v1/offers/?book=math-1")
+        self.assertEqual(offers_res.status_code, 200)
+        offered_12 = next(p for p in offers_res.data["plans"] if p["id"] == plan_12.pk)
+        self.assertTrue(offered_12["is_renewal"])
+        self.assertEqual(offered_12["starts_at"], active_end)
+        self.assertEqual(offered_12["ends_at"], active_end + timedelta(days=360))
+
+        # Order status receipt after settlement returns kind, starts_at, ends_at matching the granted entitlement
+        with mock.patch("apps.commerce.zibal.request_payment", return_value="trk-sub-12"):
+            created = self.api.post("/api/v1/orders/", {"plan": plan_12.pk}, format="json")
+        self.assertEqual(created.status_code, 201)
+        with mock.patch("apps.commerce.zibal.verify", return_value={"result": 100, "amount": 900_000 * 10, "refNumber": "999", "cardNumber": "6037"}):
+            self.client.get("/api/v1/payments/zibal/callback/?trackId=trk-sub-12")
+        receipt = self.api.get(f"/api/v1/orders/{created.data['order_id']}/")
+        self.assertEqual(receipt.status_code, 200)
+        self.assertEqual(receipt.data["status"], Order.Status.PAID)
+        self.assertEqual(receipt.data["kind"], "subscription")
+        self.assertEqual(receipt.data["starts_at"], active_end)
+        self.assertEqual(receipt.data["ends_at"], active_end + timedelta(days=360))
+
 
 

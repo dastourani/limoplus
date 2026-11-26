@@ -50,7 +50,14 @@
     }
     document.querySelectorAll('[data-md]').forEach(function (el) {
       var html = md(el.getAttribute('data-md'));
-      if (html) el.innerHTML = html;
+      if (html) {
+        el.innerHTML = html;
+        if (el.classList.contains('page-body')) {
+          el.querySelectorAll('h2').forEach(function (h, idx) {
+            if (!h.id) h.id = 'sec-' + (idx + 1);
+          });
+        }
+      }
     });
     document.querySelectorAll('[data-fold]').forEach(function (box) {
       var body = box.querySelector('.about-body');

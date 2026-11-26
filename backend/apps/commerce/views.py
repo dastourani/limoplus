@@ -38,9 +38,43 @@ def _book(slug):
     ).first()
 
 
-def _plan_payload(plan, quote=None):
+def _subscription_window(user, scope: str, months: int, *, now=None, existing_end_cache: dict[bool, object] | None = None):
+    now = now or timezone.now()
+    all_majors = scope == Plan.Scope.ALL
+    start = now
+    is_renewal = False
+    if user and user.is_authenticated:
+        if existing_end_cache is not None and all_majors in existing_end_cache:
+            existing_end = existing_end_cache[all_majors]
+        else:
+            same_scope = Entitlement.objects.filter(
+                user=user, is_archived=False, book__isnull=True, all_majors=all_majors, major=None
+            ).filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
+            existing_end = same_scope.aggregate(end=Max("ends_at"))["end"]
+            if existing_end_cache is not None:
+                existing_end_cache[all_majors] = existing_end
+        if existing_end and existing_end > now:
+            start = existing_end
+            is_renewal = True
+    days = DAYS_PER_MONTH * months
+    return {
+        "days": days,
+        "starts_at": start,
+        "ends_at": start + timedelta(days=days),
+        "is_renewal": is_renewal,
+    }
+
+
+def _plan_payload(plan, quote=None, *, user=None, existing_end_cache=None):
     quote = quote or plan_price_quote(plan)
-    return {"id": plan.id, "title": plan.title, "scope": plan.scope, "months": plan.months, **quote.payload()}
+    return {
+        "id": plan.id,
+        "title": plan.title,
+        "scope": plan.scope,
+        "months": plan.months,
+        **_subscription_window(user, plan.scope, plan.months, existing_end_cache=existing_end_cache),
+        **quote.payload(),
+    }
 
 
 def _entitlement_payload(e):
@@ -65,6 +99,7 @@ def offers(request):
         return _err("کتاب پیدا نشد.", "not_found", status.HTTP_404_NOT_FOUND)
     sale_plans = [] if getattr(book, "single_sale_only", False) else list(_plans_on_sale())
     prices = plan_price_quotes(sale_plans)
+    end_cache: dict[bool, object] = {}
     return Response(
         {
             "book": {
@@ -74,7 +109,7 @@ def offers(request):
                 **book_price_quote(book).payload(),
             },
             "majors": [],
-            "plans": [_plan_payload(plan, prices[plan.pk]) for plan in sale_plans],
+            "plans": [_plan_payload(plan, prices[plan.pk], user=request.user, existing_end_cache=end_cache) for plan in sale_plans],
             "payments_enabled": settings.PAYMENTS_ENABLED,
         }
     )
@@ -91,7 +126,8 @@ def _plans_on_sale():
 def plans(request):
     sale_plans = list(_plans_on_sale())
     prices = plan_price_quotes(sale_plans)
-    return Response([_plan_payload(plan, prices[plan.pk]) for plan in sale_plans])
+    end_cache: dict[bool, object] = {}
+    return Response([_plan_payload(plan, prices[plan.pk], user=request.user, existing_end_cache=end_cache) for plan in sale_plans])
 
 
 @api_view(["POST"])
@@ -308,15 +344,17 @@ def zibal_callback(request):
 @transaction.non_atomic_requests
 @api_view(["GET"])
 def order_status(request, order_id):
-    order = get_object_or_404(Order, pk=order_id, user=request.user)
+    order = get_object_or_404(Order.objects.select_related("book", "plan"), pk=order_id, user=request.user)
     recent = timezone.now() - order.created_at < RECHECK_WINDOW
     if settings.PAYMENTS_ENABLED and order.status != Order.Status.PAID and order.track_id and recent and request.query_params.get("check"):
         if order.status == Order.Status.FAILED and not order.gateway_response.get("result") in (100, 201):
             Order.objects.filter(pk=order.pk, status=Order.Status.FAILED).update(status=Order.Status.PENDING)
         order = settle(order.track_id) or order
+    ent = Entitlement.objects.filter(order=order).first()
     return Response(
         {
             "id": order.id,
+            "kind": "book" if order.book_id else "subscription",
             "title": order.title,
             "amount": order.amount,
             "regular_amount": order.regular_amount if order.regular_amount is not None else order.amount,
@@ -325,6 +363,10 @@ def order_status(request, order_id):
             "status": order.status,
             "ref_number": order.ref_number,
             "book_slug": order.book.slug if order.book_id else None,
+            "starts_at": ent.starts_at if ent else None,
+            "ends_at": ent.ends_at if ent else None,
+            "created_at": order.created_at,
+            "paid_at": order.paid_at,
         }
     )
 
@@ -332,22 +374,29 @@ def order_status(request, order_id):
 @api_view(["GET"])
 def my_purchases(request):
     entitlements = Entitlement.active_for(request.user).select_related("book", "major")
-    orders = Order.objects.filter(user=request.user, status=Order.Status.PAID)[:50]
+    orders = Order.objects.filter(user=request.user, status=Order.Status.PAID).select_related("book", "entitlement")[:50]
+    order_rows = []
+    for o in orders:
+        ent = getattr(o, "entitlement", None)
+        order_rows.append(
+            {
+                "id": o.id,
+                "kind": "book" if o.book_id else "subscription",
+                "title": o.title,
+                "book_slug": o.book.slug if o.book_id else None,
+                "amount": o.amount,
+                "regular_amount": o.regular_amount if o.regular_amount is not None else o.amount,
+                "discount_amount": o.discount_amount,
+                "campaign_title": o.campaign_title_snapshot,
+                "paid_at": o.paid_at,
+                "ref_number": o.ref_number,
+                "starts_at": ent.starts_at if ent else None,
+                "ends_at": ent.ends_at if ent else None,
+            }
+        )
     return Response(
         {
             "active": [_entitlement_payload(e) for e in entitlements],
-            "orders": [
-                {
-                    "id": o.id,
-                    "title": o.title,
-                    "amount": o.amount,
-                    "regular_amount": o.regular_amount if o.regular_amount is not None else o.amount,
-                    "discount_amount": o.discount_amount,
-                    "campaign_title": o.campaign_title_snapshot,
-                    "paid_at": o.paid_at,
-                    "ref_number": o.ref_number,
-                }
-                for o in orders
-            ],
+            "orders": order_rows,
         }
     )
