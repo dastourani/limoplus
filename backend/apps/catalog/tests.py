@@ -276,6 +276,15 @@ class ReadApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.data["code"], "locked")
         self.assertEqual(response.data["book"]["price"], 249000)
+        self.assertFalse(response.data["book"]["single_sale_only"])
+
+        ContentNode.objects.filter(slug="math-1").update(single_sale_only=True)
+        locked_single = self.client.get(f"/api/v1/nodes/{node.id}/")
+        self.assertEqual(locked_single.status_code, 403)
+        self.assertTrue(locked_single.data["book"]["single_sale_only"])
+        book_detail = self.client.get("/api/v1/books/math-1/")
+        self.assertEqual(book_detail.status_code, 200)
+        self.assertTrue(book_detail.data["single_sale_only"])
 
     def test_unpublished_content_hidden(self):
         ContentNode.objects.filter(slug="limit-idea").update(is_published=False)

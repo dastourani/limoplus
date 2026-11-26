@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import type { BookDetail, ProductStatus } from '../../api/endpoints';
 import {
   firstReadableNodeId,
-  isLockedApiError,
+  isNodeLockedInBook,
   isSectionAccessibleInBook,
+  lockedCtaLabel,
   lockedPayloadFromBook,
   productStateNote,
   resolveBookCta,
+  resolveSectionForbidden,
 } from '../bookAccess';
 import { errorPresentation } from '../errors';
 
@@ -214,13 +216,121 @@ describe('resolveBookCta', () => {
   });
 });
 
+function fullBookDetail(overrides: Partial<BookDetail> = {}): BookDetail {
+  return {
+    id: 1,
+    slug: 'math-1',
+    title: 'ریاضی عمومی ۱',
+    title_en: 'Calculus 1',
+    author: 'دکتر نمونه',
+    edition: '۱۴۰۴',
+    motif: 'grid',
+    drawing: null,
+    cover: null,
+    is_coming_soon: false,
+    product_status: makeStatus('paid', 'sample'),
+    price: 200000,
+    regular_price: 250000,
+    discount: null,
+    chapter_count: 2,
+    section_count: 2,
+    free_chapter: 1,
+    owned: false,
+    progress: null,
+    notify: false,
+    single_sale_only: false,
+    done_card_count: 0,
+    about: '',
+    majors: ['math'],
+    chapters: sampleBook().chapters,
+    done_ids: [],
+    ...overrides,
+  };
+}
+
 describe('locked error recovery & errorPresentation', () => {
-  it('treats both explicit code=locked and proxy-stripped 403s as locked responses', () => {
-    expect(isLockedApiError({ status: 403, code: 'locked', data: { code: 'locked' } })).toBe(true);
-    expect(isLockedApiError({ status: 403, code: 'error', data: {} })).toBe(true);
-    expect(isLockedApiError({ status: 403, code: 'user_inactive', data: { code: 'user_inactive' } })).toBe(false);
-    expect(isLockedApiError({ status: 500, code: 'error', data: {} })).toBe(false);
-    expect(isLockedApiError({ status: 0, code: 'network', data: {} })).toBe(false);
+  it('buyer + unlocked section + ambiguous 403 -> shows restricted error, never a purchase prompt', () => {
+    const buyerBook = fullBookDetail({
+      owned: true,
+      access: 'purchase',
+      chapters: sampleBook().chapters.map((ch) => ({
+        ...ch,
+        is_locked: false,
+        sections: ch.sections.map((s) => ({ ...s, is_locked: false })),
+      })),
+    });
+
+    const result = resolveSectionForbidden(
+      { status: 403, code: 'error', message: 'اجازه‌ی این کار را ندارید.', data: {} },
+      { nodeId: 201, book: buyerBook },
+    );
+
+    expect(result).toEqual({
+      kind: 'restricted',
+      message: 'اجازه‌ی این کار را ندارید.',
+    });
+    expect(isNodeLockedInBook(buyerBook, 201)).toBe(false);
+  });
+
+  it('guest + confirmed locked section of the same book + ambiguous 403 -> shows lock and single-sale CTA when single_sale_only', () => {
+    const guestBook = fullBookDetail({
+      owned: false,
+      single_sale_only: true,
+    });
+
+    const result = resolveSectionForbidden(
+      { status: 403, code: 'error', message: 'اجازه‌ی این کار را ندارید.', data: {} },
+      { nodeId: 201, book: guestBook },
+    );
+
+    expect(result.kind).toBe('locked');
+    if (result.kind === 'locked') {
+      expect(result.book.slug).toBe('math-1');
+      expect(result.book.price).toBe(200000);
+      expect(result.book.single_sale_only).toBe(true);
+      expect(lockedCtaLabel(result.book.single_sale_only)).toBe('خرید کتاب');
+    }
+    expect(lockedCtaLabel(false)).toBe('خرید یا اشتراک');
+  });
+
+  it('explicit code=locked with book payload shows lock screen directly, while ambiguous 403 without matching locked node falls back to restricted', () => {
+    const explicit = resolveSectionForbidden(
+      {
+        status: 403,
+        code: 'locked',
+        message: 'این بخش در نسخه‌ی کامل کتاب است.',
+        data: {
+          book: {
+            slug: 'physics-1',
+            title: 'فیزیک ۱',
+            price: 180000,
+            regular_price: 180000,
+            discount: null,
+            product_status: makeStatus('paid', 'none'),
+            single_sale_only: true,
+          },
+        },
+      },
+      { nodeId: 201, book: null },
+    );
+    expect(explicit.kind).toBe('locked');
+    if (explicit.kind === 'locked') {
+      expect(lockedCtaLabel(explicit.book.single_sale_only)).toBe('خرید کتاب');
+    }
+
+    // Node 999 is not in guestBook -> never show purchase prompt for an unrelated section.
+    const unknownNode = resolveSectionForbidden(
+      { status: 403, code: 'error', data: {} },
+      { nodeId: 999, book: fullBookDetail() },
+    );
+    expect(unknownNode.kind).toBe('restricted');
+
+    // No book metadata loaded at all -> never guess price or status.
+    const missingBook = resolveSectionForbidden(
+      { status: 403, code: 'error', data: {} },
+      { nodeId: 201, book: null },
+    );
+    expect(missingBook.kind).toBe('restricted');
   });
 
   it('extracts locked payload and state notes from book metadata', () => {
@@ -231,10 +341,12 @@ describe('locked error recovery & errorPresentation', () => {
       regular_price: 250000,
       discount: null,
       product_status: makeStatus('paid', 'sample'),
+      single_sale_only: true,
     });
     expect(info.slug).toBe('math-1');
     expect(info.price).toBe(200000);
     expect(info.regular_price).toBe(250000);
+    expect(info.single_sale_only).toBe(true);
     expect(productStateNote('coming_soon')).toContain('به‌زودی');
     expect(productStateNote('paid')).toBeNull();
   });

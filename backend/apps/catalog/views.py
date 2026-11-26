@@ -27,7 +27,12 @@ def locked_response(book):
         {
             "code": "locked",
             "message": "این بخش در نسخه‌ی کامل کتاب است.",
-            "book": {"slug": book.slug, "title": book.title, **book_price_quote(book).payload()},
+            "book": {
+                "slug": book.slug,
+                "title": book.title,
+                "single_sale_only": bool(getattr(book, "single_sale_only", False)),
+                **book_price_quote(book).payload(),
+            },
         },
         status=status.HTTP_403_FORBIDDEN,
     )
@@ -254,6 +259,7 @@ def book_card(request, book, access, price_quote=None) -> dict:
         "partial_free_chapter": partial_free_chapter,
         # Kept for older app builds; it now means exactly the explicit whole-book flag, never inferred from chapters.
         "all_free": book.is_free,
+        "single_sale_only": bool(getattr(book, "single_sale_only", False)),
         "owned": access.owned,
         "access": access.access,
         "progress": round(len(done) / len(sections), 3) if done and sections else None,

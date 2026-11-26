@@ -115,12 +115,14 @@ export function Loading() {
 export function ErrorState({
   message,
   onRetry,
+  onBack,
   icon,
   title,
   status,
 }: {
   message: string;
   onRetry?: () => void;
+  onBack?: () => void;
   icon?: IconName;
   title?: string;
   status?: number;
@@ -168,6 +170,9 @@ export function ErrorState({
         <Text style={[styles.errorTitle, rtl]}>{resolvedTitle}</Text>
         <Text style={[styles.errorText, rtl]}>{message}</Text>
         <Button label="تلاش دوباره" variant="outline" onPress={handleRetry} loading={retrying} style={{ marginTop: 8, minWidth: 170 }} />
+        {onBack && (
+          <Button label="بازگشت" variant="outline" onPress={onBack} style={{ minWidth: 170 }} />
+        )}
         {offlineSupported && (
           <Pressable onPress={() => router.push('/offline')} style={{ marginTop: 6 }} accessibilityRole="link">
             <Text style={styles.link}>کتاب‌های آفلاین</Text>

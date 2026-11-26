@@ -18,7 +18,7 @@ import { PageTurn } from '../../components/PageTurn';
 import { Icon, IconBadge } from '../../components/Icon';
 import { Button, Chip, ErrorState, Header, Loading, Screen, Sheet, usePullRefresh } from '../../components/ui';
 import { requireLogin, useAuth } from '../../lib/auth';
-import { firstReadableNodeId, isSectionAccessibleInBook, productStateNote, resolveBookCta } from '../../lib/bookAccess';
+import { firstReadableNodeId, isSectionAccessibleInBook, lockedCtaLabel, productStateNote, resolveBookCta } from '../../lib/bookAccess';
 import { coverByline } from '../../lib/cover';
 import { jalaliDate } from '../../lib/jalali';
 import { offlineBookDetail, offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
@@ -558,20 +558,28 @@ export default function Book() {
                         <Text style={styles.discountChip}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
                       </View>
                     </View>
-                    <Pressable onPress={() => router.push('/subscribe')} accessibilityRole="link">
-                      <Text style={[styles.saving, rtl]}>
-                        {formatToman(bookPrice.discount.amount)} تخفیف · یا با اشتراک لیمو
-                      </Text>
-                    </Pressable>
+                    {book.single_sale_only ? (
+                      <Text style={[styles.saving, rtl]}>{formatToman(bookPrice.discount.amount)} تخفیف</Text>
+                    ) : (
+                      <Pressable onPress={() => router.push('/subscribe')} accessibilityRole="link">
+                        <Text style={[styles.saving, rtl]}>
+                          {formatToman(bookPrice.discount.amount)} تخفیف · یا با اشتراک لیمو
+                        </Text>
+                      </Pressable>
+                    )}
                   </View>
                 ) : (
                   <View style={styles.priceLineCenter}>
                     <Text style={styles.ctaSmall}>
                       <Text style={styles.ctaPriceStrong}>{formatToman(bookPrice.price)}</Text>
-                      {'، یا با '}
-                      <Text onPress={() => router.push('/subscribe')} style={styles.ctaSubLink}>
-                        اشتراک ماهانه‌ی لیمو
-                      </Text>
+                      {!book.single_sale_only && (
+                        <>
+                          {'، یا با '}
+                          <Text onPress={() => router.push('/subscribe')} style={styles.ctaSubLink}>
+                            اشتراک ماهانه‌ی لیمو
+                          </Text>
+                        </>
+                      )}
                     </Text>
                   </View>
                 )
@@ -1140,7 +1148,7 @@ export default function Book() {
           )}
           {book.product_status.state === 'paid' && (
             <Button
-              label="خرید یا اشتراک"
+              label={lockedCtaLabel(book.single_sale_only)}
               onPress={() => {
                 setLockedSection(null);
                 router.push(`/buy/${book.slug}`);

@@ -14,7 +14,12 @@ import { useFeedback } from '../../components/Feedback';
 import { copyLater } from '../../lib/clipboard';
 import { MAX_COPY_CHARS } from '../../lib/renderMarkdown';
 import { requireLogin, useAuth } from '../../lib/auth';
-import { isLockedApiError, lockedPayloadFromBook, productStateNote, type LockedBookInfo } from '../../lib/bookAccess';
+import {
+  lockedCtaLabel,
+  productStateNote,
+  resolveSectionForbidden,
+  type LockedBookInfo,
+} from '../../lib/bookAccess';
 import { currentPrice, percentLabel } from '../../lib/pricing';
 import { useGuestNudge } from '../../lib/guestNudge';
 import { useStudyTimer } from '../../lib/studyTime';
@@ -131,30 +136,15 @@ export default function Section() {
       setNode(await endpoints.node(nodeId));
     } catch (e) {
       const err = e instanceof ApiError ? e : new ApiError(0, 'error', 'خطا');
-      if (err.code === 'locked') {
-        const bookInfo = err.data.book as LockedBookInfo | undefined;
-        setLocked(
-          bookInfo ?? {
-            title: titleParam,
-            slug: bookSlugParam,
-            price: null,
-            product_status: { state: 'paid', preview: 'none', promotion: 'none' },
-          },
-        );
-      } else if (isLockedApiError(err)) {
-        if (bookSlugParam) {
-          const fallbackBook = await endpoints.book(bookSlugParam).catch(() => null);
-          if (fallbackBook) {
-            setLocked(lockedPayloadFromBook(fallbackBook));
-            return;
-          }
+      if (err.code === 'locked' || err.status === 403) {
+        const fallbackBook =
+          err.code !== 'locked' && bookSlugParam ? await endpoints.book(bookSlugParam).catch(() => null) : null;
+        const resolved = resolveSectionForbidden(err, { nodeId, book: fallbackBook });
+        if (resolved.kind === 'locked') {
+          setLocked(resolved.book);
+        } else {
+          setError(new ApiError(err.status, err.code, resolved.message, err.data));
         }
-        setLocked({
-          title: titleParam,
-          slug: bookSlugParam,
-          price: null,
-          product_status: { state: 'paid', preview: 'none', promotion: 'none' },
-        });
       } else if (err.status === 0) {
         // No internet: read the encrypted offline copy if this book was downloaded.
         const copy = await offlineSection(nodeId);
@@ -193,7 +183,7 @@ export default function Section() {
     } finally {
       setLoading(false);
     }
-  }, [nodeId, bookSlugParam, titleParam]);
+  }, [nodeId, bookSlugParam]);
 
   useEffect(() => {
     load();
@@ -616,13 +606,25 @@ export default function Section() {
               </View>
             );
           })()}
-          {locked.slug && state === 'paid' && <Button label="خرید یا اشتراک" onPress={() => router.push(`/buy/${locked.slug}`)} style={{ alignSelf: 'stretch' }} />}
+          {locked.slug && state === 'paid' && <Button label={lockedCtaLabel(locked.single_sale_only)} onPress={() => router.push(`/buy/${locked.slug}`)} style={{ alignSelf: 'stretch' }} />}
           <Button label="بازگشت" variant="outline" onPress={() => router.back()} style={{ alignSelf: 'stretch' }} />
         </View>
       </Screen>
     );
   }
-  if (error || !node) return <Screen><Header /><ErrorState message={error?.message ?? 'پیدا نشد.'} status={error?.status ?? 404} onRetry={load} /></Screen>;
+  if (error || !node) {
+    return (
+      <Screen>
+        <Header />
+        <ErrorState
+          message={error?.message ?? 'پیدا نشد.'}
+          status={error?.status ?? 404}
+          onRetry={load}
+          onBack={() => (router.canGoBack() ? router.back() : router.replace('/home'))}
+        />
+      </Screen>
+    );
+  }
 
   const chapter = node.breadcrumb[node.breadcrumb.length - 1];
   const isIntro = node.kind === 'chapter';

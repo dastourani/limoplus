@@ -43,6 +43,8 @@ export type BookListItem = {
   free_chapters?: number;
   /** Number of the first chapter with a free section when no whole chapter is free. */
   partial_free_chapter?: number | null;
+  /** Book excluded from subscription plans; direct purchase only. */
+  single_sale_only?: boolean;
   /** Only in the all-books list: the book's first major, for its cover. */
   major?: { slug: string; name: string; color: string } | null;
   /** Share of sections read (0–1), once the learner has started. */

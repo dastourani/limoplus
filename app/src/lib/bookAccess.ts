@@ -7,7 +7,12 @@ export type LockedBookInfo = {
   discount?: PriceDiscount | null;
   product_status: ProductStatus;
   slug?: string;
+  single_sale_only?: boolean;
 };
+
+export type SectionForbiddenResolution =
+  | { kind: 'locked'; book: LockedBookInfo }
+  | { kind: 'restricted'; message: string };
 
 export function productStateNote(state?: ProductStatus['state']): string | null {
   if (state === 'coming_soon') return 'این کتاب به‌زودی منتشر می‌شود.';
@@ -17,22 +22,29 @@ export function productStateNote(state?: ProductStatus['state']): string | null 
   return null;
 }
 
+export function lockedCtaLabel(singleSaleOnly?: boolean): 'خرید کتاب' | 'خرید یا اشتراک' {
+  return singleSaleOnly ? 'خرید کتاب' : 'خرید یا اشتراک';
+}
+
 /**
- * Treats both explicit `code === 'locked'` responses and proxy-stripped 403 responses
- * (where an upstream web server/CDN replaced the JSON payload with an HTML/empty 403)
- * as a locked-content gate rather than a generic network failure.
+ * Checks whether `nodeId` belongs to `book` and is currently locked for the viewer.
+ * Returns `false` if `nodeId` is unlocked (e.g. buyer or free preview) or absent from `book`.
  */
-export function isLockedApiError(err: { status: number; code: string; data?: Record<string, unknown> }): boolean {
-  if (err.code === 'locked') return true;
-  if (err.status === 403) {
-    const serverCode = typeof err.data?.code === 'string' ? err.data.code : '';
-    return !serverCode || serverCode === 'error';
+export function isNodeLockedInBook(book: Pick<BookDetail, 'chapters'>, nodeId: number): boolean {
+  for (const chapter of book.chapters) {
+    if (chapter.id === nodeId) {
+      return Boolean(chapter.is_locked);
+    }
+    const sec = chapter.sections.find((s) => s.id === nodeId);
+    if (sec) {
+      return Boolean(sec.is_locked);
+    }
   }
   return false;
 }
 
 export function lockedPayloadFromBook(
-  book: Pick<BookDetail, 'slug' | 'title' | 'price' | 'regular_price' | 'discount' | 'product_status'>,
+  book: Pick<BookDetail, 'slug' | 'title' | 'price' | 'regular_price' | 'discount' | 'product_status' | 'single_sale_only'>,
 ): LockedBookInfo {
   return {
     slug: book.slug,
@@ -41,6 +53,54 @@ export function lockedPayloadFromBook(
     regular_price: book.regular_price ?? null,
     discount: book.discount ?? null,
     product_status: book.product_status,
+    single_sale_only: book.single_sale_only,
+  };
+}
+
+/**
+ * Resolves a 403 error on direct `/section/[id]` entry without ever guessing status or price:
+ * - Explicit `code === 'locked'` with server-supplied `book` metadata shows the lock/purchase UI.
+ * - An ambiguous 403 only shows the lock/purchase UI when fetched `book` metadata confirms
+ *   that `nodeId` belongs to `book` and is currently locked for this user.
+ * - Otherwise (buyer on an unlocked section, unknown node, or missing book metadata) returns
+ *   `restricted` so the UI shows «دسترسی محدود» with Back + Retry instead of a purchase prompt.
+ */
+export function resolveSectionForbidden(
+  err: { status: number; code: string; message?: string; data?: Record<string, unknown> },
+  options: { nodeId: number; book?: BookDetail | null },
+): SectionForbiddenResolution {
+  if (err.code === 'locked') {
+    const bookData = err.data?.book as Partial<LockedBookInfo> | undefined;
+    if (bookData && bookData.product_status) {
+      return {
+        kind: 'locked',
+        book: {
+          title: bookData.title,
+          slug: bookData.slug,
+          price: bookData.price ?? null,
+          regular_price: bookData.regular_price ?? null,
+          discount: bookData.discount ?? null,
+          product_status: bookData.product_status,
+          single_sale_only: bookData.single_sale_only,
+        },
+      };
+    }
+    return {
+      kind: 'restricted',
+      message: err.message || 'اجازه‌ی این کار را ندارید.',
+    };
+  }
+
+  if (err.status === 403 && options.book && isNodeLockedInBook(options.book, options.nodeId)) {
+    return {
+      kind: 'locked',
+      book: lockedPayloadFromBook(options.book),
+    };
+  }
+
+  return {
+    kind: 'restricted',
+    message: err.message || 'اجازه‌ی این کار را ندارید.',
   };
 }
 
