@@ -31,7 +31,12 @@ from .models import (
     TeacherApplication,
     TeacherInvitation,
 )
-from .publication import publication_content_digest, review_publication_request
+from .publication import (
+    publication_content_digest,
+    respond_to_publication_offer,
+    review_publication_request,
+    send_publication_offer,
+)
 
 
 class WorkflowFixture(TestCase):
@@ -723,7 +728,51 @@ class PublicationWorkflowTests(WorkflowFixture):
 
         manager_client = Client()
         manager_client.force_login(self.manager)
+        # Approval without an accepted offer must fail.
+        premature = manager_client.post(change_url, {
+            "status": PublicationRequest.Status.APPROVED,
+            "review_note": "تلاش بدون ارسال پیشنهاد.",
+            "_save": "ذخیره",
+        })
+        self.assertEqual(premature.status_code, 200)
+        self.book.refresh_from_db()
+        self.assertFalse(self.book.is_published)
+
+        # Manager explicitly sends v1 offer (25% platform fee).
+        sent_res = manager_client.post(change_url, {
+            "offer_platform_fee_percent": 25,
+            "offer_prep_mode": PublicationRequest.OfferPrepMode.PLATFORM_PREP,
+            "offer_distribution_scope": PublicationRequest.DistributionScope.STANDARD,
+            "offer_campaign_discount_cap": 30,
+            "offer_rate_validity_note": PublicationRequest.DEFAULT_RATE_VALIDITY_NOTE,
+            "offer_technical_deliverable": PublicationRequest.DEFAULT_TECH_DELIVERABLE,
+            "offer_note": "شرایط نسخه ۱: ۲۵٪ کارمزد آماده‌سازی کامل.",
+            "status": PublicationRequest.Status.PENDING,
+            "review_note": "",
+            "_send_offer": "ارسال پیشنهاد به استاد",
+        })
+        self.assertEqual(sent_res.status_code, 302)
+        request.refresh_from_db()
+        self.assertEqual(request.sent_offer_version, 1)
+        self.assertFalse(request.is_current_offer_accepted)
+
+        # Teacher accepts exact version 1 offer.
+        respond_to_publication_offer(
+            request.pk,
+            actor=self.teacher,
+            decision=PublicationRequest.TeacherResponse.ACCEPTED,
+            note="موافقم.",
+            expected_offer_digest=request.sent_offer_digest,
+        )
+
         response = manager_client.post(change_url, {
+            "offer_platform_fee_percent": 25,
+            "offer_prep_mode": PublicationRequest.OfferPrepMode.PLATFORM_PREP,
+            "offer_distribution_scope": PublicationRequest.DistributionScope.STANDARD,
+            "offer_campaign_discount_cap": 30,
+            "offer_rate_validity_note": PublicationRequest.DEFAULT_RATE_VALIDITY_NOTE,
+            "offer_technical_deliverable": PublicationRequest.DEFAULT_TECH_DELIVERABLE,
+            "offer_note": "شرایط نسخه ۱: ۲۵٪ کارمزد آماده‌سازی کامل.",
             "status": PublicationRequest.Status.APPROVED,
             "review_note": "نسخه بررسی و برای انتشار تأیید شد.",
             "_save": "ذخیره",
@@ -736,11 +785,238 @@ class PublicationWorkflowTests(WorkflowFixture):
         self.assertEqual(request.reviewed_by, self.manager)
         self.assertTrue(self.book.is_published)
         self.assertTrue(self.chapter.is_published)
+        self.assertFalse(self.book.single_sale_only)
+        self.assertEqual(self.book.campaign_discount_cap_percent, 30)
+        self.assertEqual(self.book.royalty_rule.custom_platform_share_percent, 25)
+        self.assertTrue(self.book.royalty_rule.is_custom_split)
         approved = request.events.order_by("-pk").first()
         self.assertEqual(approved.action, PublicationRequestEvent.Action.APPROVED)
         self.assertEqual(approved.actor, self.manager)
+        self.assertEqual(approved.offer_version, 1)
         self.assertEqual(approved.reason, "نسخه بررسی و برای انتشار تأیید شد.")
         self.assertFalse(Entitlement.objects.filter(book=self.book).exists())
+
+    def test_draft_offer_save_is_hidden_from_teacher_and_blocks_approval(self):
+        request = PublicationRequest.objects.create(
+            book=self.book,
+            requested_by=self.teacher,
+            content_digest=publication_content_digest(self.book),
+        )
+        manager_client = Client()
+        manager_client.force_login(self.manager)
+        change_url = reverse("admin:website_publicationrequest_change", args=[request.pk])
+        res = manager_client.post(change_url, {
+            "offer_platform_fee_percent": 22,
+            "offer_prep_mode": PublicationRequest.OfferPrepMode.READY_FILES,
+            "offer_distribution_scope": PublicationRequest.DistributionScope.STANDARD,
+            "offer_campaign_discount_cap": 25,
+            "offer_rate_validity_note": PublicationRequest.DEFAULT_RATE_VALIDITY_NOTE,
+            "offer_technical_deliverable": PublicationRequest.DEFAULT_TECH_DELIVERABLE,
+            "offer_note": "پیش‌نویس محرمانه مدیر",
+            "status": PublicationRequest.Status.PENDING,
+            "review_note": "",
+            "_save": "ذخیره",
+        })
+        self.assertEqual(res.status_code, 302)
+        request.refresh_from_db()
+        self.assertFalse(request.has_sent_offer)
+        self.assertTrue(request.has_unsent_offer_changes)
+
+        teacher_client = Client()
+        teacher_client.force_login(self.teacher)
+        book_page = teacher_client.get(reverse("admin:catalog_book_change", args=[self.book.pk]))
+        self.assertEqual(book_page.status_code, 200)
+        self.assertNotContains(book_page, "پیش‌نویس محرمانه مدیر")
+
+        with self.assertRaisesMessage(ValidationError, "پیشنهاد مالی"):
+            review_publication_request(
+                request.pk,
+                actor=self.manager,
+                status=PublicationRequest.Status.APPROVED,
+                review_note="انتشار بدون ارسال پیشنهاد",
+            )
+
+    def test_offer_change_invalidates_prior_acceptance_while_internal_note_preserves_it(self):
+        request = PublicationRequest.objects.create(
+            book=self.book,
+            requested_by=self.teacher,
+            content_digest=publication_content_digest(self.book),
+        )
+        send_publication_offer(
+            request.pk,
+            actor=self.manager,
+            platform_fee_percent=20,
+            prep_mode=PublicationRequest.OfferPrepMode.READY_FILES,
+            distribution_scope=PublicationRequest.DistributionScope.STANDARD,
+            campaign_discount_cap=25,
+            offer_note="نسخه اول با نرخ ۲۰ درصد",
+        )
+        request.refresh_from_db()
+        respond_to_publication_offer(
+            request.pk,
+            actor=self.teacher,
+            decision=PublicationRequest.TeacherResponse.ACCEPTED,
+            expected_offer_digest=request.sent_offer_digest,
+        )
+        request.refresh_from_db()
+        self.assertTrue(request.is_current_offer_accepted)
+
+        # Changing internal review_note does NOT invalidate teacher acceptance.
+        review_publication_request(
+            request.pk,
+            actor=self.manager,
+            status=PublicationRequest.Status.PENDING,
+            review_note="یادداشت داخلی مدیر: در حال کنترل نهایی جلد",
+        )
+        request.refresh_from_db()
+        self.assertTrue(request.is_current_offer_accepted)
+
+        # Sending v2 with 25% MUST invalidate v1 acceptance and block approval until re-accepted.
+        send_publication_offer(
+            request.pk,
+            actor=self.manager,
+            platform_fee_percent=25,
+            prep_mode=PublicationRequest.OfferPrepMode.PLATFORM_PREP,
+            distribution_scope=PublicationRequest.DistributionScope.STANDARD,
+            campaign_discount_cap=25,
+            offer_note="نسخه دوم با نرخ ۲۵ درصد",
+        )
+        request.refresh_from_db()
+        self.assertEqual(request.sent_offer_version, 2)
+        self.assertEqual(request.accepted_offer_version, 1)
+        self.assertFalse(request.is_current_offer_accepted)
+        self.assertTrue(request.has_superseded_acceptance)
+        self.assertEqual(request.workflow_summary()["code"], "offer_pending")
+
+        with self.assertRaisesMessage(ValidationError, "آخرین نسخهٔ پیشنهاد"):
+            review_publication_request(
+                request.pk,
+                actor=self.manager,
+                status=PublicationRequest.Status.APPROVED,
+                review_note="تلاش با پذیرش قبلی",
+            )
+
+        # Stale expected_offer_digest from v1 must be rejected too.
+        with self.assertRaisesMessage(ValidationError, "تغییر کرده است"):
+            respond_to_publication_offer(
+                request.pk,
+                actor=self.teacher,
+                decision=PublicationRequest.TeacherResponse.ACCEPTED,
+                expected_offer_digest="0" * 64,
+            )
+
+    def test_needs_info_content_fix_is_distinct_from_financial_offer(self):
+        request = PublicationRequest.objects.create(
+            book=self.book,
+            requested_by=self.teacher,
+            content_digest=publication_content_digest(self.book),
+        )
+        review_publication_request(
+            request.pk,
+            actor=self.manager,
+            status=PublicationRequest.Status.NEEDS_INFO,
+            review_note="فصل اول نیاز به اصلاح فرمول‌ها دارد.",
+        )
+        request.refresh_from_db()
+        summary = request.workflow_summary()
+        self.assertEqual(summary["code"], "content_fix")
+        self.assertIn("اصلاح محتوای کتاب", summary["stage_label"])
+
+    def test_accepted_terms_execute_immediately_in_commerce_and_single_sale_access(self):
+        from apps.catalog.access import access_kind, owns_book
+        from apps.catalog.models import Major
+        from apps.commerce.models import Order, Plan, SaleCampaign
+        from apps.commerce.royalty import calculate_and_save_order_royalty
+
+        major = Major.objects.create(name="ریاضی", slug="math-workflow")
+        self.book.majors.add(major)
+        self.book.price = 400_000
+        self.book.save(update_fields=["price"])
+
+        request = PublicationRequest.objects.create(
+            book=self.book,
+            requested_by=self.teacher,
+            requested_distribution_scope=PublicationRequest.DistributionScope.SINGLE_SALE_ONLY,
+            single_sale_exception_reason="توافق ویژه فقط تک‌فروش",
+            content_digest=publication_content_digest(self.book),
+        )
+        send_publication_offer(
+            request.pk,
+            actor=self.manager,
+            platform_fee_percent=25,
+            prep_mode=PublicationRequest.OfferPrepMode.PLATFORM_PREP,
+            distribution_scope=PublicationRequest.DistributionScope.SINGLE_SALE_ONLY,
+            campaign_discount_cap=15,
+            offer_note="توافق ۲۵٪ پلتفرم با استثنای فقط فروش تکی و سقف کمپین ۱۵٪.",
+        )
+        request.refresh_from_db()
+        respond_to_publication_offer(
+            request.pk,
+            actor=self.teacher,
+            decision=PublicationRequest.TeacherResponse.ACCEPTED,
+            expected_offer_digest=request.sent_offer_digest,
+        )
+        review_publication_request(
+            request.pk,
+            actor=self.manager,
+            status=PublicationRequest.Status.APPROVED,
+            review_note="انتشار با شرایط توافق‌شده",
+        )
+        self.book.refresh_from_db()
+        self.assertTrue(self.book.is_published)
+        self.assertTrue(self.book.single_sale_only)
+        self.assertEqual(self.book.campaign_discount_cap_percent, 15)
+
+        # Single-book order settles at exact 25% platform / 75% author.
+        buyer = User.objects.create_user("09120000098")
+        order = Order.objects.create(
+            user=buyer,
+            book=self.book,
+            amount=400_000,
+            status=Order.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        snapshot = calculate_and_save_order_royalty(order)
+        self.assertEqual(snapshot.platform_share_amount, 100_000)
+        self.assertEqual(snapshot.total_authors_amount, 300_000)
+
+        # Subscriber with all-majors subscription must NOT get access to a single_sale_only book.
+        subscriber = User.objects.create_user("09120000099")
+        plan = Plan.objects.create(title="اشتراک کل", months=1, price=200_000, scope=Plan.Scope.ALL)
+        Entitlement.objects.create(
+            user=subscriber,
+            all_majors=True,
+            starts_at=timezone.now() - timedelta(days=1),
+            ends_at=timezone.now() + timedelta(days=29),
+        )
+        self.assertFalse(owns_book(subscriber, self.book))
+        self.assertIsNone(access_kind(subscriber, self.book))
+
+        offers_res = self.client.get(f"/api/v1/offers/?book={self.book.slug}")
+        self.assertEqual(offers_res.status_code, 200)
+        self.assertEqual(offers_res.json()["plans"], [])
+        self.assertTrue(offers_res.json()["book"]["single_sale_only"])
+
+        # Campaign discount exceeding agreed 15% cap is blocked.
+        too_high_discount = SaleCampaign(
+            title="تخفیف غیرمجاز",
+            book=self.book,
+            discounted_price=320_000,  # 20% > 15% cap
+            starts_at=timezone.now(),
+            ends_at=timezone.now() + timedelta(days=3),
+        )
+        with self.assertRaises(ValidationError):
+            too_high_discount.full_clean()
+
+        valid_discount = SaleCampaign(
+            title="تخفیف مجاز",
+            book=self.book,
+            discounted_price=360_000,  # 10% <= 15% cap
+            starts_at=timezone.now(),
+            ends_at=timezone.now() + timedelta(days=3),
+        )
+        valid_discount.full_clean()
+        plan.delete()
 
     def test_changed_snapshot_cannot_be_approved(self):
         request = PublicationRequest.objects.create(

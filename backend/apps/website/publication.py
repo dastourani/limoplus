@@ -18,7 +18,13 @@ from apps.learning.models import Choice, Flashcard, Question, QuestionSource
 from .models import PublicationRequest, PublicationRequestEvent
 
 
-_NODE_VOLATILE = {"updated_at", "refreshed_at", "is_published"}
+_NODE_VOLATILE = {
+    "updated_at",
+    "refreshed_at",
+    "is_published",
+    "single_sale_only",
+    "campaign_discount_cap_percent",
+}
 _QUESTION_VOLATILE = {"added_at", "refreshed_at", "answer_count", "correct_count"}
 _FLASHCARD_VOLATILE = {"added_at", "refreshed_at"}
 
@@ -90,18 +96,209 @@ def publication_content_digest(book: ContentNode) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def record_publication_request(request: PublicationRequest, *, actor, action: str, reason=""):
+def record_publication_request(
+    request: PublicationRequest,
+    *,
+    actor,
+    action: str,
+    reason="",
+    offer_version=None,
+    offer_digest="",
+    offer_snapshot=None,
+):
     return PublicationRequestEvent.objects.create(
         request=request,
         action=action,
         actor=actor,
         reason=(reason or "")[:500],
         content_digest=request.content_digest,
+        offer_version=offer_version,
+        offer_digest=offer_digest or "",
+        offer_snapshot=offer_snapshot or {},
+    )
+
+
+def send_publication_offer(
+    request_id: int,
+    *,
+    actor,
+    platform_fee_percent: int,
+    prep_mode: str,
+    distribution_scope: str,
+    campaign_discount_cap: int = 30,
+    rate_validity_note: str = "",
+    technical_deliverable: str = "",
+    offer_note: str = "",
+) -> PublicationRequest:
+    """Explicitly publish a versioned offer to the teacher; draft saves never invoke this."""
+    if not actor or not actor.is_active or not actor.is_superuser:
+        raise PermissionError("فقط مدیر کل می‌تواند پیشنهاد مالی و شرایط انتشار را برای استاد ارسال کند.")
+    if platform_fee_percent is None or not (10 <= int(platform_fee_percent) <= 40):
+        raise ValidationError("سهم پلتفرم از فروش تکی این کتاب باید بین ۱۰ تا ۴۰ درصد باشد.")
+    if prep_mode not in dict(PublicationRequest.OfferPrepMode.choices):
+        raise ValidationError("نوع خدمات آماده‌سازی پیشنهادی را انتخاب کنید.")
+    if distribution_scope not in dict(PublicationRequest.DistributionScope.choices):
+        raise ValidationError("نوع عرضه پیشنهادی را انتخاب کنید.")
+    if campaign_discount_cap is None or not (0 <= int(campaign_discount_cap) <= 80):
+        raise ValidationError("سقف مجاز تخفیف کمپین باید بین ۰ تا ۸۰ درصد باشد.")
+    offer_note = (offer_note or "").strip()
+    if not offer_note:
+        raise ValidationError("متن باکس شرایط و پیام مدیر به استاد را برای ارسال پیشنهاد وارد کنید.")
+
+    with transaction.atomic():
+        item = PublicationRequest.objects.select_for_update().get(pk=request_id)
+        if item.status not in (PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO):
+            raise ValidationError("برای درخواست نهایی‌شده امکان ارسال پیشنهاد جدید وجود ندارد.")
+
+        item.offer_platform_fee_percent = int(platform_fee_percent)
+        item.offer_prep_mode = prep_mode
+        item.offer_distribution_scope = distribution_scope
+        item.offer_campaign_discount_cap = int(campaign_discount_cap)
+        item.offer_rate_validity_note = (rate_validity_note or PublicationRequest.DEFAULT_RATE_VALIDITY_NOTE).strip()
+        item.offer_technical_deliverable = (technical_deliverable or PublicationRequest.DEFAULT_TECH_DELIVERABLE).strip()
+        item.offer_note = offer_note
+
+        payload = item.build_draft_offer_payload()
+        digest = item.compute_offer_digest(payload)
+        now = timezone.now()
+
+        item.sent_offer_version = (item.sent_offer_version or 0) + 1
+        item.sent_offer_digest = digest
+        item.sent_offer_snapshot = {**payload, "version": item.sent_offer_version, "digest": digest}
+        item.offer_sent_at = now
+        item.offer_sent_by = actor
+        item.status = PublicationRequest.Status.PENDING
+        if item.accepted_offer_digest != digest:
+            item.teacher_response = ""
+            item.teacher_response_note = ""
+        item.save()
+
+        record_publication_request(
+            item,
+            actor=actor,
+            action=PublicationRequestEvent.Action.OFFER_SENT,
+            reason=offer_note,
+            offer_version=item.sent_offer_version,
+            offer_digest=digest,
+            offer_snapshot=item.sent_offer_snapshot,
+        )
+        return item
+
+
+def respond_to_publication_offer(
+    request_id: int,
+    *,
+    actor,
+    decision: str,
+    note: str = "",
+    expected_offer_digest: str = "",
+) -> PublicationRequest:
+    """Record a book teacher's acceptance or revision request bound strictly to the exact sent offer digest."""
+    from apps.catalog import access
+    from apps.catalog.models import BookEditor
+
+    if not actor or not actor.is_authenticated or not actor.is_active:
+        raise PermissionError("برای پاسخ به پیشنهاد باید وارد حساب خود شوید.")
+    if decision not in (
+        PublicationRequest.TeacherResponse.ACCEPTED,
+        PublicationRequest.TeacherResponse.REVISION_REQUESTED,
+    ):
+        raise ValidationError("نوع پاسخ به پیشنهاد معتبر نیست.")
+
+    note = (note or "").strip()
+    if decision == PublicationRequest.TeacherResponse.REVISION_REQUESTED and not note:
+        raise ValidationError("برای درخواست بازنگری، نظر یا مورد اصلاحی خود را بنویسید.")
+    if len(note) > 1000:
+        raise ValidationError("متن پاسخ نباید بیش از ۱۰۰۰ نویسه باشد.")
+
+    with transaction.atomic():
+        item = PublicationRequest.objects.select_for_update().select_related("book").get(pk=request_id)
+        has_right = (
+            access.is_book_teacher(actor)
+            and BookEditor.objects.filter(book=item.book, user=actor, can_request_publication=True).exists()
+        )
+        if not has_right and not actor.is_superuser:
+            raise PermissionError("شما دسترسی پاسخ به پیشنهاد انتشار این کتاب را ندارید.")
+        if item.status not in (PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO):
+            raise ValidationError("این درخواست قبلاً نهایی شده است.")
+        if not item.has_sent_offer:
+            raise ValidationError("هنوز پیشنهاد رسمی از سوی مدیر کل ارسال نشده است.")
+        if expected_offer_digest and expected_offer_digest != item.sent_offer_digest:
+            raise ValidationError(
+                "نسخهٔ پیشنهاد پس از بازکردن صفحه تغییر کرده است؛ لطفاً صفحه را تازه کرده و نسخهٔ جدید را بررسی کنید."
+            )
+
+        now = timezone.now()
+        item.teacher_response = decision
+        item.teacher_response_note = note
+        item.teacher_responded_by = actor
+        item.teacher_responded_at = now
+
+        if decision == PublicationRequest.TeacherResponse.ACCEPTED:
+            item.accepted_offer_version = item.sent_offer_version
+            item.accepted_offer_digest = item.sent_offer_digest
+            item.accepted_offer_snapshot = {
+                **(item.sent_offer_snapshot or {}),
+                "accepted_by_id": actor.pk,
+                "accepted_by_phone": getattr(actor, "phone", ""),
+                "accepted_at": now.isoformat(),
+            }
+            action = PublicationRequestEvent.Action.OFFER_ACCEPTED
+        else:
+            action = PublicationRequestEvent.Action.OFFER_REVISION
+
+        item.save(
+            update_fields=[
+                "teacher_response",
+                "teacher_response_note",
+                "teacher_responded_by",
+                "teacher_responded_at",
+                "accepted_offer_version",
+                "accepted_offer_digest",
+                "accepted_offer_snapshot",
+            ]
+        )
+        record_publication_request(
+            item,
+            actor=actor,
+            action=action,
+            reason=note,
+            offer_version=item.sent_offer_version,
+            offer_digest=item.sent_offer_digest,
+            offer_snapshot=item.sent_offer_snapshot,
+        )
+        return item
+
+
+def _sync_accepted_terms_to_book_and_commerce(item: PublicationRequest, book: ContentNode) -> None:
+    """Apply the teacher-accepted commercial terms atomically onto live catalog & royalty rules."""
+    from apps.commerce.models import BookRoyaltyRule
+
+    snapshot = item.accepted_offer_snapshot or item.sent_offer_snapshot or {}
+    fee = int(snapshot["platform_fee_percent"])
+    scope = snapshot.get("distribution_scope") or PublicationRequest.DistributionScope.STANDARD
+    cap = snapshot.get("campaign_discount_cap")
+    cap_value = None if cap is None else int(cap)
+
+    rule, _ = BookRoyaltyRule.objects.get_or_create(book=book)
+    rule.is_custom_split = True
+    rule.custom_platform_share_percent = fee
+    note_line = (
+        f"توافق انتشار نسخه #{item.accepted_offer_version} "
+        f"(سهم پلتفرم {fee}٪ / نوع عرضه: {snapshot.get('distribution_scope_label') or scope} / "
+        f"سقف کمپین: {cap_value if cap_value is not None else '—'}٪)"
+    )
+    rule.notes = f"{note_line}\n{rule.notes}".strip() if rule.notes else note_line
+    rule.save(update_fields=["is_custom_split", "custom_platform_share_percent", "notes", "updated_at"])
+
+    ContentNode.objects.filter(pk=book.pk).update(
+        single_sale_only=(scope == PublicationRequest.DistributionScope.SINGLE_SALE_ONLY),
+        campaign_discount_cap_percent=cap_value,
     )
 
 
 def review_publication_request(request_id: int, *, actor, status: str, review_note=""):
-    """Record a manager decision; approval atomically releases only the exact submitted content snapshot."""
+    """Record a manager decision; approval atomically releases only the exact submitted content + accepted offer."""
     if not actor or not actor.is_active or not actor.is_superuser:
         raise PermissionError("فقط مدیر کل می‌تواند انتشار عمومی را بررسی کند.")
     allowed = {
@@ -127,9 +324,26 @@ def review_publication_request(request_id: int, *, actor, status: str, review_no
         if book.is_archived or book.is_inbox:
             raise ValidationError("کتاب بایگانی‌شده یا صندوق تست قابل انتشار نیست.")
 
+        event_offer_version = None
+        event_offer_digest = ""
+        event_offer_snapshot = None
+
         if status == PublicationRequest.Status.APPROVED:
             if publication_content_digest(book) != item.content_digest:
                 raise ValidationError("محتوا پس از ثبت درخواست تغییر کرده است؛ نسخه‌ی تازه باید دوباره برای بازبینی فرستاده شود.")
+            if not item.has_sent_offer:
+                raise ValidationError("پیش از تأیید و انتشار عمومی، ابتدا پیشنهاد مالی (۱۰ تا ۴۰ درصد) را برای استاد ارسال کنید.")
+            if item.has_unsent_offer_changes:
+                raise ValidationError(
+                    "تغییرات جدید پیشنهاد هنوز برای استاد ارسال نشده است؛ ابتدا دکمه «ارسال پیشنهاد به استاد» را بزنید تا استاد نسخهٔ تازه را بپذیرد."
+                )
+            if not item.is_current_offer_accepted:
+                raise ValidationError(
+                    "استاد هنوز آخرین نسخهٔ پیشنهاد مالی و شرایط عرضه را نپذیرفته است؛ انتشار عمومی تا پذیرش نسخهٔ فعلی متوقف است."
+                )
+            event_offer_version = item.accepted_offer_version
+            event_offer_digest = item.accepted_offer_digest
+            event_offer_snapshot = item.accepted_offer_snapshot
             action = PublicationRequestEvent.Action.APPROVED
         elif status == PublicationRequest.Status.NEEDS_INFO:
             action = PublicationRequestEvent.Action.NEEDS_INFO
@@ -148,9 +362,18 @@ def review_publication_request(request_id: int, *, actor, status: str, review_no
         item.save(update_fields=["status", "review_note", "reviewed_by", "reviewed_at"])
 
         if status == PublicationRequest.Status.APPROVED:
+            _sync_accepted_terms_to_book_and_commerce(item, book)
             # The public catalog release is an independent manager decision. This does not touch group requests,
             # phone lists, student accounts or entitlements.
             ContentNode.objects.filter(path__startswith=book.path, is_archived=False).update(is_published=True)
 
-        record_publication_request(item, actor=actor, action=action, reason=review_note)
+        record_publication_request(
+            item,
+            actor=actor,
+            action=action,
+            reason=review_note,
+            offer_version=event_offer_version,
+            offer_digest=event_offer_digest,
+            offer_snapshot=event_offer_snapshot,
+        )
         return item

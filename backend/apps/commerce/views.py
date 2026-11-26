@@ -59,15 +59,20 @@ def _entitlement_payload(e):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def offers(request):
-    """What can be bought to open a book: the book itself and the subscription plans (every plan covers all books)."""
+    """What can be bought to open a book: the book itself and (unless single_sale_only) the subscription plans."""
     book = _book(request.query_params.get("book", ""))
     if book is None:
         return _err("کتاب پیدا نشد.", "not_found", status.HTTP_404_NOT_FOUND)
-    sale_plans = list(_plans_on_sale())
+    sale_plans = [] if getattr(book, "single_sale_only", False) else list(_plans_on_sale())
     prices = plan_price_quotes(sale_plans)
     return Response(
         {
-            "book": {"slug": book.slug, "title": book.title, **book_price_quote(book).payload()},
+            "book": {
+                "slug": book.slug,
+                "title": book.title,
+                "single_sale_only": bool(getattr(book, "single_sale_only", False)),
+                **book_price_quote(book).payload(),
+            },
             "majors": [],
             "plans": [_plan_payload(plan, prices[plan.pk]) for plan in sale_plans],
             "payments_enabled": settings.PAYMENTS_ENABLED,

@@ -86,7 +86,7 @@ def _offline_revocations_for(user):
         if book is None or book.is_free:
             return
         major_ids = {major.pk for major in book.majors.all()}
-        if access_kind_from(entitlements, user, book.pk, major_ids):
+        if access_kind_from(entitlements, user, book.pk, major_ids, single_sale_only=bool(book.single_sale_only)):
             return
         prev = latest_by_slug.get(book.slug)
         if prev is None or revoked_at > prev:

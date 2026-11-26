@@ -72,6 +72,7 @@ def simulate_subscription_pool(period: SubscriptionPoolPeriod) -> dict:
         depth=1,
         is_published=True,
         is_archived=False,
+        single_sale_only=False,
     )
 
     for b in all_books:

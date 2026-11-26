@@ -326,7 +326,9 @@ class BookAdmin(admin.ModelAdmin):
                 extra["can_request_publication"] = bool(is_preview or (editor and editor.can_request_publication))
                 extra["can_request_group_access"] = bool(is_preview or (editor and editor.can_request_group_access))
                 from apps.website.models import PublicationRequest
-                extra["publication_request"] = PublicationRequest.objects.filter(book=book, requested_by=request.user).order_by("-submitted_at").first()
+                pub_req = PublicationRequest.objects.filter(book=book, requested_by=request.user).order_by("-submitted_at").first()
+                extra["publication_request"] = pub_req
+                extra["publication_offer"] = self._publication_offer_context(book, pub_req, request.user)
             else:
                 extra["can_request_publication"] = False
                 extra["can_request_group_access"] = False
@@ -359,6 +361,7 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/study-analytics/", site(self.book_study_analytics_view), name="catalog_book_study_analytics"),
             path("<int:book_id>/trace/", site(self.book_trace_view), name="catalog_book_trace"),
             path("<int:book_id>/request-publication/", site(self.book_request_publication_view), name="catalog_book_request_publication"),
+            path("<int:book_id>/respond-offer/", site(self.book_respond_offer_view), name="catalog_book_respond_offer"),
             path("<int:book_id>/publish/", site(lambda r, book_id: panel.book_publish(self.admin_site, r, book_id)),
                  name="catalog_book_publish"),
             path("<int:book_id>/inbox/", site(panel.open_book_inbox), name="catalog_book_inbox"),
@@ -860,6 +863,129 @@ class BookAdmin(admin.ModelAdmin):
         }
         return render(request, "admin/catalog/book/book_trace.html", context)
 
+    @staticmethod
+    def _publication_offer_context(book, pub_req, user):
+        if not pub_req:
+            return None
+        from apps.commerce.models import BookAuthorShare
+        from apps.website.models import PublicationRequest
+        from .jalali import jalali_datetime
+        from .models import BookEditor
+
+        summary = pub_req.workflow_summary()
+        active_shares = list(BookAuthorShare.objects.filter(royalty_rule__book=book, is_active=True))
+        editors_count = BookEditor.objects.filter(book=book).count()
+        is_multi_author = len(active_shares) > 1 or editors_count > 1
+        user_share_percent = next(
+            (s.share_percent for s in active_shares if s.author_id == getattr(user, "pk", None)),
+            None,
+        )
+
+        sent_offer = None
+        if pub_req.has_sent_offer:
+            snap = pub_req.sent_offer_snapshot or {}
+            fee = int(snap.get("platform_fee_percent"))
+            authors_total = 100 - fee
+            example_base = 400_000
+            example_platform = round(example_base * fee / 100)
+            example_authors_total = example_base - example_platform
+            fa_trans = str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬")
+            sent_offer = {
+                "version": pub_req.sent_offer_version,
+                "digest": pub_req.sent_offer_digest,
+                "sent_at_fa": jalali_datetime(pub_req.offer_sent_at) if pub_req.offer_sent_at else "",
+                "platform_fee_percent": fee,
+                "authors_total_percent": authors_total,
+                "example_base": example_base,
+                "example_platform": example_platform,
+                "example_authors_total": example_authors_total,
+                "example_base_fa": f"{example_base:,}".translate(fa_trans),
+                "example_platform_fa": f"{example_platform:,}".translate(fa_trans),
+                "example_authors_total_fa": f"{example_authors_total:,}".translate(fa_trans),
+                "prep_mode_label": snap.get("prep_mode_label") or "—",
+                "distribution_scope": snap.get("distribution_scope") or "",
+                "distribution_scope_label": snap.get("distribution_scope_label") or "—",
+                "campaign_discount_cap": snap.get("campaign_discount_cap"),
+                "rate_validity_note": snap.get("rate_validity_note") or "",
+                "technical_deliverable": snap.get("technical_deliverable") or "",
+                "offer_note": snap.get("offer_note") or "",
+            }
+
+        accepted_offer = None
+        if pub_req.accepted_offer_version:
+            acc = pub_req.accepted_offer_snapshot or {}
+            accepted_offer = {
+                "version": pub_req.accepted_offer_version,
+                "fee_percent": acc.get("platform_fee_percent"),
+                "authors_total_percent": acc.get("authors_total_percent"),
+                "distribution_scope_label": acc.get("distribution_scope_label") or "",
+                "prep_mode_label": acc.get("prep_mode_label") or "",
+                "accepted_at_fa": jalali_datetime(pub_req.teacher_responded_at) if pub_req.teacher_responded_at else "",
+                "is_current": pub_req.is_current_offer_accepted,
+                "is_superseded": pub_req.has_superseded_acceptance,
+            }
+
+        can_respond = bool(
+            pub_req.has_sent_offer
+            and pub_req.status in (PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO)
+            and not pub_req.is_current_offer_accepted
+        )
+        return {
+            "summary": summary,
+            "sent_offer": sent_offer,
+            "accepted_offer": accepted_offer,
+            "is_multi_author": is_multi_author,
+            "user_share_percent": user_share_percent,
+            "can_respond": can_respond,
+            "teacher_response": pub_req.teacher_response,
+            "teacher_response_note": pub_req.teacher_response_note,
+        }
+
+    def book_respond_offer_view(self, request, book_id):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied, ValidationError
+        from django.shortcuts import get_object_or_404, redirect
+        from apps.website.models import PublicationRequest
+        from apps.website.publication import respond_to_publication_offer
+
+        book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK)
+        if request.method != "POST":
+            return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#publish")
+
+        req_id = request.POST.get("request_id")
+        decision = (request.POST.get("decision") or "").strip()
+        note = (request.POST.get("response_note") or "").strip()
+        expected_digest = (request.POST.get("expected_offer_digest") or "").strip()
+        return_to = (request.POST.get("return_to") or "").strip()
+        req_obj = get_object_or_404(PublicationRequest, pk=req_id, book=book)
+
+        try:
+            updated = respond_to_publication_offer(
+                req_obj.pk,
+                actor=request.user,
+                decision=decision,
+                note=note,
+                expected_offer_digest=expected_digest,
+            )
+            if updated.teacher_response == PublicationRequest.TeacherResponse.ACCEPTED:
+                messages.success(
+                    request,
+                    f"نسخه #{updated.accepted_offer_version} پیشنهاد با موفقیت پذیرفته شد. اکنون نوبت مدیر کل است تا انتشار نهایی را انجام دهد.",
+                )
+            else:
+                messages.info(
+                    request,
+                    f"درخواست بازنگری شما روی نسخه #{updated.sent_offer_version} ثبت شد و به مدیر کل ارجاع گردید.",
+                )
+        except PermissionError as exc:
+            raise PermissionDenied(str(exc)) from exc
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages) if hasattr(exc, "messages") else str(exc))
+
+        if return_to == "request_page":
+            return redirect(reverse("admin:catalog_book_request_publication", args=[book.pk]))
+        return redirect(reverse("admin:catalog_book_change", args=[book.pk]) + "#publish")
+
     def book_request_publication_view(self, request, book_id):
         from django.contrib import messages
         from django.core.exceptions import PermissionDenied
@@ -881,6 +1007,13 @@ class BookAdmin(admin.ModelAdmin):
 
         if request.method == "POST":
             note = request.POST.get("note", "").strip()
+            prep_pref = (request.POST.get("author_prep_preference") or "").strip()
+            if prep_pref not in dict(PublicationRequest.PrepPreference.choices):
+                prep_pref = ""
+            dist_scope = (request.POST.get("requested_distribution_scope") or PublicationRequest.DistributionScope.STANDARD).strip()
+            if dist_scope not in dict(PublicationRequest.DistributionScope.choices):
+                dist_scope = PublicationRequest.DistributionScope.STANDARD
+            exception_reason = (request.POST.get("single_sale_exception_reason") or "").strip()[:1000]
             digest = publication_content_digest(book)
 
             # Check if pending request exists
@@ -892,9 +1025,19 @@ class BookAdmin(admin.ModelAdmin):
 
             if pending:
                 pending.request_note = note
+                pending.author_prep_preference = prep_pref
+                pending.requested_distribution_scope = dist_scope
+                pending.single_sale_exception_reason = exception_reason
                 pending.content_digest = digest
                 pending.status = PublicationRequest.Status.PENDING
-                pending.save(update_fields=["request_note", "content_digest", "status"])
+                pending.save(update_fields=[
+                    "request_note",
+                    "author_prep_preference",
+                    "requested_distribution_scope",
+                    "single_sale_exception_reason",
+                    "content_digest",
+                    "status",
+                ])
                 record_publication_request(pending, actor=request.user, action=PublicationRequestEvent.Action.SUBMITTED, reason=note)
                 messages.success(request, "درخواست بازبینی شما با موفقیت به‌روزرسانی شد و برای مدیر کل ارسال گردید.")
                 try:
@@ -913,6 +1056,9 @@ class BookAdmin(admin.ModelAdmin):
                     book=book,
                     requested_by=request.user,
                     request_note=note,
+                    author_prep_preference=prep_pref,
+                    requested_distribution_scope=dist_scope,
+                    single_sale_exception_reason=exception_reason,
                     content_digest=digest,
                     status=PublicationRequest.Status.PENDING,
                 )
@@ -937,6 +1083,9 @@ class BookAdmin(admin.ModelAdmin):
             "title": f"درخواست بازبینی انتشار: {book.title}",
             "book": book,
             "latest_req": latest_req,
+            "publication_offer": self._publication_offer_context(book, latest_req, request.user),
+            "prep_choices": PublicationRequest.PrepPreference.choices,
+            "scope_choices": PublicationRequest.DistributionScope.choices,
             "opts": self.model._meta,
         }
         return render(request, "admin/catalog/book/book_request_publication.html", context)

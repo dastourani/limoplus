@@ -38,7 +38,12 @@ from .models import (
     TeacherApplication,
     TeacherInvitation,
 )
-from .publication import publication_content_digest, record_publication_request, review_publication_request
+from .publication import (
+    publication_content_digest,
+    record_publication_request,
+    review_publication_request,
+    send_publication_offer,
+)
 
 
 _TEACHER_CAPABILITIES = (
@@ -456,6 +461,8 @@ class BookAccessRequestAdmin(admin.ModelAdmin):
 
 
 class PublicationRequestAdminForm(forms.ModelForm):
+    is_sending_offer = False
+
     class Meta:
         model = PublicationRequest
         fields = "__all__"
@@ -464,10 +471,35 @@ class PublicationRequestAdminForm(forms.ModelForm):
         data = super().clean()
         status = data.get("status")
         note = (data.get("review_note") or "").strip()
+        fee = data.get("offer_platform_fee_percent")
+        prep_mode = (data.get("offer_prep_mode") or "").strip()
+        dist_scope = (data.get("offer_distribution_scope") or "").strip()
+        cap = data.get("offer_campaign_discount_cap")
+        offer_note = (data.get("offer_note") or "").strip()
+
+        if fee is not None and not (10 <= fee <= 40):
+            self.add_error("offer_platform_fee_percent", "سهم پلتفرم از فروش تکی باید بین ۱۰ تا ۴۰ درصد باشد.")
+        if cap is not None and not (0 <= cap <= 80):
+            self.add_error("offer_campaign_discount_cap", "سقف مجاز تخفیف کمپین باید بین ۰ تا ۸۰ درصد باشد.")
+
         if self.instance.pk and "status" in self.fields:
             previous = PublicationRequest.objects.filter(pk=self.instance.pk).values_list("status", flat=True).first()
             if previous in (PublicationRequest.Status.APPROVED, PublicationRequest.Status.REJECTED) and status != previous:
                 self.add_error("status", "درخواست نهایی‌شده قابل بازنویسی نیست.")
+
+            if self.is_sending_offer:
+                if previous in (PublicationRequest.Status.APPROVED, PublicationRequest.Status.REJECTED):
+                    self.add_error("status", "برای درخواست نهایی‌شده امکان ارسال پیشنهاد جدید وجود ندارد.")
+                if fee is None:
+                    self.add_error("offer_platform_fee_percent", "برای ارسال پیشنهاد به استاد، سهم پلتفرم (۱۰ تا ۴۰ درصد) را وارد کنید.")
+                if not prep_mode:
+                    self.add_error("offer_prep_mode", "نوع خدمات آماده‌سازی را انتخاب کنید.")
+                if not dist_scope:
+                    self.add_error("offer_distribution_scope", "نوع عرضه پیشنهادی را انتخاب کنید.")
+                if not offer_note:
+                    self.add_error("offer_note", "متن باکس شرایط و پیام مدیر به استاد را وارد کنید.")
+                return data
+
             if previous in (PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO) and status == PublicationRequest.Status.APPROVED:
                 book = self.instance.book
                 try:
@@ -477,6 +509,33 @@ class PublicationRequestAdminForm(forms.ModelForm):
                         self.add_error("status", "محتوا پس از ثبت درخواست تغییر کرده؛ نسخه‌ی تازه باید دوباره ارسال شود.")
                 except ValidationError as exc:
                     self.add_error("status", exc)
+
+                candidate_payload = {
+                    "platform_fee_percent": int(fee) if fee is not None else None,
+                    "prep_mode": prep_mode,
+                    "distribution_scope": dist_scope,
+                    "campaign_discount_cap": 0 if cap is None else int(cap),
+                    "rate_validity_note": (data.get("offer_rate_validity_note") or PublicationRequest.DEFAULT_RATE_VALIDITY_NOTE).strip(),
+                    "technical_deliverable": (data.get("offer_technical_deliverable") or PublicationRequest.DEFAULT_TECH_DELIVERABLE).strip(),
+                    "offer_note": offer_note,
+                }
+                candidate_digest = (
+                    PublicationRequest.compute_offer_digest(candidate_payload)
+                    if fee is not None
+                    else ""
+                )
+                if not self.instance.has_sent_offer:
+                    self.add_error("status", "پیش از تأیید و انتشار عمومی، ابتدا پیشنهاد مالی را با دکمه «ارسال پیشنهاد به استاد» بفرستید.")
+                elif candidate_digest != self.instance.sent_offer_digest:
+                    self.add_error(
+                        "offer_platform_fee_percent",
+                        "تغییرات باکس پیشنهاد هنوز برای استاد ارسال نشده است؛ ابتدا دکمه «ارسال پیشنهاد به استاد» را بزنید تا استاد نسخهٔ تازه را بپذیرد.",
+                    )
+                elif not self.instance.is_current_offer_accepted:
+                    self.add_error(
+                        "status",
+                        "استاد هنوز آخرین نسخهٔ پیشنهاد مالی و شرایط عرضه را نپذیرفته است؛ انتشار عمومی تا پذیرش نسخهٔ فعلی متوقف است.",
+                    )
             if status in (PublicationRequest.Status.NEEDS_INFO, PublicationRequest.Status.APPROVED, PublicationRequest.Status.REJECTED) and not note:
                 self.add_error("review_note", "برای ثبت تصمیم انتشار، دلیل یا یادداشت را وارد کنید.")
         return data
@@ -500,7 +559,8 @@ class PublicationRequestAdmin(admin.ModelAdmin):
     """Teachers may submit a version for review; only the superuser can release it publicly."""
 
     form = PublicationRequestAdminForm
-    list_display = ("book", "requester", "status_label", "submitted_at", "reviewed_at", "digest_short")
+    change_form_template = "admin/website/publicationrequest/change_form.html"
+    list_display = ("book", "requester", "status_label", "offer_status_label", "submitted_at", "reviewed_at", "digest_short")
     list_filter = (PublicationQueueFilter, "status", "book")
     search_fields = ("book__title", "requested_by__phone", "request_note")
     list_select_related = ("book", "requested_by", "reviewed_by")
@@ -515,37 +575,133 @@ class PublicationRequestAdmin(admin.ModelAdmin):
     def status_label(self, obj):
         return obj.get_status_display()
 
+    @admin.display(description="وضعیت پیشنهاد و نوبت اقدام")
+    def offer_status_label(self, obj):
+        summary = obj.workflow_summary()
+        return f"{summary['stage_label']} · نوبت: {summary['next_actor']}"
+
     @admin.display(description="نسخه")
     def digest_short(self, obj):
         return obj.content_digest[:12]
 
-    def get_fields(self, request, obj=None):
+    @admin.display(description="پیشنهاد ارسال‌شده به استاد")
+    def sent_offer_summary(self, obj):
+        if not obj or not obj.has_sent_offer:
+            return "هنوز پیشنهادی برای استاد ارسال نشده است (مقادیر بالا فقط پیش‌نویس مدیر هستند)."
+        snap = obj.sent_offer_snapshot or {}
+        fee = snap.get("platform_fee_percent")
+        authors = snap.get("authors_total_percent")
+        scope = snap.get("distribution_scope_label") or snap.get("distribution_scope") or "—"
+        cap = snap.get("campaign_discount_cap")
+        return (
+            f"نسخه #{obj.sent_offer_version} · سهم پلتفرم: {fee}٪ / سهم مجموع مؤلفان: {authors}٪ · "
+            f"{scope} · سقف کمپین: {cap}٪"
+        )
+
+    @admin.display(description="آخرین نسخهٔ پذیرفته‌شده توسط استاد")
+    def accepted_offer_summary(self, obj):
+        if not obj or not obj.accepted_offer_version:
+            return "هنوز هیچ نسخه‌ای توسط استاد پذیرفته نشده است."
+        snap = obj.accepted_offer_snapshot or {}
+        fee = snap.get("platform_fee_percent")
+        accepted_by = snap.get("accepted_by_phone") or (obj.teacher_responded_by.phone if obj.teacher_responded_by_id else "—")
+        state = "معتبر برای نسخهٔ فعلی" if obj.is_current_offer_accepted else "باطل‌شده به دلیل تغییر/نسخهٔ جدید"
+        return f"نسخه #{obj.accepted_offer_version} (سهم پلتفرم: {fee}٪ · پذیرش توسط {accepted_by} · {state})"
+
+    @admin.display(description="نوبت اقدام فعلی")
+    def workflow_turn_display(self, obj):
+        if not obj:
+            return "—"
+        summary = obj.workflow_summary()
+        return f"{summary['stage_label']} — نوبت اقدام: {summary['next_actor']}"
+
+    def get_fieldsets(self, request, obj=None):
         if obj is None:
-            return ("book", "request_note")
+            return ((None, {"fields": ("book", "author_prep_preference", "requested_distribution_scope", "single_sale_exception_reason", "request_note")}),)
         if access.acts_as_panel_superuser(request):
             return (
-                "book", "requested_by", "request_note", "content_digest", "status", "review_note",
-                "submitted_at", "reviewed_by", "reviewed_at",
+                ("اطلاعات درخواست مؤلف", {
+                    "fields": (
+                        "book", "requested_by", "request_note",
+                        "author_prep_preference", "requested_distribution_scope", "single_sale_exception_reason",
+                        "content_digest", "submitted_at",
+                    ),
+                }),
+                ("پیشنهاد مالی و شرایط انتشار (پیش‌نویس تا پیش از «ارسال پیشنهاد به استاد»)", {
+                    "fields": (
+                        "offer_platform_fee_percent",
+                        "offer_prep_mode",
+                        "offer_distribution_scope",
+                        "offer_campaign_discount_cap",
+                        "offer_rate_validity_note",
+                        "offer_technical_deliverable",
+                        "offer_note",
+                    ),
+                }),
+                ("وضعیت ارسال پیشنهاد و پاسخ استاد", {
+                    "fields": (
+                        "workflow_turn_display",
+                        "sent_offer_summary",
+                        "accepted_offer_summary",
+                        "teacher_response",
+                        "teacher_response_note",
+                        "teacher_responded_at",
+                        "offer_sent_at",
+                        "offer_sent_by",
+                    ),
+                }),
+                ("تصمیم انتشار و یادداشت داخلی مدیر", {
+                    "fields": ("status", "review_note", "reviewed_by", "reviewed_at"),
+                }),
             )
-        return ("book", "request_note", "content_digest", "status", "submitted_at", "reviewed_at")
+        return ((None, {"fields": ("book", "request_note", "content_digest", "status", "submitted_at", "reviewed_at")}),)
 
     def get_readonly_fields(self, request, obj=None):
         if obj is None:
             return ()
         if not access.acts_as_panel_superuser(request):
-            return self.get_fields(request, obj)
-        fixed = ("book", "requested_by", "request_note", "content_digest", "submitted_at", "reviewed_by", "reviewed_at")
+            return ("book", "request_note", "content_digest", "status", "submitted_at", "reviewed_at")
+        fixed = (
+            "book", "requested_by", "request_note",
+            "author_prep_preference", "requested_distribution_scope", "single_sale_exception_reason",
+            "content_digest", "submitted_at",
+            "workflow_turn_display", "sent_offer_summary", "accepted_offer_summary",
+            "teacher_response", "teacher_response_note", "teacher_responded_at",
+            "offer_sent_at", "offer_sent_by",
+            "reviewed_by", "reviewed_at",
+        )
         if obj.status in (PublicationRequest.Status.APPROVED, PublicationRequest.Status.REJECTED):
-            return (*fixed, "status", "review_note")
+            return (
+                *fixed,
+                "offer_platform_fee_percent", "offer_prep_mode", "offer_distribution_scope",
+                "offer_campaign_discount_cap", "offer_rate_validity_note", "offer_technical_deliverable",
+                "offer_note", "status", "review_note",
+            )
         return fixed
 
     def get_form(self, request, obj=None, **kwargs):
         base_form = super().get_form(request, obj, **kwargs)
         if obj is not None:
-            return base_form
+            sending_offer = request.method == "POST" and "_send_offer" in request.POST
+
+            class ManagerForm(base_form):
+                is_sending_offer = sending_offer
+
+            return ManagerForm
         submitter = request.user
 
         class SubmissionForm(base_form):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                if "requested_distribution_scope" in self.fields:
+                    self.fields["requested_distribution_scope"].required = False
+
+            def clean_requested_distribution_scope(self):
+                return (
+                    self.cleaned_data.get("requested_distribution_scope")
+                    or PublicationRequest.DistributionScope.STANDARD
+                )
+
             def clean(self):
                 data = super().clean()
                 book = data.get("book")
@@ -616,6 +772,18 @@ class PublicationRequestAdmin(admin.ModelAdmin):
             kwargs["queryset"] = books.order_by("title")
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        extra = dict(extra_context or {})
+        if object_id and access.acts_as_panel_superuser(request):
+            obj = self.get_object(request, object_id)
+            if obj is not None:
+                extra["pub_workflow_summary"] = obj.workflow_summary()
+                extra["pub_can_send_offer"] = obj.status in (
+                    PublicationRequest.Status.PENDING,
+                    PublicationRequest.Status.NEEDS_INFO,
+                )
+        return super().changeform_view(request, object_id, form_url, extra)
+
     def save_model(self, request, obj, form, change):
         if not change:
             if not _has_book_capability(request.user, obj.book, "can_request_publication"):
@@ -640,9 +808,50 @@ class PublicationRequestAdmin(admin.ModelAdmin):
         previous = PublicationRequest.objects.get(pk=obj.pk)
         if previous.status not in (PublicationRequest.Status.PENDING, PublicationRequest.Status.NEEDS_INFO):
             raise ValidationError("درخواست نهایی‌شده قابل ویرایش نیست.")
-        if obj.status == previous.status and obj.review_note == previous.review_note:
-            super().save_model(request, obj, form, change)
+
+        if "_send_offer" in request.POST:
+            sent = send_publication_offer(
+                obj.pk,
+                actor=request.user,
+                platform_fee_percent=form.cleaned_data["offer_platform_fee_percent"],
+                prep_mode=form.cleaned_data["offer_prep_mode"],
+                distribution_scope=form.cleaned_data["offer_distribution_scope"],
+                campaign_discount_cap=form.cleaned_data["offer_campaign_discount_cap"],
+                rate_validity_note=form.cleaned_data.get("offer_rate_validity_note") or "",
+                technical_deliverable=form.cleaned_data.get("offer_technical_deliverable") or "",
+                offer_note=form.cleaned_data["offer_note"],
+            )
+            for attr in (
+                "offer_platform_fee_percent", "offer_prep_mode", "offer_distribution_scope",
+                "offer_campaign_discount_cap", "offer_rate_validity_note", "offer_technical_deliverable",
+                "offer_note", "sent_offer_version", "sent_offer_digest", "sent_offer_snapshot",
+                "offer_sent_at", "offer_sent_by", "status", "teacher_response", "teacher_response_note",
+            ):
+                setattr(obj, attr, getattr(sent, attr))
+            messages.success(
+                request,
+                f"پیشنهاد نسخه #{sent.sent_offer_version} (سهم پلتفرم {sent.offer_platform_fee_percent}٪) برای استاد ارسال شد.",
+            )
             return
+
+        offer_fields = (
+            "offer_platform_fee_percent", "offer_prep_mode", "offer_distribution_scope",
+            "offer_campaign_discount_cap", "offer_rate_validity_note", "offer_technical_deliverable",
+            "offer_note",
+        )
+        offer_draft_changed = any(getattr(obj, f) != getattr(previous, f) for f in offer_fields)
+        if offer_draft_changed:
+            obj.save(update_fields=list(offer_fields))
+            messages.warning(
+                request,
+                "تغییرات پیشنهاد به‌صورت پیش‌نویس ذخیره شد و هنوز برای استاد نمایش داده نمی‌شود؛ برای ارائه به استاد دکمه «ارسال پیشنهاد به استاد» را بزنید.",
+            )
+
+        if obj.status == previous.status and obj.review_note == previous.review_note:
+            if not offer_draft_changed:
+                super().save_model(request, obj, form, change)
+            return
+
         reviewed = review_publication_request(
             obj.pk, actor=request.user, status=obj.status, review_note=obj.review_note
         )
@@ -877,7 +1086,7 @@ class BookAccessEventAdmin(AppendOnlyEventAdmin):
 
 @admin.register(PublicationRequestEvent)
 class PublicationRequestEventAdmin(AppendOnlyEventAdmin):
-    list_display = ("request", "action", "actor", "reason", "content_digest", "created_at")
+    list_display = ("request", "action", "offer_version", "actor", "reason", "content_digest", "created_at")
     list_filter = ("action",)
     search_fields = ("request__book__title", "request__requested_by__phone", "reason", "content_digest")
     list_select_related = ("request", "actor", "request__book", "request__requested_by")

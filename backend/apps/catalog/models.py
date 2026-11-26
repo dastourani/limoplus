@@ -118,6 +118,17 @@ class ContentNode(MP_Node):
     )
     is_published = models.BooleanField("منتشر شده", default=False)
     is_archived = models.BooleanField("بایگانی", default=False, help_text="به‌جای حذف؛ داده‌ی کاربران حفظ می‌شود")
+    single_sale_only = models.BooleanField(
+        "استثنای فقط فروش تکی (خارج از اشتراک)",
+        default=False,
+        help_text="اگر فعال باشد، کتاب فقط با خرید تکی یا دسترسی کلاس باز می‌شود و از پوشش اشتراک‌های عمومی خارج است.",
+    )
+    campaign_discount_cap_percent = models.PositiveSmallIntegerField(
+        "سقف مجاز تخفیف کمپین (٪)",
+        null=True,
+        blank=True,
+        help_text="حداکثر درصد تخفیف مجاز برای کمپین‌های فروش تکی این کتاب مطابق توافق انتشار.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
     # «مطلب تازه»: the last time the panel marked this text as worth a second look («به‌روز شده» in the app).
     refreshed_at = models.DateTimeField("به‌روزرسانی مهم", null=True, blank=True, editable=False)

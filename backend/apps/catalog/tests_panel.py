@@ -2558,6 +2558,73 @@ class TeacherAssistantTests(TestCase):
         self.assertEqual(req.status, PublicationRequest.Status.PENDING)
         self.assertEqual(req.request_note, "لطفاً کتاب بازبینی شود، فصل‌ها آماده هستند.")
 
+    def test_teacher_create_book_and_offer_box_multi_author_wording(self):
+        from apps.website.models import PublicationRequest
+        from apps.website.publication import send_publication_offer
+
+        create_page = self.client.get("/admin/catalog/book/new-draft/")
+        self.assertEqual(create_page.status_code, 200)
+        self.assertContains(create_page, "رایگان")
+        self.assertContains(create_page, "۱۰٪ تا ۴۰٪")
+
+        # Co-author turns this into a multi-author book.
+        coauthor = User.objects.create_user("09121112233", is_staff=True)
+        BookEditor.objects.create(book=self.book, user=coauthor)
+
+        req_res = self.client.post(f"/admin/catalog/book/{self.book.pk}/request-publication/", {
+            "author_prep_preference": PublicationRequest.PrepPreference.READY_FILES,
+            "requested_distribution_scope": PublicationRequest.DistributionScope.STANDARD,
+            "note": "آماده برای بررسی مالی.",
+        })
+        self.assertEqual(req_res.status_code, 302)
+        req = PublicationRequest.objects.get(book=self.book, requested_by=self.teacher)
+        self.assertEqual(req.author_prep_preference, PublicationRequest.PrepPreference.READY_FILES)
+
+        # Draft changes must remain invisible to teacher.
+        PublicationRequest.objects.filter(pk=req.pk).update(
+            offer_platform_fee_percent=24,
+            offer_note="یادداشت پیش‌نویس دیده‌نشده",
+        )
+        book_page = self.client.get(f"/admin/catalog/book/{self.book.pk}/change/")
+        self.assertNotContains(book_page, "یادداشت پیش‌نویس دیده‌نشده")
+
+        # Once manager sends official offer, box displays all required details & multi-author wording.
+        manager = User.objects.create_superuser("09129990001", "pass")
+        send_publication_offer(
+            req.pk,
+            actor=manager,
+            platform_fee_percent=25,
+            prep_mode=PublicationRequest.OfferPrepMode.PLATFORM_PREP,
+            distribution_scope=PublicationRequest.DistributionScope.STANDARD,
+            campaign_discount_cap=30,
+            offer_note="توافق استاندارد ۲۵ درصد.",
+        )
+        req.refresh_from_db()
+        offer_page = self.client.get(f"/admin/catalog/book/{self.book.pk}/request-publication/")
+        self.assertEqual(offer_page.status_code, 200)
+        self.assertContains(offer_page, "سهم پلتفرم از فروش تکی این کتاب")
+        self.assertContains(offer_page, "سهم مجموع مؤلفان")
+        self.assertContains(offer_page, "۱۰۰٬۰۰۰")
+        self.assertContains(offer_page, "۳۰۰٬۰۰۰")
+        self.assertContains(offer_page, "این کتاب چندمؤلفی است")
+        self.assertNotContains(offer_page, "سهم شخصی شما")
+
+        # Teacher accepts offer via /respond-offer/.
+        accept_res = self.client.post(f"/admin/catalog/book/{self.book.pk}/respond-offer/", {
+            "request_id": req.pk,
+            "decision": "accepted",
+            "expected_offer_digest": req.sent_offer_digest,
+            "response_note": "شرایط نسخه ۱ پذیرفته شد.",
+        })
+        self.assertEqual(accept_res.status_code, 302)
+        req.refresh_from_db()
+        self.assertTrue(req.is_current_offer_accepted)
+        self.assertEqual(req.accepted_offer_version, 1)
+
+        after_page = self.client.get(f"/admin/catalog/book/{self.book.pk}/request-publication/")
+        self.assertContains(after_page, "مدیر کل")
+        self.assertContains(after_page, "<strong>#1</strong>")
+
     def test_teacher_create_book_with_optional_initial_file(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
         tex_content = r"\chapter{آغاز}\section{بخش اول}متن نمونه".encode("utf-8")
