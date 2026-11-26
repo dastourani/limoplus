@@ -1884,11 +1884,20 @@ def _admin_kpis_payload():
     from apps.catalog.access import BOOK_EDITOR_GROUP
     from apps.catalog.models import (
         BookEditor,
+        BookOpinion,
         BookTeamTask,
         ChapterRevision,
         ContentNode,
     )
-    from apps.website.models import Classroom, PublicationRequest, TeacherApplication
+    from apps.commerce.models import PayoutRequest
+    from apps.diagnostics.models import ErrorGroup
+    from apps.learning.models import Report
+    from apps.website.models import (
+        BookAccessRequest,
+        Classroom,
+        PublicationRequest,
+        TeacherApplication,
+    )
 
     since_30d = now - timedelta(days=30)
 
@@ -1940,6 +1949,20 @@ def _admin_kpis_payload():
     pending_teacher_apps = TeacherApplication.objects.filter(status=TeacherApplication.Status.PENDING).count()
     open_team_tasks = BookTeamTask.objects.filter(BookTeamTask.pending_queue_q()).count()
 
+    # سلامت، پشتیبانی و صف اقدام مدیر
+    pending_payouts = PayoutRequest.objects.filter(PayoutRequest.pending_queue_q()).count()
+    open_reports = Report.objects.filter(status=Report.Status.OPEN).count()
+    open_errors = ErrorGroup.objects.filter(status=ErrorGroup.Status.OPEN).count()
+    pending_opinions = BookOpinion.objects.filter(BookOpinion.pending_queue_q()).count()
+    pending_access_requests = BookAccessRequest.objects.filter(status=BookAccessRequest.Status.PENDING).count()
+    action_queue_total = (
+        pending_payouts
+        + open_reports
+        + open_errors
+        + pending_opinions
+        + pending_access_requests
+    )
+
     return {
         "kpi_users_today": fa_number(new_users_today),
         "kpi_users_week": fa_number(new_users_week),
@@ -1965,6 +1988,19 @@ def _admin_kpis_payload():
         "kpi_pending_teacher_apps_count": pending_teacher_apps,
         "kpi_open_team_tasks": fa_number(open_team_tasks),
         "kpi_open_team_tasks_count": open_team_tasks,
+        # سلامت، پشتیبانی و صف اقدام مدیر
+        "kpi_action_queue_total": fa_number(action_queue_total),
+        "kpi_action_queue_total_count": action_queue_total,
+        "kpi_pending_payouts": fa_number(pending_payouts),
+        "kpi_pending_payouts_count": pending_payouts,
+        "kpi_open_reports": fa_number(open_reports),
+        "kpi_open_reports_count": open_reports,
+        "kpi_open_errors": fa_number(open_errors),
+        "kpi_open_errors_count": open_errors,
+        "kpi_pending_opinions": fa_number(pending_opinions),
+        "kpi_pending_opinions_count": pending_opinions,
+        "kpi_pending_access_requests": fa_number(pending_access_requests),
+        "kpi_pending_access_requests_count": pending_access_requests,
     }
 
 
