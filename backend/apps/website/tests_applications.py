@@ -1,5 +1,9 @@
+import datetime
+
 from django.contrib.auth.models import Group
-from django.test import Client, TestCase, override_settings
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 
 from apps.accounts.models import User
@@ -178,3 +182,80 @@ class TeacherApplicationReviewTests(TestCase):
         self.assertEqual(change.status_code, 200)
         self.assertContains(changelist, "اعلام نشده")
         self.assertContains(change, "اعلام نشده")
+
+
+class TeacherApplicationMigrationTests(TransactionTestCase):
+    def test_upgrade_from_0012_keeps_existing_applications_unspecified_even_after_cutoff(self):
+        executor = MigrationExecutor(connection)
+        old_apps = executor.loader.project_state([("website", "0012_sitesettings_coming_soon_note_and_more")]).apps
+        executor.migrate([("website", "0012_sitesettings_coming_soon_note_and_more")])
+
+        try:
+            OldApp = old_apps.get_model("website", "TeacherApplication")
+            early = OldApp.objects.create(
+                name="استاد قدیمی",
+                phone="09120009001",
+                book_or_link="ریاضی ۱",
+            )
+            late = OldApp.objects.create(
+                name="استاد پس از ساعت ثابت",
+                phone="09120009002",
+                book_or_link="فیزیک ۱",
+            )
+            OldApp.objects.filter(pk=early.pk).update(
+                submitted_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.timezone.utc)
+            )
+            OldApp.objects.filter(pk=late.pk).update(
+                submitted_at=datetime.datetime(2026, 11, 27, 2, 0, tzinfo=datetime.timezone.utc)
+            )
+
+            forward_executor = MigrationExecutor(connection)
+            forward_executor.migrate([("website", "0015_alter_teacherapplication_collaboration_scope")])
+            NewApp = forward_executor.loader.project_state(
+                [("website", "0015_alter_teacherapplication_collaboration_scope")]
+            ).apps.get_model("website", "TeacherApplication")
+
+            self.assertEqual(NewApp.objects.get(pk=early.pk).collaboration_scope, "")
+            self.assertEqual(NewApp.objects.get(pk=late.pk).collaboration_scope, "")
+        finally:
+            TeacherApplication.objects.filter(phone__in=["09120009001", "09120009002"]).delete()
+            MigrationExecutor(connection).migrate([("website", "0015_alter_teacherapplication_collaboration_scope")])
+
+    def test_upgrade_from_0013_preserves_real_teacher_scope_choices(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate([("website", "0012_sitesettings_coming_soon_note_and_more")])
+
+        try:
+            unreplaced_executor = MigrationExecutor(connection)
+            unreplaced_executor.loader.replace_migrations = False
+            unreplaced_executor.loader.build_graph()
+            unreplaced_executor.migrate([("website", "0013_teacherapplication_collaboration_scope_and_more")])
+
+            App0013 = unreplaced_executor.loader.project_state(
+                [("website", "0013_teacherapplication_collaboration_scope_and_more")]
+            ).apps.get_model("website", "TeacherApplication")
+            chosen_public = App0013.objects.create(
+                name="استاد ویترین",
+                phone="09120009003",
+                book_or_link="شیمی",
+                collaboration_scope="public_and_class",
+            )
+            chosen_class = App0013.objects.create(
+                name="استاد کلاس",
+                phone="09120009004",
+                book_or_link="زیست",
+                collaboration_scope="class_only",
+            )
+
+            forward_executor = MigrationExecutor(connection)
+            forward_executor.migrate([("website", "0015_alter_teacherapplication_collaboration_scope")])
+            NewApp = forward_executor.loader.project_state(
+                [("website", "0015_alter_teacherapplication_collaboration_scope")]
+            ).apps.get_model("website", "TeacherApplication")
+
+            self.assertEqual(NewApp.objects.get(pk=chosen_public.pk).collaboration_scope, "public_and_class")
+            self.assertEqual(NewApp.objects.get(pk=chosen_class.pk).collaboration_scope, "class_only")
+        finally:
+            TeacherApplication.objects.filter(phone__in=["09120009003", "09120009004"]).delete()
+            MigrationExecutor(connection).migrate([("website", "0012_sitesettings_coming_soon_note_and_more")])
+            MigrationExecutor(connection).migrate([("website", "0015_alter_teacherapplication_collaboration_scope")])
