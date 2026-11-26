@@ -140,18 +140,18 @@ class SiteNavItemAdmin(admin.ModelAdmin):
 class TeacherApplicationAdmin(admin.ModelAdmin):
     """A superuser-only review queue; decisions never create staff or grant book access."""
 
-    list_display = ("name", "phone", "book_or_link", "status", "submitted_at", "reviewed_by", "reviewed_at", "invite_action")
+    list_display = ("name", "phone", "book_or_link", "collaboration_scope", "status", "submitted_at", "reviewed_by", "reviewed_at", "invite_action")
     # The normal date_hierarchy is Gregorian; the relative date filter keeps the panel fully Persian-calendar-facing.
-    list_filter = ("status", "submitted_at")
-    search_fields = ("name", "phone", "book_or_link", "explanation", "sample_work")
+    list_filter = ("status", "collaboration_scope", "submitted_at")
+    search_fields = ("name", "phone", "book_or_link", "resume_url", "explanation", "sample_work")
     ordering = ("-submitted_at", "-pk")
     list_per_page = 50
     actions = None
     fields = (
-        "name", "phone", "book_or_link", "explanation", "sample_work",
+        "name", "phone", "book_or_link", "resume_url", "collaboration_scope", "explanation", "sample_work",
         "status", "review_note", "submitted_at", "reviewed_by", "reviewed_at",
     )
-    readonly_fields = ("name", "phone", "book_or_link", "explanation", "sample_work", "submitted_at", "reviewed_by", "reviewed_at")
+    readonly_fields = ("name", "phone", "book_or_link", "resume_url", "collaboration_scope", "explanation", "sample_work", "submitted_at", "reviewed_by", "reviewed_at")
 
     @admin.display(description="دعوت استاد")
     def invite_action(self, obj):

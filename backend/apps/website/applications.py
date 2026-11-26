@@ -47,11 +47,13 @@ def _store_if_new(form):
         application.phone = phone
         application.save()
         from apps.catalog.backups import notify_bale_after_commit
+        resume_line = f"\nرزومه/معرفی: {application.resume_url}" if application.resume_url else ""
         notify_bale_after_commit(
             f"🎓 درخواست جدید همکاری آموزشی\n"
             f"نام: {application.name}\n"
             f"شماره تماس: {application.phone}\n"
-            f"کتاب/درس: {application.book_or_link}",
+            f"کتاب/درس: {application.book_or_link}\n"
+            f"نحوه استفاده: {application.get_collaboration_scope_display()}{resume_line}",
             log_label=f"Bale teacher application alert for #{application.id}",
         )
 

@@ -7,18 +7,22 @@
   <div class="page-card">
     <header class="page-head">
       <div>
-        <h1 class="h2">درخواست همکاری آموزشی</h1>
-        <p class="mut">پیشنهاد یا نمونه‌کارتان را برای بررسی مدیر بفرستید.</p>
+        <h1 class="h2">همکاری با لیموخوان به‌عنوان استاد و مؤلف</h1>
+        <p class="mut">اگر کتاب، جزوه یا بانک تست دارید یا برای دانشجویان خود کلاس برگزار می‌کنید، مشخصاتتان را ثبت کنید. پس از بررسی، لینک ورود به میز تألیف برایتان ارسال می‌شود.</p>
       </div>
+      <a class="btn ghost small" href="{% url 'teacher-login' %}">ورود به درگاه اساتید</a>
     </header>
 
     {% if submitted %}
       <div class="teacher-application-result" role="status">
-        <h2>درخواست برای بازبینی دریافت شد</h2>
-        <p>درخواست تازه و کامل در صف بررسی قرار می‌گیرد. اگر اطلاعات بیشتری لازم باشد، مدیر می‌تواند با شما تماس بگیرد.</p>
-        <p>ثبت درخواست یا تأیید آن به‌تنهایی حساب کاربری، دسترسی پنل یا دسترسی به کتاب ایجاد نمی‌کند.</p>
+        <h2>درخواست شما با موفقیت ثبت شد</h2>
+        <p>مشخصات شما برای تیم لیموخوان ارسال شد. پس از بررسی، لینک ورود به میز تألیف برایتان ارسال می‌شود.</p>
+        <p>اگر برای کلاس‌های خودتان کتاب آماده می‌کنید، ساخت پیش‌نویس و استفادهٔ خصوصی برای دانشجویان خودتان رایگان است.</p>
       </div>
-      <p class="center"><a class="btn dark small" href="{% url 'website:home' %}">بازگشت به لیموخوان</a></p>
+      <p class="center" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <a class="btn lemon small" href="{% url 'website:books' %}">مشاهدهٔ کتاب‌های لیموخوان</a>
+        <a class="btn dark small" href="{% url 'website:home' %}">بازگشت به لیموخوان</a>
+      </p>
     {% else %}
       {% if rate_limited %}
         <div class="teacher-application-alert" role="alert">تعداد ارسال درخواست از این نشانی زیاد است؛ کمی بعد دوباره تلاش کنید.</div>
@@ -39,8 +43,8 @@
             </div>
           {% endif %}
         {% endfor %}
-        <p class="teacher-application-note">این فرم فقط برای بازبینی است. تأیید مدیر به‌تنهایی دسترسی یا دعوت ایجاد نمی‌کند؛ حساب و دسترسی احتمالی در مرحله‌ای جداگانه بررسی می‌شود. پیامک دعوت به دانشجوها ارسال نمی‌شود.</p>
-        <button class="btn lemon wide" type="submit">ثبت درخواست برای بررسی</button>
+        <p class="teacher-application-note">اطلاعات شما فقط برای بررسی همکاری استفاده می‌شود و در سایت نمایش داده نمی‌شود.</p>
+        <button class="btn lemon wide" type="submit">ارسال درخواست همکاری</button>
       </form>
     {% endif %}
   </div>
