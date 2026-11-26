@@ -463,7 +463,7 @@ export default function Book() {
               />
             </View>
           ) : cta.kind === 'full' ? (
-            <View style={[styles.cta, styles.ctaRow, totalBookSeconds >= 60 && { marginBottom: 16 }]}>
+            <View style={[styles.cta, styles.ctaRow, totalBookSeconds >= 60 && styles.ctaWithBadge]}>
               <HelpTip
                 size={54}
                 title="لیموی پیشرفت کتاب"
@@ -498,94 +498,102 @@ export default function Book() {
               )}
             </View>
           ) : (
-            <View style={[styles.cta, totalBookSeconds >= 60 && { marginBottom: 16 }]}>
-              {!!cta.lastTitle && (
-                <View style={styles.ctaHead}>
-                  <IconBadge name="book-open" size={30} />
-                  <Text style={[styles.ctaTitle, rtl, { flex: 1 }]} numberOfLines={1}>
-                    {`آخرین مطالعه: «${cta.lastTitle}»`}
-                  </Text>
-                </View>
-              )}
-              {(cta.buttonLabel != null || cta.showUnlock) && (
+            <View style={[styles.cta, totalBookSeconds >= 60 && styles.ctaWithBadge]}>
+              {(cta.buttonLabel != null || cta.showUnlock || book.product_status.state === 'unpriced' || book.product_status.state === 'unavailable') && (
                 <View
                   style={[
                     styles.ctaActions,
-                    wideCta && cta.buttonLabel != null && cta.showUnlock && styles.ctaActionsRow,
+                    wideCta && cta.buttonLabel != null && (cta.showUnlock || book.product_status.state === 'unpriced' || book.product_status.state === 'unavailable') && styles.ctaActionsRow,
                   ]}
                 >
                   {cta.buttonLabel != null && cta.targetNodeId != null && (
-                    <Pressable
-                      onPress={() => router.push(`/section/${cta.targetNodeId!}`)}
+                    <View
                       style={[
-                        styles.startFreeBtn,
-                        wideCta && cta.showUnlock && styles.ctaActionFlex,
+                        wideCta &&
+                          (cta.showUnlock || book.product_status.state === 'unpriced' || book.product_status.state === 'unavailable') &&
+                          styles.ctaActionFlex,
                       ]}
-                      accessibilityRole="button"
                     >
-                      <Text style={styles.startFreeBtnText}>
-                        {cta.buttonLabel}
-                      </Text>
-                    </Pressable>
+                      <Pressable
+                        onPress={() => router.push(`/section/${cta.targetNodeId!}`)}
+                        style={styles.startFreeBtn}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.startFreeBtnText}>{cta.buttonLabel}</Text>
+                        {!!cta.lastTitle && (
+                          <Text style={[styles.startFreeBtnSub, rtl]} numberOfLines={1} ellipsizeMode="tail">
+                            {cta.lastTitle}
+                          </Text>
+                        )}
+                      </Pressable>
+                    </View>
                   )}
-                  {cta.showUnlock && (
-                    <Pressable
-                      onPress={() => router.push(`/buy/${book.slug}`)}
+                  {(cta.showUnlock || book.product_status.state === 'unpriced' || book.product_status.state === 'unavailable') && (
+                    <View
                       style={[
-                        styles.unlock,
-                        cta.buttonLabel == null && styles.unlockMain,
+                        styles.ctaUnlockCol,
                         wideCta && cta.buttonLabel != null && styles.ctaActionFlex,
                       ]}
-                      accessibilityRole="button"
                     >
-                      <Icon name="lock-open" size={18} color={colors.ink} />
-                      <Text style={styles.unlockText}>باز کردن همه‌ی کتاب</Text>
-                    </Pressable>
+                      {cta.showUnlock && (
+                        <Pressable
+                          onPress={() => router.push(`/buy/${book.slug}`)}
+                          style={[
+                            styles.unlock,
+                            cta.buttonLabel == null && styles.unlockMain,
+                          ]}
+                          accessibilityRole="button"
+                        >
+                          <Icon name="lock-open" size={18} color={colors.ink} />
+                          <Text style={styles.unlockText}>باز کردن همه‌ی کتاب</Text>
+                        </Pressable>
+                      )}
+                      {book.product_status.state === 'paid' && bookPrice.price != null && (
+                        bookPrice.discount ? (
+                          <View style={styles.priceDetails}>
+                            <View style={styles.priceLine}>
+                              <Text style={[styles.ctaSmall, rtl]}>قیمت عادی</Text>
+                              <Text style={styles.oldPrice}>{formatToman(bookPrice.regularPrice ?? bookPrice.price)}</Text>
+                            </View>
+                            <View style={styles.priceLine}>
+                              <Text style={[styles.ctaSmall, rtl]}>قیمت ویژه</Text>
+                              <View style={styles.saleAmountLine}>
+                                <Text style={styles.salePrice}>{formatToman(bookPrice.price)}</Text>
+                                <Text style={styles.discountChip}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
+                              </View>
+                            </View>
+                            {book.single_sale_only ? (
+                              <Text style={[styles.saving, rtl]}>{formatToman(bookPrice.discount.amount)} تخفیف</Text>
+                            ) : (
+                              <Pressable onPress={() => router.push('/subscribe')} accessibilityRole="link">
+                                <Text style={[styles.saving, rtl]}>
+                                  {formatToman(bookPrice.discount.amount)} تخفیف · یا با اشتراک لیمو
+                                </Text>
+                              </Pressable>
+                            )}
+                          </View>
+                        ) : (
+                          <View style={styles.priceLineCenter}>
+                            <Text style={[styles.ctaSmall, { textAlign: 'center' }]}>
+                              <Text style={styles.ctaPriceStrong}>{formatToman(bookPrice.price)}</Text>
+                              {!book.single_sale_only && (
+                                <>
+                                  {'، یا با '}
+                                  <Text onPress={() => router.push('/subscribe')} style={styles.ctaSubLink}>
+                                    اشتراک ماهانه‌ی لیمو
+                                  </Text>
+                                </>
+                              )}
+                            </Text>
+                          </View>
+                        )
+                      )}
+                      {book.product_status.state === 'unpriced' && <Text style={[styles.ctaSmall, rtl, { textAlign: 'center' }]}>قیمت نسخه‌ی کامل هنوز تعیین نشده است.</Text>}
+                      {book.product_status.state === 'unavailable' && <Text style={[styles.ctaSmall, rtl, { textAlign: 'center' }]}>این کتاب فعلاً برای خرید در دسترس نیست.</Text>}
+                    </View>
                   )}
                 </View>
               )}
-              {book.product_status.state === 'paid' && bookPrice.price != null && (
-                bookPrice.discount ? (
-                  <View style={styles.priceDetails}>
-                    <View style={styles.priceLine}>
-                      <Text style={[styles.ctaSmall, rtl]}>قیمت عادی</Text>
-                      <Text style={styles.oldPrice}>{formatToman(bookPrice.regularPrice ?? bookPrice.price)}</Text>
-                    </View>
-                    <View style={styles.priceLine}>
-                      <Text style={[styles.ctaSmall, rtl]}>قیمت ویژه</Text>
-                      <View style={styles.saleAmountLine}>
-                        <Text style={styles.salePrice}>{formatToman(bookPrice.price)}</Text>
-                        <Text style={styles.discountChip}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
-                      </View>
-                    </View>
-                    {book.single_sale_only ? (
-                      <Text style={[styles.saving, rtl]}>{formatToman(bookPrice.discount.amount)} تخفیف</Text>
-                    ) : (
-                      <Pressable onPress={() => router.push('/subscribe')} accessibilityRole="link">
-                        <Text style={[styles.saving, rtl]}>
-                          {formatToman(bookPrice.discount.amount)} تخفیف · یا با اشتراک لیمو
-                        </Text>
-                      </Pressable>
-                    )}
-                  </View>
-                ) : (
-                  <View style={styles.priceLineCenter}>
-                    <Text style={styles.ctaSmall}>
-                      <Text style={styles.ctaPriceStrong}>{formatToman(bookPrice.price)}</Text>
-                      {!book.single_sale_only && (
-                        <>
-                          {'، یا با '}
-                          <Text onPress={() => router.push('/subscribe')} style={styles.ctaSubLink}>
-                            اشتراک ماهانه‌ی لیمو
-                          </Text>
-                        </>
-                      )}
-                    </Text>
-                  </View>
-                )
-              )}
-              {book.product_status.state === 'unpriced' && <Text style={[styles.ctaSmall, rtl]}>قیمت نسخه‌ی کامل هنوز تعیین نشده است.</Text>}
-              {book.product_status.state === 'unavailable' && <Text style={[styles.ctaSmall, rtl]}>این کتاب فعلاً برای خرید در دسترس نیست.</Text>}
               {totalBookSeconds >= 60 && (
                 <View style={styles.badgeWrapper} pointerEvents="none">
                   <View style={styles.floatingTimeBadge}>
@@ -1475,6 +1483,7 @@ const styles = StyleSheet.create({
   floatingChapterBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 16, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 6 },
   floatingChapterBadgeText: { fontSize: 11.5, lineHeight: 18, fontWeight: '800', color: '#166534' },
   cta: { marginTop: -34, zIndex: 20, backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+  ctaWithBadge: { paddingBottom: 26, marginBottom: 16 },
   ctaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   ctaHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   ctaTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
@@ -1489,11 +1498,13 @@ const styles = StyleSheet.create({
   ctaButton: { backgroundColor: colors.lemon, borderRadius: 12, paddingHorizontal: 18, minHeight: 46, justifyContent: 'center' },
   ctaButtonText: { color: colors.ink, fontWeight: '900', fontSize: 15 },
   ctaActions: { gap: 10 },
-  ctaActionsRow: { flexDirection: 'row-reverse', alignItems: 'stretch' },
+  ctaActionsRow: { flexDirection: 'row-reverse', alignItems: 'flex-start' },
   ctaActionFlex: { flex: 1 },
-  startFreeBtn: { minHeight: 52, borderRadius: radius.md, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  ctaUnlockCol: { gap: 8 },
+  startFreeBtn: { minHeight: 54, borderRadius: radius.md, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 18, gap: 2 },
   startFreeBtnText: { fontSize: 15, fontWeight: '900', color: colors.ink },
-  unlock: { minHeight: 52, borderRadius: radius.md, borderWidth: 1.5, borderColor: '#BAC4B4', backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
+  startFreeBtnSub: { fontSize: 11.5, lineHeight: 16, fontWeight: '700', color: 'rgba(23, 32, 26, 0.72)', maxWidth: '100%', textAlign: 'center' },
+  unlock: { minHeight: 54, borderRadius: radius.md, borderWidth: 1.5, borderColor: '#BAC4B4', backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
   // The one main action of the box is lemon; next to «خواندن رایگان» or «ادامه بده» it is the outlined second.
   unlockMain: { backgroundColor: colors.lemon, borderColor: colors.lemon },
   unlockText: { fontSize: 15, fontWeight: '900', color: colors.ink },
