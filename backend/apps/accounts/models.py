@@ -1,3 +1,4 @@
+from datetime import timedelta
 import hashlib
 import hmac
 import secrets
@@ -36,6 +37,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField("ایمیل", blank=True)
     email_verified_at = models.DateTimeField("زمان تأیید ایمیل", null=True, blank=True)
     email_verification_token = models.CharField("توکن تأیید ایمیل", max_length=64, blank=True, db_index=True)
+    email_verification_target = models.EmailField("ایمیل در انتظار تأیید", blank=True)
+    email_verification_sent_at = models.DateTimeField("زمان ارسال لینک تأیید", null=True, blank=True)
+    email_verification_nonce = models.CharField("شناسه درخواست تأیید ایمیل", max_length=32, blank=True, db_index=True)
     first_name = models.CharField("نام", max_length=60, blank=True)
     last_name = models.CharField("نام خانوادگی", max_length=60, blank=True)
     is_active = models.BooleanField("فعال", default=True)
@@ -69,17 +73,102 @@ class User(AbstractBaseUser, PermissionsMixin):
     def is_email_verified(self) -> bool:
         return bool(self.email and self.email_verified_at)
 
+    @staticmethod
+    def email_verification_digest(public_token: str, *, email: str, nonce: str) -> str:
+        normalized = (email or "").strip().lower()
+        return _hash(f"email-verify:{normalized}:{nonce}:{public_token}")
+
+    def _prepare_email_verification_fields(self) -> str:
+        target = (self.email or "").strip().lower()
+        nonce = secrets.token_hex(8)
+        raw_secret = secrets.token_urlsafe(32)
+        public_token = f"{nonce}.{raw_secret}"
+        self.email_verification_nonce = nonce
+        self.email_verification_target = target
+        self.email_verification_sent_at = timezone.now()
+        self.email_verification_token = self.email_verification_digest(public_token, email=target, nonce=nonce)
+        return public_token
+
     def generate_email_verification_token(self) -> str:
-        import secrets
-        token = secrets.token_urlsafe(32)
-        self.email_verification_token = token
-        self.save(update_fields=["email_verification_token"])
-        return token
+        public_token = self._prepare_email_verification_fields()
+        self.save(
+            update_fields=[
+                "email_verification_token",
+                "email_verification_target",
+                "email_verification_sent_at",
+                "email_verification_nonce",
+            ]
+        )
+        return public_token
+
+    def begin_email_change(self, new_email: str) -> str:
+        """Atomically replace the working email, revoke prior verification, and issue a single-use bound token."""
+        normalized = (new_email or "").strip().lower()
+        self.email = normalized
+        self.email_verified_at = None
+        public_token = self._prepare_email_verification_fields()
+        self.save(
+            update_fields=[
+                "email",
+                "email_verified_at",
+                "email_verification_token",
+                "email_verification_target",
+                "email_verification_sent_at",
+                "email_verification_nonce",
+            ]
+        )
+        return public_token
+
+    @classmethod
+    def resolve_email_verification(cls, raw_token: str) -> tuple["User | None", str]:
+        token = (raw_token or "").strip()
+        if not token:
+            return None, "invalid"
+        if "." in token:
+            nonce, _ = token.split(".", 1)
+            if not nonce:
+                return None, "invalid"
+            user = cls.objects.filter(email_verification_nonce=nonce).first()
+            if user is None or not user.email_verification_token or not user.email_verification_target:
+                return None, "invalid"
+            current_email = (user.email or "").strip().lower()
+            if current_email != user.email_verification_target.strip().lower():
+                return None, "invalid"
+            expected = cls.email_verification_digest(
+                token,
+                email=user.email_verification_target,
+                nonce=user.email_verification_nonce,
+            )
+            if not hmac.compare_digest(user.email_verification_token, expected):
+                return None, "invalid"
+            expiry_hours = max(1, int(getattr(settings, "EMAIL_VERIFICATION_EXPIRY_HOURS", 24)))
+            if not user.email_verification_sent_at or (
+                timezone.now() - user.email_verification_sent_at > timedelta(hours=expiry_hours)
+            ):
+                return None, "expired"
+            return user, "ok"
+
+        # Legacy un-hashed token path (for direct test fixtures without nonce).
+        user = cls.objects.filter(email_verification_token=token, email_verification_nonce="").first()
+        if user is None or not (user.email or "").strip():
+            return None, "invalid"
+        return user, "ok"
 
     def verify_email(self):
         self.email_verified_at = timezone.now()
         self.email_verification_token = ""
-        self.save(update_fields=["email_verified_at", "email_verification_token"])
+        self.email_verification_target = ""
+        self.email_verification_sent_at = None
+        self.email_verification_nonce = ""
+        self.save(
+            update_fields=[
+                "email_verified_at",
+                "email_verification_token",
+                "email_verification_target",
+                "email_verification_sent_at",
+                "email_verification_nonce",
+            ]
+        )
 
     @property
     def full_name(self):
@@ -219,3 +308,87 @@ class PanelLoginCode(models.Model):
     def is_usable(self) -> bool:
         age = (timezone.now() - self.created_at).total_seconds()
         return self.used_at is None and age <= settings.PANEL_LOGIN_SECONDS
+
+
+class TeacherNotification(models.Model):
+    """Persistent, deduplicated record of an official manager-to-teacher notification and its email delivery state."""
+
+    class EventType(models.TextChoices):
+        PUB_OFFER_SENT = "pub_offer_sent", "ارسال پیشنهاد مالی انتشار"
+        PUB_OFFER_REMINDER = "pub_offer_reminder", "یادآوری پیشنهاد مالی انتشار"
+        PUB_NEEDS_INFO = "pub_needs_info", "درخواست اصلاح محتوای کتاب"
+        PUB_APPROVED = "pub_approved", "تأیید درخواست انتشار کتاب"
+        PUB_REJECTED = "pub_rejected", "رد درخواست انتشار کتاب"
+        ACCESS_APPROVED = "access_approved", "تأیید درخواست دسترسی گروهی"
+        ACCESS_NEEDS_INFO = "access_needs_info", "نیازمند تکمیل درخواست دسترسی گروهی"
+        ACCESS_REJECTED = "access_rejected", "رد درخواست دسترسی گروهی"
+        PAYOUT_PAID = "payout_paid", "واریز تسویه حساب"
+        PAYOUT_REJECTED = "payout_rejected", "رد درخواست تسویه حساب"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "در انتظار ارسال"
+        SENT = "sent", "ارسال‌شده"
+        FAILED = "failed", "ناموفق (نیازمند تلاش مجدد)"
+        SKIPPED_NO_EMAIL = "skipped_no_email", "بدون ایمیل تأییدشده (ثبت در پنل)"
+
+    recipient = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="teacher_notifications",
+        verbose_name="استاد گیرنده",
+    )
+    recipient_email = models.EmailField("نشانی ایمیل استفاده‌شده", blank=True)
+    event_type = models.CharField("نوع رویداد", max_length=32, choices=EventType.choices, db_index=True)
+    dedupe_key = models.CharField("کلید یکتایی رویداد", max_length=160, unique=True)
+    source_ref = models.CharField("مرجع درخواست", max_length=80, blank=True, db_index=True)
+    book_id = models.PositiveBigIntegerField("شناسه کتاب", null=True, blank=True, db_index=True)
+    book_title = models.CharField("عنوان کتاب", max_length=200, blank=True)
+    object_id = models.PositiveBigIntegerField("شناسه رکورد مرتبط", null=True, blank=True)
+    subject = models.CharField("عنوان ایمیل", max_length=200)
+    headline = models.CharField("پیام اعلان", max_length=300)
+    cta_label = models.CharField("عنوان دکمه", max_length=80, default="مشاهده در میز تألیف")
+    is_reminder = models.BooleanField("یادآوری عمدی مدیر", default=False)
+    status = models.CharField(
+        "وضعیت ارسال",
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    attempt_count = models.PositiveSmallIntegerField("تعداد تلاش", default=0)
+    last_attempt_at = models.DateTimeField("زمان آخرین تلاش", null=True, blank=True)
+    sent_at = models.DateTimeField("زمان ارسال موفق", null=True, blank=True)
+    last_error = models.TextField("جزئیات آخرین خطا", blank=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_teacher_notifications",
+        verbose_name="ثبت‌کننده",
+    )
+    created_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "اعلان ایمیلی استاد"
+        verbose_name_plural = "اعلان‌های ایمیلی اساتید"
+        ordering = ["-created_at", "-pk"]
+        indexes = [
+            models.Index(fields=["status", "-created_at"], name="teacher_notif_status_idx"),
+            models.Index(fields=["recipient", "-created_at"], name="teacher_notif_rcpt_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_event_type_display()} · {self.recipient} ({self.get_status_display()})"
+
+    def notice_token(self) -> str:
+        return _hash(f"teacher-notice:{self.pk}:{self.recipient_id}:{self.dedupe_key}")[:24]
+
+    def matches_notice_token(self, token: str) -> bool:
+        return bool(token) and hmac.compare_digest(self.notice_token(), token)
+
+    def notice_path(self) -> str:
+        from django.urls import reverse
+
+        return reverse("teacher-notice", args=[self.pk, self.notice_token()])
+

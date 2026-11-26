@@ -415,12 +415,14 @@
     {% if user.email %}
       {% if user.is_email_verified %}
         <span class="lp-header-btn" title="ایمیل تأییدشده: {{ user.email }}" style="cursor:default;">✓ {{ user.email }}</span>
+        <a href="{% url 'admin:accounts_user_change_email' %}" class="lp-header-btn" title="تغییر یا اصلاح ایمیل کاری">ویرایش</a>
       {% else %}
         <span class="lp-header-btn" title="ایمیل در انتظار تأیید: {{ user.email }}" style="cursor:default; border-color:#eab308; color:#fef08a;">⚠️ تأیید نشده: {{ user.email }}</span>
         <a href="{% url 'admin:accounts_user_send_verification' %}" style="font-size:11px; text-decoration:underline;">ارسال مجدد</a>
+        <a href="{% url 'admin:accounts_user_change_email' %}" class="lp-header-btn" title="اصلاح نشانی ایمیل کاری">ویرایش ایمیل</a>
       {% endif %}
     {% else %}
-      <a href="{% url 'admin:accounts_user_change_email' %}" class="lp-header-btn" title="ثبت ایمیل کاری استاد برای دریافت خروجی‌های کتاب">+ ثبت ایمیل کاری</a>
+      <a href="{% url 'admin:accounts_user_change_email' %}" class="lp-header-btn" title="ثبت ایمیل کاری استاد برای دریافت اعلان‌ها و خروجی‌های کتاب">+ ثبت ایمیل کاری</a>
     {% endif %}
   </span>
   {% endif %}

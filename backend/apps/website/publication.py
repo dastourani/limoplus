@@ -164,7 +164,8 @@ def send_publication_offer(
         digest = item.compute_offer_digest(payload)
         now = timezone.now()
 
-        if item.has_sent_offer and item.sent_offer_digest == digest:
+        is_reminder = bool(item.has_sent_offer and item.sent_offer_digest == digest)
+        if is_reminder:
             # Re-sending identical terms is a reminder of the same version; preserve existing version & acceptance.
             item.offer_sent_at = now
             item.offer_sent_by = actor
@@ -181,7 +182,7 @@ def send_publication_offer(
             item.teacher_response_note = ""
             item.save()
 
-        record_publication_request(
+        event = record_publication_request(
             item,
             actor=actor,
             action=PublicationRequestEvent.Action.OFFER_SENT,
@@ -190,6 +191,9 @@ def send_publication_offer(
             offer_digest=digest,
             offer_snapshot=item.sent_offer_snapshot,
         )
+        from apps.accounts.notifications import notify_publication_offer
+
+        notify_publication_offer(item, event=event, actor=actor, is_reminder=is_reminder)
         return item
 
 
@@ -420,7 +424,7 @@ def review_publication_request(request_id: int, *, actor, status: str, review_no
             # phone lists, student accounts or entitlements.
             ContentNode.objects.filter(path__startswith=book.path, is_archived=False).update(is_published=True)
 
-        record_publication_request(
+        event = record_publication_request(
             item,
             actor=actor,
             action=action,
@@ -429,4 +433,12 @@ def review_publication_request(request_id: int, *, actor, status: str, review_no
             offer_digest=event_offer_digest,
             offer_snapshot=event_offer_snapshot,
         )
+        if status in (
+            PublicationRequest.Status.NEEDS_INFO,
+            PublicationRequest.Status.APPROVED,
+            PublicationRequest.Status.REJECTED,
+        ):
+            from apps.accounts.notifications import notify_publication_decision
+
+            notify_publication_decision(item, event=event, actor=actor)
         return item

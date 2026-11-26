@@ -105,12 +105,14 @@ api = [
     path("payments/zibal/callback/", commerce.zibal_callback),
 ]
 
+from apps.accounts.notifications import teacher_notice_redirect
 from apps.website.classroom_views import classroom_join, verify_teacher_email
 
 # The same on every host (config/website_urls.py uses them too).
 shared = [
     path("join/<str:code>/", classroom_join, name="root-classroom-join"),
     path("verify-email/<str:token>/", verify_teacher_email, name="root-verify-teacher-email"),
+    path("teacher/notice/<int:notification_id>/<str:token>/", teacher_notice_redirect, name="teacher-notice"),
     path("teacher/login/", teacher_login, name="teacher-login"),
     path("teacher/", RedirectView.as_view(pattern_name="teacher-login", permanent=False)),
     path(f"{settings.ADMIN_URL}open-app/", accounts_views.open_app, name="panel-open-app"),

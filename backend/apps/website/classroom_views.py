@@ -266,14 +266,46 @@ def classroom_join(request, code):
 def verify_teacher_email(request, token):
     """Magic link click to verify teacher's email address."""
     from django.contrib.auth import get_user_model
+    from django.urls import reverse
 
     User = get_user_model()
-    user = get_object_or_404(User, email_verification_token=token)
+    user, state = User.resolve_email_verification(token)
+    if user is None or state != "ok":
+        msg = (
+            "مهلت اعتبار این پیوند تأیید به پایان رسیده است. لطفاً در پنل استادی، گزینهٔ «ارسال مجدد» یا «ویرایش ایمیل» را بزنید."
+            if state == "expired"
+            else "این پیوند تأیید نامعتبر است، قبلاً استفاده شده یا به نشانی ایمیل دیگری تعلق داشته است."
+        )
+        return render(
+            request,
+            "website/teacher_notice_error.html",
+            {
+                **_base(request),
+                "title": "پیوند تأیید ایمیل معتبر نیست",
+                "message": msg,
+                "teacher_login_url": reverse("teacher-login"),
+            },
+            status=400,
+        )
+
+    if request.user.is_authenticated and request.user.pk != user.pk:
+        return render(
+            request,
+            "website/teacher_notice_error.html",
+            {
+                **_base(request),
+                "title": "عدم تطابق حساب کاربری",
+                "message": "این پیوند تأیید متعلق به حساب کاربری دیگری است. برای تأیید آن ابتدا از حساب فعلی خارج شوید.",
+                "teacher_login_url": reverse("teacher-login"),
+            },
+            status=403,
+        )
+
     user.verify_email()
     if request.user.is_authenticated and request.user.is_active and request.user.is_staff:
         messages.success(
             request,
-            f"ایمیل {user.email} با موفقیت تأیید شد. اکنون می‌توانید خروجی‌های کتاب را مستقیماً به ایمیل خود ارسال کنید.",
+            f"ایمیل {user.email} با موفقیت تأیید شد. اکنون اعلان‌های میز تألیف و خروجی‌های کتاب به این نشانی ارسال می‌شوند.",
         )
         return redirect("admin:index")
     request.session["admin_login_notice"] = (

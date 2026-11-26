@@ -1,0 +1,5 @@
+{% extends "admin/change_form.html" %}
+{% block content %}
+  {% include "admin/accounts/_email_verify_reminder.html" %}
+  {{ block.super }}
+{% endblock %}

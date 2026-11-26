@@ -9,7 +9,7 @@ from django.contrib.admin.sites import NotRegistered
 from django.db.models import Count, Q
 from django.utils import timezone
 
-from .models import DeviceSession, User
+from .models import DeviceSession, TeacherNotification, User
 
 
 PLATFORMS = {"android": "اندروید", "ios": "آیفون", "web": "وب"}
@@ -294,35 +294,58 @@ class UserAdmin(BaseUserAdmin):
 
     def change_email_view(self, request):
         from django.contrib import messages
+        from django.core.exceptions import ValidationError
         from django.core.mail import send_mail
+        from django.core.validators import validate_email
         from django.shortcuts import redirect, render
+        from django.urls import reverse
 
         user = request.user
         if request.method == "POST":
             new_email = request.POST.get("email", "").strip().lower()
-            if not new_email or "@" not in new_email:
-                messages.error(request, "ایمیل واردشده معتبر نیست.")
-            else:
-                user.email = new_email
-                user.email_verified_at = None
-                token = user.generate_email_verification_token()
-                user.save(update_fields=["email"])
-
-                verify_url = request.build_absolute_uri(f"/verify-email/{token}/")
-                subject = "تأیید ایمیل در پنل لیموخوان"
-                body = (
-                    f"استاد گرامی سلام،\n\n"
-                    f"برای تأیید ایمیل خود و فعال‌سازی امکان دریافت خروجی‌های کتاب (TeX و ZIP)، لطفاً روی پیوند زیر کلیک کنید:\n"
-                    f"{verify_url}\n\n"
-                    f"با احترام،\nتیم لیموخوان"
+            try:
+                validate_email(new_email)
+            except ValidationError:
+                messages.error(request, "نشانی ایمیل واردشده معتبر نیست.")
+                return render(
+                    request,
+                    "admin/accounts/change_email.html",
+                    {
+                        **self.admin_site.each_context(request),
+                        "title": "ثبت یا ویرایش ایمیل کاری",
+                        "user_email": new_email or user.email,
+                        "is_verified": user.is_email_verified,
+                    },
                 )
-                try:
-                    send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [new_email], fail_silently=False)
-                    messages.success(request, f"ایمیل شما ثبت شد و پیوند تأیید به {new_email} ارسال گردید. لطفاً ایمیل خود را بررسی کنید.")
-                except Exception as exc:
-                    messages.warning(request, f"ایمیل ثبت شد اما ارسال پیوند با خطا مواجه شد: {exc}")
 
-                return redirect(f"/{settings.ADMIN_URL}")
+            if new_email == (user.email or "").strip().lower() and user.is_email_verified:
+                messages.info(request, f"نشانی ایمیل {new_email} هم‌اکنون تأیید شده است.")
+                return redirect("admin:index")
+
+            token = user.begin_email_change(new_email)
+            verify_url = request.build_absolute_uri(reverse("root-verify-teacher-email", args=[token]))
+            expiry_hours = max(1, int(getattr(settings, "EMAIL_VERIFICATION_EXPIRY_HOURS", 24)))
+            subject = "تأیید ایمیل کاری در پنل لیموخوان"
+            body = (
+                f"استاد گرامی سلام،\n\n"
+                f"برای تأیید ایمیل کاری خود و دریافت اعلان‌های میز تألیف و خروجی‌های کتاب، لطفاً روی پیوند زیر کلیک کنید:\n"
+                f"{verify_url}\n\n"
+                f"این پیوند یک‌بارمصرف است و تا {expiry_hours} ساعت اعتبار دارد.\n\n"
+                f"با احترام،\nتیم لیموخوان"
+            )
+            try:
+                send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [new_email], fail_silently=False)
+                messages.success(
+                    request,
+                    f"ایمیل جدید ({new_email}) ثبت شد و تا زمان تأیید، ارسال به نشانی قبلی متوقف است. پیوند تأیید ارسال گردید.",
+                )
+            except Exception as exc:
+                messages.warning(
+                    request,
+                    f"ایمیل جدید ({new_email}) ثبت شد و تأیید قبلی لغو گردید، اما ارسال پیوند با خطا مواجه شد: {exc}",
+                )
+
+            return redirect("admin:index")
 
         context = {
             **self.admin_site.each_context(request),
@@ -336,28 +359,34 @@ class UserAdmin(BaseUserAdmin):
         from django.contrib import messages
         from django.core.mail import send_mail
         from django.shortcuts import redirect
+        from django.urls import reverse
 
         user = request.user
         if not user.email:
-            messages.error(request, "ابتدا ایمیل خود را ثبت کنید.")
-            return redirect(f"/{settings.ADMIN_URL}")
+            messages.error(request, "ابتدا ایمیل کاری خود را ثبت کنید.")
+            return redirect("admin:accounts_user_change_email")
+        if user.is_email_verified:
+            messages.info(request, f"ایمیل {user.email} هم‌اکنون تأیید شده است.")
+            return redirect("admin:index")
 
         token = user.generate_email_verification_token()
-        verify_url = request.build_absolute_uri(f"/verify-email/{token}/")
-        subject = "تأیید ایمیل در پنل لیموخوان"
+        verify_url = request.build_absolute_uri(reverse("root-verify-teacher-email", args=[token]))
+        expiry_hours = max(1, int(getattr(settings, "EMAIL_VERIFICATION_EXPIRY_HOURS", 24)))
+        subject = "تأیید ایمیل کاری در پنل لیموخوان"
         body = (
             f"استاد گرامی سلام،\n\n"
-            f"برای تأیید ایمیل خود و فعال‌سازی امکان دریافت خروجی‌های کتاب (TeX و ZIP)، لطفاً روی پیوند زیر کلیک کنید:\n"
+            f"برای تأیید ایمیل کاری خود و دریافت اعلان‌های میز تألیف و خروجی‌های کتاب، لطفاً روی پیوند زیر کلیک کنید:\n"
             f"{verify_url}\n\n"
+            f"این پیوند یک‌بارمصرف است و تا {expiry_hours} ساعت اعتبار دارد.\n\n"
             f"با احترام،\nتیم لیموخوان"
         )
         try:
             send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False)
-            messages.success(request, f"پیوند تأیید مجدداً به {user.email} ارسال شد.")
+            messages.success(request, f"پیوند تأیید تازه به {user.email} ارسال شد.")
         except Exception as exc:
             messages.error(request, f"خطا در ارسال ایمیل: {exc}")
 
-        return redirect(f"/{settings.ADMIN_URL}")
+        return redirect("admin:index")
 
     @admin.display(description="")
     def overview(self, obj):
@@ -433,6 +462,149 @@ class DeviceSessionAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(TeacherNotification)
+class TeacherNotificationAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "recipient_display",
+        "event_type",
+        "book_or_ref",
+        "status_badge",
+        "is_reminder",
+        "recipient_email",
+        "attempt_count",
+        "last_attempt_fa",
+        "retry_action_cell",
+    )
+    list_filter = ("status", "event_type", "is_reminder", "created_at")
+    search_fields = ("recipient__phone", "recipient_email", "book_title", "source_ref", "subject", "last_error")
+    list_select_related = ("recipient", "created_by")
+    ordering = ("-created_at", "-pk")
+    readonly_fields = (
+        "recipient",
+        "recipient_email",
+        "event_type",
+        "dedupe_key",
+        "source_ref",
+        "book_id",
+        "book_title",
+        "object_id",
+        "subject",
+        "headline",
+        "cta_label",
+        "is_reminder",
+        "status",
+        "attempt_count",
+        "last_attempt_at",
+        "sent_at",
+        "last_error",
+        "created_by",
+        "created_at",
+    )
+    actions = ["retry_selected_notifications"]
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_urls(self):
+        from django.urls import path
+
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<int:notification_id>/retry/",
+                self.admin_site.admin_view(self.retry_single_view),
+                name="accounts_teachernotification_retry",
+            ),
+        ]
+        return custom + urls
+
+    def retry_single_view(self, request, notification_id):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import redirect
+        from django.utils.http import url_has_allowed_host_and_scheme
+
+        from .notifications import dispatch_teacher_notification
+
+        if not (request.user.is_active and request.user.is_superuser):
+            raise PermissionDenied
+        if request.method == "POST":
+            ok = dispatch_teacher_notification(notification_id)
+            notif = TeacherNotification.objects.filter(pk=notification_id).first()
+            if ok:
+                messages.success(request, f"اعلان #{notification_id} با موفقیت به {notif.recipient_email} ارسال شد.")
+            elif notif is not None:
+                messages.warning(request, f"ارسال اعلان #{notification_id} انجام نشد: {notif.last_error or notif.get_status_display()}")
+        next_url = request.POST.get("next") or request.META.get("HTTP_REFERER") or ""
+        if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+            return redirect(next_url)
+        return redirect("admin:accounts_teachernotification_changelist")
+
+    @admin.action(description="تلاش مجدد برای ارسال اعلان‌های انتخاب‌شده")
+    def retry_selected_notifications(self, request, queryset):
+        from django.contrib import messages
+
+        from .notifications import retry_teacher_notifications
+
+        stats = retry_teacher_notifications(queryset)
+        self.message_user(
+            request,
+            f"{stats['attempted']} اعلان بررسی شد: {stats['sent']} ارسال موفق، "
+            f"{stats['failed']} ناموفق، {stats['skipped_no_email']} بدون ایمیل تأییدشده.",
+            level=messages.INFO if stats["failed"] == 0 else messages.WARNING,
+        )
+
+    @admin.display(description="استاد")
+    def recipient_display(self, obj):
+        name = obj.recipient.full_name
+        return f"{name} ({obj.recipient.phone})" if name else obj.recipient.phone
+
+    @admin.display(description="موضوع / مرجع")
+    def book_or_ref(self, obj):
+        return obj.book_title or obj.source_ref or "—"
+
+    @admin.display(description="وضعیت", ordering="status")
+    def status_badge(self, obj):
+        from apps.catalog.panel_display import badges
+
+        color = {
+            TeacherNotification.Status.SENT: "green",
+            TeacherNotification.Status.PENDING: "yellow",
+            TeacherNotification.Status.FAILED: "red",
+            TeacherNotification.Status.SKIPPED_NO_EMAIL: "grey",
+        }.get(obj.status, "grey")
+        return badges((obj.get_status_display(), color))
+
+    @admin.display(description="آخرین تلاش", ordering="last_attempt_at")
+    def last_attempt_fa(self, obj):
+        from apps.catalog.panel_display import jalali_datetime
+
+        return jalali_datetime(obj.last_attempt_at) if obj.last_attempt_at else "—"
+
+    @admin.display(description="اقدام")
+    def retry_action_cell(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+
+        url = reverse("admin:accounts_teachernotification_change", args=[obj.pk])
+        if obj.status == TeacherNotification.Status.SENT:
+            return format_html('<a href="{}">مشاهده</a>', url)
+        return format_html('<a href="{}" style="font-weight:700; color:#b45309;">تلاش مجدد / جزئیات</a>', url)
 
 
 # Group membership is an approval boundary: only the manager may grant or edit it.
