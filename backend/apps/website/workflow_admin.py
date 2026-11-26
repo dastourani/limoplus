@@ -907,10 +907,14 @@ class ClassroomAdmin(admin.ModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form_class = super().get_form(request, obj, **kwargs)
+        allowed_books = access.classroom_books_for_request(request)
+
         class UserForm(form_class):
             def __init__(self, *args, **form_kwargs):
                 form_kwargs.setdefault("user", request.user)
+                form_kwargs.setdefault("allowed_books", allowed_books)
                 super().__init__(*args, **form_kwargs)
+
         return UserForm
 
     def has_module_permission(self, request):
@@ -977,6 +981,8 @@ class ClassroomAdmin(admin.ModelAdmin):
         )
 
     def save_model(self, request, obj, form, change):
+        if not access.classroom_books_for_request(request).filter(pk=obj.book_id).exists():
+            raise PermissionDenied("شما مجوز ساخت یا ویرایش کلاس برای این کتاب را ندارید.")
         if not change:
             if not access.acts_as_panel_superuser(request) or not obj.teacher_id:
                 obj.teacher = request.user

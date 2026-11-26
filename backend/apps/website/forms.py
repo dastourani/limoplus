@@ -195,9 +195,12 @@ class ClassroomCreateForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        allowed_books = kwargs.pop("allowed_books", None)
         self.request_user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
-        if self.request_user and not self.request_user.is_superuser:
+        if allowed_books is not None:
+            self.fields["book"].queryset = allowed_books
+        elif self.request_user and not self.request_user.is_superuser:
             from apps.catalog.access import books_for_editor
             self.fields["book"].queryset = books_for_editor(self.request_user, capability="can_edit_content")
 

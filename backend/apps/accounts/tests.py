@@ -394,6 +394,53 @@ class AdminOTPLoginTests(TestCase):
         self.assertEqual(res.status_code, 302)
         self.assertEqual(res["Location"], "/teacher/login/")
 
+    def test_superuser_is_blocked_from_teacher_login_otp_but_retains_admin_otp_and_password(self):
+        boss = User.objects.create_superuser("09120000625", password="Boss-Password-123")
+
+        # 1. Requesting OTP for a superuser on /teacher/login/ issues no OTP and sends no SMS.
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            req_teacher = self.client.post("/teacher/login/", {"action": "send_otp", "phone": boss.phone})
+        self.assertEqual(req_teacher.status_code, 302)
+        self.assertEqual(req_teacher["Location"], "/teacher/login/")
+        send.assert_not_called()
+        self.assertFalse(OTPCode.objects.filter(phone=boss.phone).exists())
+
+        # 2. Even if an OTP is issued through /admin/login/, verifying it on /teacher/login/ is rejected.
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            req_admin = self.client.post("/admin/login/", {"action": "send_otp", "phone": boss.phone})
+        self.assertEqual(req_admin.status_code, 302)
+        self.assertEqual(req_admin["Location"], "/admin/login/")
+        code = send.call_args.args[1]
+
+        ver_teacher = self.client.post("/teacher/login/", {
+            "action": "verify_otp", "phone": boss.phone, "code": code,
+        })
+        self.assertEqual(ver_teacher.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        # 3. The same superuser can still sign in via SMS OTP on /admin/login/.
+        ver_admin = self.client.post("/admin/login/", {
+            "action": "verify_otp", "phone": boss.phone, "code": code,
+        })
+        self.assertEqual(ver_admin.status_code, 302)
+        self.assertEqual(ver_admin["Location"], "/admin/")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), boss.pk)
+
+        # 4. Already-authenticated superuser visiting /teacher/login/ is not bounced into /admin/.
+        blocked_get = self.client.get("/teacher/login/")
+        self.assertEqual(blocked_get.status_code, 200)
+        self.assertContains(blocked_get, "ورود مدیر کل فقط از مسیر مدیریت انجام می‌شود")
+        self.assertNotContains(blocked_get, 'href="/admin/"')
+
+        # 5. Superuser emergency password login still works on /admin/login/.
+        pw_client = Client()
+        pw_res = pw_client.post("/admin/login/", {
+            "action": "password", "username": boss.phone, "password": "Boss-Password-123",
+        })
+        self.assertEqual(pw_res.status_code, 302)
+        self.assertEqual(pw_res["Location"], "/admin/")
+        self.assertEqual(int(pw_client.session["_auth_user_id"]), boss.pk)
+
 
 class OtpHashSettingTests(TestCase):
     def test_hash_line_can_be_turned_off(self):

@@ -47,6 +47,44 @@ def acts_as_panel_teacher(request) -> bool:
     return bool(is_book_teacher(user) or is_teacher_preview(request))
 
 
+def teacher_assigned_books(user, capability="can_edit_content"):
+    """Active non-archived, non-inbox books explicitly assigned via BookEditor (never bypassed by is_superuser)."""
+    if not (user and user.is_authenticated and user.is_active):
+        return ContentNode.objects.none()
+    from .models import BookEditor
+
+    rows = BookEditor.objects.filter(
+        user_id=user.pk,
+        book__kind=ContentNode.Kind.BOOK,
+        book__depth=1,
+        book__is_inbox=False,
+        book__is_archived=False,
+    )
+    if capability:
+        rows = rows.filter(**{capability: True})
+    return ContentNode.objects.filter(
+        pk__in=rows.values("book_id"),
+        kind=ContentNode.Kind.BOOK,
+        depth=1,
+    ).order_by("title")
+
+
+def classroom_books_for_request(request):
+    """Books selectable/saveable in ClassroomAdmin for the current panel mode."""
+    if acts_as_panel_superuser(request):
+        return ContentNode.objects.filter(
+            kind=ContentNode.Kind.BOOK,
+            depth=1,
+            is_inbox=False,
+            is_archived=False,
+        ).order_by("title")
+    if is_teacher_preview(request):
+        return teacher_assigned_books(request.user, capability="can_edit_content")
+    if is_book_teacher(request.user) and request.user.has_perm("catalog.change_contentnode"):
+        return teacher_assigned_books(request.user, capability="can_edit_content")
+    return ContentNode.objects.none()
+
+
 def book_editor_ids(user, capability="can_edit_content"):
     """Book IDs assigned to this editor; by default, only books they may edit."""
     if capability and capability not in {

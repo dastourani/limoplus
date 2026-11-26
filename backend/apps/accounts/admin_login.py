@@ -105,10 +105,11 @@ def _send_otp(request, next_url, *, mode="admin"):
         request.session.pop(_NEXT_SESSION, None)
 
     otp = code = None
+    allow_superuser = mode == "admin"
     with transaction.atomic():
         ratelimit.lock(f"otp:{phone}")
         user = User.objects.select_for_update().filter(phone=phone).first()
-        if user is not None and user.is_active and user.is_staff:
+        if user is not None and user.is_active and user.is_staff and (allow_superuser or not user.is_superuser):
             now = timezone.now()
             recent = OTPCode.objects.filter(phone=phone, created_at__gte=now - timedelta(hours=1))
             last = recent.order_by("-created_at").first()
@@ -176,6 +177,7 @@ def _verify_otp(request, next_url, *, mode="admin"):
 
     code = (request.POST.get("code") or "").strip().translate(_DIGITS)
     ip_key = f"otp-wrong-ip:{_client_ip(request)}"
+    allow_superuser = mode == "admin"
     user = None
     error = ""
     with transaction.atomic():
@@ -185,7 +187,7 @@ def _verify_otp(request, next_url, *, mode="admin"):
         else:
             ratelimit.lock(f"otp:{phone}")
             user = User.objects.select_for_update().filter(phone=phone).first()
-            if user is None or not user.is_active or not user.is_staff:
+            if user is None or not user.is_active or not user.is_staff or (not allow_superuser and user.is_superuser):
                 ratelimit.hit(ip_key)
                 error = "کد نامعتبر یا منقضی است؛ دوباره تلاش کنید یا کد تازه بگیرید."
             else:
@@ -231,6 +233,13 @@ def _panel_login(request, *, mode):
     raw_next = request.POST.get("next") or request.GET.get("next") or request.session.get(_NEXT_SESSION) or ""
     next_url = _safe_next(request, raw_next)
     if request.user.is_authenticated and request.user.is_active and request.user.is_staff:
+        if mode == "teacher" and request.user.is_superuser:
+            return _render_login(
+                request,
+                mode=mode,
+                error="ورود مدیر کل فقط از مسیر مدیریت انجام می‌شود.",
+                next_url="",
+            )
         return HttpResponseRedirect(next_url)
 
     if request.method == "POST":
