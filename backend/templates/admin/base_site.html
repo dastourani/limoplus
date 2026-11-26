@@ -331,6 +331,33 @@
     color: #000000 !important;
     box-shadow: 0 4px 14px rgba(245, 197, 24, 0.5);
   }
+
+  /* Harmonized theme toggle in the panel header (removes Django's default blue SVG backdrop). */
+  #header .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    margin: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    transition: background .15s ease, border-color .15s ease;
+  }
+  #header .theme-toggle:hover {
+    background: rgba(245, 197, 24, 0.18);
+    border-color: rgba(245, 197, 24, 0.45);
+  }
+  #header .theme-toggle svg.theme-icon-when-auto,
+  #header .theme-toggle svg.theme-icon-when-dark,
+  #header .theme-toggle svg.theme-icon-when-light {
+    color: transparent;
+    fill: #F5C518;
+    width: 18px;
+    height: 18px;
+  }
 </style>
 <script>
   // The side menu keeps its place: where it was scrolled to is remembered for this tab and put back on the next
