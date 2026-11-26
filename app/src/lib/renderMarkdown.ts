@@ -303,6 +303,7 @@ math { font-family: "STIX Two Math", "Cambria Math", "Latin Modern Math", serif;
 .table-wrap { overflow-x: auto; margin: 0 0 16px; border: 1px solid #E3E8DE; border-radius: 14px; background: #fff; }
 .table-wrap table { border-collapse: collapse; min-width: 100%; font-size: 0.92em; }
 .table-wrap th, .table-wrap td { padding: 10px 12px; border-bottom: 1px solid #E3E8DE; text-align: right; white-space: nowrap; }
+.lesson.compact .table-wrap th, .lesson.compact .table-wrap td { white-space: normal; min-width: 110px; vertical-align: top; }
 .table-wrap th { background: #F6F7F2; color: #56655B; font-weight: 700; }
 .table-wrap tr:last-child td { border-bottom: 0; }
 .box { border-radius: 16px; padding: 12px 14px 2px; margin: 0 0 16px; }
