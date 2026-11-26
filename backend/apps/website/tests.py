@@ -791,6 +791,18 @@ class AppPagesTests(TestCase):
         self.terms.save()
         self.assertEqual(self.client.get("/api/v1/app/pages/terms/").json()["title"], "قوانین")
 
+        # Linked from checkout/receipts («پیگیری سفارش»): opens even when not listed and exposes SiteSettings contact info.
+        from .models import SiteSettings
+
+        settings_row = SiteSettings.get()
+        settings_row.email = "support@limookhan.ir"
+        settings_row.phone = "021-88000000"
+        settings_row.save()
+        contact_res = self.client.get("/api/v1/app/pages/contact/")
+        self.assertEqual(contact_res.status_code, 200)
+        self.assertIn("support@limookhan.ir", contact_res.json()["body"])
+        self.assertIn("021-88000000", contact_res.json()["body"])
+
     def test_important_tick_sets_the_date_only_when_ticked(self):
         from apps.accounts.models import User
 

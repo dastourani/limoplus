@@ -5,7 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from .models import HelpPage, SitePage
+from .models import HelpPage, SitePage, SiteSettings
 
 
 ORDER = {"terms": 0, "privacy": 1, "protection": 2}
@@ -37,8 +37,20 @@ def help_page(request, page_id):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def site_page(request, slug):
-    # «قوانین» and «حریم خصوصی» are linked under the login button, so they open even when not listed in the app.
+    # «قوانین»، «حریم خصوصی»، «حفاظت از محتوا» و «تماس با ما» are linked directly inside the app (login, checkout, receipts).
     p = get_object_or_404(SitePage, slug=slug)
-    if not p.show_in_app and slug not in ("terms", "privacy", "protection"):
+    if not p.show_in_app and slug not in ("terms", "privacy", "protection", "contact"):
         raise Http404
-    return Response({"slug": p.slug, "title": p.title, "body": p.body, "updated_at": p.updated_at, "important_at": p.important_at})
+    body = p.body
+    if slug == "contact":
+        s = SiteSettings.get()
+        details = []
+        if s.email:
+            details.append(f"- **ایمیل پشتیبانی:** {s.email}")
+        if s.phone:
+            details.append(f"- **تلفن:** {s.phone}")
+        if s.address:
+            details.append(f"- **نشانی:** {s.address}")
+        if details:
+            body = (body.rstrip() + "\n\n## راه‌های تماس رسمی\n" + "\n".join(details)).strip()
+    return Response({"slug": p.slug, "title": p.title, "body": body, "updated_at": p.updated_at, "important_at": p.important_at})
