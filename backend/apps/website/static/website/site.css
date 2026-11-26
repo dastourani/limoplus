@@ -566,7 +566,8 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .prose h2 { font-size: 21px; font-weight: 900; margin: 24px 0 10px; padding-right: 12px; border-right: 4px solid var(--lemon); line-height: 1.5; }
 .prose ul { padding-right: 22px; margin-bottom: 14px; }
 .prose li { margin-bottom: 6px; }
-.contact { margin-top: 22px; background: var(--ground); }
+.contact, .privacy-actions { margin-top: 22px; background: var(--ground); }
+.privacy-nav { margin-bottom: 18px; }
 
 /* Footer */
 .foot { background: var(--hero); color: #C9D3CC; margin-top: 72px; padding: 40px 0; font-size: 14px; }

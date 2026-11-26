@@ -238,6 +238,24 @@ class WebsiteTests(TestCase):
         teacher_app_r = Client().get("/site/teacher-application/")
         self.assertEqual(teacher_app_r.status_code, 200)
         self.assertContains(teacher_app_r, "/site/faq/#teachers")
+        self.assertContains(teacher_app_r, "پیام‌رسان بله")
+
+    def test_privacy_page_reflects_live_data_flows_retention_and_support_actions(self):
+        priv_r = Client().get("/site/p/privacy/")
+        self.assertEqual(priv_r.status_code, 200)
+        self.assertContains(priv_r, "حریم خصوصی در لیموخوان")
+        self.assertNotContains(priv_r, "فقط برای خود شما")
+        self.assertContains(priv_r, 'href="#sec-5"')
+        self.assertContains(priv_r, 'id="sec-5"')
+        self.assertContains(priv_r, "پیام‌رسان بله")
+        self.assertContains(priv_r, "ابزار آماده‌سازی محتوای تألیفی")
+        self.assertContains(priv_r, "۷ روز کاری")
+        self.assertContains(priv_r, "درخواست دربارهٔ اطلاعات حساب من")
+        self.assertContains(priv_r, "گزارش مشاهدهٔ اطلاعات شخص دیگری")
+        api_priv = Client().get("/api/v1/app/pages/privacy/")
+        self.assertEqual(api_priv.status_code, 200)
+        self.assertEqual(api_priv.json()["title"], "حریم خصوصی در لیموخوان")
+        self.assertIsNotNone(api_priv.json()["important_at"])
 
     def test_home_separates_updates_from_vertical_offers_and_does_not_drop_valid_banners_after_four(self):
         from apps.catalog.models import Banner, BookChange

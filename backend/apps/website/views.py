@@ -763,15 +763,16 @@ def page(request, slug):
     if not p:
         raise Http404
     return render(request, "website/page.html", _base(
-        request, page=p, body=simple_text(p.body),
+        request, page=p, body=simple_text(p.body, with_ids=True),
         updated_on=fa_date(p.updated_at),
         important_on=fa_date(p.important_at) if p.important_at else "",
     ))
 
 
-def simple_text(body: str) -> str:
+def simple_text(body: str, *, with_ids: bool = False) -> str:
     """The panel's plain text as HTML: blank lines between paragraphs, «## » headings, «- » lists. Everything escaped."""
     out, items = [], []
+    sec_idx = 0
 
     def flush():
         if items:
@@ -787,7 +788,12 @@ def simple_text(body: str) -> str:
                 items.append(escape(t[2:]))
                 continue
             flush()
-            out.append(f"<h2>{escape(t[3:])}</h2>" if t.startswith("## ") else f"<p>{escape(t)}</p>")
+            if t.startswith("## "):
+                sec_idx += 1
+                attr = f' id="sec-{sec_idx}"' if with_ids else ""
+                out.append(f"<h2{attr}>{escape(t[3:])}</h2>")
+            else:
+                out.append(f"<p>{escape(t)}</p>")
         flush()
     return mark_safe("".join(out))
 

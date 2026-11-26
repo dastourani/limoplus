@@ -7,7 +7,24 @@
       <h1 class="h2">{{ page.title }}</h1>
       {% if updated_on %}<span class="mut">آخرین به‌روزرسانی: {{ updated_on }}{% if important_on %}؛ آخرین تغییر مهم: {{ important_on }}{% endif %}</span>{% endif %}
     </header>
+    {% if page.slug == "privacy" %}
+    <nav class="faq-nav privacy-nav" aria-label="دسترسی سریع بخش‌های حریم خصوصی">
+      <a class="pill" href="#sec-5">استادم چه چیزی می‌بیند؟</a>
+      <a class="pill" href="#sec-4">چه اطلاعاتی از مطالعه و خرید من ثبت می‌شود؟</a>
+      <a class="pill" href="#sec-10">چطور اطلاعاتم را اصلاح یا حذف کنم؟</a>
+    </nav>
+    {% endif %}
     <div class="page-body" data-md="{{ page.body }}">{{ body }}</div>
+    {% if page.slug == "privacy" %}
+    <div class="feat privacy-actions">
+      <p><b>مسئول پاسخ‌گویی:</b> بهره‌بردار لیموخوان · <b>مهلت پاسخ‌گویی به درخواست‌ها:</b> حداکثر ۷ روز کاری</p>
+      <p class="mut" style="margin-bottom: 12px;">اگر به گوشی یا شماره‌ی قبلی خود دسترسی ندارید نیز می‌توانید درخواست خود را از مسیر تماس با ما ارسال کنید.</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn lemon small" href="{% url 'website:page' 'contact' %}">درخواست دربارهٔ اطلاعات حساب من</a>
+        <a class="btn dark small" href="{% url 'website:page' 'contact' %}">گزارش مشاهدهٔ اطلاعات شخص دیگری</a>
+      </div>
+    </div>
+    {% endif %}
     {% if page.slug == "contact" %}
     <div class="feat contact">
       {% if s.email %}<p><b>ایمیل پشتیبانی:</b> <a href="mailto:{{ s.email }}" dir="ltr">{{ s.email }}</a></p>{% endif %}
