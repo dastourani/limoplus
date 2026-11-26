@@ -4,9 +4,10 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path, re_path
+from django.views.generic import RedirectView
 
 from apps.accounts import views as accounts_views
-from apps.accounts.admin_login import admin_login
+from apps.accounts.admin_login import admin_login, teacher_login
 from apps.catalog import media as catalog_media
 from apps.catalog import search as catalog_search
 from apps.catalog import views as catalog
@@ -110,6 +111,8 @@ from apps.website.classroom_views import classroom_join, verify_teacher_email
 shared = [
     path("join/<str:code>/", classroom_join, name="root-classroom-join"),
     path("verify-email/<str:token>/", verify_teacher_email, name="root-verify-teacher-email"),
+    path("teacher/login/", teacher_login, name="teacher-login"),
+    path("teacher/", RedirectView.as_view(pattern_name="teacher-login", permanent=False)),
     path(f"{settings.ADMIN_URL}open-app/", accounts_views.open_app, name="panel-open-app"),
     # Shadow Django's password form with the OTP-first panel login; the break-glass password is superuser-only.
     path(f"{settings.ADMIN_URL}login/", admin_login, name="admin-login"),
@@ -134,5 +137,5 @@ from apps.catalog.webapp import webapp  # noqa: E402
 
 
 # Not for the API, the panel, static files or media (so «/admin» still gets its slash added, and so on).
-_reserved = "|".join(re.escape(x.strip("/")) for x in ("api", "static", "media", "site", "join", "verify-email", settings.ADMIN_URL) if x.strip("/"))
+_reserved = "|".join(re.escape(x.strip("/")) for x in ("api", "static", "media", "site", "join", "verify-email", "teacher", settings.ADMIN_URL) if x.strip("/"))
 urlpatterns += [re_path(rf"^(?!(?:{_reserved})(?:/|$))(?P<path>.*)$", webapp)]

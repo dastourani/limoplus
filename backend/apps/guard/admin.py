@@ -36,11 +36,10 @@ def _book_titles_for_events(events) -> dict[str, str]:
     )
 
 
-def _format_event_for_user(event: CopyEvent, request_user, book_titles: dict[str, str]) -> dict:
+def _format_event_for_user(event: CopyEvent, *, is_teacher_view: bool, book_titles: dict[str, str]) -> dict:
     book_title = "—"
     if event.node_id and event.node:
         book_title = book_titles.get(event.node.path[: ContentNode.steplen], "—")
-    is_teacher_view = not request_user.is_superuser
     row_data = {
         "event": event,
         "book_title": book_title,
@@ -63,16 +62,18 @@ class TrackerAdmin(admin.ModelAdmin):
         return bool(access.is_book_teacher(user) and core.traceable_books(user).exists())
 
     def has_module_permission(self, request):
-        return bool(request.user.is_active and (request.user.is_superuser or self._teacher_can_trace(request.user)))
+        return bool(
+            access.acts_as_panel_superuser(request)
+            or access.is_teacher_preview(request)
+            or self._teacher_can_trace(request.user)
+        )
 
     def has_view_permission(self, request, obj=None):
-        if not request.user.is_active:
-            return False
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
         if obj is not None:
             return False
-        return self._teacher_can_trace(request.user)
+        return bool(access.is_teacher_preview(request) or self._teacher_can_trace(request.user))
 
     def has_add_permission(self, request):
         return False
@@ -84,17 +85,17 @@ class TrackerAdmin(admin.ModelAdmin):
         return self.has_view_permission(request, obj)
 
     def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             raise PermissionDenied
         return super().changeform_view(request, object_id, form_url, extra_context)
 
     def history_view(self, request, object_id, extra_context=None):
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             raise PermissionDenied
         return super().history_view(request, object_id, extra_context)
 
     def delete_view(self, request, object_id, extra_context=None):
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             raise PermissionDenied
         return super().delete_view(request, object_id, extra_context)
 
@@ -102,7 +103,7 @@ class TrackerAdmin(admin.ModelAdmin):
         if not self.has_view_or_change_permission(request):
             raise PermissionDenied
 
-        is_admin = request.user.is_superuser
+        is_admin = access.acts_as_panel_superuser(request)
         row = GuardSettings.get() if is_admin else None
         found = None
         pasted = ""
@@ -129,7 +130,7 @@ class TrackerAdmin(admin.ModelAdmin):
             similar_events = result["similar"]
             book_titles = (
                 _book_titles_for_events(marked_events + similar_events)
-                if is_admin
+                if (is_admin or access.is_teacher_preview(request))
                 else dict(core.traceable_books(request.user).values_list("path", "title"))
             )
 
@@ -138,8 +139,8 @@ class TrackerAdmin(admin.ModelAdmin):
 
             found = {
                 "codes": result["codes"],
-                "marked": [_format_event_for_user(e, request.user, book_titles) for e in marked_events],
-                "similar": [_format_event_for_user(e, request.user, book_titles) for e in similar_events],
+                "marked": [_format_event_for_user(e, is_teacher_view=not is_admin, book_titles=book_titles) for e in marked_events],
+                "similar": [_format_event_for_user(e, is_teacher_view=not is_admin, book_titles=book_titles) for e in similar_events],
                 "is_isolated_teacher": not is_admin,
             }
 
@@ -224,14 +225,18 @@ class TraceHitAdmin(admin.ModelAdmin):
 
     def has_module_permission(self, request):
         return bool(
-            request.user.is_active and (request.user.is_superuser or TrackerAdmin._teacher_can_trace(request.user))
+            access.acts_as_panel_superuser(request)
+            or access.is_teacher_preview(request)
+            or TrackerAdmin._teacher_can_trace(request.user)
         )
 
     def has_view_permission(self, request, obj=None):
+        if access.acts_as_panel_superuser(request):
+            return True
+        if access.is_teacher_preview(request):
+            return True
         if not request.user.is_active:
             return False
-        if request.user.is_superuser:
-            return True
         if obj is not None:
             return core.can_view_event(request.user, obj.event)
         return TrackerAdmin._teacher_can_trace(request.user)
@@ -240,13 +245,13 @@ class TraceHitAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
-        return bool(request.user.is_active and request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def has_delete_permission(self, request, obj=None):
-        return bool(request.user.is_active and request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def _check_direct_object_access(self, request, object_id):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request) or access.is_teacher_preview(request):
             return
         if not (request.user.is_active and TrackerAdmin._teacher_can_trace(request.user)):
             raise PermissionDenied
@@ -276,23 +281,23 @@ class TraceHitAdmin(admin.ModelAdmin):
             .select_related("event", "event__user", "event__node", "event__revision", "found_by")
             .annotate(
                 _lp_book_title=Subquery(book_subquery),
-                _lp_is_admin=Value(bool(request.user.is_superuser), output_field=BooleanField()),
+                _lp_is_admin=Value(access.acts_as_panel_superuser(request), output_field=BooleanField()),
             )
         )
         return core.scope_to_traceable_books(qs, request.user, "event__node__path")
 
     def get_list_display(self, request):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return ("book_col", "section_col", "copied_user_col", "fingerprint_col", "found_by_col", "note_col", "when_col")
         return ("book_col", "section_col", "copied_user_col", "state_col", "found_by_col", "note_col", "when_col")
 
     def get_search_fields(self, request):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return ("event__code", "event__user__phone", "found_by__phone", "event__node__title", "note")
         return ("event__node__title", "note")
 
     def get_fields(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return (
                 "book_col",
                 "section_col",
@@ -328,7 +333,7 @@ class TraceHitAdmin(admin.ModelAdmin):
             "found_by_col",
             "when_col",
         )
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return ro
         return ro + ("note",)
 
@@ -410,16 +415,16 @@ class CopyEventAdmin(admin.ModelAdmin):
         return core.text_of(obj)
 
     def has_module_permission(self, request):
-        return bool(request.user.is_active and request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def has_view_permission(self, request, obj=None):
-        return bool(request.user.is_active and request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def has_add_permission(self, request):
         return False
 
     def has_change_permission(self, request, obj=None):
-        return bool(request.user.is_active and request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def has_delete_permission(self, request, obj=None):
         return False

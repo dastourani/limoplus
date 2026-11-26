@@ -203,7 +203,7 @@ class _ManagedInChapter:
 
     def has_change_permission(self, request, obj=None):
         # Direct model editing bypasses the chapter file's validation and review trail.
-        return bool(request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -401,13 +401,13 @@ class ExamSourceAdmin(admin.ModelAdmin):
         return qs.annotate(_lp_used_by_editor=Exists(linked_questions), n=Coalesce(Subquery(count), 0)).filter(_lp_used_by_editor=True)
 
     def has_add_permission(self, request):
-        return bool(request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def has_change_permission(self, request, obj=None):
-        return bool(request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def has_delete_permission(self, request, obj=None):
-        return bool(request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     @admin.display(description="سال", ordering="year")
     def shown_year(self, obj):
@@ -499,22 +499,22 @@ class ReportAdmin(admin.ModelAdmin):
         return False
 
     def get_fields(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return super().get_fields(request, obj)
         # Teacher reports are reviewable, but never a route to the reporter's account or editable report metadata.
         return ("status", "reason", "note", "quote", "question", "flashcard", "node", "mode", "box", "created_at", "resolved_at")
 
     def get_readonly_fields(self, request, obj=None):
-        return self.get_fields(request, obj) if not request.user.is_superuser else ()
+        return self.get_fields(request, obj) if not access.acts_as_panel_superuser(request) else ()
 
     def get_search_fields(self, request):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return self.search_fields
         return ("note", "quote", "question__stem", "flashcard__title", "node__title")
 
     def get_actions(self, request):
         actions = super().get_actions(request)
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             actions.pop("block_reporter", None)
             actions.pop("unblock_reporter", None)
         return actions
@@ -546,7 +546,7 @@ class ReportAdmin(admin.ModelAdmin):
         chapter = ContentNode.objects.filter(path=Substr(OuterRef("item_path"), 1, 2 * ContentNode.steplen), kind=ContentNode.Kind.CHAPTER)
         qs = (super().get_queryset(request).select_related("user", "question", "flashcard", "node")
               .annotate(item_path=item_path, p_archived=archived,
-                        p_reporter_visible=Value(bool(request.user.is_superuser), output_field=BooleanField()))
+                        p_reporter_visible=Value(access.acts_as_panel_superuser(request), output_field=BooleanField()))
               .annotate(p_chapter_id=Subquery(chapter.values("pk")[:1])))
         return access.scope_to_editor_books(qs, request.user, "item_path", capability="can_view_reports")
 
@@ -668,7 +668,7 @@ class ReportAdmin(admin.ModelAdmin):
 
     @admin.action(description="رد گزارش و بستن امکان ارسال گزارش برای این کاربر")
     def block_reporter(self, request, queryset):
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             raise PermissionDenied
         from apps.accounts.models import User
 
@@ -679,7 +679,7 @@ class ReportAdmin(admin.ModelAdmin):
 
     @admin.action(description="باز کردن دوباره امکان ارسال گزارش برای این کاربر")
     def unblock_reporter(self, request, queryset):
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             raise PermissionDenied
         from apps.accounts.models import User
 

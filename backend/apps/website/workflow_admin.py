@@ -522,7 +522,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
     def get_fields(self, request, obj=None):
         if obj is None:
             return ("book", "request_note")
-        if _is_manager(request.user):
+        if access.acts_as_panel_superuser(request):
             return (
                 "book", "requested_by", "request_note", "content_digest", "status", "review_note",
                 "submitted_at", "reviewed_by", "reviewed_at",
@@ -532,7 +532,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         if obj is None:
             return ()
-        if not _is_manager(request.user):
+        if not access.acts_as_panel_superuser(request):
             return self.get_fields(request, obj)
         fixed = ("book", "requested_by", "request_note", "content_digest", "submitted_at", "reviewed_by", "reviewed_at")
         if obj.status in (PublicationRequest.Status.APPROVED, PublicationRequest.Status.REJECTED):
@@ -564,12 +564,14 @@ class PublicationRequestAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if _is_manager(request.user):
+        if access.acts_as_panel_superuser(request):
             return qs
         return qs.filter(requested_by=request.user)
 
     def has_module_permission(self, request):
-        if _is_manager(request.user):
+        if access.acts_as_panel_superuser(request):
+            return True
+        if access.is_teacher_preview(request):
             return True
         return bool(
             access.is_book_teacher(request.user)
@@ -577,14 +579,18 @@ class PublicationRequestAdmin(admin.ModelAdmin):
         )
 
     def has_view_permission(self, request, obj=None):
-        if _is_manager(request.user):
+        if access.acts_as_panel_superuser(request):
             return True
         if obj is not None:
             return bool(obj.requested_by_id == request.user.pk)
         return self.has_module_permission(request)
 
     def has_add_permission(self, request):
-        if _is_manager(request.user) or not access.is_book_teacher(request.user):
+        if access.acts_as_panel_superuser(request):
+            return False
+        if access.is_teacher_preview(request):
+            return ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_archived=False, is_inbox=False).exists()
+        if not access.is_book_teacher(request.user):
             return False
         return BookEditor.objects.filter(
             user=request.user, can_request_publication=True, book__kind=ContentNode.Kind.BOOK,
@@ -592,7 +598,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
         ).exists()
 
     def has_change_permission(self, request, obj=None):
-        return _is_manager(request.user)
+        return access.acts_as_panel_superuser(request)
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -602,7 +608,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
             books = ContentNode.objects.filter(
                 kind=ContentNode.Kind.BOOK, depth=1, is_archived=False, is_inbox=False
             )
-            if not _is_manager(request.user):
+            if not access.acts_as_panel_superuser(request) and not access.is_teacher_preview(request):
                 allowed_ids = BookEditor.objects.filter(
                     user=request.user, can_request_publication=True
                 ).values("book_id")
@@ -888,9 +894,14 @@ class ClassroomAdmin(admin.ModelAdmin):
     list_select_related = ("teacher", "book")
     ordering = ("-created_at", "-id")
 
+    def get_list_display(self, request):
+        if access.acts_as_panel_superuser(request):
+            return self.list_display
+        return ("title", "book_link", "code_pill", "members_summary", "expiry_display", "is_active", "share_links")
+
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return qs
         return qs.filter(teacher=request.user)
 
@@ -903,29 +914,27 @@ class ClassroomAdmin(admin.ModelAdmin):
         return UserForm
 
     def has_module_permission(self, request):
-        return bool(request.user.is_superuser or access.is_book_teacher(request.user))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_view_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
-        if not access.is_book_teacher(request.user):
+        if not access.acts_as_panel_teacher(request):
             return False
         return bool(obj is None or obj.teacher_id == request.user.pk)
 
     def has_add_permission(self, request):
-        if request.user.is_superuser:
-            return True
-        return access.is_book_teacher(request.user)
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_change_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
-        if not access.is_book_teacher(request.user):
+        if not access.acts_as_panel_teacher(request):
             return False
         return bool(obj is None or obj.teacher_id == request.user.pk)
 
     def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser
+        return access.acts_as_panel_superuser(request)
 
     @admin.display(description="مدرس", ordering="teacher__phone")
     def teacher_phone(self, obj):
@@ -969,9 +978,7 @@ class ClassroomAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         if not change:
-            if not request.user.is_superuser:
-                obj.teacher = request.user
-            elif not obj.teacher_id:
+            if not access.acts_as_panel_superuser(request) or not obj.teacher_id:
                 obj.teacher = request.user
         super().save_model(request, obj, form, change)
 
@@ -1037,17 +1044,17 @@ class ClassroomMemberAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return qs
         return qs.filter(classroom__teacher=request.user)
 
     def has_module_permission(self, request):
-        return bool(request.user.is_superuser or access.is_book_teacher(request.user))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_view_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
-        if not access.is_book_teacher(request.user):
+        if not access.acts_as_panel_teacher(request):
             return False
         return bool(obj is None or obj.classroom.teacher_id == request.user.pk)
 
@@ -1055,14 +1062,14 @@ class ClassroomMemberAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
-        if not access.is_book_teacher(request.user):
+        if not access.acts_as_panel_teacher(request):
             return False
         return bool(obj and obj.classroom.teacher_id == request.user.pk)
 
     def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser
+        return access.acts_as_panel_superuser(request)
 
     @admin.display(description="شماره دانشجو", ordering="phone")
     def phone_ltr(self, obj):

@@ -288,16 +288,9 @@ class LimoAdminSite(AdminSite):
                     request.session.pop("admin_view_mode", None)
             teacher_view_mode = (request.session.get("admin_view_mode") == "teacher")
 
-        from apps.catalog.access import is_book_teacher
+        from apps.catalog.access import acts_as_panel_superuser, acts_as_panel_teacher
 
-        # If user is a teacher OR a superuser previewing teacher view mode:
-        is_teacher = bool(
-            user and user.is_authenticated and (
-                (user.is_superuser and teacher_view_mode) or (not user.is_superuser and is_book_teacher(user))
-            )
-        )
-
-        if is_teacher:
+        if request and acts_as_panel_teacher(request):
             filtered_apps = []
             for app in retained_apps:
                 app_models = [
@@ -311,7 +304,7 @@ class LimoAdminSite(AdminSite):
             return self._transform_teacher_app_list(filtered_apps)
 
         # If viewing as superuser (admin view), append real-time action counters to model names
-        if user and user.is_authenticated and user.is_superuser and not teacher_view_mode:
+        if request and acts_as_panel_superuser(request):
             try:
                 badges_map = getattr(request, "_limo_admin_badges", None) if request else None
                 if badges_map is None:

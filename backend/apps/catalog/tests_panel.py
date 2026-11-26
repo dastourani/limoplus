@@ -2612,11 +2612,36 @@ class TeacherAssistantTests(TestCase):
         res_books = self.client.get("/admin/catalog/book/")
         self.assertEqual(res_books.status_code, 200)
         self.assertContains(res_books, "/admin/?view=admin")
+        self.assertContains(res_books, 'data-channel="teacher"')
+
+        # Teacher view parity across TrackerAdmin, TraceHitAdmin, BookAdmin detail, ReportAdmin, and Wallet
+        res_tracker = self.client.get("/admin/guard/tracker/")
+        self.assertEqual(res_tracker.status_code, 200)
+        self.assertContains(res_tracker, "ردیاب محتوای من (حفاظت اثر)")
+        self.assertNotContains(res_tracker, "هشدارهای بله")
+        self.assertNotContains(res_tracker, "امتیاز خطر حساب‌ها")
+
+        res_alerts_post = self.client.post("/admin/guard/tracker/", {"alerts": "on"})
+        self.assertEqual(res_alerts_post.status_code, 403)
+
+        res_book_detail = self.client.get(f"/admin/catalog/book/{self.book.pk}/change/")
+        self.assertEqual(res_book_detail.status_code, 200)
+        self.assertNotContains(res_book_detail, 'name="price"')
+        self.assertNotContains(res_book_detail, "هدیه دسترسی کتاب")
+
+        res_reports = self.client.get("/admin/learning/report/")
+        self.assertEqual(res_reports.status_code, 200)
+        self.assertNotContains(res_reports, "block_reporter")
+
+        res_wallet = self.client.get("/admin/commerce/teacherwallet/")
+        self.assertEqual(res_wallet.status_code, 200)
+        self.assertContains(res_wallet, "کیف پول من")
 
         # Exit to admin view
         res_admin = self.client.get("/admin/?view=admin")
         self.assertEqual(res_admin.status_code, 200)
         self.assertContains(res_admin, "/admin/?view=teacher")
+        self.assertContains(res_admin, 'data-channel="superadmin"')
 
     def test_book_study_analytics_csv_export(self):
         # Teacher with permission can download CSV

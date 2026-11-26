@@ -22,6 +22,31 @@ def is_book_teacher(user) -> bool:
     )
 
 
+def is_teacher_preview(request) -> bool:
+    """True when an active superuser is previewing «نمای استاد» (`admin_view_mode == 'teacher'`)."""
+    user = getattr(request, "user", None)
+    session = getattr(request, "session", None)
+    return bool(
+        user and user.is_authenticated and user.is_active and user.is_superuser
+        and session is not None and session.get("admin_view_mode") == "teacher"
+    )
+
+
+def acts_as_panel_superuser(request) -> bool:
+    """True only when an active superuser is acting as manager (not inside «نمای استاد» preview)."""
+    user = getattr(request, "user", None)
+    return bool(
+        user and user.is_authenticated and user.is_active and user.is_superuser
+        and not is_teacher_preview(request)
+    )
+
+
+def acts_as_panel_teacher(request) -> bool:
+    """True for an outside book teacher OR an active superuser previewing «نمای استاد»."""
+    user = getattr(request, "user", None)
+    return bool(is_book_teacher(user) or is_teacher_preview(request))
+
+
 def book_editor_ids(user, capability="can_edit_content"):
     """Book IDs assigned to this editor; by default, only books they may edit."""
     if capability and capability not in {

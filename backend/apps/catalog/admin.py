@@ -156,19 +156,19 @@ class BookAdmin(admin.ModelAdmin):
         return qs
 
     def get_list_display(self, request):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return self.list_display
         return ("cover_thumb", "title", "author", "chapter_count", "status")
 
     def has_add_permission(self, request):
-        return bool(request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def has_change_permission(self, request, obj=None):
         # Teachers prepare chapter drafts in the chapter manager; book metadata and commercial settings are manager-only.
-        return bool(request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def get_fieldsets(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return self.fieldsets
         # The view-only book page is a navigation hub for the assigned chapters, not a way to change title, price,
         # free access, majors, sale state, or sharing settings.
@@ -249,9 +249,10 @@ class BookAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         extra = extra_context or {}
-        extra["orphans"] = [n for n in panel.orphans() if not n.is_archived] if request.user.is_superuser else []
-        extra["can_manage_access"] = request.user.is_superuser
-        extra["can_create_book"] = bool(request.user.is_superuser or access.is_book_teacher(request.user))
+        is_panel_su = access.acts_as_panel_superuser(request)
+        extra["orphans"] = [n for n in panel.orphans() if not n.is_archived] if is_panel_su else []
+        extra["can_manage_access"] = is_panel_su
+        extra["can_create_book"] = bool(is_panel_su or access.acts_as_panel_teacher(request))
         return super().changelist_view(request, extra_context=extra)
 
     def _majors_json(self):
@@ -284,8 +285,9 @@ class BookAdmin(admin.ModelAdmin):
             extra["chapters"] = chapters
             from .bookpanel import book_health, gift_context
 
+            is_panel_su = access.acts_as_panel_superuser(request)
             extra["health"] = book_health(book)
-            extra["can_manage_access"] = request.user.is_superuser
+            extra["can_manage_access"] = is_panel_su
             from .models import BookEditor
             # Load assistants/editors for this book (both for teacher and superuser)
             assistants = []
@@ -312,24 +314,30 @@ class BookAdmin(admin.ModelAdmin):
                 BookAssistantAuditLog.objects.filter(book=book).select_related("actor", "assistant_user")[:25]
             )
             can_view_study = bool(
-                request.user.is_superuser
+                is_panel_su
+                or access.is_teacher_preview(request)
                 or (access.is_book_teacher(request.user) and BookEditor.objects.filter(book=book, user=request.user, can_view_aggregate_study=True).exists())
             )
             extra["can_view_study"] = can_view_study
             extra["can_edit_book_content"] = access.can_edit_book(request.user, book)
-            if not request.user.is_superuser and access.is_book_teacher(request.user):
+            if not is_panel_su and access.acts_as_panel_teacher(request):
                 editor = BookEditor.objects.filter(book=book, user=request.user).first()
-                extra["can_request_publication"] = bool(editor and editor.can_request_publication)
-                extra["can_request_group_access"] = bool(editor and editor.can_request_group_access)
+                is_preview = access.is_teacher_preview(request)
+                extra["can_request_publication"] = bool(is_preview or (editor and editor.can_request_publication))
+                extra["can_request_group_access"] = bool(is_preview or (editor and editor.can_request_group_access))
                 from apps.website.models import PublicationRequest
                 extra["publication_request"] = PublicationRequest.objects.filter(book=book, requested_by=request.user).order_by("-submitted_at").first()
             else:
                 extra["can_request_publication"] = False
                 extra["can_request_group_access"] = False
-            if request.user.is_superuser:
+            if is_panel_su:
                 extra.update(gift_context(book))
             # The publish box reads this and not `original.is_published` alone: only the manager gets the control.
-            extra["publish"] = access.publish_state(request.user, book)
+            extra["publish"] = (
+                access.publish_state(request.user, book)
+                if is_panel_su
+                else {"can_publish": False, "why": "انتشار و بازکردن دسترسی دانشجویان فقط با مدیر کل است؛ استاد محتوا را پیش‌نویس و آماده می‌کند."}
+            )
         return super().change_view(request, object_id, form_url, extra_context=extra)
 
     def get_urls(self):
@@ -1810,8 +1818,7 @@ def _index_with_daily_cleanup(request, extra_context=None):
         elif request.GET.get("view") == "admin":
             request.session.pop("admin_view_mode", None)
 
-    is_teacher_preview = (request.session.get("admin_view_mode") == "teacher") if hasattr(request, "session") else False
-    if request.user.is_active and request.user.is_superuser and not is_teacher_preview:
+    if access.acts_as_panel_superuser(request):
         try:
             ctx.update(_admin_kpis_payload())
             ctx["show_admin_kpis"] = True
@@ -1969,17 +1976,15 @@ def _assets_each_context_with_version(request):
     context["assets_v"] = _assets_version()
     user = getattr(request, "user", None)
     # Allow superusers to preview the teacher portal via ?view=teacher or session
-    teacher_view_mode = False
     if request:
         if "view" in request.GET:
             if request.GET.get("view") == "teacher":
                 request.session["admin_view_mode"] = "teacher"
             elif request.GET.get("view") == "admin":
                 request.session.pop("admin_view_mode", None)
-        teacher_view_mode = (request.session.get("admin_view_mode") == "teacher")
 
-    context["teacher_view_mode"] = teacher_view_mode
-    is_teacher = bool(user and user.is_authenticated and (access.is_book_teacher(user) or (user.is_superuser and teacher_view_mode)))
+    context["teacher_view_mode"] = access.is_teacher_preview(request)
+    is_teacher = access.acts_as_panel_teacher(request)
     context["is_teacher"] = is_teacher
     if is_teacher:
         from django.conf import settings
@@ -2169,14 +2174,14 @@ class AIProviderAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return qs
         # Teachers only see their own providers (never global or other teachers' keys)
         return qs.filter(owner=request.user)
 
     def get_fieldsets(self, request, obj=None):
         base_fields = ["title", "provider_type", "api_key", "base_url", "model_name"]
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             base_fields.insert(1, "owner")
         return (
             (None, {
@@ -2206,34 +2211,34 @@ class AIProviderAdmin(admin.ModelAdmin):
         return format_html('<code style="direction:ltr; unicode-bidi:isolate; font-size:12px;">{}</code>', obj.masked_api_key())
 
     def save_model(self, request, obj, form, change):
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             # Force current teacher as owner
             obj.owner = request.user
         super().save_model(request, obj, form, change)
 
     def has_view_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
         if obj is not None:
             return obj.owner_id == request.user.id
-        return access.is_book_teacher(request.user)
+        return access.acts_as_panel_teacher(request)
 
     def has_change_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
         if obj is not None:
             return obj.owner_id == request.user.id
-        return access.is_book_teacher(request.user)
+        return access.acts_as_panel_teacher(request)
 
     def has_delete_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
         if obj is not None:
             return obj.owner_id == request.user.id
-        return access.is_book_teacher(request.user)
+        return access.acts_as_panel_teacher(request)
 
     def has_add_permission(self, request):
-        return bool(request.user.is_superuser or access.is_book_teacher(request.user))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
 
 
@@ -2246,13 +2251,13 @@ class TeacherProfileAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return qs
         return qs.filter(user=request.user)
 
     def get_fields(self, request, obj=None):
         fields = ["user", "academic_title", "avatar", "bio", "contact_email", "social_links", "created_at", "updated_at"]
-        if not request.user.is_superuser and obj is None:
+        if not access.acts_as_panel_superuser(request) and obj is None:
             fields.remove("user")
         return fields
 
@@ -2290,25 +2295,25 @@ class TeacherProfileAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
     def has_module_permission(self, request):
-        return bool(request.user.is_active and (request.user.is_superuser or access.is_book_teacher(request.user)))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_add_permission(self, request):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
-        return access.is_book_teacher(request.user) and not TeacherProfile.objects.filter(user=request.user).exists()
+        return access.acts_as_panel_teacher(request) and not TeacherProfile.objects.filter(user=request.user).exists()
 
     def has_change_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
         if obj is not None and obj.user_id != request.user.id:
             return False
-        return access.is_book_teacher(request.user)
+        return access.acts_as_panel_teacher(request)
 
     def has_view_permission(self, request, obj=None):
         return self.has_change_permission(request, obj)
 
     def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser
+        return access.acts_as_panel_superuser(request)
 
 
 class BookOpinionQueueFilter(admin.SimpleListFilter):
@@ -2357,7 +2362,7 @@ class BookOpinionAdmin(admin.ModelAdmin):
         return qs.filter(book_id__in=my_book_ids)
 
     def get_fields(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return super().get_fields(request, obj)
         return (
             "book",
@@ -2378,7 +2383,7 @@ class BookOpinionAdmin(admin.ModelAdmin):
         )
 
     def get_readonly_fields(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return self._ADMIN_READONLY
         return self._TEACHER_PROTECTED
 
@@ -2408,27 +2413,27 @@ class BookOpinionAdmin(admin.ModelAdmin):
     has_reply.short_description = "پاسخ استاد"
 
     def has_module_permission(self, request):
-        return bool(request.user.is_active and (request.user.is_superuser or access.is_book_teacher(request.user)))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_view_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request) or access.is_teacher_preview(request):
             return True
         if obj is not None:
             return access.can_edit_book(request.user, obj.book)
         return access.is_book_teacher(request.user)
 
     def has_add_permission(self, request):
-        return bool(request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def has_change_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
         if obj is not None:
-            return access.can_edit_book(request.user, obj.book)
-        return access.is_book_teacher(request.user)
+            return access.is_teacher_preview(request) or access.can_edit_book(request.user, obj.book)
+        return access.acts_as_panel_teacher(request)
 
     def has_delete_permission(self, request, obj=None):
-        return bool(request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def save_model(self, request, obj, form, change):
         if not request.user.is_superuser:

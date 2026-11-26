@@ -356,6 +356,44 @@ class AdminOTPLoginTests(TestCase):
         self.assertEqual(response["Location"], "/admin/")
         self.assertEqual(int(self.client.session["_auth_user_id"]), boss.pk)
 
+    def test_teacher_login_is_otp_only_and_rejects_password_login(self):
+        page = self.client.get("/teacher/login/")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "ورود اساتید و مؤلفان")
+        self.assertContains(page, "ورود با پیامک")
+        self.assertContains(page, 'name="action" value="send_otp"')
+        self.assertNotContains(page, "ورود اضطراری با گذرواژه (فقط مدیر کل)")
+        self.assertNotContains(page, 'type="password"')
+        self.assertNotContains(page, 'href="/admin/"')
+        self.assertNotContains(page, 'value="/admin/"')
+
+        # Even a valid superuser password cannot log in via /teacher/login/
+        boss = User.objects.create_superuser("09120000615", password="Boss-Password-123")
+        rejected = self.client.post("/teacher/login/", {
+            "action": "password", "username": boss.phone, "password": "Boss-Password-123",
+        })
+        self.assertEqual(rejected.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        # SMS OTP flow stays on /teacher/login/ and signs in an active staff account
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            req_res = self.client.post("/teacher/login/", {"action": "send_otp", "phone": self.staff.phone})
+        self.assertEqual(req_res.status_code, 302)
+        self.assertEqual(req_res["Location"], "/teacher/login/")
+        code = send.call_args.args[1]
+
+        ver_res = self.client.post("/teacher/login/", {
+            "action": "verify_otp", "phone": self.staff.phone, "code": code,
+        })
+        self.assertEqual(ver_res.status_code, 302)
+        self.assertEqual(ver_res["Location"], "/admin/")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.staff.pk)
+
+    def test_teacher_root_redirects_to_teacher_login(self):
+        res = self.client.get("/teacher/")
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res["Location"], "/teacher/login/")
+
 
 class OtpHashSettingTests(TestCase):
     def test_hash_line_can_be_turned_off(self):
