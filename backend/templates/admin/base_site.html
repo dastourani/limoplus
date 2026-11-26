@@ -332,13 +332,13 @@
     box-shadow: 0 4px 14px rgba(245, 197, 24, 0.5);
   }
 
-  /* Harmonized theme toggle in the panel header (removes Django's default blue SVG backdrop). */
+  /* Harmonized theme toggle in the panel header (removes Django's default blue SVG backdrop without clipping the 1.5rem symbol). */
   #header .theme-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     padding: 0;
     margin: 0;
     border-radius: 999px;
@@ -355,8 +355,8 @@
   #header .theme-toggle svg.theme-icon-when-light {
     color: transparent;
     fill: #F5C518;
-    width: 18px;
-    height: 18px;
+    width: 1.5rem;
+    height: 1.5rem;
   }
 </style>
 <script>
