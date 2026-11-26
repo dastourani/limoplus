@@ -72,28 +72,81 @@
     color: var(--body-quiet-color);
   }
   .admin-kpi-sub {
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--body-quiet-color);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-wrap: wrap;
-    line-height: 1.5;
+    line-height: 1.45;
   }
   .admin-kpi-sub b {
     color: var(--body-fg);
-    font-weight: 700;
+    font-weight: 800;
   }
-  .admin-kpi-sub-link {
-    color: inherit;
-    text-decoration: none;
-    border-bottom: 1px dashed rgba(100, 116, 139, 0.45);
-    transition: color .15s ease, border-color .15s ease;
-  }
-  .admin-kpi-sub-link:hover {
+  .admin-kpi-main-val {
+    font-size: 22px;
+    font-weight: 900;
     color: var(--body-fg);
-    border-bottom-color: currentColor;
+    line-height: 1.25;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .lp-kpi-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--darkened-bg);
+    border: 1px solid var(--hairline-color);
+    color: var(--body-quiet-color);
+    font-size: 11.5px;
+    font-weight: 600;
     text-decoration: none;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+  }
+  html[data-theme="dark"] .lp-kpi-pill {
+    background: rgba(255, 255, 255, 0.045);
+  }
+  a.lp-kpi-pill:hover {
+    color: var(--body-fg);
+    border-color: rgba(245, 197, 24, 0.45);
+    background: rgba(245, 197, 24, 0.08);
+    text-decoration: none;
+  }
+  .lp-kpi-cnt {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 800;
+    line-height: 1;
+    background: rgba(214, 69, 69, 0.16);
+    color: #B33A3A;
+    border: 1px solid rgba(214, 69, 69, 0.28);
+    font-variant-numeric: tabular-nums;
+  }
+  html[data-theme="dark"] .lp-kpi-cnt {
+    background: rgba(214, 69, 69, 0.22);
+    color: #FF9A9A;
+    border-color: rgba(255, 154, 154, 0.30);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .lp-kpi-cnt {
+      background: rgba(214, 69, 69, 0.22);
+      color: #FF9A9A;
+      border-color: rgba(255, 154, 154, 0.30);
+    }
   }
   .admin-kpi-links {
     margin-inline-start: auto;
@@ -344,9 +397,8 @@
           <span class="admin-kpi-unit">دانشجو</span>
         </div>
         <div class="admin-kpi-sub">
-          <span>ورودی این هفته: <b>{{ teacher_kpis.students_week }}</b></span>
-          <span>•</span>
-          <span>کلاس‌ها: <b>{{ teacher_kpis.classes_count }}</b></span>
+          <span class="lp-kpi-pill">ورودی این هفته <b>{{ teacher_kpis.students_week }}</b></span>
+          <span class="lp-kpi-pill">کلاس‌ها <b>{{ teacher_kpis.classes_count }}</b></span>
         </div>
       </div>
 
@@ -360,7 +412,7 @@
           <span class="admin-kpi-unit">ساعت مطالعه</span>
         </div>
         <div class="admin-kpi-sub">
-          <span>دانشجویان فعال در ۳۰ روز اخیر: <b>{{ teacher_kpis.active_students }} نفر</b></span>
+          <span class="lp-kpi-pill">دانشجویان فعال ۳۰ روز اخیر <b>{{ teacher_kpis.active_students }} نفر</b></span>
         </div>
       </div>
 
@@ -374,7 +426,7 @@
           <span class="admin-kpi-unit">فصل در کتاب‌های من</span>
         </div>
         <div class="admin-kpi-sub">
-          <span>وظایف و یادداشت‌های تیمی باز: <b>{{ teacher_kpis.pending_tasks }}</b></span>
+          <span class="lp-kpi-pill">وظایف و یادداشت‌های تیمی باز <span class="lp-kpi-cnt">{{ teacher_kpis.pending_tasks }}</span></span>
         </div>
       </div>
 
@@ -491,9 +543,8 @@
         </div>
         <div class="admin-kpi-main-val">{{ kpi_users_today }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">نفر امروز</span></div>
         <div class="admin-kpi-sub">
-          <span>هفته اخیر: <b>{{ kpi_users_week }}</b></span>
-          <span>•</span>
-          <span>کل اعضا: <b>{{ kpi_users_total }}</b></span>
+          <span class="lp-kpi-pill">هفته اخیر <b>{{ kpi_users_week }}</b></span>
+          <span class="lp-kpi-pill">کل اعضا <b>{{ kpi_users_total }}</b></span>
         </div>
       </div>
 
@@ -505,7 +556,7 @@
         </div>
         <div class="admin-kpi-main-val">{{ kpi_active_month }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">کاربر فعال در ۳۰ روز</span></div>
         <div class="admin-kpi-sub">
-          <span>آنلاین/فعال اخیر (۱۵ دقیقه): <b>{{ kpi_active_now }}</b></span>
+          <span class="lp-kpi-pill">آنلاین/فعال اخیر (۱۵ دقیقه) <b>{{ kpi_active_now }}</b></span>
         </div>
       </div>
 
@@ -520,11 +571,9 @@
         </div>
         <div class="admin-kpi-main-val">{{ kpi_rev_month }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">تومان در ۳۰ روز</span></div>
         <div class="admin-kpi-sub">
-          <span>امروز: <b>{{ kpi_rev_today }} تومان</b></span>
-          <span>•</span>
-          <span>کل درآمد: <b>{{ kpi_rev_total }} تومان</b></span>
-          <span>•</span>
-          <a href="{% url 'admin:commerce_order_changelist' %}" class="admin-kpi-sub-link">فهرست سفارش‌ها ›</a>
+          <span class="lp-kpi-pill">امروز <b>{{ kpi_rev_today }} تومان</b></span>
+          <span class="lp-kpi-pill">کل درآمد <b>{{ kpi_rev_total }} تومان</b></span>
+          <a href="{% url 'admin:commerce_order_changelist' %}" class="lp-kpi-pill">فهرست سفارش‌ها ›</a>
         </div>
       </div>
 
@@ -536,12 +585,10 @@
         </div>
         <div class="admin-kpi-main-val">{{ kpi_teachers_total }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">استاد</span></div>
         <div class="admin-kpi-sub">
-          <span title="اساتیدی که در ۳۰ روز اخیر هیچ ویرایش ثبت‌شده‌ای روی کتاب، فصل، بخش، تست یا فلش‌کارت نداشته‌اند">بدون ویرایش تألیفیِ ثبت‌شده در ۳۰ روز اخیر: <b style="color:#b91c1c;">{{ kpi_teachers_inactive }}</b></span>
-          <span>•</span>
-          <span>کلاس‌ها: <b>{{ kpi_active_classes }}</b> ({{ kpi_class_students }} دانشجو)</span>
+          <span class="lp-kpi-pill" title="اساتیدی که در ۳۰ روز اخیر هیچ ویرایش ثبت‌شده‌ای روی کتاب، فصل، بخش، تست یا فلش‌کارت نداشته‌اند">بدون ویرایش تألیفیِ ثبت‌شده در ۳۰ روز اخیر <span class="lp-kpi-cnt">{{ kpi_teachers_inactive }}</span></span>
+          <span class="lp-kpi-pill">کلاس‌ها <b>{{ kpi_active_classes }}</b> ({{ kpi_class_students }} دانشجو)</span>
           {% if kpi_unattributed_edits_count %}
-          <span>•</span>
-          <span title="ویرایش‌های قدیمی بدون شناسهٔ کاربر در ۳۰ روز اخیر که به هیچ استادی نسبت داده نشده‌اند" style="color:#b45309;">سوابق بدون هویت ویرایشگر: <b>{{ kpi_unattributed_edits }}</b></span>
+          <span class="lp-kpi-pill" title="ویرایش‌های قدیمی بدون شناسهٔ کاربر در ۳۰ روز اخیر که به هیچ استادی نسبت داده نشده‌اند">سوابق بدون هویت ویرایشگر <span class="lp-kpi-cnt">{{ kpi_unattributed_edits }}</span></span>
           {% endif %}
         </div>
       </div>
@@ -557,13 +604,10 @@
         </div>
         <div class="admin-kpi-main-val">{{ kpi_draft_books }} <span style="font-size:13px; font-weight:700; color:var(--body-quiet-color);">کتاب پیش‌نویس (Draft)</span></div>
         <div class="admin-kpi-sub">
-          <span>منتشرشده: <b>{{ kpi_published_books }}</b></span>
-          <span>•</span>
-          <a href="{% url 'admin:website_publicationrequest_changelist' %}?queue=pending" title="مشاهدهٔ درخواست‌های انتشار منتظر بررسی مدیر کل" class="admin-kpi-sub-link">درخواست انتشار: <b style="color:#b45309;">{{ kpi_pending_pubs }}</b></a>
-          <span>•</span>
-          <a href="{% url 'admin:website_teacherapplication_changelist' %}?status__exact=pending" title="مشاهدهٔ درخواست‌های جدید همکاری آموزشی" class="admin-kpi-sub-link">درخواست همکاری: <b style="color:#0284c7;">{{ kpi_pending_teacher_apps }}</b></a>
-          <span>•</span>
-          <a href="{% url 'admin:catalog_bookteamtask_changelist' %}?is_done__exact=0" title="مشاهدهٔ یادداشت‌ها و وظایف انجام‌نشدهٔ تیم‌های تألیف کتاب‌ها" class="admin-kpi-sub-link">یادداشت‌های باز هماهنگی تیم‌ها: <b style="color:#b45309;">{{ kpi_open_team_tasks }}</b></a>
+          <span class="lp-kpi-pill">منتشرشده <b>{{ kpi_published_books }}</b></span>
+          <a href="{% url 'admin:website_publicationrequest_changelist' %}?queue=pending" title="مشاهدهٔ درخواست‌های انتشار منتظر بررسی مدیر کل" class="lp-kpi-pill">درخواست انتشار <span class="lp-kpi-cnt">{{ kpi_pending_pubs }}</span></a>
+          <a href="{% url 'admin:website_teacherapplication_changelist' %}?status__exact=pending" title="مشاهدهٔ درخواست‌های جدید همکاری آموزشی" class="lp-kpi-pill">درخواست همکاری <span class="lp-kpi-cnt">{{ kpi_pending_teacher_apps }}</span></a>
+          <a href="{% url 'admin:catalog_bookteamtask_changelist' %}?is_done__exact=0" title="مشاهدهٔ یادداشت‌ها و وظایف انجام‌نشدهٔ تیم‌های تألیف کتاب‌ها" class="lp-kpi-pill">یادداشت‌های باز هماهنگی تیم‌ها <span class="lp-kpi-cnt">{{ kpi_open_team_tasks }}</span></a>
         </div>
       </div>
     </div>

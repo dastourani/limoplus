@@ -117,7 +117,15 @@
   /* Light highlight/quote boxes keep dark ink text in both light and dark admin themes. */
   .lp-quote, .lp-quote * { color: #17201A !important; }
 
-  /* Sticky Header */
+  /* Sticky Header: expand html/body/#container with page height so #header never gets pushed off-screen after 100vh of scroll. */
+  html, body {
+    height: auto;
+    min-height: 100%;
+  }
+  #container {
+    height: auto;
+    min-height: 100vh;
+  }
   #header {
     position: sticky;
     top: 0;
