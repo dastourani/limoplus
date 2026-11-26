@@ -1,4 +1,4 @@
-{% load site_icons %}<a class="bk" href="{{ c.url }}" data-majors="{{ c.majors|join:' ' }}">
+{% load site_icons %}<a class="bk{% if c.cover_ribbon.kind == 'soon' or c.cover_ribbon.kind == 'planning' %} bk-prerelease{% endif %}" href="{{ c.url }}" data-majors="{{ c.majors|join:' ' }}">
   <div class="cover" data-cover="{{ c.cover }}" data-w="{{ w|default:170 }}" style="width:{{ w|default:170 }}px"><div class="cover-ph"><b>{{ c.book.title }}</b></div></div>
   {% if c.cover_ribbon %}<span class="bk-ribbon{% if c.cover_ribbon.kind != 'free' %} bk-ribbon-{{ c.cover_ribbon.kind }}{% endif %}">{% if c.cover_ribbon.icon %}{% icon c.cover_ribbon.icon 12 %}{% endif %}{{ c.cover_ribbon.text }}</span>{% endif %}
   <b class="bk-title">{{ c.book.title }}</b>

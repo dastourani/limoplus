@@ -201,22 +201,36 @@ export default function Home() {
   const [readingOpen, setReadingOpen] = useState(false);
   const [shelfFilter, setShelfFilter] = useState<string | undefined>(undefined);
   const coverWidth = Math.max(120, Math.min(170, Math.floor((pageWidth - 32) / 2.4)));
-  // A guest's reading place lives only on this device. On the web the note sits on the line between «ادامه‌ی خواندن»
-  // and «کتاب‌ها» like a label on a divider; in the app it stays the quiet line under the section. The line between the
-  // sections only exists when there are books to list, so with an empty catalogue the quiet line stays as well.
+  // A guest's reading place lives only on this device. When the catalogue is present, a green pill sits on the divider
+  // line between «ادامه‌ی خواندن» and «کتاب‌ها» on both web and mobile; when the catalogue is empty, it sits directly
+  // under «ادامه‌ی خواندن».
   const guestHint = !user && reading.length > 0;
-  const webBanner = Platform.OS === 'web' && list.length > 0;
+  const hasCatalogue = list.length > 0;
+  const guestSyncLabel =
+    Platform.OS === 'web'
+      ? 'پیشرفت شما فقط روی این دستگاه ذخیره شده است. برای دسترسی در همه دستگاه‌ها وارد شوید'
+      : 'برای ذخیره پیشرفت و همگام‌سازی وارد شوید';
+  const guestSyncPill = (
+    <Pressable onPress={() => router.push('/login')} style={styles.guestBanner} accessibilityRole="link">
+      <Icon name="monitor-smartphone" size={15} color={colors.greenDark} />
+      <Text style={[styles.guestBannerText, rtl]}>{guestSyncLabel}</Text>
+      <Icon name="chevron-left" size={14} color={colors.greenDark} />
+    </Pressable>
+  );
 
   const bookTile = (book: BookListItem, tileWidth: number = coverWidth) => {
     const { on: waiting, canCancel } = notifyState(book);
+    const state = book.product_status.state;
+    const isPreRelease = state === 'coming_soon' || state === 'preparing';
+    const stateSuffix = state === 'coming_soon' ? '، به‌زودی' : state === 'preparing' ? '، در حال برنامه‌ریزی' : '';
     const openBook = () => router.push({ pathname: '/book/[slug]', params: { slug: book.slug } });
     return (
       <View style={{ width: tileWidth, gap: 8 }}>
         <Pressable
           onPress={openBook}
           accessibilityRole="button"
-          accessibilityLabel={`${book.title}${book.product_status.state === 'coming_soon' ? '، به‌زودی' : ''}`}
-          style={({ pressed }) => [{ opacity: book.product_status.state === 'coming_soon' ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
+          accessibilityLabel={`${book.title}${stateSuffix}`}
+          style={({ pressed }) => [{ opacity: isPreRelease ? 0.75 : 1 }, pressed && { transform: [{ scale: 0.97 }] }]}
         >
           <BookCover book={book} major={book.major ?? null} width={tileWidth} />
           <CoverRibbon book={book} />
@@ -281,12 +295,7 @@ export default function Home() {
                 <Text style={styles.moreText}>{readingOpen ? 'بستن ▴' : `همه‌ی کتاب‌هایی که می‌خوانی (${toPersianDigits(reading.length)}) ▾`}</Text>
               </Pressable>
             )}
-            {guestHint && !webBanner && (
-              // A guest's place lives only on this device: a separate, quiet link to keep it everywhere.
-              <Pressable onPress={() => router.push('/login')} style={styles.guestLink} accessibilityRole="link">
-                <Text style={[styles.guestLinkText, rtl]}>جای خواندنت فقط روی همین دستگاه است؛ برای نگه داشتنش در همه‌جا وارد شو ←</Text>
-              </Pressable>
-            )}
+            {guestHint && !hasCatalogue && <View style={styles.guestFallbackRow}>{guestSyncPill}</View>}
           </View>
       ),
     });
@@ -467,16 +476,12 @@ export default function Home() {
       key: 'books-head',
       el: (
         <View style={styles.booksHead}>
-          {guestHint && webBanner ? (
+          {guestHint ? (
             // The line between the two sections, with the guest's note on it like a label: the line comes out of both
             // sides of the card.
             <View style={styles.dividerRow}>
               <View style={styles.dividerLine} />
-              <Pressable onPress={() => router.push('/login')} style={styles.guestBanner} accessibilityRole="link">
-                <Icon name="monitor-smartphone" size={15} color={colors.greenDark} />
-                <Text style={[styles.guestBannerText, rtl]}>پیشرفت شما فقط روی این دستگاه ذخیره شده است. برای دسترسی در همه دستگاه‌ها وارد شوید</Text>
-                <Icon name="chevron-left" size={14} color={colors.greenDark} />
-              </Pressable>
+              {guestSyncPill}
               <View style={styles.dividerLine} />
             </View>
           ) : (
@@ -581,12 +586,12 @@ const SIDE_PAD = 16;
 const SIDE_INNER = SIDE_WIDTH - 2 * SIDE_PAD - 2;
 
 const styles = StyleSheet.create({
-  guestLink: { paddingHorizontal: 16, paddingTop: 2, alignSelf: 'stretch' },
+  guestFallbackRow: { paddingHorizontal: 16, paddingTop: 4, alignItems: 'center' },
   changed: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.lemonSoft, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10 },
   changedText: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.ink },
   booksHead: { marginTop: 14 },
   booksHeadBody: { gap: 10, paddingTop: 18 },
-  // The line between the sections; on the web the guest's note sits on it, like a label.
+  // The line between the sections; the guest's note sits on it, like a label.
   dividerRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
   dividerLine: { flex: 1, height: 1, minWidth: 16, backgroundColor: colors.line },
   guestBanner: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, flexShrink: 1, maxWidth: 560, backgroundColor: colors.greenSoft, borderWidth: 1, borderColor: '#CFE7D9', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 9 },

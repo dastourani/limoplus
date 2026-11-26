@@ -11,7 +11,7 @@ from .views import _base
 def teacher_invitation(request):
     # The bearer token is deliberately in the URL fragment, not the path or query. Browsers never send fragments
     # in HTTP requests, access logs, or Referer headers; JavaScript submits it only with a valid phone OTP.
-    context = _base(request, invitation_landing=True, invitation_admin_url=reverse("admin:index"))
+    context = _base(request, invitation_landing=True, invitation_login_url=reverse("teacher-login"))
     context["canonical"] = request.build_absolute_uri(reverse("website:home"))
     response = render(request, "website/teacher_invitation.html", context)
     response["Cache-Control"] = "no-store, max-age=0"

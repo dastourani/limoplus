@@ -286,6 +286,70 @@ class TeacherInvitationWorkflowTests(WorkflowFixture):
             self.assertEqual(teacher_client.get(reverse("admin:index")).status_code, 200)
             cleanup.assert_not_called()
 
+    def test_logged_out_invitation_landing_and_email_verification_redirect_to_teacher_login(self):
+        # 1. Logged-out teacher opens the invitation landing page with no prior session:
+        #    no ADMIN_URL is exposed, and fallback/login links point to /teacher/login/.
+        anon = Client()
+        landing = anon.get(reverse("website:teacher-invitation"))
+        self.assertEqual(landing.status_code, 200)
+        self.assertContains(landing, reverse("teacher-login"))
+        self.assertNotContains(landing, reverse("admin:index"))
+
+        # Complete invitation acceptance with no prior session.
+        invitation, token = self.make_invitation(can_edit_content=True)
+        _, code = self.issue_otp(invitation.application.phone)
+        api_anon = APIClient()
+        verify_res = api_anon.post(
+            "/api/v1/auth/verify-otp/",
+            {
+                "phone": invitation.application.phone,
+                "code": code,
+                "teacher_invitation": token,
+                "device_name": "Fresh browser",
+                "platform": "web",
+            },
+            format="json",
+        )
+        self.assertEqual(verify_res.status_code, 200, verify_res.data)
+        self.assertTrue(verify_res.data["accepted"])
+        self.assertEqual(verify_res.data["redirect"], reverse("teacher-login"))
+        invitation.refresh_from_db()
+        self.assertEqual(invitation.status, TeacherInvitation.Status.ACCEPTED)
+
+        # 2. Logged-out teacher opens email verification magic link with no prior session:
+        #    email is verified and redirect goes to /teacher/login/, NOT ADMIN_URL.
+        user = User.objects.get(phone=invitation.application.phone)
+        user.email = "teacher@example.com"
+        user.email_verified_at = None
+        user.email_verification_token = "verify-token-logged-out-123"
+        user.save(update_fields=["email", "email_verified_at", "email_verification_token"])
+
+        logged_out_browser = Client()
+        verify_email_url = reverse("website:verify-teacher-email", args=["verify-token-logged-out-123"])
+        email_res = logged_out_browser.get(verify_email_url)
+        self.assertEqual(email_res.status_code, 302)
+        self.assertEqual(email_res["Location"], reverse("teacher-login"))
+
+        user.refresh_from_db()
+        self.assertTrue(user.is_email_verified)
+        self.assertEqual(user.email_verification_token, "")
+
+        login_page = logged_out_browser.get(email_res["Location"])
+        self.assertEqual(login_page.status_code, 200)
+        self.assertContains(login_page, "teacher@example.com")
+
+        # 3. When an authenticated teacher opens a fresh email-verification link, they return to the panel.
+        user.email_verified_at = None
+        user.email_verification_token = "verify-token-logged-in-456"
+        user.save(update_fields=["email_verified_at", "email_verification_token"])
+        logged_in_browser = Client()
+        logged_in_browser.force_login(user)
+        signed_in_res = logged_in_browser.get(reverse("website:verify-teacher-email", args=["verify-token-logged-in-456"]))
+        self.assertEqual(signed_in_res.status_code, 302)
+        self.assertEqual(signed_in_res["Location"], reverse("admin:index"))
+        user.refresh_from_db()
+        self.assertTrue(user.is_email_verified)
+
     def test_invitation_phone_mismatch_does_not_create_user_or_consume_otp(self):
         invitation, token = self.make_invitation(can_edit_content=True)
         otp, code = self.issue_otp(invitation.application.phone)

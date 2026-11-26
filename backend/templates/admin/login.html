@@ -3,63 +3,279 @@
 
 {% block extrastyle %}{{ block.super }}
 <style>
-  .lp-login { max-width: 480px; margin: 24px auto; }
-  .lp-login h1 { margin-bottom: 8px; }
-  .lp-login .lp-login-card { background: var(--body-bg); border: 1px solid var(--hairline-color); border-radius: 12px; padding: 18px; margin: 14px 0; }
-  .lp-login .lp-login-card p { margin: 0 0 12px; }
-  .lp-login label { display: block; font-weight: 700; margin: 10px 0 4px; }
-  .lp-login input[type=text], .lp-login input[type=password], .lp-login input[type=tel] {
-    box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px;
-    border: 1px solid var(--border-color); border-radius: 8px; background: var(--body-bg); color: var(--body-fg);
-    font: inherit;
+  /* Align the login shell with LimoKhan's panel palette in both light and dark modes, without sidebar clutter. */
+  body.login {
+    --lp-accent: #F5C518;
+    --lp-ink: #17201A;
+    --lp-surface: var(--body-bg);
+    --lp-surface-alt: var(--darkened-bg);
+    --lp-card-shadow: 0 14px 36px rgba(23, 32, 26, 0.08);
+    --lp-btn-bg: #17201A;
+    --lp-btn-fg: #F5C518;
+    --lp-btn-hover: #24332A;
+    --lp-notice-bg: rgba(46, 158, 91, 0.14);
+    --lp-notice-fg: #1C6B3F;
+    --lp-notice-border: rgba(46, 158, 91, 0.34);
+    --lp-error-bg: rgba(214, 69, 69, 0.12);
+    --lp-error-fg: #A31F1F;
+    --lp-error-border: rgba(214, 69, 69, 0.34);
+    background: var(--darkened-bg);
+    min-height: 100vh;
   }
-  .lp-login button { margin-top: 12px; min-height: 40px; padding: 7px 14px; border: 0; border-radius: 8px;
-    background: #17201A; color: #F5C518; font: inherit; font-weight: 700; cursor: pointer; }
-  .lp-login button:hover { background: #29372e; }
-  .lp-login .lp-login-notice, .lp-login .lp-login-error { border-radius: 8px; padding: 10px 12px; margin: 12px 0; }
-  .lp-login .lp-login-notice { background: #e3f3e9; color: #1f6848; }
-  .lp-login .lp-login-error { background: #fdecea; color: #a31f1f; }
-  .lp-login details { margin-top: 14px; }
-  .lp-login summary { cursor: pointer; font-weight: 700; }
-  .lp-login .lp-login-help { color: var(--body-quiet-color); font-size: 12px; }
-  @media (max-width: 600px) { .lp-login { margin: 12px auto; } .lp-login .lp-login-card { padding: 14px; } }
+  html[data-theme="dark"] body.login {
+    --lp-surface: #1B231E;
+    --lp-surface-alt: #131915;
+    --lp-card-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+    --lp-btn-bg: #F5C518;
+    --lp-btn-fg: #17201A;
+    --lp-btn-hover: #FFD84A;
+    --lp-notice-bg: rgba(46, 158, 91, 0.18);
+    --lp-notice-fg: #7FE3A8;
+    --lp-notice-border: rgba(111, 211, 154, 0.32);
+    --lp-error-bg: rgba(214, 69, 69, 0.18);
+    --lp-error-fg: #FF9E9E;
+    --lp-error-border: rgba(255, 154, 154, 0.32);
+  }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) body.login {
+      --lp-surface: #1B231E;
+      --lp-surface-alt: #131915;
+      --lp-card-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+      --lp-btn-bg: #F5C518;
+      --lp-btn-fg: #17201A;
+      --lp-btn-hover: #FFD84A;
+      --lp-notice-bg: rgba(46, 158, 91, 0.18);
+      --lp-notice-fg: #7FE3A8;
+      --lp-notice-border: rgba(111, 211, 154, 0.32);
+      --lp-error-bg: rgba(214, 69, 69, 0.18);
+      --lp-error-fg: #FF9E9E;
+      --lp-error-border: rgba(255, 154, 154, 0.32);
+    }
+  }
+  body.login #header {
+    background: #17201A;
+    color: #fff;
+    border-bottom: 3px solid #F5C518;
+    padding: 12px 24px;
+  }
+  body.login #header #site-name a { color: #F5C518; font-weight: 800; }
+  body.login #nav-sidebar,
+  body.login #toggle-nav-sidebar,
+  body.login .breadcrumbs { display: none !important; }
+  body.login .main { display: block; }
+  body.login #content { padding: 28px 16px 48px; }
+
+  .lp-login { max-width: 440px; margin: 12px auto 0; }
+  .lp-login-hero { text-align: center; margin-bottom: 18px; }
+  .lp-login-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    background: #17201A;
+    border: 2px solid #F5C518;
+    margin-bottom: 10px;
+    box-shadow: 0 6px 18px rgba(23, 32, 26, 0.16);
+  }
+  .lp-login h1 { margin: 0 0 6px; font-size: 22px; font-weight: 800; color: var(--body-fg); }
+  .lp-login .lp-login-help { color: var(--body-quiet-color); font-size: 13px; margin: 0; line-height: 1.7; }
+
+  .lp-login .lp-login-card {
+    background: var(--lp-surface);
+    border: 1px solid var(--hairline-color);
+    border-radius: 16px;
+    padding: 20px;
+    margin: 14px 0;
+    box-shadow: var(--lp-card-shadow);
+  }
+  .lp-login .lp-login-card h2 {
+    margin: 0 0 12px;
+    padding: 0;
+    background: none;
+    color: var(--body-fg);
+    font-size: 15px;
+    font-weight: 800;
+  }
+  .lp-login label { display: block; font-weight: 700; font-size: 13px; margin: 10px 0 6px; color: var(--body-fg); }
+  .lp-login input[type=text], .lp-login input[type=password], .lp-login input[type=tel] {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 44px;
+    padding: 9px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--lp-surface-alt);
+    color: var(--body-fg);
+    font: inherit;
+    font-size: 15px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .lp-login input:focus {
+    outline: none;
+    border-color: #F5C518;
+    box-shadow: 0 0 0 3px rgba(245, 197, 24, 0.25);
+  }
+  .lp-login button[type=submit] {
+    width: 100%;
+    margin-top: 14px;
+    min-height: 44px;
+    padding: 9px 16px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--lp-btn-bg);
+    color: var(--lp-btn-fg);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background .15s ease, transform .1s ease;
+  }
+  .lp-login button[type=submit]:hover { background: var(--lp-btn-hover); }
+  .lp-login button[type=submit]:active { transform: scale(0.99); }
+  .lp-login button.lp-btn-ghost {
+    background: transparent;
+    color: var(--body-fg);
+    border: 1px solid var(--hairline-color);
+    font-weight: 700;
+    min-height: 38px;
+    margin-top: 8px;
+  }
+  .lp-login button.lp-btn-ghost:hover { background: var(--lp-surface-alt); }
+
+  .lp-login .lp-login-notice, .lp-login .lp-login-error {
+    border-radius: 12px;
+    padding: 11px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.7;
+    border: 1px solid transparent;
+  }
+  .lp-login .lp-login-notice { background: var(--lp-notice-bg); color: var(--lp-notice-fg); border-color: var(--lp-notice-border); }
+  .lp-login .lp-login-error { background: var(--lp-error-bg); color: var(--lp-error-fg); border-color: var(--lp-error-border); }
+
+  .lp-login-phone-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 12px;
+    margin-bottom: 12px;
+    border-radius: 10px;
+    background: var(--lp-surface-alt);
+    border: 1px solid var(--hairline-color);
+    font-size: 13px;
+  }
+  .lp-login-phone-row form { margin: 0; }
+  .lp-login-phone-row button.lp-link-btn {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: transparent;
+    border: 1px solid var(--hairline-color);
+    color: var(--body-quiet-color);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .lp-login-phone-row button.lp-link-btn:hover { background: var(--lp-surface); color: var(--body-fg); }
+
+  .lp-login details.lp-login-card { padding: 14px 18px; }
+  .lp-login details.lp-login-card summary {
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--body-quiet-color);
+    list-style-position: inside;
+  }
+  .lp-login details.lp-login-card[open] summary { margin-bottom: 10px; color: var(--body-fg); }
+
+  .lp-login-footer { text-align: center; margin-top: 18px; font-size: 12.5px; color: var(--body-quiet-color); }
+  .lp-login-footer a { color: var(--link-fg); font-weight: 700; text-decoration: none; }
+  .lp-login-footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 600px) {
+    .lp-login { margin: 4px auto 0; }
+    .lp-login .lp-login-card { padding: 16px; }
+  }
 </style>
 {% endblock %}
 
 {% block bodyclass %}{{ block.super }} login{% endblock %}
+{% block nav-sidebar %}{% endblock %}
+{% block breadcrumbs %}{% endblock %}
 
 {% block content %}
 <div id="content-main" class="lp-login" dir="rtl">
-  <h1>ورود به پنل اساتید و مدیریت</h1>
-  <p class="lp-login-help">ورود اساتید و همکاران با کد تأیید پیامکی انجام می‌شود.</p>
+  <div class="lp-login-hero">
+    <div class="lp-login-mark" aria-hidden="true">
+      <svg width="28" height="28" viewBox="0 0 36 36" fill="none">
+        <circle cx="18" cy="18" r="15" fill="#F5C518"/>
+        <circle cx="18" cy="18" r="11.5" fill="#FFFDF4"/>
+        <path d="M18 6.5V29.5M6.5 18H29.5M9.9 9.9L26.1 26.1M26.1 9.9L9.9 26.1" stroke="#F5C518" stroke-width="1.8" stroke-linecap="round"/>
+        <circle cx="18" cy="18" r="2.2" fill="#17201A"/>
+      </svg>
+    </div>
+    {% if is_teacher_login %}
+      <h1>ورود اساتید و مؤلفان</h1>
+      <p class="lp-login-help">برای ورود به میز تألیف و کلاس‌های لیموخوان، کد تأیید پیامکی دریافت کنید.</p>
+    {% else %}
+      <h1>ورود به پنل مدیریت</h1>
+      <p class="lp-login-help">ورود مدیر کل با کد تأیید پیامکی انجام می‌شود.</p>
+    {% endif %}
+  </div>
 
   {% if notice %}<div class="lp-login-notice" role="status">{{ notice }}</div>{% endif %}
   {% if error %}<div class="lp-login-error" role="alert">{{ error }}</div>{% endif %}
 
+  {% if not wrong_role %}
   <section class="lp-login-card" aria-labelledby="otp-login-heading">
     <h2 id="otp-login-heading">ورود با پیامک</h2>
-    <form method="post" action="{{ login_url }}">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="send_otp">
-      <input type="hidden" name="next" value="{{ next }}">
-      <label for="id_phone">شماره‌ی موبایل</label>
-      <input id="id_phone" type="tel" name="phone" value="{{ otp_phone }}" inputmode="tel" autocomplete="tel" dir="ltr" required>
-      <button type="submit">ارسال کد ورود</button>
-    </form>
 
     {% if otp_phone %}
+      <div class="lp-login-phone-row">
+        <span>کد ارسال‌شده به <b dir="ltr">{{ otp_phone }}</b></span>
+        <form method="post" action="{{ login_url }}">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="reset_phone">
+          <input type="hidden" name="next" value="{{ next }}">
+          <button type="submit" class="lp-link-btn">تغییر شماره</button>
+        </form>
+      </div>
+
       <form method="post" action="{{ login_url }}">
         {% csrf_token %}
         <input type="hidden" name="action" value="verify_otp">
         <input type="hidden" name="phone" value="{{ otp_phone }}">
         <input type="hidden" name="next" value="{{ next }}">
-        <label for="id_code">کد پیامکی</label>
-        <input id="id_code" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" dir="ltr" maxlength="6" required>
+        <label for="id_code">کد ۶ رقمی پیامکی</label>
+        <input id="id_code" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" dir="ltr" maxlength="6" placeholder="••••••" autofocus required>
         <button type="submit">ورود به پنل</button>
+      </form>
+
+      <form method="post" action="{{ login_url }}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="send_otp">
+        <input type="hidden" name="phone" value="{{ otp_phone }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="lp-btn-ghost">ارسال مجدد کد ورود</button>
+      </form>
+    {% else %}
+      <form method="post" action="{{ login_url }}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="send_otp">
+        <input type="hidden" name="next" value="{{ next }}">
+        <label for="id_phone">شماره‌ی موبایل</label>
+        <input id="id_phone" type="tel" name="phone" value="{{ otp_phone }}" inputmode="tel" autocomplete="tel" dir="ltr" placeholder="09123456789" autofocus required>
+        <button type="submit">ارسال کد ورود</button>
       </form>
     {% endif %}
   </section>
 
+  {% if not is_teacher_login %}
   <details class="lp-login-card">
     <summary>ورود اضطراری با گذرواژه (فقط مدیر کل)</summary>
     <p class="lp-login-help">این مسیر برای بازیابی اضطراری مدیر کل است؛ گذرواژه‌ی کارکنان دیگر پذیرفته نمی‌شود.</p>
@@ -74,5 +290,15 @@
       <button type="submit">ورود اضطراری</button>
     </form>
   </details>
+  {% endif %}
+  {% endif %}
+
+  <div class="lp-login-footer">
+    {% if not is_teacher_login %}
+      <a href="{% url 'teacher-login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">استاد یا مؤلف هستید؟ ورود از درگاه اساتید</a>
+      <span> · </span>
+    {% endif %}
+    <a href="{% url 'website:home' %}">بازگشت به وب‌سایت لیموخوان</a>
+  </div>
 </div>
 {% endblock %}

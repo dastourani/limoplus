@@ -57,6 +57,70 @@ _TEACHER_VISIBLE_MODELS = frozenset({
 class LimoAdminSite(AdminSite):
     """Group author, invitation, publication-review, and group-access workflows separately."""
 
+    def admin_view(self, view, cacheable=False):
+        from functools import update_wrapper
+
+        from django.http import HttpResponseRedirect
+        from django.views.decorators.cache import never_cache
+        from django.views.decorators.csrf import csrf_protect
+
+        def inner(request, *args, **kwargs):
+            if not self.has_permission(request):
+                if request.path == reverse("admin:logout", current_app=self.name):
+                    index_path = reverse("admin:index", current_app=self.name)
+                    return HttpResponseRedirect(index_path)
+                from django.contrib.auth.views import redirect_to_login
+
+                login_target = (
+                    reverse("teacher-login")
+                    if request.COOKIES.get("lp_panel_role") == "teacher"
+                    else reverse("admin:login", current_app=self.name)
+                )
+                return redirect_to_login(request.get_full_path(), login_target)
+            response = view(request, *args, **kwargs)
+            user = getattr(request, "user", None)
+            if user is not None and user.is_authenticated and user.is_staff and hasattr(response, "set_cookie"):
+                expected_role = "admin" if user.is_superuser else "teacher"
+                if request.COOKIES.get("lp_panel_role") != expected_role:
+                    response.set_cookie(
+                        "lp_panel_role",
+                        expected_role,
+                        max_age=60 * 60 * 24 * 365,
+                        httponly=True,
+                        samesite="Lax",
+                    )
+            return response
+
+        if not cacheable:
+            inner = never_cache(inner)
+        if not getattr(view, "csrf_exempt", False):
+            inner = csrf_protect(inner)
+        return update_wrapper(inner, view)
+
+    def logout(self, request, extra_context=None):
+        was_teacher = bool(
+            getattr(request, "user", None)
+            and request.user.is_authenticated
+            and request.user.is_staff
+            and not request.user.is_superuser
+        )
+        response = super().logout(request, extra_context=extra_context)
+        if was_teacher and request.method == "POST" and not getattr(request.user, "is_authenticated", False):
+            from django.http import HttpResponseRedirect
+
+            redirect_res = HttpResponseRedirect(reverse("teacher-login"))
+            for k, morsel in response.cookies.items():
+                redirect_res.cookies[k] = morsel
+            redirect_res.set_cookie(
+                "lp_panel_role",
+                "teacher",
+                max_age=60 * 60 * 24 * 365,
+                httponly=True,
+                samesite="Lax",
+            )
+            return redirect_res
+        return response
+
     def _transform_teacher_app_list(self, raw_apps):
         """Re-organize app groups, rename categories, and order models specifically for teacher ergonomics."""
         # Buckets for teacher models
@@ -288,16 +352,9 @@ class LimoAdminSite(AdminSite):
                     request.session.pop("admin_view_mode", None)
             teacher_view_mode = (request.session.get("admin_view_mode") == "teacher")
 
-        from apps.catalog.access import is_book_teacher
+        from apps.catalog.access import acts_as_panel_superuser, acts_as_panel_teacher
 
-        # If user is a teacher OR a superuser previewing teacher view mode:
-        is_teacher = bool(
-            user and user.is_authenticated and (
-                (user.is_superuser and teacher_view_mode) or (not user.is_superuser and is_book_teacher(user))
-            )
-        )
-
-        if is_teacher:
+        if request and acts_as_panel_teacher(request):
             filtered_apps = []
             for app in retained_apps:
                 app_models = [
@@ -311,7 +368,7 @@ class LimoAdminSite(AdminSite):
             return self._transform_teacher_app_list(filtered_apps)
 
         # If viewing as superuser (admin view), append real-time action counters to model names
-        if user and user.is_authenticated and user.is_superuser and not teacher_view_mode:
+        if request and acts_as_panel_superuser(request):
             try:
                 badges_map = getattr(request, "_limo_admin_badges", None) if request else None
                 if badges_map is None:

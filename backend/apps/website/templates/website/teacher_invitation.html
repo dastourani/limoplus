@@ -13,7 +13,7 @@
     </header>
 
     <div id="invite-unavailable" class="teacher-application-alert" role="alert" hidden>
-      پیوند دعوت در دسترس نیست یا قبلاً استفاده شده است. از مدیر بخواهید پیوند تازه صادر کند.
+      پیوند دعوت در دسترس نیست یا قبلاً استفاده شده است. از مدیر بخواهید پیوند تازه صادر کند یا اگر دعوت را قبلاً پذیرفته‌اید، از <a href="{% url 'teacher-login' %}">ورود به پنل اساتید</a> وارد شوید.
     </div>
     <div id="invite-result" class="teacher-application-result" role="status" hidden></div>
 
@@ -48,7 +48,7 @@
   const message = document.getElementById('invite-message');
   const phoneInput = document.getElementById('invite-phone');
   const codeInput = document.getElementById('invite-code');
-  const adminUrl = "{{ invitation_admin_url|escapejs }}";
+  const teacherLoginUrl = "{{ invitation_login_url|escapejs }}";
 
   if (!token || !/^[A-Za-z0-9_-]{32,80}$/.test(token)) {
     form.hidden = true;
@@ -108,7 +108,8 @@
       resultPanel.textContent = 'شماره تأیید شد و دعوت پذیرفته شد. در حال ورود به پنل…';
       resultPanel.hidden = false;
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      window.setTimeout(() => window.location.assign(adminUrl), 450);
+      const destination = verifyResponse.data.redirect || teacherLoginUrl;
+      window.setTimeout(() => window.location.assign(destination), 450);
     } catch (_) {
       message.textContent = 'ارتباط با سرور برقرار نشد؛ دوباره تلاش کنید.';
       verifyButton.disabled = false;

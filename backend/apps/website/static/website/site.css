@@ -210,6 +210,7 @@ h2, .h2 { font-size: 30px; font-weight: 900; line-height: 1.5; margin-bottom: 6p
 .bk-title { font-size: 14px; font-weight: 800; line-height: 21px; height: 42px; min-height: 42px; max-height: 42px; flex: 0 0 42px; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .bk-meta { font-size: 12px; line-height: 20px; height: 20px; min-height: 20px; max-height: 20px; flex: 0 0 20px; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; overflow: hidden; display: block; }
 .bk:hover .cover { transform: translateY(-3px); }
+.bk-prerelease .cover, .bk-prerelease .bk-ribbon { opacity: .75; }
 .cover { flex: none; aspect-ratio: 2 / 3; position: relative; transition: transform .2s; }
 .cover img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; box-shadow: 0 10px 28px rgba(23,32,26,.25); display: block; }
 .cover-rating { position: absolute; left: 11px; bottom: 8px; z-index: 2; display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 999px; background: rgba(23, 32, 26, .84); border: 1px solid rgba(255, 255, 255, .22); color: #fff; font-size: 11px; font-weight: 800; line-height: 1.4; pointer-events: none; }

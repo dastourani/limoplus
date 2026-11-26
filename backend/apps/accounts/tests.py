@@ -230,17 +230,18 @@ class AdminLoginThrottleTests(TestCase):
 
 
 class AdminOTPLoginTests(TestCase):
-    """Django admin uses SMS OTP for active staff; only a superuser may use the password break-glass path."""
+    """Role-separated panel login: /admin/login/ is superuser-only (OTP + break-glass); /teacher/login/ is teacher/staff OTP-only."""
 
     def setUp(self):
         self.staff = User.objects.create_user("09120000601", is_staff=True)
+        self.superuser = User.objects.create_superuser("09120000600", password="Super-Password-123")
         self.client = Client()
 
-    def request_code(self, phone=None, next_url=""):
+    def request_code(self, phone=None, next_url="", url="/admin/login/"):
         with mock.patch("apps.accounts.admin_login.send_login_code") as send:
             response = self.client.post(
-                "/admin/login/",
-                {"action": "send_otp", "phone": phone or self.staff.phone, "next": next_url},
+                url,
+                {"action": "send_otp", "phone": phone or self.superuser.phone, "next": next_url},
             )
         code = send.call_args.args[1] if send.called else None
         return response, code, send
@@ -252,28 +253,28 @@ class AdminOTPLoginTests(TestCase):
         self.assertContains(page, "ورود اضطراری با گذرواژه (فقط مدیر کل)")
         self.assertContains(page, 'name="action" value="send_otp"')
 
-    def test_active_staff_can_sign_in_with_a_single_use_otp(self):
-        response, code, send = self.request_code(next_url="https://evil.example/steal")
+    def test_active_superuser_can_sign_in_with_a_single_use_otp(self):
+        response, code, send = self.request_code(phone=self.superuser.phone, next_url="https://evil.example/steal")
         self.assertEqual(response.status_code, 302)
         self.assertTrue(send.called)
-        self.assertEqual(OTPCode.objects.filter(phone=self.staff.phone).count(), 1)
+        self.assertEqual(OTPCode.objects.filter(phone=self.superuser.phone).count(), 1)
 
         response = self.client.post("/admin/login/", {
-            "action": "verify_otp", "phone": self.staff.phone, "code": code,
+            "action": "verify_otp", "phone": self.superuser.phone, "code": code,
             "next": "https://evil.example/steal",
         })
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/admin/")
-        self.assertEqual(int(self.client.session["_auth_user_id"]), self.staff.pk)
-        self.assertIsNotNone(OTPCode.objects.get(phone=self.staff.phone).consumed_at)
-        self.assertFalse(DeviceSession.objects.filter(user=self.staff).exists())
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.superuser.pk)
+        self.assertIsNotNone(OTPCode.objects.get(phone=self.superuser.phone).consumed_at)
+        self.assertFalse(DeviceSession.objects.filter(user=self.superuser).exists())
 
         replay = Client()
         session = replay.session
-        session["admin_login_phone"] = self.staff.phone
+        session["admin_login_phone"] = self.superuser.phone
         session.save()
         response = replay.post("/admin/login/", {
-            "action": "verify_otp", "phone": self.staff.phone, "code": code,
+            "action": "verify_otp", "phone": self.superuser.phone, "code": code,
         })
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("_auth_user_id", replay.session)
@@ -325,19 +326,19 @@ class AdminOTPLoginTests(TestCase):
 
     def test_wrong_otp_attempts_use_the_shared_ip_and_code_limits(self):
         with override_settings(OTP_WRONG_PER_IP_PER_HOUR=2):
-            _response, code, _send = self.request_code()
+            _response, code, _send = self.request_code(phone=self.superuser.phone)
             wrong = "000000" if code != "000000" else "111111"
             for _ in range(2):
                 response = self.client.post("/admin/login/", {
-                    "action": "verify_otp", "phone": self.staff.phone, "code": wrong,
+                    "action": "verify_otp", "phone": self.superuser.phone, "code": wrong,
                 })
                 self.assertEqual(response.status_code, 200)
             response = self.client.post("/admin/login/", {
-                "action": "verify_otp", "phone": self.staff.phone, "code": code,
+                "action": "verify_otp", "phone": self.superuser.phone, "code": code,
             })
             self.assertContains(response, "تلاش‌های ناموفق زیاد است")
             self.assertNotIn("_auth_user_id", self.client.session)
-            self.assertEqual(OTPCode.objects.get(phone=self.staff.phone).attempts, 2)
+            self.assertEqual(OTPCode.objects.get(phone=self.superuser.phone).attempts, 2)
 
     def test_staff_password_is_rejected_but_superuser_break_glass_works(self):
         self.staff.set_password("Staff-Password-123")
@@ -355,6 +356,246 @@ class AdminOTPLoginTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/admin/")
         self.assertEqual(int(self.client.session["_auth_user_id"]), boss.pk)
+
+    def test_teacher_login_is_otp_only_and_rejects_password_login(self):
+        page = self.client.get("/teacher/login/")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "ورود اساتید و مؤلفان")
+        self.assertContains(page, "ورود با پیامک")
+        self.assertContains(page, 'name="action" value="send_otp"')
+        self.assertNotContains(page, "ورود اضطراری با گذرواژه (فقط مدیر کل)")
+        self.assertNotContains(page, 'type="password"')
+        self.assertNotContains(page, 'href="/admin/"')
+        self.assertNotContains(page, 'value="/admin/"')
+
+        # Even a valid superuser password cannot log in via /teacher/login/
+        boss = User.objects.create_superuser("09120000615", password="Boss-Password-123")
+        rejected = self.client.post("/teacher/login/", {
+            "action": "password", "username": boss.phone, "password": "Boss-Password-123",
+        })
+        self.assertEqual(rejected.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        # SMS OTP flow stays on /teacher/login/ and signs in an active staff account
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            req_res = self.client.post("/teacher/login/", {"action": "send_otp", "phone": self.staff.phone})
+        self.assertEqual(req_res.status_code, 302)
+        self.assertEqual(req_res["Location"], "/teacher/login/")
+        code = send.call_args.args[1]
+
+        ver_res = self.client.post("/teacher/login/", {
+            "action": "verify_otp", "phone": self.staff.phone, "code": code,
+        })
+        self.assertEqual(ver_res.status_code, 302)
+        self.assertEqual(ver_res["Location"], "/admin/")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.staff.pk)
+
+    def test_teacher_root_redirects_to_teacher_login(self):
+        res = self.client.get("/teacher/")
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res["Location"], "/teacher/login/")
+
+    def test_superuser_is_blocked_from_teacher_login_otp_but_retains_admin_otp_and_password(self):
+        boss = User.objects.create_superuser("09120000625", password="Boss-Password-123")
+
+        # 1. Requesting OTP for a superuser on /teacher/login/ issues no OTP and sends no SMS.
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            req_teacher = self.client.post("/teacher/login/", {"action": "send_otp", "phone": boss.phone})
+        self.assertEqual(req_teacher.status_code, 302)
+        self.assertEqual(req_teacher["Location"], "/teacher/login/")
+        send.assert_not_called()
+        self.assertFalse(OTPCode.objects.filter(phone=boss.phone).exists())
+
+        # 2. Even if an OTP is issued through /admin/login/, verifying it on /teacher/login/ is rejected.
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            req_admin = self.client.post("/admin/login/", {"action": "send_otp", "phone": boss.phone})
+        self.assertEqual(req_admin.status_code, 302)
+        self.assertEqual(req_admin["Location"], "/admin/login/")
+        code = send.call_args.args[1]
+
+        ver_teacher = self.client.post("/teacher/login/", {
+            "action": "verify_otp", "phone": boss.phone, "code": code,
+        })
+        self.assertEqual(ver_teacher.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        # 3. The same superuser can still sign in via SMS OTP on /admin/login/.
+        ver_admin = self.client.post("/admin/login/", {
+            "action": "verify_otp", "phone": boss.phone, "code": code,
+        })
+        self.assertEqual(ver_admin.status_code, 302)
+        self.assertEqual(ver_admin["Location"], "/admin/")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), boss.pk)
+
+        # 4. Already-authenticated superuser visiting /teacher/login/ is not bounced into /admin/.
+        blocked_get = self.client.get("/teacher/login/")
+        self.assertEqual(blocked_get.status_code, 200)
+        self.assertContains(blocked_get, "ورود مدیر کل فقط از مسیر مدیریت انجام می‌شود")
+        self.assertNotContains(blocked_get, 'href="/admin/"')
+
+        # 5. Superuser emergency password login still works on /admin/login/.
+        pw_client = Client()
+        pw_res = pw_client.post("/admin/login/", {
+            "action": "password", "username": boss.phone, "password": "Boss-Password-123",
+        })
+        self.assertEqual(pw_res.status_code, 302)
+        self.assertEqual(pw_res["Location"], "/admin/")
+        self.assertEqual(int(pw_client.session["_auth_user_id"]), boss.pk)
+
+    def test_teacher_cannot_use_admin_login_and_already_logged_in_teacher_is_blocked_there(self):
+        from django.contrib.auth.models import Group
+
+        from apps.catalog.access import BOOK_EDITOR_GROUP
+
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        teacher = User.objects.create_user("09120000635", is_staff=True)
+        teacher.groups.add(group)
+
+        # 1. Requesting OTP with teacher's own phone on /admin/login/ issues no OTP and sends no SMS.
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            req_admin = self.client.post("/admin/login/", {"action": "send_otp", "phone": teacher.phone})
+        self.assertEqual(req_admin.status_code, 302)
+        self.assertEqual(req_admin["Location"], "/admin/login/")
+        send.assert_not_called()
+        self.assertFalse(OTPCode.objects.filter(phone=teacher.phone).exists())
+
+        # 2. Even with a valid OTP issued on /teacher/login/, verifying on /admin/login/ is rejected.
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            req_teacher = self.client.post("/teacher/login/", {"action": "send_otp", "phone": teacher.phone})
+        self.assertEqual(req_teacher.status_code, 302)
+        self.assertEqual(req_teacher["Location"], "/teacher/login/")
+        code = send.call_args.args[1]
+
+        ver_admin = self.client.post("/admin/login/", {
+            "action": "verify_otp", "phone": teacher.phone, "code": code,
+        })
+        self.assertEqual(ver_admin.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        # 3. Verifying on /teacher/login/ signs the teacher in and grants access to permitted panel pages.
+        ver_teacher = self.client.post("/teacher/login/", {
+            "action": "verify_otp", "phone": teacher.phone, "code": code,
+        })
+        self.assertEqual(ver_teacher.status_code, 302)
+        self.assertEqual(ver_teacher["Location"], "/admin/")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), teacher.pk)
+        self.assertEqual(self.client.get("/admin/website/classroom/").status_code, 200)
+
+        # 4. Already-logged-in teacher hitting /admin/login/ (GET or POST) is blocked from admin login and not bounced.
+        blocked_get = self.client.get("/admin/login/")
+        self.assertEqual(blocked_get.status_code, 200)
+        self.assertContains(blocked_get, "ورود به مسیر مدیریت فقط برای مدیر کل است")
+        self.assertNotContains(blocked_get, 'name="action" value="send_otp"')
+        self.assertContains(blocked_get, "/teacher/login/")
+
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            blocked_post = self.client.post("/admin/login/", {"action": "send_otp", "phone": self.superuser.phone})
+        self.assertEqual(blocked_post.status_code, 200)
+        send.assert_not_called()
+        self.assertContains(blocked_post, "ورود به مسیر مدیریت فقط برای مدیر کل است")
+
+        # 5. Teacher still keeps normal access to permitted panel pages.
+        self.assertEqual(self.client.get("/admin/catalog/book/").status_code, 200)
+
+    def test_expired_teacher_session_on_direct_panel_link_returns_via_teacher_login(self):
+        from django.contrib.auth.models import Group
+        from django.contrib.sessions.models import Session
+
+        from apps.catalog.access import BOOK_EDITOR_GROUP
+
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        teacher = User.objects.create_user("09120000645", is_staff=True)
+        teacher.groups.add(group)
+
+        # Sign in via /teacher/login/ and open a permitted panel page.
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            self.client.post("/teacher/login/", {"action": "send_otp", "phone": teacher.phone})
+        self.client.post("/teacher/login/", {
+            "action": "verify_otp", "phone": teacher.phone, "code": send.call_args.args[1],
+        })
+        self.assertEqual(self.client.get("/admin/website/classroom/").status_code, 200)
+
+        # Simulate session expiry (after resend cooldown) while the browser keeps the panel role cookie.
+        Session.objects.all().delete()
+        OTPCode.objects.filter(phone=teacher.phone).update(created_at=timezone.now() - timedelta(minutes=5))
+
+        # Opening a direct link to a permitted panel page redirects through /teacher/login/?next=...
+        direct_res = self.client.get("/admin/website/classroom/")
+        self.assertEqual(direct_res.status_code, 302)
+        self.assertEqual(direct_res["Location"], "/teacher/login/?next=/admin/website/classroom/")
+
+        # Teacher re-authenticates via /teacher/login/ and returns straight to /admin/website/classroom/.
+        login_page = self.client.get(direct_res["Location"])
+        self.assertEqual(login_page.status_code, 200)
+        self.assertContains(login_page, 'value="/admin/website/classroom/"')
+
+        with mock.patch("apps.accounts.admin_login.send_login_code") as send:
+            send_res = self.client.post("/teacher/login/", {
+                "action": "send_otp",
+                "phone": teacher.phone,
+                "next": "/admin/website/classroom/",
+            })
+        self.assertEqual(send_res.status_code, 302)
+        self.assertEqual(send_res["Location"], "/teacher/login/")
+
+        verify_res = self.client.post("/teacher/login/", {
+            "action": "verify_otp",
+            "phone": teacher.phone,
+            "code": send.call_args.args[1],
+        })
+        self.assertEqual(verify_res.status_code, 302)
+        self.assertEqual(verify_res["Location"], "/admin/website/classroom/")
+        self.assertEqual(self.client.get(verify_res["Location"]).status_code, 200)
+
+        # Even without cookies (fresh client), /admin/login/?next=... offers a direct teacher-portal link preserving next.
+        fresh = Client()
+        no_cookie_res = fresh.get("/admin/website/classroom/")
+        self.assertEqual(no_cookie_res.status_code, 302)
+        self.assertEqual(no_cookie_res["Location"], "/admin/login/?next=/admin/website/classroom/")
+        admin_login_page = fresh.get(no_cookie_res["Location"])
+        self.assertContains(admin_login_page, "/teacher/login/?next=/admin/website/classroom/")
+
+    def test_teacher_logout_get_preserves_django_405_and_active_session(self):
+        from django.contrib.auth.models import Group
+
+        from apps.catalog.access import BOOK_EDITOR_GROUP
+
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        teacher = User.objects.create_user("09120000655", is_staff=True)
+        teacher.groups.add(group)
+
+        self.client.force_login(teacher)
+        self.assertEqual(self.client.get("/admin/website/classroom/").status_code, 200)
+
+        get_logout = self.client.get("/admin/logout/")
+        self.assertEqual(get_logout.status_code, 405)
+        self.assertEqual(int(self.client.session["_auth_user_id"]), teacher.pk)
+        self.assertEqual(self.client.get("/admin/website/classroom/").status_code, 200)
+
+    def test_teacher_logout_post_closes_session_redirects_to_teacher_login_and_requires_relogin(self):
+        from django.contrib.auth.models import Group
+
+        from apps.catalog.access import BOOK_EDITOR_GROUP
+
+        group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        teacher = User.objects.create_user("09120000656", is_staff=True)
+        teacher.groups.add(group)
+
+        self.client.force_login(teacher)
+        self.assertEqual(self.client.get("/admin/website/classroom/").status_code, 200)
+
+        post_logout = self.client.post("/admin/logout/")
+        self.assertEqual(post_logout.status_code, 302)
+        self.assertEqual(post_logout["Location"], "/teacher/login/")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        portal_res = self.client.get(post_logout["Location"])
+        self.assertEqual(portal_res.status_code, 200)
+        self.assertContains(portal_res, "ورود اساتید و مؤلفان")
+
+        previous_page = self.client.get("/admin/website/classroom/")
+        self.assertEqual(previous_page.status_code, 302)
+        self.assertEqual(previous_page["Location"], "/teacher/login/?next=/admin/website/classroom/")
 
 
 class OtpHashSettingTests(TestCase):

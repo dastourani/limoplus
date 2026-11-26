@@ -266,8 +266,17 @@ def classroom_join(request, code):
 def verify_teacher_email(request, token):
     """Magic link click to verify teacher's email address."""
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     user = get_object_or_404(User, email_verification_token=token)
     user.verify_email()
-    messages.success(request, f"ایمیل {user.email} با موفقیت تأیید شد. اکنون می‌توانید خروجی‌های کتاب را مستقیماً به ایمیل خود ارسال کنید.")
-    return redirect(f"/{settings.ADMIN_URL}")
+    if request.user.is_authenticated and request.user.is_active and request.user.is_staff:
+        messages.success(
+            request,
+            f"ایمیل {user.email} با موفقیت تأیید شد. اکنون می‌توانید خروجی‌های کتاب را مستقیماً به ایمیل خود ارسال کنید.",
+        )
+        return redirect("admin:index")
+    request.session["admin_login_notice"] = (
+        f"ایمیل {user.email} با موفقیت تأیید شد. برای ورود به پنل اساتید، شمارهٔ خود را وارد کنید."
+    )
+    return redirect("teacher-login")

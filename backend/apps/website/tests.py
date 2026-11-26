@@ -723,7 +723,7 @@ class AppPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "درگاه اساتید")
         self.assertContains(r, "ورود اساتید و مؤلفان")
-        self.assertContains(r, reverse("admin:login"))
+        self.assertContains(r, reverse("teacher-login"))
 
     def test_public_book_page_signs_authorized_media_and_blocks_cross_book_and_locked(self):
         import shutil
@@ -765,4 +765,23 @@ class AppPagesTests(TestCase):
                 self.assertNotIn(f"/media/{other_img}?exp=", body)
         finally:
             shutil.rmtree(media_dir, ignore_errors=True)
+
+    def test_prerelease_books_have_dimmed_cover_class(self):
+        from apps.catalog.models import ContentNode, Major
+
+        major = Major.objects.create(slug="pre-dim", name="رشته", order=1)
+        soon = ContentNode.add_root(kind=ContentNode.Kind.BOOK, slug="soon-dim", title="کتاب به‌زودی", is_published=True, is_coming_soon=True)
+        soon.majors.add(major)
+        prep = ContentNode.add_root(kind=ContentNode.Kind.BOOK, slug="prep-dim", title="کتاب برنامه‌ریزی", is_published=True, price=0)
+        prep.majors.add(major)
+        ready = ContentNode.add_root(kind=ContentNode.Kind.BOOK, slug="ready-dim", title="کتاب آماده", is_published=True, is_free=True)
+        ready.majors.add(major)
+        ready.add_child(kind=ContentNode.Kind.CHAPTER, slug="ready-ch", title="فصل", is_published=True)
+
+        r = Client().get("/site/")
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode("utf-8")
+        self.assertIn('class="bk bk-prerelease" href="/site/books/soon-dim/"', html)
+        self.assertIn('class="bk bk-prerelease" href="/site/books/prep-dim/"', html)
+        self.assertIn('class="bk" href="/site/books/ready-dim/"', html)
 

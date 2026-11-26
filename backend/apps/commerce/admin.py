@@ -6,6 +6,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
+from apps.catalog import access
 from apps.catalog.jalali import jalali_date, jalali_datetime
 from apps.catalog.models import Banner, ContentNode
 from apps.catalog.panel_display import badges, fa_number
@@ -713,15 +714,14 @@ class OrderAuthorRevenueAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             extra_context["title"] = "درآمد از فروش کتاب‌ها"
         return super().changelist_view(request, extra_context=extra_context)
     search_fields = ("snapshot__order__id", "snapshot__book__title", "author__phone")
     readonly_fields = [f.name for f in OrderAuthorRevenue._meta.fields]
 
     def has_module_permission(self, request):
-        from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_superuser or is_book_teacher(request.user))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_add_permission(self, request):
         return False
@@ -734,7 +734,7 @@ class OrderAuthorRevenueAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request).select_related("snapshot__order", "snapshot__book", "author")
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return qs
         # استاد فقط رکوردهای سهم خودش را می‌بیند
         return qs.filter(author=request.user)
@@ -800,14 +800,12 @@ class TeacherWalletAdmin(admin.ModelAdmin):
     readonly_fields = ("teacher", "pending_balance", "available_balance", "locked_balance", "debt_balance", "total_earned", "total_withdrawn", "created_at", "updated_at")
 
     def has_module_permission(self, request):
-        from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_superuser or is_book_teacher(request.user))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_view_permission(self, request, obj=None):
-        from apps.catalog.access import is_book_teacher
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
-        if not is_book_teacher(request.user):
+        if not access.acts_as_panel_teacher(request):
             return False
         return obj is None or obj.teacher_id == request.user.id
 
@@ -821,13 +819,14 @@ class TeacherWalletAdmin(admin.ModelAdmin):
         return False
 
     def changelist_view(self, request, extra_context=None):
+        is_panel_su = access.acts_as_panel_superuser(request)
         # برای اساتید، در صورت عدم وجود رکورد کیف پول، به صورت خودکار ایجاد شود
-        if not request.user.is_superuser:
+        if not is_panel_su:
             TeacherWallet.objects.get_or_create(teacher=request.user)
 
         # ساخت کارت‌های آماری KPI
         extra_context = extra_context or {}
-        if not request.user.is_superuser:
+        if not is_panel_su:
             extra_context["title"] = "کیف پول من" 
             w = TeacherWallet.objects.filter(teacher=request.user).first()
             if w:
@@ -883,7 +882,7 @@ class TeacherWalletAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request).select_related("teacher")
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return qs
         return qs.filter(teacher=request.user)
 
@@ -932,21 +931,19 @@ class WalletTransactionAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             extra_context["title"] = "گردش حساب کیف پول"
         return super().changelist_view(request, extra_context=extra_context)
     search_fields = ("wallet__teacher__phone", "description", "idempotency_key")
     readonly_fields = [f.name for f in WalletTransaction._meta.fields]
 
     def has_module_permission(self, request):
-        from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_superuser or is_book_teacher(request.user))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_view_permission(self, request, obj=None):
-        from apps.catalog.access import is_book_teacher
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
-        if not is_book_teacher(request.user):
+        if not access.acts_as_panel_teacher(request):
             return False
         return obj is None or obj.wallet.teacher_id == request.user.id
 
@@ -961,7 +958,7 @@ class WalletTransactionAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request).select_related("wallet__teacher", "reference_order")
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return qs
         return qs.filter(wallet__teacher=request.user)
 
@@ -1009,7 +1006,7 @@ class TeacherBankAccountAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             extra_context["title"] = "حساب بانکی (شبا)"
         else:
             extra_context["title"] = "حساب‌های بانکی و شبای اساتید"
@@ -1024,42 +1021,39 @@ class TeacherBankAccountAdmin(admin.ModelAdmin):
         return format_html('<span style="color:#6b7280; font-size:12px;">در نوبت استعلام بانکی</span>')
 
     def has_module_permission(self, request):
-        from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_superuser or is_book_teacher(request.user))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_view_permission(self, request, obj=None):
-        from apps.catalog.access import is_book_teacher
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
-        if not is_book_teacher(request.user):
+        if not access.acts_as_panel_teacher(request):
             return False
         return obj is None or obj.teacher_id == request.user.id
 
     def has_change_permission(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
-        from apps.catalog.access import is_book_teacher
-        if not is_book_teacher(request.user):
+        if not access.acts_as_panel_teacher(request):
             return False
         return obj is None or obj.teacher_id == request.user.id
 
     def has_delete_permission(self, request, obj=None):
-        return bool(request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def get_queryset(self, request):
         qs = super().get_queryset(request).select_related("teacher")
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return qs
         return qs.filter(teacher=request.user)
 
     def get_readonly_fields(self, request, obj=None):
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return ("created_at", "updated_at")
         # استاد نمی‌تواند خودش شبای خود را تایید کند
         return ("teacher", "is_verified", "notes", "created_at", "updated_at")
 
     def save_model(self, request, obj, form, change):
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             obj.teacher = request.user
             # هر تغییری توسط استاد، نیازمند تایید مجدد است
             if change and ("iban" in form.changed_data or "account_holder_name" in form.changed_data):
@@ -1102,58 +1096,63 @@ class PayoutRequestAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             extra_context["title"] = "درخواست‌های تسویه من"
         return super().changelist_view(request, extra_context=extra_context)
     search_fields = ("teacher__phone", "account_holder_snapshot", "iban_snapshot", "tracking_code")
     actions = ["export_paya_csv", "mark_as_processing_action"]
 
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not access.acts_as_panel_superuser(request):
+            actions.pop("export_paya_csv", None)
+            actions.pop("mark_as_processing_action", None)
+        return actions
+
     def has_module_permission(self, request):
-        from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_superuser or is_book_teacher(request.user))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_view_permission(self, request, obj=None):
-        from apps.catalog.access import is_book_teacher
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return True
-        if not is_book_teacher(request.user):
+        if not access.acts_as_panel_teacher(request):
             return False
         return obj is None or obj.teacher_id == request.user.id
 
     def has_add_permission(self, request):
         # فقط استاد یا مدیر می‌توانند درخواست اضافه کنند
-        from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_superuser or is_book_teacher(request.user))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_change_permission(self, request, obj=None):
-        return bool(request.user.is_superuser)
+        return access.acts_as_panel_superuser(request)
 
     def has_delete_permission(self, request, obj=None):
         return False
 
     def get_queryset(self, request):
         qs = super().get_queryset(request).select_related("teacher", "processed_by")
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return qs
         return qs.filter(teacher=request.user)
 
     def get_readonly_fields(self, request, obj=None):
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             return ("status", "account_holder_snapshot", "iban_snapshot", "bank_name_snapshot", "tracking_code", "receipt_note", "rejection_reason", "processed_by", "created_at", "paid_at")
         if obj and obj.status in (PayoutRequest.Status.PAID, PayoutRequest.Status.REJECTED):
             return [f.name for f in PayoutRequest._meta.fields]
         return ("teacher", "amount", "account_holder_snapshot", "iban_snapshot", "bank_name_snapshot", "processed_by", "created_at", "paid_at")
 
     def save_model(self, request, obj, form, change):
+        is_panel_su = access.acts_as_panel_superuser(request)
         if not change:
             from .wallet import request_teacher_payout
-            teacher = request.user if not request.user.is_superuser else (obj.teacher or request.user)
+            teacher = request.user if not is_panel_su else (obj.teacher or request.user)
             payout = request_teacher_payout(teacher=teacher, amount=obj.amount)
             obj.pk = payout.pk
             return
 
         # تغییر وضعیت توسط مدیر
-        if request.user.is_superuser and change:
+        if is_panel_su and change:
             orig = PayoutRequest.objects.get(pk=obj.pk)
             if orig.status != obj.status:
                 if obj.status == PayoutRequest.Status.PAID:
@@ -1321,19 +1320,16 @@ class PoolBookShareAdmin(admin.ModelAdmin):
     readonly_fields = [f.name for f in PoolBookShare._meta.fields]
 
     def has_module_permission(self, request):
-        from apps.catalog.access import is_book_teacher
-        return bool(request.user.is_superuser or is_book_teacher(request.user))
+        return bool(access.acts_as_panel_superuser(request) or access.acts_as_panel_teacher(request))
 
     def has_view_permission(self, request, obj=None):
-        from apps.catalog.access import is_book_teacher
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request) or access.is_teacher_preview(request):
             return True
-        if not is_book_teacher(request.user):
+        if not access.is_book_teacher(request.user):
             return False
         if obj is None:
             return True
-        from apps.catalog.access import is_book_editor
-        return is_book_editor(request.user, obj.book)
+        return access.is_book_editor(request.user, obj.book)
 
     def has_add_permission(self, request):
         return False
@@ -1346,7 +1342,7 @@ class PoolBookShareAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request).select_related("period", "book")
-        if request.user.is_superuser:
+        if access.acts_as_panel_superuser(request):
             return qs
         from apps.catalog.models import BookEditor
         teacher_books = BookEditor.objects.filter(user=request.user).values_list("book_id", flat=True)
@@ -1355,7 +1351,7 @@ class PoolBookShareAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
         # تولید کارت‌های وضعیت آمادگی کتاب‌های استاد برای استخر آینده
-        if not request.user.is_superuser:
+        if not access.acts_as_panel_superuser(request):
             extra_context["title"] = "سهم استخر اشتراک" 
             from apps.catalog.models import BookEditor, ContentNode
             from apps.learning.models import Question

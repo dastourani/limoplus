@@ -333,7 +333,17 @@ def verify_otp(request):
         except ValidationError as exc:
             message = " ".join(exc.messages)
             return _error(message, "invitation_unavailable")
-        return Response({"accepted": True, "user": _user_payload(user)})
+        from django.urls import reverse
+
+        response = Response({"accepted": True, "redirect": reverse("teacher-login"), "user": _user_payload(user)})
+        response.set_cookie(
+            "lp_panel_role",
+            "teacher",
+            max_age=60 * 60 * 24 * 365,
+            httponly=True,
+            samesite="Lax",
+        )
+        return response
 
     try:
         with transaction.atomic():

@@ -146,6 +146,79 @@ class TeacherPanelClassroomTests(TestCase):
         res_classrooms = self.client.get("/admin/website/classroom/")
         self.assertEqual(res_classrooms.status_code, 200)
 
+    def test_classroom_book_permissions_match_between_real_teacher_and_teacher_preview(self):
+        from apps.catalog.models import BookEditor
+
+        book_a = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title="کتاب مجاز الف",
+            slug="licensed-book-a",
+            is_published=True,
+        )
+        book_b = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title="کتاب غیرمجاز ب",
+            slug="unlicensed-book-b",
+            is_published=True,
+        )
+        superuser = User.objects.create_superuser("09120009988", password="Boss-Password-123")
+
+        # Give both the real teacher and the superuser BookEditor access to book_a ONLY (not book_b).
+        BookEditor.objects.create(book=book_a, user=self.teacher, can_edit_content=True)
+        BookEditor.objects.create(book=book_a, user=superuser, can_edit_content=True)
+
+        preview_client = self.client.__class__()
+        preview_client.force_login(superuser)
+        self.assertEqual(preview_client.get("/admin/?view=teacher").status_code, 200)
+
+        for label, actor_client, actor_user in [
+            ("real_teacher", self.client, self.teacher),
+            ("teacher_preview", preview_client, superuser),
+        ]:
+            add_form = actor_client.get("/admin/website/classroom/add/")
+            self.assertEqual(add_form.status_code, 200, label)
+            book_qs = add_form.context["adminform"].form.fields["book"].queryset
+            self.assertEqual(list(book_qs.values_list("pk", flat=True)), [book_a.pk], label)
+
+            ok_res = actor_client.post("/admin/website/classroom/add/", {
+                "title": f"کلاس مجاز {label}",
+                "book": book_a.pk,
+                "capacity": 30,
+                "expiry_policy": Classroom.ExpiryPolicy.UNLIMITED,
+            })
+            self.assertEqual(ok_res.status_code, 302, label)
+            self.assertTrue(
+                Classroom.objects.filter(teacher=actor_user, book=book_a, title=f"کلاس مجاز {label}").exists(),
+                label,
+            )
+
+            denied_res = actor_client.post("/admin/website/classroom/add/", {
+                "title": f"کلاس غیرمجاز {label}",
+                "book": book_b.pk,
+                "capacity": 30,
+                "expiry_policy": Classroom.ExpiryPolicy.UNLIMITED,
+            })
+            self.assertEqual(denied_res.status_code, 200, label)
+            self.assertFalse(
+                Classroom.objects.filter(teacher=actor_user, book=book_b).exists(),
+                label,
+            )
+
+        # Exiting «نمای استاد» restores full manager book access for the superuser.
+        self.assertEqual(preview_client.get("/admin/?view=admin").status_code, 200)
+        admin_form = preview_client.get("/admin/website/classroom/add/")
+        self.assertEqual(admin_form.status_code, 200)
+        admin_book_ids = set(admin_form.context["adminform"].form.fields["book"].queryset.values_list("pk", flat=True))
+        self.assertTrue({book_a.pk, book_b.pk}.issubset(admin_book_ids))
+        admin_ok = preview_client.post("/admin/website/classroom/add/", {
+            "title": "کلاس مدیریتی ب",
+            "book": book_b.pk,
+            "capacity": 30,
+            "expiry_policy": Classroom.ExpiryPolicy.UNLIMITED,
+        })
+        self.assertEqual(admin_ok.status_code, 302)
+        self.assertTrue(Classroom.objects.filter(book=book_b, title="کلاس مدیریتی ب").exists())
+
 class ClassroomJoinLandingTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create(phone="09121119999", is_staff=True)
