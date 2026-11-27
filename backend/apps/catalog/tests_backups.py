@@ -360,3 +360,126 @@ class PostgresAndStorageModeTests(BackupTests):
             self.assertFalse(res["sent_bale"])
             self.assertIn("خطای جزئی", res["note"])
 
+
+class NightlyAndGunicornConfigTests(TestCase):
+    def test_run_nightly_loop_closes_connections_and_survives_errors(self):
+        import threading
+        from apps.catalog.management.commands import nightly as nightly_cmd
+
+        stop = threading.Event()
+        calls = 0
+
+        def fake_run_due():
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("transient db error")
+            stop.set()
+            return ["db"]
+
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(nightly_cmd, "run_due", side_effect=fake_run_due), \
+                mock.patch.object(nightly_cmd, "close_old_connections") as mock_close:
+            nightly_cmd.run_nightly_loop(
+                initial_delay=0,
+                interval=0.01,
+                stdout=out,
+                stderr=err,
+                stop_event=stop,
+            )
+
+        self.assertEqual(calls, 2)
+        self.assertIn("nightly failed: RuntimeError", err.getvalue())
+        self.assertIn("nightly: db", out.getvalue())
+        # Closed before and after each iteration.
+        self.assertGreaterEqual(mock_close.call_count, 4)
+
+    def test_start_nightly_thread_is_idempotent(self):
+        from apps.catalog.management.commands import nightly as nightly_cmd
+
+        with mock.patch.object(nightly_cmd, "_thread_started", False), \
+                mock.patch("threading.Thread") as mock_thread:
+            self.assertTrue(nightly_cmd.start_nightly_thread(initial_delay=120))
+            self.assertFalse(nightly_cmd.start_nightly_thread(initial_delay=120))
+            mock_thread.assert_called_once()
+            self.assertTrue(mock_thread.call_args.kwargs["daemon"])
+
+    def test_gunicorn_conf_skips_redundant_collectstatic_and_third_process_on_single_worker(self):
+        import importlib.util
+        from django.conf import settings as django_settings
+
+        conf_path = Path(django_settings.BASE_DIR) / "gunicorn.conf.py"
+        spec = importlib.util.spec_from_file_location("test_gunicorn_conf", conf_path)
+        gconf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gconf)
+
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "apps" / "website" / "static" / "website").mkdir(parents=True)
+        asset = tmp / "apps" / "website" / "static" / "website" / "site.css"
+        asset.write_text("body{}", encoding="utf-8")
+        req = tmp / "requirements.txt"
+        req.write_text("Django==5.2\n", encoding="utf-8")
+
+        # No manifest yet -> not fresh
+        self.assertFalse(gconf._staticfiles_fresh(str(tmp)))
+
+        manifest_dir = tmp / "staticfiles"
+        manifest_dir.mkdir()
+        manifest = manifest_dir / "staticfiles.json"
+        manifest.write_text("{}", encoding="utf-8")
+        # Force deterministic mtimes: manifest newer than static sources -> fresh
+        os.utime(asset, (1000, 1000))
+        os.utime(req, (1000, 1000))
+        os.utime(manifest, (2000, 2000))
+        self.assertTrue(gconf._staticfiles_fresh(str(tmp)))
+
+        # Static source edited after manifest -> stale
+        os.utime(asset, (3000, 3000))
+        self.assertFalse(gconf._staticfiles_fresh(str(tmp)))
+
+        # Restore fresh manifest, check on_starting skips collectstatic when fresh
+        os.utime(manifest, (4000, 4000))
+        with mock.patch.object(gconf, "HERE", str(tmp)), \
+                mock.patch.dict(os.environ, {"_LIMO_STARTUP_DONE": "", "DISABLE_MIGRATE": "", "DISABLE_COLLECTSTATIC": ""}, clear=False), \
+                mock.patch.object(gconf.subprocess, "run", return_value=mock.Mock(returncode=0)) as mock_run:
+            gconf.on_starting(None)
+            self.assertEqual([c.args[0][2:] for c in mock_run.call_args_list], [["migrate", "--noinput"]])
+
+        # When _LIMO_STARTUP_DONE=1 (set by app.sh), on_starting skips both steps
+        with mock.patch.dict(os.environ, {"_LIMO_STARTUP_DONE": "1"}, clear=False), \
+                mock.patch.object(gconf.subprocess, "run") as mock_run:
+            gconf.on_starting(None)
+            mock_run.assert_not_called()
+
+        # Single-worker + NIGHTLY_JOBS=True: no subprocess in when_ready, daemon thread in post_worker_init
+        from apps.catalog.management.commands import nightly as nightly_cmd
+
+        with mock.patch.object(gconf, "workers", 1), \
+                mock.patch.dict(os.environ, {"NIGHTLY_JOBS": "True"}, clear=False), \
+                mock.patch.object(gconf.subprocess, "Popen") as mock_popen, \
+                mock.patch.object(nightly_cmd, "start_nightly_thread") as mock_start:
+            gconf.when_ready(None)
+            mock_popen.assert_not_called()
+            gconf.post_worker_init(None)
+            mock_start.assert_called_once_with()
+
+        # Multi-worker + NIGHTLY_JOBS=True: spawns single subprocess in when_ready, no in-worker thread
+        with mock.patch.object(gconf, "workers", 2), \
+                mock.patch.dict(os.environ, {"NIGHTLY_JOBS": "True"}, clear=False), \
+                mock.patch.object(gconf.subprocess, "Popen") as mock_popen, \
+                mock.patch.object(nightly_cmd, "start_nightly_thread") as mock_start:
+            gconf.when_ready(None)
+            mock_popen.assert_called_once()
+            gconf.post_worker_init(None)
+            mock_start.assert_not_called()
+
+    def test_dockerfile_uses_gunicorn_conf_not_hardcoded_three_workers(self):
+        from django.conf import settings as django_settings
+
+        dockerfile = (Path(django_settings.BASE_DIR) / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn('CMD ["gunicorn", "-c", "gunicorn.conf.py"]', dockerfile)
+        self.assertNotIn("--workers 3", dockerfile)
+        self.assertIn("collectstatic --noinput", dockerfile)
+
+
