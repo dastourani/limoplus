@@ -384,6 +384,7 @@ class TeacherNotification(models.Model):
 
     class Status(models.TextChoices):
         PENDING = "pending", "در انتظار ارسال"
+        SENDING = "sending", "در حال ارسال"
         SENT = "sent", "ارسال‌شده"
         FAILED = "failed", "ناموفق (نیازمند تلاش مجدد)"
         SKIPPED_NO_EMAIL = "skipped_no_email", "بدون ایمیل تأییدشده (ثبت در پنل)"
@@ -412,6 +413,7 @@ class TeacherNotification(models.Model):
         default=Status.PENDING,
         db_index=True,
     )
+    dispatch_token = models.CharField("شناسه تلاش جاری", max_length=32, blank=True)
     attempt_count = models.PositiveSmallIntegerField("تعداد تلاش", default=0)
     last_attempt_at = models.DateTimeField("زمان آخرین تلاش", null=True, blank=True)
     sent_at = models.DateTimeField("زمان ارسال موفق", null=True, blank=True)

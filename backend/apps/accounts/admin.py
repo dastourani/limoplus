@@ -512,6 +512,7 @@ class TeacherNotificationAdmin(admin.ModelAdmin):
         "created_by",
         "created_at",
     )
+    exclude = ("dispatch_token",)
     actions = ["retry_selected_notifications"]
 
     def has_module_permission(self, request):
@@ -563,6 +564,8 @@ class TeacherNotificationAdmin(admin.ModelAdmin):
             notif = TeacherNotification.objects.filter(pk=notification_id).first()
             if ok:
                 messages.success(request, f"اعلان #{notification_id} با موفقیت به {notif.recipient_email} ارسال شد.")
+            elif notif is not None and notif.status == TeacherNotification.Status.SENDING:
+                messages.info(request, f"اعلان #{notification_id} هم‌اکنون در حال ارسال است؛ لطفاً چند لحظه بعد وضعیت را بررسی کنید.")
             elif notif is not None:
                 messages.warning(request, f"ارسال اعلان #{notification_id} انجام نشد: {notif.last_error or notif.get_status_display()}")
         next_url = request.POST.get("next") or request.META.get("HTTP_REFERER") or ""
@@ -585,7 +588,9 @@ class TeacherNotificationAdmin(admin.ModelAdmin):
         self.message_user(
             request,
             f"{stats['attempted']} اعلان بررسی شد: {stats['sent']} ارسال موفق، "
-            f"{stats['failed']} ناموفق، {stats['skipped_no_email']} بدون ایمیل تأییدشده.",
+            f"{stats['failed']} ناموفق، {stats['skipped_no_email']} بدون ایمیل تأییدشده"
+            + (f"، {stats['in_progress']} در حال ارسال" if stats["in_progress"] else "")
+            + ".",
             level=messages.INFO if stats["failed"] == 0 else messages.WARNING,
         )
 
@@ -605,6 +610,7 @@ class TeacherNotificationAdmin(admin.ModelAdmin):
         color = {
             TeacherNotification.Status.SENT: "green",
             TeacherNotification.Status.PENDING: "yellow",
+            TeacherNotification.Status.SENDING: "blue",
             TeacherNotification.Status.FAILED: "red",
             TeacherNotification.Status.SKIPPED_NO_EMAIL: "grey",
         }.get(obj.status, "grey")
@@ -624,6 +630,8 @@ class TeacherNotificationAdmin(admin.ModelAdmin):
         url = reverse("admin:accounts_teachernotification_change", args=[obj.pk])
         if obj.status == TeacherNotification.Status.SENT:
             return format_html('<a href="{}">مشاهده</a>', url)
+        if obj.status == TeacherNotification.Status.SENDING:
+            return format_html('<a href="{}" style="color:#0369a1;">در حال ارسال / جزئیات</a>', url)
         return format_html('<a href="{}" style="font-weight:700; color:#b45309;">تلاش مجدد / جزئیات</a>', url)
 
 

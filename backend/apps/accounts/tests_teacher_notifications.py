@@ -724,6 +724,77 @@ class TeacherWorkflowNotificationsTests(TestCase):
         self.assertEqual(t_client.post(retry_url).status_code, 403)
         self.assertEqual(t_client.post(list_url, bulk_payload).status_code, 403)
 
+    def test_stale_sending_recovery_and_late_error_cannot_overwrite_sent(self):
+        from apps.accounts.notifications import dispatch_teacher_notification
+
+        TeacherBankAccount.objects.create(
+            teacher=self.teacher,
+            account_holder_name="سهراب سپهری",
+            iban="IR120170000000123456789012",
+            bank_name="ملی",
+            is_verified=True,
+        )
+        TeacherWallet.objects.create(teacher=self.teacher, available_balance=500000)
+        payout = request_teacher_payout(self.teacher, 200000)
+
+        notif = TeacherNotification.objects.create(
+            recipient=self.teacher,
+            event_type=TeacherNotification.EventType.PAYOUT_PAID,
+            dedupe_key="stale-sending-recovery-1",
+            source_ref=f"payout:{payout.pk}",
+            object_id=payout.pk,
+            subject="اعلان واریز",
+            headline="اعلان واریز",
+            status=TeacherNotification.Status.PENDING,
+        )
+
+        # Simulate attempt #1 claiming the notification, being retried mid-flight,
+        # then timing out stale, recovered by CLI retry, and attempt #1 failing late.
+        call_num = 0
+        mid_flight_checks = {}
+
+        def fake_send(msg_self, fail_silently=False):
+            nonlocal call_num
+            call_num += 1
+            if call_num == 1:
+                snapshot = TeacherNotification.objects.get(pk=notif.pk)
+                mid_flight_checks["status"] = snapshot.status
+                mid_flight_checks["token"] = snapshot.dispatch_token
+
+                # Fresh SENDING blocks duplicate send on concurrent retry
+                mid_flight_checks["fresh_retry"] = dispatch_teacher_notification(notif.pk)
+                mid_flight_checks["calls_after_fresh_retry"] = call_num
+
+                # Once SENDING becomes stale (e.g. worker crashed/restarted), CLI retry recovers and sends
+                TeacherNotification.objects.filter(pk=notif.pk).update(
+                    last_attempt_at=timezone.now() - timedelta(minutes=10)
+                )
+                out = StringIO()
+                call_command("retry_teacher_notifications", stdout=out)
+                mid_flight_checks["cli_out"] = out.getvalue()
+                mid_flight_checks["calls_after_cli"] = call_num
+
+                # Zombie attempt #1 fails late -> MUST NOT overwrite SENT with FAILED
+                raise OSError("zombie attempt #1 timed out late")
+            return 1
+
+        with mock.patch("django.core.mail.EmailMultiAlternatives.send", fake_send):
+            attempt1_ok = dispatch_teacher_notification(notif.pk)
+
+        self.assertFalse(attempt1_ok)
+        self.assertEqual(mid_flight_checks["status"], TeacherNotification.Status.SENDING)
+        self.assertTrue(mid_flight_checks["token"])
+        self.assertFalse(mid_flight_checks["fresh_retry"])
+        self.assertEqual(mid_flight_checks["calls_after_fresh_retry"], 1)
+        self.assertIn("Sent=1", mid_flight_checks["cli_out"])
+        self.assertEqual(mid_flight_checks["calls_after_cli"], 2)
+
+        notif.refresh_from_db()
+        self.assertEqual(notif.status, TeacherNotification.Status.SENT)
+        self.assertEqual(notif.attempt_count, 2)
+        self.assertEqual(notif.last_error, "")
+        self.assertEqual(notif.dispatch_token, "")
+
 
 class AccountMigration0007Tests(TransactionTestCase):
     migrate_from = [("accounts", "0006_panellogincode_staff_only")]
@@ -824,3 +895,97 @@ class PostgresConcurrentEmailVerificationTests(TransactionTestCase):
         self.assertFalse(teacher.is_email_verified)
         self.assertIsNone(teacher.email_verified_at)
         self.assertEqual(User.consume_email_verification(token_first), (None, "invalid"))
+
+
+class PostgresConcurrentNotificationDispatchTests(TransactionTestCase):
+    def test_concurrent_initial_dispatch_and_manager_retry_send_only_once(self):
+        if connection.vendor == "sqlite":
+            self.skipTest("SQLite lacks concurrent PostgreSQL row locks; covered on PostgreSQL CI.")
+
+        from apps.accounts.notifications import dispatch_teacher_notification
+
+        manager = User.objects.create_superuser("09120000888", password="Manager-Password-123")
+        teacher = User.objects.create_user(
+            "09127770001",
+            email="concurrent-notif@example.com",
+            email_verified_at=timezone.now(),
+            is_staff=True,
+        )
+        TeacherBankAccount.objects.create(
+            teacher=teacher,
+            account_holder_name="استاد آزمون",
+            iban="IR120170000000123456789012",
+            bank_name="ملی",
+            is_verified=True,
+        )
+        TeacherWallet.objects.create(teacher=teacher, available_balance=500000)
+        payout = request_teacher_payout(teacher, 200000)
+
+        notif = TeacherNotification.objects.create(
+            recipient=teacher,
+            event_type=TeacherNotification.EventType.PAYOUT_PAID,
+            dedupe_key=f"pg-concurrent-dispatch:{payout.pk}",
+            source_ref=f"payout:{payout.pk}",
+            object_id=payout.pk,
+            subject="اعلان تسویه حساب",
+            headline="درخواست تسویه حساب شما پرداخت شد.",
+            status=TeacherNotification.Status.PENDING,
+        )
+
+        mgr_client = Client()
+        mgr_client.force_login(manager)
+        retry_url = reverse("admin:accounts_teachernotification_retry", args=[notif.pk])
+
+        send_calls = []
+        send_lock = threading.Lock()
+        barrier = threading.Barrier(2)
+        errors = []
+        results = {}
+
+        def slow_send(msg_self, fail_silently=False):
+            import time
+
+            with send_lock:
+                send_calls.append(msg_self.to)
+            # Hold SMTP I/O open long enough that the concurrent retry hits the DB while SENDING is active.
+            time.sleep(0.25)
+            return 1
+
+        def run_initial():
+            close_old_connections()
+            try:
+                barrier.wait(timeout=10)
+                results["initial_ok"] = dispatch_teacher_notification(notif.pk)
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                connections.close_all()
+
+        def run_manager_retry():
+            close_old_connections()
+            try:
+                barrier.wait(timeout=10)
+                resp = mgr_client.post(retry_url)
+                results["retry_status"] = resp.status_code
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                connections.close_all()
+
+        with mock.patch("django.core.mail.EmailMultiAlternatives.send", slow_send):
+            t1 = threading.Thread(target=run_initial)
+            t2 = threading.Thread(target=run_manager_retry)
+            t1.start()
+            t2.start()
+            t1.join(timeout=15)
+            t2.join(timeout=15)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(results.get("retry_status"), 302)
+        self.assertEqual(len(send_calls), 1)
+
+        notif.refresh_from_db()
+        self.assertEqual(notif.status, TeacherNotification.Status.SENT)
+        self.assertEqual(notif.attempt_count, 1)
+        self.assertEqual(notif.dispatch_token, "")
+        self.assertEqual(notif.last_error, "")

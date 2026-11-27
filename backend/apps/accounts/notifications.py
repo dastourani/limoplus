@@ -1,10 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 import logging
+import secrets
 from urllib.parse import quote
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.db import IntegrityError, connections, transaction
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -15,6 +18,26 @@ from .models import TeacherNotification
 
 log = logging.getLogger(__name__)
 _EMAIL_NOTIFY_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="teacher-email")
+
+
+def _sending_stale_timeout() -> timedelta:
+    seconds = max(30, int(getattr(settings, "TEACHER_NOTIFICATION_SENDING_TIMEOUT_SECONDS", 300)))
+    return timedelta(seconds=seconds)
+
+
+def retryable_notifications_queryset(*, include_skipped: bool = False):
+    statuses = [
+        TeacherNotification.Status.PENDING,
+        TeacherNotification.Status.FAILED,
+    ]
+    if include_skipped:
+        statuses.append(TeacherNotification.Status.SKIPPED_NO_EMAIL)
+    stale_cutoff = timezone.now() - _sending_stale_timeout()
+    return TeacherNotification.objects.filter(
+        Q(status__in=statuses)
+        | Q(status=TeacherNotification.Status.SENDING, last_attempt_at__lte=stale_cutoff)
+        | Q(status=TeacherNotification.Status.SENDING, last_attempt_at__isnull=True)
+    ).order_by("created_at", "pk")
 
 
 def _build_email_bodies(notif: TeacherNotification, action_url: str) -> tuple[str, str]:
@@ -111,8 +134,9 @@ def _recipient_still_has_access(notif: TeacherNotification) -> tuple[bool, str]:
 
 
 def dispatch_teacher_notification(notification_id: int, *, force: bool = False) -> bool:
-    """Attempt email delivery for a persisted TeacherNotification outside any DB lock; never raises."""
+    """Atomically claim a TeacherNotification, send email outside DB locks, and commit only for that attempt."""
     payload = None
+    attempt_token = ""
     with transaction.atomic():
         notif = (
             TeacherNotification.objects.select_for_update()
@@ -126,32 +150,61 @@ def dispatch_teacher_notification(notification_id: int, *, force: bool = False) 
             return True
 
         now = timezone.now()
+        if notif.status == TeacherNotification.Status.SENDING:
+            is_stale = (
+                notif.last_attempt_at is None
+                or (now - notif.last_attempt_at) >= _sending_stale_timeout()
+            )
+            if not is_stale:
+                return False
+
         has_access, reason = _recipient_still_has_access(notif)
         if not has_access:
             notif.status = TeacherNotification.Status.FAILED
+            notif.dispatch_token = ""
             notif.last_attempt_at = now
             notif.last_error = reason
-            notif.save(update_fields=["status", "last_attempt_at", "last_error"])
+            notif.save(update_fields=["status", "dispatch_token", "last_attempt_at", "last_error"])
             return False
 
         recipient = notif.recipient
         if not recipient.is_email_verified:
             notif.status = TeacherNotification.Status.SKIPPED_NO_EMAIL
+            notif.dispatch_token = ""
             notif.recipient_email = ""
             notif.last_attempt_at = now
             notif.last_error = "استاد ایمیل کاری تأییدشده ندارد؛ پیام در پنل نمایش داده می‌شود."
-            notif.save(update_fields=["status", "recipient_email", "last_attempt_at", "last_error"])
+            notif.save(
+                update_fields=[
+                    "status",
+                    "dispatch_token",
+                    "recipient_email",
+                    "last_attempt_at",
+                    "last_error",
+                ]
+            )
             return False
 
+        attempt_token = secrets.token_hex(16)
         target_email = recipient.email.strip()
         base_url = getattr(settings, "SITE_URL", "http://localhost:8000").rstrip("/")
         action_url = f"{base_url}{notif.notice_path()}"
         text_body, html_body = _build_email_bodies(notif, action_url)
 
+        notif.status = TeacherNotification.Status.SENDING
+        notif.dispatch_token = attempt_token
         notif.attempt_count += 1
         notif.last_attempt_at = now
         notif.recipient_email = target_email
-        notif.save(update_fields=["attempt_count", "last_attempt_at", "recipient_email"])
+        notif.save(
+            update_fields=[
+                "status",
+                "dispatch_token",
+                "attempt_count",
+                "last_attempt_at",
+                "recipient_email",
+            ]
+        )
         payload = {
             "subject": notif.subject,
             "text_body": text_body,
@@ -180,18 +233,27 @@ def dispatch_teacher_notification(notification_id: int, *, force: bool = False) 
         send_error = f"{exc.__class__.__name__}: {exc}"[:1000]
 
     with transaction.atomic():
-        notif = TeacherNotification.objects.select_for_update().filter(pk=notification_id).first()
-        if notif is None:
-            return sent_ok
         if sent_ok:
-            notif.status = TeacherNotification.Status.SENT
-            notif.sent_at = timezone.now()
-            notif.last_error = ""
-            notif.save(update_fields=["status", "sent_at", "last_error"])
-            return True
-        notif.status = TeacherNotification.Status.FAILED
-        notif.last_error = send_error
-        notif.save(update_fields=["status", "last_error"])
+            updated = TeacherNotification.objects.filter(
+                pk=notification_id,
+                status=TeacherNotification.Status.SENDING,
+                dispatch_token=attempt_token,
+            ).update(
+                status=TeacherNotification.Status.SENT,
+                dispatch_token="",
+                sent_at=timezone.now(),
+                last_error="",
+            )
+            return bool(updated)
+        TeacherNotification.objects.filter(
+            pk=notification_id,
+            status=TeacherNotification.Status.SENDING,
+            dispatch_token=attempt_token,
+        ).update(
+            status=TeacherNotification.Status.FAILED,
+            dispatch_token="",
+            last_error=send_error,
+        )
         return False
 
 
@@ -271,16 +333,10 @@ def queue_teacher_notification(
 
 
 def retry_teacher_notifications(queryset=None) -> dict[str, int]:
-    """Retry unsent (pending/failed/skipped) notifications; returns counts."""
+    """Retry unsent (pending/failed/skipped or stale sending) notifications; returns counts."""
     if queryset is None:
-        queryset = TeacherNotification.objects.filter(
-            status__in=(
-                TeacherNotification.Status.PENDING,
-                TeacherNotification.Status.FAILED,
-                TeacherNotification.Status.SKIPPED_NO_EMAIL,
-            )
-        )
-    stats = {"attempted": 0, "sent": 0, "failed": 0, "skipped_no_email": 0}
+        queryset = retryable_notifications_queryset(include_skipped=True)
+    stats = {"attempted": 0, "sent": 0, "failed": 0, "skipped_no_email": 0, "in_progress": 0}
     for notif_id in queryset.values_list("pk", flat=True):
         stats["attempted"] += 1
         dispatch_teacher_notification(notif_id)
@@ -289,6 +345,8 @@ def retry_teacher_notifications(queryset=None) -> dict[str, int]:
             stats["sent"] += 1
         elif latest == TeacherNotification.Status.SKIPPED_NO_EMAIL:
             stats["skipped_no_email"] += 1
+        elif latest == TeacherNotification.Status.SENDING:
+            stats["in_progress"] += 1
         else:
             stats["failed"] += 1
     return stats

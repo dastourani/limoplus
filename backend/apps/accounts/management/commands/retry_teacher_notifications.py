@@ -1,17 +1,16 @@
 """
-Retries unsent (pending/failed) teacher notifications without creating duplicate rows.
+Retries unsent (pending/failed or stale sending) teacher notifications without creating duplicate rows.
 
     python manage.py retry_teacher_notifications
 """
 
 from django.core.management.base import BaseCommand
 
-from apps.accounts.models import TeacherNotification
-from apps.accounts.notifications import retry_teacher_notifications
+from apps.accounts.notifications import retry_teacher_notifications, retryable_notifications_queryset
 
 
 class Command(BaseCommand):
-    help = "Retry pending or failed teacher email notifications."
+    help = "Retry pending, failed, or stale-sending teacher email notifications."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -21,18 +20,12 @@ class Command(BaseCommand):
         )
 
     def handle(self, include_skipped=False, **options):
-        statuses = [
-            TeacherNotification.Status.PENDING,
-            TeacherNotification.Status.FAILED,
-        ]
-        if include_skipped:
-            statuses.append(TeacherNotification.Status.SKIPPED_NO_EMAIL)
-
-        qs = TeacherNotification.objects.filter(status__in=statuses).order_by("created_at", "pk")
+        qs = retryable_notifications_queryset(include_skipped=include_skipped)
         stats = retry_teacher_notifications(qs)
         self.stdout.write(
             self.style.SUCCESS(
                 f"Attempted={stats['attempted']} | Sent={stats['sent']} | "
-                f"Failed={stats['failed']} | SkippedNoEmail={stats['skipped_no_email']}"
+                f"Failed={stats['failed']} | SkippedNoEmail={stats['skipped_no_email']} | "
+                f"InProgress={stats['in_progress']}"
             )
         )
