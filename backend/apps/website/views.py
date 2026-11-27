@@ -198,6 +198,7 @@ def app_url(path: str = "") -> str:
 def _published():
     return (
         ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, depth=1, is_published=True, is_archived=False, is_inbox=False)
+        .defer("full_body", "summary_body")
         .prefetch_related("majors")
         .order_by("is_coming_soon", "position", "title")
     )
@@ -218,12 +219,12 @@ def _cover(request, book) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
-def _card(request, book, price_quote=None) -> dict:
+def _card(request, book, price_quote=None, *, access: AccessMap | None = None) -> dict:
     """A book on a shelf of the site: one server-owned status, its current price and free-preview details."""
     from apps.commerce.pricing import ProductStatus, book_price_quote
 
     price_quote = price_quote or book_price_quote(book)
-    access = AccessMap(request.user, book)
+    access = access or AccessMap(request.user, book, light=True)
     chapters = access.children(book)
     product_status = price_quote.product_status_payload
     state = product_status["state"]
@@ -403,26 +404,48 @@ def _format_sample(q, idx: int, book_node=None, majors=None, request=None, acces
     }
 
 
+def _anon_access(access: AccessMap) -> AccessMap:
+    if not access.owned:
+        return access
+    am = AccessMap.__new__(AccessMap)
+    am.book = access.book
+    am._init_from_nodes(access.nodes.values(), None, False)
+    return am
+
+
 def _book_samples(questions, access, limit: int = 3, book_node=None, request=None) -> list[dict]:
     """Up to `limit` interactive sample questions: `is_sample` first, then automatic fallback to readable questions."""
-    from django.contrib.auth.models import AnonymousUser
     from apps.learning.views import _usable
 
     # Must be readable by an anonymous visitor so `POST /api/v1/questions/<id>/answer/` works on the public site.
-    anon_access = AccessMap(AnonymousUser(), access.book)
+    anon_access = _anon_access(access)
     picked_ids: set[int] = set()
     out: list[dict] = []
-    base_qs = questions.select_related("node").prefetch_related("choices", "questionsource_set__source").order_by("node__path", "order", "id")
+    base_qs = (
+        questions.defer("explanation")
+        .select_related("node")
+        .prefetch_related("choices", "questionsource_set__source")
+        .order_by("node__path", "order", "id")
+    )
+    batch_size = 24
     for pool in (base_qs.filter(is_sample=True), base_qs.filter(is_extra=False)):
-        for q in pool:
-            if q.id in picked_ids:
-                continue
-            if not (_usable(access, q) and _usable(anon_access, q)):
-                continue
-            picked_ids.add(q.id)
-            out.append(_format_sample(q, len(out) + 1, book_node=book_node or access.book, request=request, access=anon_access))
-            if len(out) >= limit:
-                return out
+        offset = 0
+        while True:
+            batch = list(pool[offset : offset + batch_size])
+            if not batch:
+                break
+            for q in batch:
+                if q.id in picked_ids:
+                    continue
+                if not (_usable(access, q) and _usable(anon_access, q)):
+                    continue
+                picked_ids.add(q.id)
+                out.append(_format_sample(q, len(out) + 1, book_node=book_node or access.book, request=request, access=anon_access))
+                if len(out) >= limit:
+                    return out
+            if len(batch) < batch_size:
+                break
+            offset += batch_size
     return out
 
 
@@ -436,8 +459,9 @@ def home(request):
     pub_books = list(_published())
     _prefetch_book_ratings(request, pub_books)
     price_quotes = book_price_quotes(pub_books)
-    books = [_card(request, b, price_quotes[b.pk]) for b in pub_books]
-    majors = Major.objects.filter(books__in=pub_books).distinct().order_by("order", "name")
+    card_maps = AccessMap.bulk_for_books(request.user, pub_books, light=True)
+    books = [_card(request, b, price_quotes[b.pk], access=card_maps[b.pk]) for b in pub_books]
+    majors = Major.objects.filter(books__in=[b.pk for b in pub_books]).distinct().order_by("order", "name") if pub_books else Major.objects.none()
     paid = [
         price_quotes[b.pk].price
         for b in pub_books
@@ -453,7 +477,7 @@ def home(request):
     visible_ids: list[int] = []
     pool_samples: list[dict] = []
     for b in active_books:
-        acc = AccessMap(request.user, b)
+        acc = card_maps[b.pk]
         v_ids = acc.visible_ids_under(b)
         visible_ids.extend(v_ids)
         total_sections += sum(1 for n in acc.nodes.values() if n.kind == ContentNode.Kind.SECTION and acc.visible(n.id))
@@ -555,20 +579,25 @@ def books(request):
     from apps.commerce.pricing import book_price_quotes
 
     published = _published()
-    majors = Major.objects.filter(books__in=published).distinct().order_by("order", "name")
-    selected_major = request.GET.get("major", "")
-    if selected_major not in set(majors.values_list("slug", flat=True)):
+    pub_ids = ContentNode.objects.filter(
+        kind=ContentNode.Kind.BOOK, depth=1, is_published=True, is_archived=False, is_inbox=False
+    ).values("pk")
+    majors = list(Major.objects.filter(books__in=pub_ids).distinct().order_by("order", "name"))
+    selected_major = (request.GET.get("major") or "").strip()
+    if selected_major not in {m.slug for m in majors}:
         selected_major = ""
 
     book_list = published
     if selected_major:
-        book_list = book_list.filter(majors__slug=selected_major).distinct()
+        book_ids = ContentNode.majors.through.objects.filter(major__slug=selected_major).values("contentnode_id")
+        book_list = book_list.filter(pk__in=book_ids)
     paginator = Paginator(book_list, BOOKS_PER_PAGE)
     page_obj = paginator.get_page(request.GET.get("page"))
     books_on_page = list(page_obj.object_list)
     _prefetch_book_ratings(request, books_on_page)
     quotes = book_price_quotes(books_on_page)
-    cards = [_card(request, book, quotes[book.pk]) for book in books_on_page]
+    card_maps = AccessMap.bulk_for_books(request.user, books_on_page, card_only=True)
+    cards = [_card(request, book, quotes[book.pk], access=card_maps[book.pk]) for book in books_on_page]
     page_summary = ""
     if page_obj.paginator.count:
         page_summary = (
@@ -582,12 +611,20 @@ def books(request):
 
 
 def book(request, slug):
-    b = get_object_or_404(ContentNode, kind=ContentNode.Kind.BOOK, depth=1, slug=slug, is_published=True, is_archived=False, is_inbox=False)
-    access = AccessMap(request.user, b)
+    b = (
+        ContentNode.objects.filter(
+            kind=ContentNode.Kind.BOOK, depth=1, slug=slug, is_published=True, is_archived=False, is_inbox=False
+        )
+        .defer("full_body", "summary_body")
+        .order_by("id")
+        .first()
+    )
+    if not b:
+        raise Http404
+    access = AccessMap(request.user, b, light=True)
     if not access.visible(b.id):
         raise Http404
     from apps.learning.models import Flashcard, Question
-    from apps.learning.views import _usable
 
     visible = access.visible_ids_under(b)
     questions = Question.objects.filter(node_id__in=visible, is_archived=False)
@@ -597,6 +634,24 @@ def book(request, slug):
     q_by_node = dict(questions.values("node_id").annotate(n=Count("id")).values_list("node_id", "n"))
     f_by_node = dict(flashcards.values("node_id").annotate(n=Count("id")).values_list("node_id", "n"))
     raw_chapters = access.children(b)
+    section_ids = [n.id for n in access.nodes.values() if n.kind == ContentNode.Kind.SECTION and access.visible(n.id)]
+    sections_with_summary = (
+        set(ContentNode.objects.filter(id__in=section_ids).exclude(summary_body="").values_list("id", flat=True))
+        if section_ids
+        else set()
+    )
+    chapter_ids = [c.id for c in raw_chapters]
+    chapters_with_overview = (
+        {
+            cid
+            for cid, body in ContentNode.objects.filter(id__in=chapter_ids)
+            .exclude(full_body="")
+            .values_list("id", "full_body")
+            if body.strip()
+        }
+        if chapter_ids
+        else set()
+    )
     chapters = []
     for ch_idx, c in enumerate(raw_chapters, start=1):
         sections = access.children(c)
@@ -610,7 +665,7 @@ def book(request, slug):
             s_free = access.readable(s.id)
             sec_items.append({
                 "id": s.id, "title": s.title, "number": fa(idx),
-                "has_summary": bool(s.summary_body),
+                "has_summary": s.id in sections_with_summary,
                 "tests": fa(sq) if sq else "", "cards": fa(sf) if sf else "",
                 "free": s_free, "url": app_url(f"section/{s.id}") if s_free else app_url(f"buy/{b.slug}"),
             })
@@ -622,7 +677,7 @@ def book(request, slug):
             "free": bool(b.is_free or c.is_free),
             "chapter_free": bool(b.is_free or c.is_free),
             "sample_free": bool(b.is_free or c.is_free or any(section.is_free for section in sections)),
-            "has_overview": bool(c.full_body.strip()),
+            "has_overview": c.id in chapters_with_overview,
             "overview_url": app_url(f"section/{c.id}") if access.readable(c.id) else app_url(f"buy/{b.slug}"),
             "section_list": sec_items,
         })
@@ -654,10 +709,11 @@ def book(request, slug):
     release_note, _ = resolve_release_notes(b, state, request=request)
     related_books = []
     if is_preparing:
-        other = [x for x in _published() if x.id != b.id and not x.is_coming_soon][:6]
+        other = list(_published().exclude(pk=b.pk).filter(is_coming_soon=False)[:6])
         _prefetch_book_ratings(request, [b, *other])
         other_quotes = book_price_quotes(other)
-        related_books = [_card(request, item, other_quotes[item.pk]) for item in other]
+        other_maps = AccessMap.bulk_for_books(request.user, other, card_only=True)
+        related_books = [_card(request, item, other_quotes[item.pk], access=other_maps[item.pk]) for item in other]
     else:
         _prefetch_book_ratings(request, [b])
     author_profile = _teacher_info(b, request)

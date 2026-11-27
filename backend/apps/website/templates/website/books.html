@@ -8,11 +8,11 @@
     {% if majors|length > 1 %}
     <nav class="chips book-filters" aria-label="فیلتر کتاب‌ها بر اساس رشته">
       <a class="chip{% if not selected_major %} on{% endif %}" href="{% url 'website:books' %}"{% if not selected_major %} aria-current="true"{% endif %}>همه</a>
-      {% for m in majors %}<a class="chip{% if selected_major == m.slug %} on{% endif %}" href="?major={{ m.slug }}"{% if selected_major == m.slug %} aria-current="true"{% endif %}>{{ m.name }}</a>{% endfor %}
+      {% for m in majors %}<a class="chip{% if selected_major == m.slug %} on{% endif %}" href="?major={{ m.slug|urlencode }}"{% if selected_major == m.slug %} aria-current="true"{% endif %}>{{ m.name }}</a>{% endfor %}
     </nav>
     {% endif %}
   </div>
-  <div class="book-index">
+  <div class="book-index" data-book-index>
     <div class="book-index-viewport">
       <button class="book-index-scroll" type="button" data-shelf-scroll hidden aria-label="پیمایش به سمت کتاب‌های پنهان">
         {% icon "chevron-left" 20 %}
@@ -25,8 +25,8 @@
       {% if page_summary %}<span class="book-index-count" aria-live="polite">{{ page_summary }}</span>{% endif %}
       {% if page_obj.has_previous or page_obj.has_next %}
       <nav class="book-index-pagination" aria-label="صفحه‌های فهرست کتاب‌ها">
-        {% if page_obj.has_previous %}<a class="btn small ghost-dark" href="?{% if selected_major %}major={{ selected_major }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">صفحه‌ی قبل</a>{% endif %}
-        {% if page_obj.has_next %}<a class="btn small lemon" href="?{% if selected_major %}major={{ selected_major }}&amp;{% endif %}page={{ page_obj.next_page_number }}">نمایش کتاب‌های بیشتر</a>{% endif %}
+        {% if page_obj.has_previous %}<a class="btn small ghost-dark" href="?{% if selected_major %}major={{ selected_major|urlencode }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">صفحه‌ی قبل</a>{% endif %}
+        {% if page_obj.has_next %}<a class="btn small lemon" href="?{% if selected_major %}major={{ selected_major|urlencode }}&amp;{% endif %}page={{ page_obj.next_page_number }}">نمایش کتاب‌های بیشتر</a>{% endif %}
       </nav>
       {% endif %}
     </div>

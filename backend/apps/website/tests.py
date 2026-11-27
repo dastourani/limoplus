@@ -121,6 +121,61 @@ class WebsiteTests(TestCase):
         self.assertEqual(len(second.context["books"]), 1)
         self.assertEqual(second.context["books"][0]["book"].slug, "batch-book-12")
 
+    def test_books_and_book_pages_avoid_loading_section_bodies_and_enable_shelf_index(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.catalog.models import Major
+
+        major = Major.objects.create(slug="light-major", name="رشته‌ی سبک")
+        book = ContentNode.objects.get(slug="math-1")
+        book.majors.add(major)
+        chapter = book.get_children().filter(kind=ContentNode.Kind.CHAPTER).first()
+        chapter.full_body = "پیش‌نمای فصل"
+        chapter.save()
+        section = chapter.get_children().filter(kind=ContentNode.Kind.SECTION).first()
+        marker = "SUPER_SECRET_LARGE_SECTION_BODY_DO_NOT_FETCH"
+        section.full_body = marker
+        section.summary_body = "خلاصه‌ی تست"
+        section.save()
+
+        client = Client()
+        with CaptureQueriesContext(connection) as books_queries:
+            res = client.get("/site/books/", {"major": major.slug})
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, 'class="book-index" data-book-index')
+        self.assertContains(res, f'href="?major={major.slug}" aria-current="true"')
+        books_node_sql = "\n".join(q["sql"] for q in books_queries if 'FROM "catalog_contentnode"' in q["sql"])
+        self.assertNotIn("full_body", books_node_sql)
+        self.assertNotIn("summary_body", books_node_sql)
+
+        with CaptureQueriesContext(connection) as book_queries:
+            detail = client.get(f"/site/books/{book.slug}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertTrue(detail.context["chapters"][0]["has_overview"])
+        self.assertTrue(detail.context["chapters"][0]["section_list"][0]["has_summary"])
+        for ch in detail.context["chapters"]:
+            for sec in ch["section_list"]:
+                self.assertIn("has_summary", sec)
+        # Ensure section full_body is never selected on the public book page.
+        self.assertNotIn(marker, detail.content.decode())
+        tree_queries = [
+            q["sql"]
+            for q in book_queries
+            if 'FROM "catalog_contentnode"' in q["sql"] and '."id" IN (' not in q["sql"]
+        ]
+        self.assertFalse(any("full_body" in sql or "summary_body" in sql for sql in tree_queries))
+
+    def test_book_page_handles_duplicate_published_slug_cleanly(self):
+        dup = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title="کتاب تکراری",
+            slug="math-1",
+            is_published=True,
+        )
+        res = Client().get(f"/site/books/{dup.slug}/")
+        self.assertEqual(res.status_code, 200)
+
     def test_book_page_samples_never_show_answers(self):
         q = Question.objects.filter(node__path__startswith=ContentNode.objects.get(slug="math-1").path, is_archived=False).first()
         q.is_sample = True
