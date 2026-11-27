@@ -422,8 +422,8 @@ def _book_samples(questions, access, limit: int = 3, book_node=None, request=Non
     picked_ids: set[int] = set()
     out: list[dict] = []
     base_qs = (
-        questions.defer("explanation")
-        .select_related("node")
+        questions.select_related("node")
+        .only("id", "node_id", "stem", "is_free", "node__id", "node__kind", "node__title")
         .prefetch_related("choices", "questionsource_set__source")
         .order_by("node__path", "order", "id")
     )
@@ -642,13 +642,12 @@ def book(request, slug):
     )
     chapter_ids = [c.id for c in raw_chapters]
     chapters_with_overview = (
-        {
-            cid
-            for cid, body in ContentNode.objects.filter(id__in=chapter_ids)
+        set(
+            ContentNode.objects.filter(id__in=chapter_ids)
             .exclude(full_body="")
-            .values_list("id", "full_body")
-            if body.strip()
-        }
+            .exclude(full_body__regex=r"^\s*$")
+            .values_list("id", flat=True)
+        )
         if chapter_ids
         else set()
     )
