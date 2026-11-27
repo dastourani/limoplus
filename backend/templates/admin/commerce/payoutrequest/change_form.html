@@ -1,6 +1,7 @@
 {% extends "admin/change_form.html" %}
 
 {% block content %}
+  {% include "admin/accounts/_email_verify_reminder.html" %}
   {% if not is_popup and change and original.status == "rejected" and original.rejection_reason %}
     <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:12px 16px; margin-bottom:18px; color:#991b1b; font-size:13px; line-height:1.7;">
       ⚠️ <strong>علت رد درخواست تسویه توسط مدیریت:</strong>

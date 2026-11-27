@@ -289,10 +289,32 @@ class TeacherInvitationAdmin(admin.ModelAdmin):
         return response
 
 
+def _notification_summary_html(source_ref: str):
+    from apps.accounts.models import TeacherNotification
+
+    rows = list(TeacherNotification.objects.filter(source_ref=source_ref).order_by("-created_at", "-pk")[:5])
+    if not rows:
+        return "هنوز اعلان ایمیلی برای این درخواست ثبت نشده است."
+    items = []
+    for n in rows:
+        url = reverse("admin:accounts_teachernotification_change", args=[n.pk])
+        extra = f" — {n.recipient_email}" if n.recipient_email else ""
+        if n.status == TeacherNotification.Status.FAILED and n.last_error:
+            extra += f" ({n.last_error[:120]})"
+        items.append((url, n.get_event_type_display(), n.get_status_display(), extra))
+    return format_html_join(
+        "<br>",
+        '<a href="{}">{}</a>: <strong>{}</strong>{}',
+        items,
+    )
+
+
 @admin.register(BookAccessRequest)
 class BookAccessRequestAdmin(admin.ModelAdmin):
     """Teachers may submit a private number list; only a superuser chooses the book and expiry approval."""
 
+    change_list_template = "admin/website/bookaccessrequest/change_list.html"
+    change_form_template = "admin/website/bookaccessrequest/change_form.html"
     form = BookAccessRequestCreateForm
     list_display = ("book", "requester", "status_label", "member_count", "submitted_at", "reviewed_at")
     list_filter = ("status", "book")
@@ -318,6 +340,12 @@ class BookAccessRequestAdmin(admin.ModelAdmin):
         phones = obj.members.order_by("phone").values_list("phone", flat=True)
         return format_html_join("<br>", '<span dir="ltr">{}</span>', ((phone,) for phone in phones)) or "—"
 
+    @admin.display(description="وضعیت اعلان ایمیلی")
+    def email_notification_summary(self, obj):
+        if not obj or not obj.pk:
+            return "—"
+        return _notification_summary_html(f"access:{obj.pk}")
+
     def get_form(self, request, obj=None, **kwargs):
         kwargs.setdefault("form", BookAccessRequestCreateForm if obj is None else BookAccessRequestChangeForm)
         return super().get_form(request, obj, **kwargs)
@@ -325,17 +353,23 @@ class BookAccessRequestAdmin(admin.ModelAdmin):
     def get_fields(self, request, obj=None):
         if obj is None:
             return ("book", "request_note", "member_phones")
-        return (
+        fields = [
             "book", "requested_by", "request_note", "members_display", "status", "review_note",
             "expiry_policy", "ends_on", "duration_days", "submitted_at", "reviewed_by", "reviewed_at",
-        )
+        ]
+        if _is_manager(request.user):
+            fields.append("email_notification_summary")
+        return tuple(fields)
 
     def get_readonly_fields(self, request, obj=None):
         if obj is None:
             return ()
         if not _is_manager(request.user):
             return self.get_fields(request, obj)
-        fixed = ("book", "requested_by", "request_note", "members_display", "submitted_at", "reviewed_by", "reviewed_at")
+        fixed = (
+            "book", "requested_by", "request_note", "members_display",
+            "submitted_at", "reviewed_by", "reviewed_at", "email_notification_summary",
+        )
         if obj.status in (BookAccessRequest.Status.APPROVED, BookAccessRequest.Status.REJECTED):
             return (*fixed, "status", "review_note", "expiry_policy", "ends_on", "duration_days")
         return fixed
@@ -424,6 +458,7 @@ class BookAccessRequestAdmin(admin.ModelAdmin):
 
         if not _is_manager(request.user):
             raise PermissionDenied
+        sending_message = "_send_access_message" in request.POST
         with transaction.atomic():
             previous = BookAccessRequest.objects.select_for_update().get(pk=obj.pk)
             if previous.status not in (BookAccessRequest.Status.PENDING, BookAccessRequest.Status.NEEDS_INFO):
@@ -431,9 +466,12 @@ class BookAccessRequestAdmin(admin.ModelAdmin):
             status_changed = obj.status != previous.status
             note_changed = obj.review_note != previous.review_note
             expiry_changed = any(getattr(obj, field) != getattr(previous, field) for field in ("expiry_policy", "ends_on", "duration_days"))
-            if obj.status in (BookAccessRequest.Status.NEEDS_INFO, BookAccessRequest.Status.APPROVED, BookAccessRequest.Status.REJECTED) and not (obj.review_note or "").strip():
-                raise ValidationError("برای ثبت تصمیم مدیر، دلیل یا یادداشت را وارد کنید.")
-            if not (status_changed or note_changed or expiry_changed):
+            if (
+                sending_message
+                or obj.status in (BookAccessRequest.Status.NEEDS_INFO, BookAccessRequest.Status.APPROVED, BookAccessRequest.Status.REJECTED)
+            ) and not (obj.review_note or "").strip():
+                raise ValidationError("برای ثبت تصمیم یا ارسال پیام به استاد، دلیل یا یادداشت را وارد کنید.")
+            if not (status_changed or note_changed or expiry_changed or sending_message):
                 super().save_model(request, obj, form, change)
                 return
             if obj.status == BookAccessRequest.Status.APPROVED:
@@ -450,7 +488,7 @@ class BookAccessRequestAdmin(admin.ModelAdmin):
                 obj.members.filter(status=BookAccessMember.Status.PENDING_REVIEW).update(status=BookAccessMember.Status.REJECTED)
 
             action = _event_action_for_access(previous.status, obj.status) if status_changed else BookAccessRequestEvent.Action.NOTE_UPDATED
-            BookAccessRequestEvent.objects.create(
+            event = BookAccessRequestEvent.objects.create(
                 request=obj,
                 action=action,
                 actor=request.user,
@@ -459,6 +497,33 @@ class BookAccessRequestAdmin(admin.ModelAdmin):
                 ends_on=obj.ends_on,
                 duration_days=obj.duration_days,
             )
+            if status_changed and obj.status in (
+                BookAccessRequest.Status.APPROVED,
+                BookAccessRequest.Status.NEEDS_INFO,
+                BookAccessRequest.Status.REJECTED,
+            ):
+                from apps.accounts.notifications import notify_book_access_decision
+
+                notify_book_access_decision(obj, event=event, actor=request.user)
+            elif sending_message:
+                from apps.accounts.notifications import notify_book_access_message
+
+                notify_book_access_message(obj, event=event, actor=request.user)
+                self.message_user(
+                    request,
+                    "پیام شما دربارهٔ درخواست دسترسی گروهی ثبت و برای استاد ارسال شد.",
+                    level=messages.SUCCESS,
+                )
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        extra = dict(extra_context or {})
+        obj = self.get_object(request, object_id)
+        extra["access_can_send_message"] = bool(
+            obj is not None
+            and _is_manager(request.user)
+            and obj.status in (BookAccessRequest.Status.PENDING, BookAccessRequest.Status.NEEDS_INFO)
+        )
+        return super().change_view(request, object_id, form_url=form_url, extra_context=extra)
 
 
 class PublicationRequestAdminForm(forms.ModelForm):
@@ -629,6 +694,12 @@ class PublicationRequestAdmin(admin.ModelAdmin):
         summary = obj.workflow_summary()
         return f"{summary['stage_label']} — نوبت اقدام: {summary['next_actor']}"
 
+    @admin.display(description="وضعیت اعلان‌های ایمیلی به استاد")
+    def email_notification_summary(self, obj):
+        if not obj or not obj.pk:
+            return "—"
+        return _notification_summary_html(f"publication:{obj.pk}")
+
     def get_fieldsets(self, request, obj=None):
         if obj is None:
             return ((None, {"fields": ("book", "author_prep_preference", "requested_distribution_scope", "single_sale_exception_reason", "request_note")}),)
@@ -663,6 +734,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
                         "teacher_responded_at",
                         "offer_sent_at",
                         "offer_sent_by",
+                        "email_notification_summary",
                     ),
                 }),
                 ("تصمیم انتشار، پیام به استاد و یادداشت داخلی مدیر", {
@@ -682,7 +754,7 @@ class PublicationRequestAdmin(admin.ModelAdmin):
             "content_digest", "submitted_at",
             "workflow_turn_display", "sent_offer_summary", "accepted_offer_summary",
             "teacher_response", "teacher_response_note", "teacher_responded_at",
-            "offer_sent_at", "offer_sent_by",
+            "offer_sent_at", "offer_sent_by", "email_notification_summary",
             "reviewed_by", "reviewed_at",
         )
         if obj.status in (PublicationRequest.Status.APPROVED, PublicationRequest.Status.REJECTED):

@@ -447,6 +447,9 @@ def finalize_payout_paid(payout: PayoutRequest, tracking_code: str, receipt_note
             f"کد رهگیری: {tracking_code}"
         )
         notify_bale_after_commit(msg, log_label=f"Bale payout paid alert for #{payout_locked.id}")
+        from apps.accounts.notifications import notify_payout_decision
+
+        notify_payout_decision(payout_locked, actor=manager_user)
 
     return payout_locked
 
@@ -491,6 +494,9 @@ def reject_payout_request(payout: PayoutRequest, reason: str, manager_user=None)
             idempotency_key=idempotency_key,
             description=f"رد تسویه حساب #{payout_locked.id}: {reason}",
         )
+        from apps.accounts.notifications import notify_payout_decision
+
+        notify_payout_decision(payout_locked, actor=manager_user)
 
     return payout_locked
 

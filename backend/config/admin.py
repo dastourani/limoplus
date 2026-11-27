@@ -49,6 +49,7 @@ _TEACHER_VISIBLE_MODELS = frozenset({
     # workflows
     ("teacher_workflows", "Classroom"),
     ("teacher_workflows", "ClassroomMember"),
+    ("teacher_workflows", "BookAccessRequest"),
     ("teacher_workflows", "PublicationRequest"),
     ("teacher_workflows", "TeacherProfile"),
 })
@@ -167,6 +168,7 @@ class LimoAdminSite(AdminSite):
         _TEACHING_KEYS = [
             ("teacher_workflows", "Classroom"),
             ("teacher_workflows", "ClassroomMember"),
+            ("teacher_workflows", "BookAccessRequest"),
         ]
         for key in _TEACHING_KEYS:
             if key in all_models:

@@ -52,8 +52,9 @@
       <div style="margin-bottom:10px; color:var(--body-fg);">
         <b>دسترسی دانشجویان دوره:</b> شما می‌توانید در هر مرحله از نگارش، دسترسی به این اثر را صرفاً برای دانشجویان کلاس خود فعال فرمایید. دانشجویان منتخب (چه پیش‌تر در سامانه لیموخوان عضویت داشته باشند و چه کاربر جدید باشند) بلافاصله پس از ورود به وب‌اپلیکیشن یا نرم‌افزار، کتاب را در کتابخانه شخصی خود مشاهده خواهند کرد، در حالی که این اثر در ویترین و جستجوی عمومی سامانه برای سایر کاربران نمایش داده نخواهد شد.
         {% if can_request_group_access %}
-          <div style="margin-top:6px;">
+          <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:8px;">
             <a href="{% url 'admin:website_bookaccessrequest_add' %}?book={{ original.pk }}" class="btn small" style="font-weight:700;">👥 ثبت شماره‌های دانشجویان دوره</a>
+            <a href="{% url 'admin:website_bookaccessrequest_changelist' %}?book__id__exact={{ original.pk }}" class="btn small">پیگیری درخواست‌های دسترسی گروهی</a>
           </div>
         {% endif %}
       </div>

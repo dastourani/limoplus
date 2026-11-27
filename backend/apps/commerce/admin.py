@@ -1090,6 +1090,7 @@ class PayoutQueueFilter(admin.SimpleListFilter):
 
 @admin.register(PayoutRequest)
 class PayoutRequestAdmin(admin.ModelAdmin):
+    change_list_template = "admin/commerce/payoutrequest/change_list.html"
     list_display = ("payout_id", "teacher_cell", "amount_toman", "account_holder_snapshot", "iban_snapshot", "status_chip", "tracking_code", "rejection_reason_display", "created_time")
     list_filter = (PayoutQueueFilter, "status", "created_at")
     date_hierarchy = "created_at"
@@ -1138,9 +1139,25 @@ class PayoutRequestAdmin(admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         if not access.acts_as_panel_superuser(request):
             return ("status", "account_holder_snapshot", "iban_snapshot", "bank_name_snapshot", "tracking_code", "receipt_note", "rejection_reason", "processed_by", "created_at", "paid_at")
-        if obj and obj.status in (PayoutRequest.Status.PAID, PayoutRequest.Status.REJECTED):
-            return [f.name for f in PayoutRequest._meta.fields]
-        return ("teacher", "amount", "account_holder_snapshot", "iban_snapshot", "bank_name_snapshot", "processed_by", "created_at", "paid_at")
+        if obj is None:
+            return ("teacher", "amount", "account_holder_snapshot", "iban_snapshot", "bank_name_snapshot", "processed_by", "created_at", "paid_at")
+        if obj.status in (PayoutRequest.Status.PAID, PayoutRequest.Status.REJECTED):
+            return [*[f.name for f in PayoutRequest._meta.fields], "email_notification_summary"]
+        return ("teacher", "amount", "account_holder_snapshot", "iban_snapshot", "bank_name_snapshot", "processed_by", "created_at", "paid_at", "email_notification_summary")
+
+    def get_fields(self, request, obj=None):
+        fields = list(super().get_fields(request, obj))
+        if obj is None and "email_notification_summary" in fields:
+            fields.remove("email_notification_summary")
+        return fields
+
+    @admin.display(description="وضعیت اعلان ایمیلی به استاد")
+    def email_notification_summary(self, obj):
+        if not obj or not obj.pk:
+            return "—"
+        from apps.website.workflow_admin import _notification_summary_html
+
+        return _notification_summary_html(f"payout:{obj.pk}")
 
     def save_model(self, request, obj, form, change):
         is_panel_su = access.acts_as_panel_superuser(request)

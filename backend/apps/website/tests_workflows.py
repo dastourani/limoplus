@@ -326,11 +326,11 @@ class TeacherInvitationWorkflowTests(WorkflowFixture):
         user = User.objects.get(phone=invitation.application.phone)
         user.email = "teacher@example.com"
         user.email_verified_at = None
-        user.email_verification_token = "verify-token-logged-out-123"
-        user.save(update_fields=["email", "email_verified_at", "email_verification_token"])
+        user.save(update_fields=["email", "email_verified_at"])
+        raw_logged_out = user.generate_email_verification_token()
 
         logged_out_browser = Client()
-        verify_email_url = reverse("website:verify-teacher-email", args=["verify-token-logged-out-123"])
+        verify_email_url = reverse("website:verify-teacher-email", args=[raw_logged_out])
         email_res = logged_out_browser.get(verify_email_url)
         self.assertEqual(email_res.status_code, 302)
         self.assertEqual(email_res["Location"], reverse("teacher-login"))
@@ -345,11 +345,11 @@ class TeacherInvitationWorkflowTests(WorkflowFixture):
 
         # 3. When an authenticated teacher opens a fresh email-verification link, they return to the panel.
         user.email_verified_at = None
-        user.email_verification_token = "verify-token-logged-in-456"
-        user.save(update_fields=["email_verified_at", "email_verification_token"])
+        user.save(update_fields=["email_verified_at"])
+        raw_logged_in = user.generate_email_verification_token()
         logged_in_browser = Client()
         logged_in_browser.force_login(user)
-        signed_in_res = logged_in_browser.get(reverse("website:verify-teacher-email", args=["verify-token-logged-in-456"]))
+        signed_in_res = logged_in_browser.get(reverse("website:verify-teacher-email", args=[raw_logged_in]))
         self.assertEqual(signed_in_res.status_code, 302)
         self.assertEqual(signed_in_res["Location"], reverse("admin:index"))
         user.refresh_from_db()
