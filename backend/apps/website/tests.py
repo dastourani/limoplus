@@ -133,11 +133,29 @@ class WebsiteTests(TestCase):
         chapter = book.get_children().filter(kind=ContentNode.Kind.CHAPTER).first()
         chapter.full_body = "پیش‌نمای فصل"
         chapter.save()
+        ws_chapter = book.add_child(
+            kind=ContentNode.Kind.CHAPTER,
+            title="فصل بدون مقدمه",
+            slug="ws-chapter",
+            is_published=True,
+            full_body="  \n\t ",
+            position=99,
+        )
         section = chapter.get_children().filter(kind=ContentNode.Kind.SECTION).first()
         marker = "SUPER_SECRET_LARGE_SECTION_BODY_DO_NOT_FETCH"
         section.full_body = marker
         section.summary_body = "خلاصه‌ی تست"
         section.save()
+        for idx in range(5):
+            Question.objects.create(
+                node=section,
+                slug=f"heavy-q-{idx}",
+                stem=f"سؤال پرحجم {idx}",
+                explanation="توضیح مفصل",
+                is_sample=True,
+                is_free=True,
+                order=100 + idx,
+            )
 
         client = Client()
         with CaptureQueriesContext(connection) as books_queries:
@@ -153,18 +171,19 @@ class WebsiteTests(TestCase):
             detail = client.get(f"/site/books/{book.slug}/")
         self.assertEqual(detail.status_code, 200)
         self.assertTrue(detail.context["chapters"][0]["has_overview"])
+        ws_ch_ctx = next(c for c in detail.context["chapters"] if c["id"] == ws_chapter.id)
+        self.assertFalse(ws_ch_ctx["has_overview"])
         self.assertTrue(detail.context["chapters"][0]["section_list"][0]["has_summary"])
         for ch in detail.context["chapters"]:
             for sec in ch["section_list"]:
                 self.assertIn("has_summary", sec)
-        # Ensure section full_body is never selected on the public book page.
         self.assertNotIn(marker, detail.content.decode())
-        tree_queries = [
-            q["sql"]
+        node_select_cols = [
+            q["sql"].split(" FROM ", 1)[0]
             for q in book_queries
-            if 'FROM "catalog_contentnode"' in q["sql"] and '."id" IN (' not in q["sql"]
+            if 'FROM "catalog_contentnode"' in q["sql"] or 'FROM "learning_question"' in q["sql"]
         ]
-        self.assertFalse(any("full_body" in sql or "summary_body" in sql for sql in tree_queries))
+        self.assertFalse(any("full_body" in cols or "summary_body" in cols or "explanation" in cols for cols in node_select_cols))
 
     def test_book_page_handles_duplicate_published_slug_cleanly(self):
         dup = ContentNode.add_root(
