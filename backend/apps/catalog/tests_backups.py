@@ -452,6 +452,28 @@ class NightlyAndGunicornConfigTests(TestCase):
             gconf.on_starting(None)
             mock_run.assert_not_called()
 
+        # If migrate fails, on_starting aborts Gunicorn startup with its non-zero exit code before collectstatic/workers start
+        os.utime(asset, (5000, 5000))  # stale manifest so collectstatic would also be queued
+        with mock.patch.object(gconf, "HERE", str(tmp)), \
+                mock.patch.dict(os.environ, {"_LIMO_STARTUP_DONE": "", "DISABLE_MIGRATE": "", "DISABLE_COLLECTSTATIC": ""}, clear=False), \
+                mock.patch.object(gconf.subprocess, "run", return_value=mock.Mock(returncode=2)) as mock_run:
+            with self.assertRaises(SystemExit) as ctx:
+                gconf.on_starting(None)
+            self.assertEqual(ctx.exception.code, 2)
+            self.assertEqual([c.args[0][2:] for c in mock_run.call_args_list], [["migrate", "--noinput"]])
+
+        # If migrate succeeds and collectstatic fails, on_starting also aborts Gunicorn startup
+        with mock.patch.object(gconf, "HERE", str(tmp)), \
+                mock.patch.dict(os.environ, {"_LIMO_STARTUP_DONE": "", "DISABLE_MIGRATE": "", "DISABLE_COLLECTSTATIC": ""}, clear=False), \
+                mock.patch.object(gconf.subprocess, "run", side_effect=[mock.Mock(returncode=0), mock.Mock(returncode=3)]) as mock_run:
+            with self.assertRaises(SystemExit) as ctx:
+                gconf.on_starting(None)
+            self.assertEqual(ctx.exception.code, 3)
+            self.assertEqual(
+                [c.args[0][2:] for c in mock_run.call_args_list],
+                [["migrate", "--noinput"], ["collectstatic", "--noinput", "-v0"]],
+            )
+
         # Single-worker + NIGHTLY_JOBS=True: no subprocess in when_ready, daemon thread in post_worker_init
         from apps.catalog.management.commands import nightly as nightly_cmd
 
