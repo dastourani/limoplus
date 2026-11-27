@@ -458,6 +458,7 @@ class BookAccessRequestAdmin(admin.ModelAdmin):
 
         if not _is_manager(request.user):
             raise PermissionDenied
+        sending_message = "_send_access_message" in request.POST
         with transaction.atomic():
             previous = BookAccessRequest.objects.select_for_update().get(pk=obj.pk)
             if previous.status not in (BookAccessRequest.Status.PENDING, BookAccessRequest.Status.NEEDS_INFO):
@@ -465,9 +466,12 @@ class BookAccessRequestAdmin(admin.ModelAdmin):
             status_changed = obj.status != previous.status
             note_changed = obj.review_note != previous.review_note
             expiry_changed = any(getattr(obj, field) != getattr(previous, field) for field in ("expiry_policy", "ends_on", "duration_days"))
-            if obj.status in (BookAccessRequest.Status.NEEDS_INFO, BookAccessRequest.Status.APPROVED, BookAccessRequest.Status.REJECTED) and not (obj.review_note or "").strip():
-                raise ValidationError("برای ثبت تصمیم مدیر، دلیل یا یادداشت را وارد کنید.")
-            if not (status_changed or note_changed or expiry_changed):
+            if (
+                sending_message
+                or obj.status in (BookAccessRequest.Status.NEEDS_INFO, BookAccessRequest.Status.APPROVED, BookAccessRequest.Status.REJECTED)
+            ) and not (obj.review_note or "").strip():
+                raise ValidationError("برای ثبت تصمیم یا ارسال پیام به استاد، دلیل یا یادداشت را وارد کنید.")
+            if not (status_changed or note_changed or expiry_changed or sending_message):
                 super().save_model(request, obj, form, change)
                 return
             if obj.status == BookAccessRequest.Status.APPROVED:
@@ -493,14 +497,33 @@ class BookAccessRequestAdmin(admin.ModelAdmin):
                 ends_on=obj.ends_on,
                 duration_days=obj.duration_days,
             )
-            if obj.status in (
+            if status_changed and obj.status in (
                 BookAccessRequest.Status.APPROVED,
                 BookAccessRequest.Status.NEEDS_INFO,
                 BookAccessRequest.Status.REJECTED,
-            ) and (status_changed or (obj.status == BookAccessRequest.Status.NEEDS_INFO and note_changed)):
+            ):
                 from apps.accounts.notifications import notify_book_access_decision
 
                 notify_book_access_decision(obj, event=event, actor=request.user)
+            elif sending_message:
+                from apps.accounts.notifications import notify_book_access_message
+
+                notify_book_access_message(obj, event=event, actor=request.user)
+                self.message_user(
+                    request,
+                    "پیام شما دربارهٔ درخواست دسترسی گروهی ثبت و برای استاد ارسال شد.",
+                    level=messages.SUCCESS,
+                )
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        extra = dict(extra_context or {})
+        obj = self.get_object(request, object_id)
+        extra["access_can_send_message"] = bool(
+            obj is not None
+            and _is_manager(request.user)
+            and obj.status in (BookAccessRequest.Status.PENDING, BookAccessRequest.Status.NEEDS_INFO)
+        )
+        return super().change_view(request, object_id, form_url=form_url, extra_context=extra)
 
 
 class PublicationRequestAdminForm(forms.ModelForm):

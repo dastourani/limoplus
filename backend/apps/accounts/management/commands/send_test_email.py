@@ -24,16 +24,20 @@ class Command(BaseCommand):
         except ValidationError as exc:
             raise CommandError("نشانی ایمیل واردشده معتبر نیست.") from exc
 
-        self.stdout.write(f"EMAIL_BACKEND = {settings.EMAIL_BACKEND}")
+        backend = settings.EMAIL_BACKEND
+        is_smtp = backend == "django.core.mail.backends.smtp.EmailBackend"
+
+        self.stdout.write(f"EMAIL_BACKEND = {backend}")
         self.stdout.write(f"EMAIL_HOST = {settings.EMAIL_HOST}:{settings.EMAIL_PORT}")
         self.stdout.write(f"EMAIL_USE_TLS = {settings.EMAIL_USE_TLS} | EMAIL_USE_SSL = {settings.EMAIL_USE_SSL}")
         self.stdout.write(f"DEFAULT_FROM_EMAIL = {settings.DEFAULT_FROM_EMAIL}")
         self.stdout.write(f"SITE_URL = {settings.SITE_URL}")
 
-        if settings.EMAIL_BACKEND.endswith("console.EmailBackend"):
+        if not is_smtp:
             self.stdout.write(
                 self.style.WARNING(
-                    "بک‌اند روی console است؛ برای ارسال واقعی روی سرور، EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend را تنظیم کنید."
+                    "هشدار: بک‌اند ایمیل روی SMTP نیست؛ بنابراین این آزمایش فقط محلی است و هیچ سروری پیام را دریافت نمی‌کند. "
+                    "برای آزمون واقعی، EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend را تنظیم کنید."
                 )
             )
 
@@ -59,7 +63,19 @@ class Command(BaseCommand):
         except Exception as exc:
             raise CommandError(f"ارسال ایمیل با خطا مواجه شد: {exc.__class__.__name__}: {exc}") from exc
 
-        if sent_count:
-            self.stdout.write(self.style.SUCCESS(f"سرور ایمیل پیام را برای {target} پذیرفت (sent={sent_count}). لطفاً صندوق ورودی و پوشه هرزنامه (Spam) را بررسی کنید."))
+        if not sent_count or sent_count <= 0:
+            raise CommandError("ارسال ایمیل ناموفق بود؛ بک‌اند هیچ پیامی را نپذیرفت (sent=0).")
+
+        if is_smtp:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"پذیرش توسط SMTP: پیام برای {target} پذیرفته شد (sent={sent_count}). "
+                    "لطفاً صندوق ورودی و پوشه هرزنامه (Spam) را بررسی کنید."
+                )
+            )
         else:
-            self.stdout.write(self.style.WARNING("سرور ایمیل خطا نداد اما هیچ پیامی ارسال نشد (sent=0)."))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"آزمایش محلی انجام شد (بک‌اند: {backend}، sent={sent_count})؛ بدون تنظیم SMTP ارسال واقعی صورت نگرفته است."
+                )
+            )

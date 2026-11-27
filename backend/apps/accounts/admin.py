@@ -334,11 +334,17 @@ class UserAdmin(BaseUserAdmin):
                 f"با احترام،\nتیم لیموخوان"
             )
             try:
-                send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [new_email], fail_silently=False)
-                messages.success(
-                    request,
-                    f"ایمیل جدید ({new_email}) ثبت شد و تا زمان تأیید، ارسال به نشانی قبلی متوقف است. پیوند تأیید ارسال گردید.",
-                )
+                sent_count = send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [new_email], fail_silently=False)
+                if not sent_count or sent_count <= 0:
+                    messages.warning(
+                        request,
+                        f"ایمیل جدید ({new_email}) ثبت شد و تأیید قبلی لغو گردید، اما سرور ایمیل پیامی نپذیرفت (sent=0).",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"ایمیل جدید ({new_email}) ثبت شد و تا زمان تأیید، ارسال به نشانی قبلی متوقف است. پیوند تأیید ارسال گردید.",
+                    )
             except Exception as exc:
                 messages.warning(
                     request,
@@ -381,8 +387,11 @@ class UserAdmin(BaseUserAdmin):
             f"با احترام،\nتیم لیموخوان"
         )
         try:
-            send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False)
-            messages.success(request, f"پیوند تأیید تازه به {user.email} ارسال شد.")
+            sent_count = send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False)
+            if not sent_count or sent_count <= 0:
+                messages.error(request, "سرور ایمیل پیامی نپذیرفت (sent=0).")
+            else:
+                messages.success(request, f"پیوند تأیید تازه به {user.email} ارسال شد.")
         except Exception as exc:
             messages.error(request, f"خطا در ارسال ایمیل: {exc}")
 
@@ -506,10 +515,14 @@ class TeacherNotificationAdmin(admin.ModelAdmin):
     actions = ["retry_selected_notifications"]
 
     def has_module_permission(self, request):
-        return bool(request.user.is_active and request.user.is_superuser)
+        from apps.catalog import access
+
+        return access.acts_as_panel_superuser(request)
 
     def has_view_permission(self, request, obj=None):
-        return bool(request.user.is_active and request.user.is_superuser)
+        from apps.catalog import access
+
+        return access.acts_as_panel_superuser(request)
 
     def has_add_permission(self, request):
         return False
@@ -539,9 +552,11 @@ class TeacherNotificationAdmin(admin.ModelAdmin):
         from django.shortcuts import redirect
         from django.utils.http import url_has_allowed_host_and_scheme
 
+        from apps.catalog import access
+
         from .notifications import dispatch_teacher_notification
 
-        if not (request.user.is_active and request.user.is_superuser):
+        if not access.acts_as_panel_superuser(request):
             raise PermissionDenied
         if request.method == "POST":
             ok = dispatch_teacher_notification(notification_id)
@@ -558,9 +573,14 @@ class TeacherNotificationAdmin(admin.ModelAdmin):
     @admin.action(description="تلاش مجدد برای ارسال اعلان‌های انتخاب‌شده")
     def retry_selected_notifications(self, request, queryset):
         from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+
+        from apps.catalog import access
 
         from .notifications import retry_teacher_notifications
 
+        if not access.acts_as_panel_superuser(request):
+            raise PermissionDenied
         stats = retry_teacher_notifications(queryset)
         self.message_user(
             request,

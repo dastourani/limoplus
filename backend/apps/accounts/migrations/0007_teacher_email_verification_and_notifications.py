@@ -5,6 +5,14 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def invalidate_legacy_pending_tokens(apps, schema_editor):
+    """Expire pre-upgrade unbound pending email tokens while preserving already-verified addresses."""
+    User = apps.get_model("accounts", "User")
+    User.objects.filter(email_verification_nonce="").exclude(email_verification_token="").update(
+        email_verification_token=""
+    )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -32,7 +40,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('recipient_email', models.EmailField(blank=True, max_length=254, verbose_name='نشانی ایمیل استفاده\u200cشده')),
-                ('event_type', models.CharField(choices=[('pub_offer_sent', 'ارسال پیشنهاد مالی انتشار'), ('pub_offer_reminder', 'یادآوری پیشنهاد مالی انتشار'), ('pub_needs_info', 'درخواست اصلاح محتوای کتاب'), ('pub_approved', 'تأیید درخواست انتشار کتاب'), ('pub_rejected', 'رد درخواست انتشار کتاب'), ('access_approved', 'تأیید درخواست دسترسی گروهی'), ('access_needs_info', 'نیازمند تکمیل درخواست دسترسی گروهی'), ('access_rejected', 'رد درخواست دسترسی گروهی'), ('payout_paid', 'واریز تسویه حساب'), ('payout_rejected', 'رد درخواست تسویه حساب')], db_index=True, max_length=32, verbose_name='نوع رویداد')),
+                ('event_type', models.CharField(choices=[('pub_offer_sent', 'ارسال پیشنهاد مالی انتشار'), ('pub_offer_reminder', 'یادآوری پیشنهاد مالی انتشار'), ('pub_needs_info', 'درخواست اصلاح محتوای کتاب'), ('pub_approved', 'تأیید درخواست انتشار کتاب'), ('pub_rejected', 'رد درخواست انتشار کتاب'), ('access_approved', 'تأیید درخواست دسترسی گروهی'), ('access_needs_info', 'نیازمند تکمیل درخواست دسترسی گروهی'), ('access_rejected', 'رد درخواست دسترسی گروهی'), ('access_message', 'پیام دربارهٔ درخواست دسترسی گروهی'), ('payout_paid', 'واریز تسویه حساب'), ('payout_rejected', 'رد درخواست تسویه حساب')], db_index=True, max_length=32, verbose_name='نوع رویداد')),
                 ('dedupe_key', models.CharField(max_length=160, unique=True, verbose_name='کلید یکتایی رویداد')),
                 ('source_ref', models.CharField(blank=True, db_index=True, max_length=80, verbose_name='مرجع درخواست')),
                 ('book_id', models.PositiveBigIntegerField(blank=True, db_index=True, null=True, verbose_name='شناسه کتاب')),
@@ -58,4 +66,5 @@ class Migration(migrations.Migration):
                 'indexes': [models.Index(fields=['status', '-created_at'], name='teacher_notif_status_idx'), models.Index(fields=['recipient', '-created_at'], name='teacher_notif_rcpt_idx')],
             },
         ),
+        migrations.RunPython(invalidate_legacy_pending_tokens, migrations.RunPython.noop),
     ]

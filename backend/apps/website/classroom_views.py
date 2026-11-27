@@ -269,7 +269,20 @@ def verify_teacher_email(request, token):
     from django.urls import reverse
 
     User = get_user_model()
-    user, state = User.resolve_email_verification(token)
+    acting_id = request.user.pk if request.user.is_authenticated else None
+    user, state = User.consume_email_verification(token, acting_user_id=acting_id)
+    if state == "wrong_user":
+        return render(
+            request,
+            "website/teacher_notice_error.html",
+            {
+                **_base(request),
+                "title": "عدم تطابق حساب کاربری",
+                "message": "این پیوند تأیید متعلق به حساب کاربری دیگری است. برای تأیید آن ابتدا از حساب فعلی خارج شوید.",
+                "teacher_login_url": reverse("teacher-login"),
+            },
+            status=403,
+        )
     if user is None or state != "ok":
         msg = (
             "مهلت اعتبار این پیوند تأیید به پایان رسیده است. لطفاً در پنل استادی، گزینهٔ «ارسال مجدد» یا «ویرایش ایمیل» را بزنید."
@@ -288,20 +301,6 @@ def verify_teacher_email(request, token):
             status=400,
         )
 
-    if request.user.is_authenticated and request.user.pk != user.pk:
-        return render(
-            request,
-            "website/teacher_notice_error.html",
-            {
-                **_base(request),
-                "title": "عدم تطابق حساب کاربری",
-                "message": "این پیوند تأیید متعلق به حساب کاربری دیگری است. برای تأیید آن ابتدا از حساب فعلی خارج شوید.",
-                "teacher_login_url": reverse("teacher-login"),
-            },
-            status=403,
-        )
-
-    user.verify_email()
     if request.user.is_authenticated and request.user.is_active and request.user.is_staff:
         messages.success(
             request,

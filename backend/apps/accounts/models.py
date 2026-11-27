@@ -90,69 +90,125 @@ class User(AbstractBaseUser, PermissionsMixin):
         return public_token
 
     def generate_email_verification_token(self) -> str:
-        public_token = self._prepare_email_verification_fields()
-        self.save(
-            update_fields=[
-                "email_verification_token",
-                "email_verification_target",
-                "email_verification_sent_at",
-                "email_verification_nonce",
-            ]
-        )
-        return public_token
+        from django.db import transaction
+
+        with transaction.atomic():
+            locked = User.objects.select_for_update().get(pk=self.pk)
+            locked.email = self.email
+            public_token = locked._prepare_email_verification_fields()
+            locked.save(
+                update_fields=[
+                    "email_verification_token",
+                    "email_verification_target",
+                    "email_verification_sent_at",
+                    "email_verification_nonce",
+                ]
+            )
+            self.email_verification_token = locked.email_verification_token
+            self.email_verification_target = locked.email_verification_target
+            self.email_verification_sent_at = locked.email_verification_sent_at
+            self.email_verification_nonce = locked.email_verification_nonce
+            return public_token
 
     def begin_email_change(self, new_email: str) -> str:
         """Atomically replace the working email, revoke prior verification, and issue a single-use bound token."""
+        from django.db import transaction
+
         normalized = (new_email or "").strip().lower()
-        self.email = normalized
-        self.email_verified_at = None
-        public_token = self._prepare_email_verification_fields()
-        self.save(
-            update_fields=[
-                "email",
-                "email_verified_at",
-                "email_verification_token",
-                "email_verification_target",
-                "email_verification_sent_at",
-                "email_verification_nonce",
-            ]
-        )
-        return public_token
+        with transaction.atomic():
+            locked = User.objects.select_for_update().get(pk=self.pk)
+            locked.email = normalized
+            locked.email_verified_at = None
+            public_token = locked._prepare_email_verification_fields()
+            locked.save(
+                update_fields=[
+                    "email",
+                    "email_verified_at",
+                    "email_verification_token",
+                    "email_verification_target",
+                    "email_verification_sent_at",
+                    "email_verification_nonce",
+                ]
+            )
+            self.email = locked.email
+            self.email_verified_at = locked.email_verified_at
+            self.email_verification_token = locked.email_verification_token
+            self.email_verification_target = locked.email_verification_target
+            self.email_verification_sent_at = locked.email_verification_sent_at
+            self.email_verification_nonce = locked.email_verification_nonce
+            return public_token
 
     @classmethod
-    def resolve_email_verification(cls, raw_token: str) -> tuple["User | None", str]:
+    def consume_email_verification(
+        cls,
+        raw_token: str,
+        *,
+        acting_user_id: int | None = None,
+    ) -> tuple["User | None", str]:
+        """Atomically validate and consume a single-use verification token bound to the exact target email."""
+        from django.db import transaction
+
         token = (raw_token or "").strip()
-        if not token:
+        if not token or "." not in token:
             return None, "invalid"
-        if "." in token:
-            nonce, _ = token.split(".", 1)
-            if not nonce:
+        nonce, _ = token.split(".", 1)
+        if not nonce:
+            return None, "invalid"
+
+        with transaction.atomic():
+            user = cls.objects.select_for_update().filter(email_verification_nonce=nonce).first()
+            if (
+                user is None
+                or not user.email_verification_token
+                or not user.email_verification_target
+                or not user.email_verification_nonce
+            ):
                 return None, "invalid"
-            user = cls.objects.filter(email_verification_nonce=nonce).first()
-            if user is None or not user.email_verification_token or not user.email_verification_target:
-                return None, "invalid"
+
+            target_email = user.email_verification_target.strip().lower()
             current_email = (user.email or "").strip().lower()
-            if current_email != user.email_verification_target.strip().lower():
+            if not target_email or current_email != target_email:
                 return None, "invalid"
+
             expected = cls.email_verification_digest(
                 token,
-                email=user.email_verification_target,
-                nonce=user.email_verification_nonce,
+                email=target_email,
+                nonce=nonce,
             )
             if not hmac.compare_digest(user.email_verification_token, expected):
                 return None, "invalid"
+
+            if acting_user_id is not None and user.pk != acting_user_id:
+                return user, "wrong_user"
+
             expiry_hours = max(1, int(getattr(settings, "EMAIL_VERIFICATION_EXPIRY_HOURS", 24)))
             if not user.email_verification_sent_at or (
                 timezone.now() - user.email_verification_sent_at > timedelta(hours=expiry_hours)
             ):
                 return None, "expired"
-            return user, "ok"
 
-        # Legacy un-hashed token path (for direct test fixtures without nonce).
-        user = cls.objects.filter(email_verification_token=token, email_verification_nonce="").first()
-        if user is None or not (user.email or "").strip():
-            return None, "invalid"
-        return user, "ok"
+            now = timezone.now()
+            updated = cls.objects.filter(
+                pk=user.pk,
+                email=target_email,
+                email_verification_nonce=nonce,
+                email_verification_token=expected,
+            ).update(
+                email_verified_at=now,
+                email_verification_token="",
+                email_verification_target="",
+                email_verification_sent_at=None,
+                email_verification_nonce="",
+            )
+            if updated != 1:
+                return None, "invalid"
+
+            user.email_verified_at = now
+            user.email_verification_token = ""
+            user.email_verification_target = ""
+            user.email_verification_sent_at = None
+            user.email_verification_nonce = ""
+            return user, "ok"
 
     def verify_email(self):
         self.email_verified_at = timezone.now()
@@ -322,6 +378,7 @@ class TeacherNotification(models.Model):
         ACCESS_APPROVED = "access_approved", "تأیید درخواست دسترسی گروهی"
         ACCESS_NEEDS_INFO = "access_needs_info", "نیازمند تکمیل درخواست دسترسی گروهی"
         ACCESS_REJECTED = "access_rejected", "رد درخواست دسترسی گروهی"
+        ACCESS_MESSAGE = "access_message", "پیام دربارهٔ درخواست دسترسی گروهی"
         PAYOUT_PAID = "payout_paid", "واریز تسویه حساب"
         PAYOUT_REJECTED = "payout_rejected", "رد درخواست تسویه حساب"
 

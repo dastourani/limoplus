@@ -1,11 +1,14 @@
 from datetime import timedelta
 from io import StringIO
+import threading
 from unittest import mock
 
 from django.contrib.auth.models import Group
 from django.core import mail
-from django.core.management import call_command
-from django.test import Client, TestCase, override_settings
+from django.core.management import CommandError, call_command
+from django.db import close_old_connections, connection, connections
+from django.db.migrations.executor import MigrationExecutor
+from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -544,11 +547,26 @@ class TeacherWorkflowNotificationsTests(TestCase):
         self.assertEqual(rej_notif.status, TeacherNotification.Status.SENT)
 
     def test_management_commands_send_test_email_and_retry(self):
+        # 1. Non-SMTP backend must warn explicitly and must NOT claim SMTP acceptance
         out = StringIO()
         call_command("send_test_email", "probe@example.com", stdout=out)
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["probe@example.com"])
-        self.assertIn("سرور ایمیل پیام را", out.getvalue())
+        self.assertIn("آزمایش محلی انجام شد", out.getvalue())
+        self.assertNotIn("پذیرش توسط SMTP", out.getvalue())
+
+        # 2. SMTP backend with sent=1 reports SMTP acceptance
+        out_smtp = StringIO()
+        with override_settings(EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"):
+            with mock.patch("django.core.mail.EmailMultiAlternatives.send", return_value=1):
+                call_command("send_test_email", "smtp-ok@example.com", stdout=out_smtp)
+        self.assertIn("پذیرش توسط SMTP", out_smtp.getvalue())
+
+        # 3. sent=0 must raise CommandError
+        with override_settings(EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"):
+            with mock.patch("django.core.mail.EmailMultiAlternatives.send", return_value=0):
+                with self.assertRaises(CommandError):
+                    call_command("send_test_email", "zero@example.com", stdout=StringIO())
 
         # Retry command handles pending/failed cleanly
         notif = TeacherNotification.objects.create(
@@ -566,3 +584,243 @@ class TeacherWorkflowNotificationsTests(TestCase):
         self.assertIn("Attempted=1", out2.getvalue())
         notif.refresh_from_db()
         self.assertEqual(notif.status, TeacherNotification.Status.FAILED)
+
+    def test_send_returning_zero_records_notification_as_failed(self):
+        from apps.accounts.notifications import dispatch_teacher_notification
+
+        access_req = BookAccessRequest.objects.create(
+            book=self.book,
+            requested_by=self.teacher,
+            request_note="دانشجویان ترم بهار",
+            status=BookAccessRequest.Status.PENDING,
+        )
+        with mock.patch("django.core.mail.EmailMultiAlternatives.send", return_value=0):
+            with self.captureOnCommitCallbacks(execute=True):
+                self.mgr_client.post(
+                    reverse("admin:website_bookaccessrequest_change", args=[access_req.pk]),
+                    {
+                        "status": BookAccessRequest.Status.NEEDS_INFO,
+                        "review_note": "لطفاً شماره‌ها را اصلاح کنید",
+                        "expiry_policy": "",
+                        "duration_days": "",
+                        "ends_on": "",
+                    },
+                )
+        notif = TeacherNotification.objects.get(source_ref=f"access:{access_req.pk}")
+        self.assertEqual(notif.status, TeacherNotification.Status.FAILED)
+        self.assertIn("sent=0", notif.last_error)
+        with mock.patch("django.core.mail.EmailMultiAlternatives.send", return_value=0):
+            self.assertFalse(dispatch_teacher_notification(notif.pk))
+        notif.refresh_from_db()
+        self.assertEqual(notif.status, TeacherNotification.Status.FAILED)
+        self.assertEqual(notif.attempt_count, 2)
+
+    def test_book_access_note_edit_in_needs_info_is_silent_until_explicit_message_button(self):
+        access_req = BookAccessRequest.objects.create(
+            book=self.book,
+            requested_by=self.teacher,
+            request_note="گروه اول",
+            status=BookAccessRequest.Status.PENDING,
+        )
+        url = reverse("admin:website_bookaccessrequest_change", args=[access_req.pk])
+
+        # 1. Status transition PENDING -> NEEDS_INFO sends email
+        with self.captureOnCommitCallbacks(execute=True):
+            self.mgr_client.post(
+                url,
+                {
+                    "status": BookAccessRequest.Status.NEEDS_INFO,
+                    "review_note": "شماره دوم ناقص است",
+                    "expiry_policy": "",
+                    "duration_days": "",
+                    "ends_on": "",
+                },
+            )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(TeacherNotification.objects.filter(source_ref=f"access:{access_req.pk}").count(), 1)
+
+        # 2. Normal edit of review_note while already NEEDS_INFO must NOT send email
+        mail.outbox.clear()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.mgr_client.post(
+                url,
+                {
+                    "status": BookAccessRequest.Status.NEEDS_INFO,
+                    "review_note": "یادداشت اصلاح‌شده داخلی/ویرایشی بدون ایمیل",
+                    "expiry_policy": "",
+                    "duration_days": "",
+                    "ends_on": "",
+                },
+            )
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(TeacherNotification.objects.filter(source_ref=f"access:{access_req.pk}").count(), 1)
+
+        # 3. Clicking explicit "_send_access_message" sends an ACCESS_MESSAGE email
+        with self.captureOnCommitCallbacks(execute=True):
+            res_msg = self.mgr_client.post(
+                url,
+                {
+                    "status": BookAccessRequest.Status.NEEDS_INFO,
+                    "review_note": "لطفاً فهرست اصلاح‌شده را تا فردا ثبت کنید",
+                    "expiry_policy": "",
+                    "duration_days": "",
+                    "ends_on": "",
+                    "_send_access_message": "ارسال پیام به استاد",
+                },
+                follow=True,
+            )
+        self.assertEqual(res_msg.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(
+            TeacherNotification.objects.filter(
+                source_ref=f"access:{access_req.pk}",
+                event_type=TeacherNotification.EventType.ACCESS_MESSAGE,
+            ).count(),
+            1,
+        )
+
+    def test_teacher_notification_admin_respects_panel_superuser_and_teacher_view_mode(self):
+        notif = TeacherNotification.objects.create(
+            recipient=self.teacher,
+            event_type=TeacherNotification.EventType.PAYOUT_PAID,
+            dedupe_key="admin-perm-test-1",
+            source_ref="payout:12345",
+            object_id=12345,
+            subject="اعلان تست",
+            headline="اعلان تست",
+            status=TeacherNotification.Status.FAILED,
+        )
+        list_url = reverse("admin:accounts_teachernotification_changelist")
+        detail_url = reverse("admin:accounts_teachernotification_change", args=[notif.pk])
+        retry_url = reverse("admin:accounts_teachernotification_retry", args=[notif.pk])
+        bulk_payload = {
+            "action": "retry_selected_notifications",
+            "_selected_action": [str(notif.pk)],
+        }
+
+        # 1. Superuser in normal mode has full read + retry access
+        self.assertEqual(self.mgr_client.get(list_url).status_code, 200)
+        self.assertEqual(self.mgr_client.get(detail_url).status_code, 200)
+        self.assertEqual(self.mgr_client.post(retry_url).status_code, 302)
+        self.assertEqual(self.mgr_client.post(list_url, bulk_payload).status_code, 302)
+
+        # 2. Superuser switched to "نمای استاد" must be denied (403) on every TeacherNotificationAdmin endpoint
+        session = self.mgr_client.session
+        session["admin_view_mode"] = "teacher"
+        session.save()
+        self.assertEqual(self.mgr_client.get(list_url).status_code, 403)
+        self.assertEqual(self.mgr_client.get(detail_url).status_code, 403)
+        self.assertEqual(self.mgr_client.post(retry_url).status_code, 403)
+        self.assertEqual(self.mgr_client.post(list_url, bulk_payload).status_code, 403)
+        session = self.mgr_client.session
+        session["admin_view_mode"] = "admin"
+        session.save()
+
+        # 3. Real teacher is denied (403) everywhere
+        t_client = Client()
+        t_client.force_login(self.teacher)
+        self.assertEqual(t_client.get(list_url).status_code, 403)
+        self.assertEqual(t_client.get(detail_url).status_code, 403)
+        self.assertEqual(t_client.post(retry_url).status_code, 403)
+        self.assertEqual(t_client.post(list_url, bulk_payload).status_code, 403)
+
+
+class AccountMigration0007Tests(TransactionTestCase):
+    migrate_from = [("accounts", "0006_panellogincode_staff_only")]
+    migrate_to = [("accounts", "0007_teacher_email_verification_and_notifications")]
+
+    def tearDown(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        super().tearDown()
+
+    def test_0007_invalidates_pending_legacy_tokens_but_preserves_verified_teachers(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        old_apps = executor.loader.project_state(self.migrate_from).apps
+        OldUser = old_apps.get_model("accounts", "User")
+
+        pending_user = OldUser.objects.create(
+            phone="09128880001",
+            email="pending@example.com",
+            email_verified_at=None,
+            email_verification_token="legacy-raw-pending-token",
+            is_staff=True,
+        )
+        verified_at = timezone.now() - timedelta(days=5)
+        verified_user = OldUser.objects.create(
+            phone="09128880002",
+            email="verified@example.com",
+            email_verified_at=verified_at,
+            email_verification_token="legacy-stale-token",
+            is_staff=True,
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_to)
+
+        pending_after = User.objects.get(pk=pending_user.pk)
+        self.assertEqual(pending_after.email_verification_token, "")
+        self.assertIsNone(pending_after.email_verified_at)
+        self.assertFalse(pending_after.is_email_verified)
+        self.assertEqual(User.consume_email_verification("legacy-raw-pending-token"), (None, "invalid"))
+
+        verified_after = User.objects.get(pk=verified_user.pk)
+        self.assertEqual(verified_after.email, "verified@example.com")
+        self.assertIsNotNone(verified_after.email_verified_at)
+        self.assertTrue(verified_after.is_email_verified)
+        self.assertEqual(verified_after.email_verification_token, "")
+
+
+class PostgresConcurrentEmailVerificationTests(TransactionTestCase):
+    def test_concurrent_verify_and_email_change_never_marks_new_address_verified(self):
+        if connection.vendor == "sqlite":
+            self.skipTest("SQLite lacks row-level SELECT FOR UPDATE concurrency; covered on PostgreSQL CI.")
+
+        teacher = User.objects.create_user(
+            "09129990001",
+            email="first@example.com",
+            is_staff=True,
+        )
+        token_first = teacher.generate_email_verification_token()
+
+        barrier = threading.Barrier(2)
+        results = {}
+        errors = []
+
+        def run_verify():
+            close_old_connections()
+            try:
+                barrier.wait(timeout=10)
+                _, state = User.consume_email_verification(token_first)
+                results["verify_state"] = state
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                connections.close_all()
+
+        def run_change():
+            close_old_connections()
+            try:
+                barrier.wait(timeout=10)
+                User.objects.get(pk=teacher.pk).begin_email_change("second@example.com")
+                results["changed"] = True
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                connections.close_all()
+
+        t1 = threading.Thread(target=run_verify)
+        t2 = threading.Thread(target=run_change)
+        t1.start()
+        t2.start()
+        t1.join(timeout=15)
+        t2.join(timeout=15)
+
+        self.assertEqual(errors, [])
+        self.assertTrue(results.get("changed"))
+        teacher.refresh_from_db()
+        self.assertEqual(teacher.email, "second@example.com")
+        self.assertFalse(teacher.is_email_verified)
+        self.assertIsNone(teacher.email_verified_at)
+        self.assertEqual(User.consume_email_verification(token_first), (None, "invalid"))

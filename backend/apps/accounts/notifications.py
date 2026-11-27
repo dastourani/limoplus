@@ -1,9 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor
 import logging
 from urllib.parse import quote
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connections, transaction
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -13,6 +14,7 @@ from django.utils.html import escape
 from .models import TeacherNotification
 
 log = logging.getLogger(__name__)
+_EMAIL_NOTIFY_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="teacher-email")
 
 
 def _build_email_bodies(notif: TeacherNotification, action_url: str) -> tuple[str, str]:
@@ -109,7 +111,8 @@ def _recipient_still_has_access(notif: TeacherNotification) -> tuple[bool, str]:
 
 
 def dispatch_teacher_notification(notification_id: int, *, force: bool = False) -> bool:
-    """Attempt email delivery for a persisted TeacherNotification; never raises."""
+    """Attempt email delivery for a persisted TeacherNotification outside any DB lock; never raises."""
+    payload = None
     with transaction.atomic():
         notif = (
             TeacherNotification.objects.select_for_update()
@@ -148,45 +151,58 @@ def dispatch_teacher_notification(notification_id: int, *, force: bool = False) 
         notif.attempt_count += 1
         notif.last_attempt_at = now
         notif.recipient_email = target_email
+        notif.save(update_fields=["attempt_count", "last_attempt_at", "recipient_email"])
+        payload = {
+            "subject": notif.subject,
+            "text_body": text_body,
+            "html_body": html_body,
+            "target_email": target_email,
+        }
 
-        try:
-            msg = EmailMultiAlternatives(
-                subject=notif.subject,
-                body=text_body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[target_email],
-            )
-            msg.attach_alternative(html_body, "text/html")
-            msg.send(fail_silently=False)
-        except Exception as exc:
-            log.exception("Failed sending teacher notification #%s to %s", notif.pk, target_email)
-            notif.status = TeacherNotification.Status.FAILED
-            notif.last_error = f"{exc.__class__.__name__}: {exc}"[:1000]
-            notif.save(
-                update_fields=[
-                    "status",
-                    "recipient_email",
-                    "attempt_count",
-                    "last_attempt_at",
-                    "last_error",
-                ]
-            )
-            return False
-
-        notif.status = TeacherNotification.Status.SENT
-        notif.sent_at = now
-        notif.last_error = ""
-        notif.save(
-            update_fields=[
-                "status",
-                "recipient_email",
-                "attempt_count",
-                "last_attempt_at",
-                "sent_at",
-                "last_error",
-            ]
+    # Network I/O runs completely outside any DB transaction or row lock.
+    send_error = ""
+    sent_ok = False
+    try:
+        msg = EmailMultiAlternatives(
+            subject=payload["subject"],
+            body=payload["text_body"],
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[payload["target_email"]],
         )
-        return True
+        msg.attach_alternative(payload["html_body"], "text/html")
+        sent_count = msg.send(fail_silently=False)
+        if sent_count and sent_count > 0:
+            sent_ok = True
+        else:
+            send_error = "سرور ایمیل پیامی را نپذیرفت (sent=0)."
+    except Exception as exc:
+        log.exception("Failed sending teacher notification #%s to %s", notification_id, payload["target_email"])
+        send_error = f"{exc.__class__.__name__}: {exc}"[:1000]
+
+    with transaction.atomic():
+        notif = TeacherNotification.objects.select_for_update().filter(pk=notification_id).first()
+        if notif is None:
+            return sent_ok
+        if sent_ok:
+            notif.status = TeacherNotification.Status.SENT
+            notif.sent_at = timezone.now()
+            notif.last_error = ""
+            notif.save(update_fields=["status", "sent_at", "last_error"])
+            return True
+        notif.status = TeacherNotification.Status.FAILED
+        notif.last_error = send_error
+        notif.save(update_fields=["status", "last_error"])
+        return False
+
+
+def _dispatch_in_worker(notification_id: int) -> None:
+    try:
+        connections.close_all()
+        dispatch_teacher_notification(notification_id)
+    except Exception:
+        log.exception("Unexpected worker error dispatching notification #%s", notification_id)
+    finally:
+        connections.close_all()
 
 
 def queue_teacher_notification(
@@ -244,7 +260,13 @@ def queue_teacher_notification(
         created = False
 
     if created:
-        transaction.on_commit(lambda nid=notif.pk: dispatch_teacher_notification(nid))
+        def _schedule(nid=notif.pk):
+            if getattr(settings, "TESTING", False):
+                dispatch_teacher_notification(nid)
+            else:
+                _EMAIL_NOTIFY_EXECUTOR.submit(_dispatch_in_worker, nid)
+
+        transaction.on_commit(_schedule)
     return notif
 
 
@@ -367,6 +389,24 @@ def notify_book_access_decision(access_req, *, event, actor):
         headline=headline,
         cta_label="مشاهده در میز تألیف",
         is_reminder=False,
+        created_by=actor,
+    )
+
+
+def notify_book_access_message(access_req, *, event, actor, is_reminder: bool = True):
+    book = access_req.book
+    return queue_teacher_notification(
+        recipient=access_req.requested_by,
+        event_type=TeacherNotification.EventType.ACCESS_MESSAGE,
+        dedupe_key=f"access:{access_req.pk}:msg:ev:{event.pk}",
+        source_ref=f"access:{access_req.pk}",
+        book_id=book.pk,
+        book_title=book.title,
+        object_id=access_req.pk,
+        subject=f"پیام تازه دربارهٔ دسترسی گروهی کتاب «{book.title}»",
+        headline=f"دربارهٔ درخواست دسترسی گروهی کتاب «{book.title}» پیام تازه‌ای در پنل ثبت شده است.",
+        cta_label="مشاهده در میز تألیف",
+        is_reminder=is_reminder,
         created_by=actor,
     )
 
