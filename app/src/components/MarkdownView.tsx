@@ -47,6 +47,8 @@ type Props = {
   markdown: string;
   /** Short texts (questions, explanations): sized to their content inside a parent ScrollView. */
   compact?: boolean;
+  /** Info/legal site pages: justify paragraphs, lists, and table cells even inside compact mode. */
+  sitePage?: boolean;
   fontSize?: number;
   dark?: boolean;
   sepia?: boolean;
@@ -112,7 +114,7 @@ const READER_BOOT = `
 
 /** Lesson text with formulas, tables and boxes. Native version: rendered in a WebView. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, justify = true, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, end, startAt },
+  { markdown, compact = false, sitePage = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, justify = true, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, end, startAt },
   ref,
 ) {
   const web = useRef<{ injectJavaScript: (script: string) => void } | null>(null);
@@ -122,8 +124,8 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
     () => `<!doctype html><html dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <style>${FONT_CSS}${CONTENT_CSS} body{--fs:${fontSize}px;--lh:${lineHeight}}</style></head>
-<body><div class="lesson${compact ? ' compact no-select' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}${justify ? '' : ' ragged'}">${compact ? '' : pageStartHtml(end)}${variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)}${compact ? '' : pageEndHtml(end)}</div></body></html>`,
-    [markdown, compact, fontSize, dark, sepia, lineHeight, justify, variant, hasCards, end],
+<body><div class="lesson${compact ? ' compact no-select' : ''}${sitePage ? ' site-page' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}${justify ? '' : ' ragged'}">${compact ? '' : pageStartHtml(end)}${variant === 'summary' ? renderSummary(markdown, { hasCards }) : renderMarkdown(markdown)}${compact ? '' : pageEndHtml(end)}</div></body></html>`,
+    [markdown, compact, sitePage, fontSize, dark, sepia, lineHeight, justify, variant, hasCards, end],
   );
 
   useEffect(() => setLoaded(false), [html]);

@@ -11,6 +11,7 @@ export type { Highlight, MarkdownViewHandle, ReaderEvent } from './MarkdownView'
 type Props = {
   markdown: string;
   compact?: boolean;
+  sitePage?: boolean;
   fontSize?: number;
   dark?: boolean;
   sepia?: boolean;
@@ -38,7 +39,7 @@ function injectCss() {
 
 /** Lesson text with formulas, tables and boxes. Web version: rendered straight into the page. */
 export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function MarkdownView(
-  { markdown, compact = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, justify = true, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, end, startAt },
+  { markdown, compact = false, sitePage = false, fontSize = 17, dark = false, sepia = false, lineHeight = 2, justify = true, highlights, variant = 'notes', hasCards, flash, terms, onEvent, turn, end, startAt },
   ref,
 ) {
   injectCss();
@@ -149,7 +150,7 @@ export const MarkdownView = forwardRef<MarkdownViewHandle, Props>(function Markd
   const content = (
     <div
       ref={root}
-      className={`lesson${compact ? ' compact' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}${justify ? '' : ' ragged'}`}
+      className={`lesson${compact ? ' compact' : ''}${sitePage ? ' site-page' : ''}${dark ? ' dark' : ''}${sepia ? ' sepia' : ''}${justify ? '' : ' ragged'}`}
       style={{ ['--fs' as string]: `${fontSize}px`, ['--lh' as string]: String(lineHeight) }}
       dangerouslySetInnerHTML={{ __html: html }}
     />

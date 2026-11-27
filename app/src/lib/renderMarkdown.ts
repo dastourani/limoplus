@@ -290,8 +290,12 @@ body { margin: 0; background: transparent; color: #17201A; }
 .lesson.compact { padding: 0; font-size: 16px; line-height: 1.9; }
 .lesson p { margin: 0 0 14px; }
 /* Paragraphs aligned on both sides like a printed book (last line to the right); lists and short texts stay ragged.
-   «ragged»: the learner chose right-aligned text. */
+   «ragged»: the learner chose right-aligned text. «site-page»: info/legal pages in web & native app match website justification. */
 .lesson:not(.compact):not(.ragged) p { text-align: justify; text-align-last: start; text-justify: inter-word; }
+.lesson.site-page p,
+.lesson.site-page li,
+.lesson.site-page .table-wrap td { text-align: justify; text-align-last: start; text-justify: inter-word; }
+.lesson.site-page .table-wrap th { text-align: right; }
 .lesson h1, .lesson h2, .lesson h3 { line-height: 1.5; margin: 22px 0 10px; }
 .lesson strong { background: #FFF1B8; border-radius: 4px; padding: 0 3px; }
 .lesson ul, .lesson ol { padding-right: 22px; padding-left: 0; margin: 0 0 14px; }

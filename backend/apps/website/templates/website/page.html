@@ -52,6 +52,16 @@
       </div>
     </div>
     {% endif %}
+    {% if page.slug == "about" %}
+    <div class="feat about-actions">
+      <p><b>لیموخوان:</b> بستر مطالعهٔ تعاملی کتاب‌های درسی و دانشگاهی برای دانشجویان و اساتید ایران</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: 12px;">
+        <a class="btn lemon small" href="{% url 'website:books' %}">مشاهدهٔ کتاب‌ها</a>
+        <a class="btn ghost-dark small" href="{% url 'website:teacher-application' %}">همکاری اساتید و مؤلفان</a>
+        <a class="btn dark small" href="{% url 'website:page' 'contact' %}">تماس با ما</a>
+      </div>
+    </div>
+    {% endif %}
   </article>
 </section>
 {% endif %}

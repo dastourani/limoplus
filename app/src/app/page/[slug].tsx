@@ -31,7 +31,7 @@ export default function SitePageScreen() {
             آخرین به‌روزرسانی: {jalaliDate(data!.updated_at)}
             {data!.important_at ? `؛ آخرین تغییر مهم: ${jalaliDate(data!.important_at)}` : ''}
           </Text>
-          <MarkdownView markdown={data!.body} compact />
+          <MarkdownView markdown={data!.body} compact sitePage />
         </ScrollView>
       )}
     </Screen>

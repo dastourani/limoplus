@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from .models import HelpPage, SitePage, SiteSettings
 
 
-ORDER = {"terms": 0, "privacy": 1, "protection": 2}
+ORDER = {"terms": 0, "privacy": 1, "protection": 2, "about": 3}
 
 
 @api_view(["GET"])

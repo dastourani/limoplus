@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { setLabels } from '../labels';
 import { setMacros } from '../macros';
 import { setNumbering } from '../numbering';
-import { renderMarkdown } from '../renderMarkdown';
+import { CONTENT_CSS, renderMarkdown } from '../renderMarkdown';
 
 describe('renderMarkdown offline SVG/image data URI + numbering + macros', () => {
   it('renders base64 SVG & PNG data URIs while blocking unsafe data:text/html and javascript: links', () => {
@@ -34,5 +34,12 @@ describe('renderMarkdown offline SVG/image data URI + numbering + macros', () =>
     expect(html).toContain('مثال ۲-۲');
     expect(html).toContain('data-ref="ex-lim"');
     expect(html).toContain('ℝ');
+  });
+
+  it('justifies paragraphs, lists, and table cells on site-page views (terms, privacy, protection, about)', () => {
+    expect(CONTENT_CSS).toContain('.lesson.site-page p');
+    expect(CONTENT_CSS).toContain('.lesson.site-page li');
+    expect(CONTENT_CSS).toContain('.lesson.site-page .table-wrap td');
+    expect(CONTENT_CSS).toContain('text-align: justify');
   });
 });
