@@ -1,6 +1,6 @@
 FROM python:3.13-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 MALLOC_ARENA_MAX=2
 WORKDIR /app
 
 RUN apt-get update \
@@ -12,5 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+RUN SECRET_KEY=build-only HASH_KEY=build-only DEBUG=False \
+    SMS_BACKEND=raygan PAYMENTS_ENABLED=False ALLOWED_HOSTS=localhost \
+    python manage.py collectstatic --noinput
+
 EXPOSE 8000
-CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"]
+CMD ["gunicorn", "-c", "gunicorn.conf.py"]
