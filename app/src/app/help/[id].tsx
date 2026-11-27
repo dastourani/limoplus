@@ -19,7 +19,7 @@ export default function HelpPageScreen() {
         <ErrorState message={error.message} onRetry={retry} />
       ) : (
         <ScrollView contentContainerStyle={styles.page}>
-          <MarkdownView markdown={data!.body} compact />
+          <MarkdownView markdown={data!.body} compact sitePage />
         </ScrollView>
       )}
     </Screen>

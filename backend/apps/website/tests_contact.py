@@ -175,3 +175,21 @@ class ContactMessageAdminTests(TestCase):
         self.assertEqual(self.msg.priority, ContactMessage.Priority.HIGH)
         self.assertEqual(self.msg.handled_by, self.manager)
         self.assertIsNotNone(self.msg.handled_at)
+
+    def test_contact_page_decluttered_layout_and_conditional_order_field(self):
+        client = Client()
+        r_default = client.get(reverse("website:page", args=["contact"]))
+        self.assertEqual(r_default.status_code, 200)
+        self.assertNotContains(r_default, "راهنمای پاسخ‌گویی سریع‌تر")
+        self.assertNotContains(r_default, "پیام‌رسان بله")
+        self.assertContains(r_default, 'href="/site/p/about/"')
+        self.assertContains(r_default, 'data-order-field')
+        self.assertNotContains(r_default, 'data-order-field\n            hidden')
+
+        r_other = client.get(reverse("website:page", args=["contact"]) + "?topic=other")
+        self.assertEqual(r_other.status_code, 200)
+        html_other = r_other.content.decode("utf-8")
+        self.assertIn('data-order-field', html_other)
+        order_block = html_other.split('data-order-field', 1)[1].split('>', 1)[0]
+        self.assertIn('hidden', order_block)
+

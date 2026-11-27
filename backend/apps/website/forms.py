@@ -299,7 +299,7 @@ class ContactMessageForm(forms.ModelForm):
             "related_item": forms.TextInput(
                 attrs={
                     "maxlength": 160,
-                    "placeholder": "مثلاً: نام کتاب، اشتراک ۳ ماهه یا شماره فصل",
+                    "placeholder": "مثلاً: ریاضی ۱ یا اشتراک ۳ ماهه",
                 }
             ),
             "message": forms.Textarea(

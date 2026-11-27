@@ -754,6 +754,30 @@ class WebsiteTests(TestCase):
             self.assertEqual(home.context["app_url"], "https://api.example.ir")
             self.assertContains(home, "https://api.example.ir")
 
+    def test_about_page_and_justified_legal_tables(self):
+        c = Client()
+        r_about = c.get("/site/p/about/")
+        self.assertEqual(r_about.status_code, 200)
+        self.assertContains(r_about, "درباره ما")
+        self.assertNotContains(r_about, "این متن نمونه است")
+        self.assertContains(r_about, 'href="/site/p/about/"')
+        self.assertContains(r_about, "مشاهدهٔ کتاب‌ها")
+
+        r_api = c.get("/api/v1/app/pages/about/")
+        self.assertEqual(r_api.status_code, 200)
+        self.assertEqual(r_api.json()["slug"], "about")
+        list_slugs = [p["slug"] for p in c.get("/api/v1/app/pages/").json()["pages"]]
+        self.assertIn("about", list_slugs)
+
+        r_terms = c.get("/site/p/terms/")
+        self.assertEqual(r_terms.status_code, 200)
+        self.assertContains(r_terms, '<div class="prose-table"><table>')
+
+        from pathlib import Path
+        css = (Path(__file__).resolve().parent / "static/website/site.css").read_text(encoding="utf-8")
+        self.assertIn(".prose td { text-align: justify;", css)
+        self.assertIn(".prose p, .prose li { font-size: 16px; line-height: 2.15; text-align: justify;", css)
+
 
 class AppPagesTests(TestCase):
     """«راهنما» and «قوانین» in the app."""
@@ -909,4 +933,5 @@ class AppPagesTests(TestCase):
         self.assertIn('class="bk bk-prerelease" href="/site/books/soon-dim/"', html)
         self.assertIn('class="bk bk-prerelease" href="/site/books/prep-dim/"', html)
         self.assertIn('class="bk" href="/site/books/ready-dim/"', html)
+
 

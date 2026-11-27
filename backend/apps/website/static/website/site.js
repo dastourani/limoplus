@@ -319,6 +319,8 @@
       var phoneReqMark = form.querySelector('[data-phone-req-mark]');
       var phoneHelp = form.querySelector('[data-phone-help]');
       var orderField = form.querySelector('[data-order-field]');
+      var orderInput = orderField ? orderField.querySelector('input') : null;
+      var relatedField = form.querySelector('[data-related-field]');
       var msgField = form.querySelector('textarea[name="message"]');
       var msgCount = form.querySelector('[data-msg-count]');
       var toFa = function (n) {
@@ -343,8 +345,14 @@
         if (phoneHelp) {
           phoneHelp.textContent = radio.getAttribute('data-phone-help') || '';
         }
+        var showOrder = radio.getAttribute('data-show-order') === '1';
+        var keepOrder = showOrder || (orderInput && orderInput.value.trim() !== '') || (orderField && orderField.classList.contains('has-errors'));
         if (orderField) {
-          orderField.classList.toggle('contact-field-highlight', radio.getAttribute('data-show-order') === '1');
+          orderField.hidden = !keepOrder;
+          orderField.classList.toggle('contact-field-highlight', showOrder);
+        }
+        if (relatedField) {
+          relatedField.classList.toggle('contact-field-full', !keepOrder);
         }
         if (msgField) {
           var ph = radio.getAttribute('data-placeholder');
