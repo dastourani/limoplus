@@ -249,6 +249,7 @@ def book_price_quotes(books, now=None) -> dict[int, PriceQuote]:
             book__price__gt=0,
         )
         .select_related("book")
+        .defer("book__full_body", "book__summary_body", "book__about", "book__cover_drawing")
         # If a bad/legacy overlap exists, pick one deterministically; never apply two campaigns together.
         .order_by("book_id", "-starts_at", "-pk")
     )
