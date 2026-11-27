@@ -5,7 +5,9 @@ from datetime import timedelta
 from pathlib import Path
 
 from django.core.management import call_command
-from django.test import Client, TestCase, override_settings
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.catalog.models import ContentNode
@@ -1007,5 +1009,155 @@ class AppPagesTests(TestCase):
         self.assertIn('class="bk bk-prerelease" href="/site/books/soon-dim/"', html)
         self.assertIn('class="bk bk-prerelease" href="/site/books/prep-dim/"', html)
         self.assertIn('class="bk" href="/site/books/ready-dim/"', html)
+
+
+class AboutPageMigration0024Tests(TransactionTestCase):
+    TARGET_0023 = ("website", "0023_contact_message_and_legal_nav")
+    TARGET_0024 = ("website", "0024_about_page_and_contact_cleanup")
+
+    def _migrate(self, target):
+        executor = MigrationExecutor(connection)
+        executor.migrate([target])
+        return executor.loader.project_state([target]).apps
+
+    def test_upgrade_from_0023_without_existing_about_nav_creates_top_level_item(self):
+        from .models import SiteNavItem
+
+        apps_0023 = self._migrate(self.TARGET_0023)
+        Nav0023 = apps_0023.get_model("website", "SiteNavItem")
+        Nav0023.objects.filter(url="page:about").delete()
+
+        try:
+            apps_0024 = self._migrate(self.TARGET_0024)
+            Nav0024 = apps_0024.get_model("website", "SiteNavItem")
+            items = list(Nav0024.objects.filter(url="page:about").order_by("id"))
+            self.assertEqual(len(items), 1)
+            self.assertIsNone(items[0].parent_id)
+            self.assertEqual(items[0].title, "درباره ما")
+            self.assertEqual(items[0].order, 6)
+            self.assertFalse(items[0].is_hidden)
+        finally:
+            SiteNavItem.objects.filter(url="page:about").delete()
+            self._migrate(self.TARGET_0023)
+            self._migrate(self.TARGET_0024)
+
+    def test_upgrade_from_0023_with_only_submenu_about_nav_keeps_submenu_and_adds_top_level(self):
+        from .models import SiteNavItem
+
+        apps_0023 = self._migrate(self.TARGET_0023)
+        Nav0023 = apps_0023.get_model("website", "SiteNavItem")
+        Nav0023.objects.filter(url="page:about").delete()
+        parent = Nav0023.objects.create(title="معرفی", url="books", order=20, is_hidden=False, parent=None)
+        child = Nav0023.objects.create(
+            title="آشنایی با ما",
+            url="page:about",
+            order=9,
+            is_hidden=True,
+            parent=parent,
+        )
+
+        try:
+            apps_0024 = self._migrate(self.TARGET_0024)
+            Nav0024 = apps_0024.get_model("website", "SiteNavItem")
+
+            saved_child = Nav0024.objects.get(pk=child.pk)
+            self.assertEqual(saved_child.parent_id, parent.pk)
+            self.assertEqual(saved_child.title, "آشنایی با ما")
+            self.assertEqual(saved_child.order, 9)
+            self.assertTrue(saved_child.is_hidden)
+
+            top_items = list(Nav0024.objects.filter(parent__isnull=True, url="page:about"))
+            self.assertEqual(len(top_items), 1)
+            self.assertEqual(top_items[0].title, "درباره ما")
+            self.assertEqual(top_items[0].order, 6)
+            self.assertFalse(top_items[0].is_hidden)
+        finally:
+            SiteNavItem.objects.filter(pk=child.pk).delete()
+            SiteNavItem.objects.filter(pk=parent.pk).delete()
+            SiteNavItem.objects.filter(url="page:about").delete()
+            self._migrate(self.TARGET_0023)
+            self._migrate(self.TARGET_0024)
+
+    def test_upgrade_from_0023_with_one_custom_top_level_about_nav_preserves_it(self):
+        from .models import SiteNavItem
+
+        apps_0023 = self._migrate(self.TARGET_0023)
+        Nav0023 = apps_0023.get_model("website", "SiteNavItem")
+        Nav0023.objects.filter(url="page:about").delete()
+        custom = Nav0023.objects.create(
+            title="درباره‌ی لیموخوان",
+            url="page:about",
+            order=2,
+            is_hidden=True,
+            parent=None,
+        )
+
+        try:
+            apps_0024 = self._migrate(self.TARGET_0024)
+            Nav0024 = apps_0024.get_model("website", "SiteNavItem")
+            items = list(Nav0024.objects.filter(url="page:about"))
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0].pk, custom.pk)
+            self.assertEqual(items[0].title, "درباره‌ی لیموخوان")
+            self.assertEqual(items[0].order, 2)
+            self.assertTrue(items[0].is_hidden)
+        finally:
+            SiteNavItem.objects.filter(url="page:about").delete()
+            self._migrate(self.TARGET_0023)
+            self._migrate(self.TARGET_0024)
+
+    def test_upgrade_from_0023_with_two_top_level_about_navs_succeeds_and_preserves_both(self):
+        from .models import SiteNavItem
+
+        apps_0023 = self._migrate(self.TARGET_0023)
+        Nav0023 = apps_0023.get_model("website", "SiteNavItem")
+        Nav0023.objects.filter(url="page:about").delete()
+        first = Nav0023.objects.create(title="درباره اول", url="page:about", order=3, is_hidden=False, parent=None)
+        second = Nav0023.objects.create(title="درباره دوم", url="page:about", order=8, is_hidden=True, parent=None)
+
+        try:
+            apps_0024 = self._migrate(self.TARGET_0024)
+            Nav0024 = apps_0024.get_model("website", "SiteNavItem")
+            items = list(Nav0024.objects.filter(url="page:about").order_by("id"))
+            self.assertEqual(
+                [(i.pk, i.title, i.order, i.is_hidden, i.parent_id) for i in items],
+                [
+                    (first.pk, "درباره اول", 3, False, None),
+                    (second.pk, "درباره دوم", 8, True, None),
+                ],
+            )
+        finally:
+            SiteNavItem.objects.filter(url="page:about").delete()
+            self._migrate(self.TARGET_0023)
+            self._migrate(self.TARGET_0024)
+
+    def test_rollback_from_0024_preserves_preexisting_about_nav_item(self):
+        from .models import SiteNavItem
+
+        apps_0023 = self._migrate(self.TARGET_0023)
+        Nav0023 = apps_0023.get_model("website", "SiteNavItem")
+        Nav0023.objects.filter(url="page:about").delete()
+        admin_item = Nav0023.objects.create(
+            title="درباره ما",
+            url="page:about",
+            order=6,
+            is_hidden=False,
+            parent=None,
+        )
+
+        try:
+            self._migrate(self.TARGET_0024)
+            rolled_back = self._migrate(self.TARGET_0023)
+            NavBack = rolled_back.get_model("website", "SiteNavItem")
+            preserved = NavBack.objects.get(pk=admin_item.pk)
+            self.assertEqual(preserved.title, "درباره ما")
+            self.assertEqual(preserved.url, "page:about")
+            self.assertEqual(preserved.order, 6)
+            self.assertFalse(preserved.is_hidden)
+        finally:
+            SiteNavItem.objects.filter(url="page:about").delete()
+            self._migrate(self.TARGET_0023)
+            self._migrate(self.TARGET_0024)
+
 
 

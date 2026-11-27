@@ -68,28 +68,27 @@ def apply_about_and_contact_cleanup(apps, schema_editor):
 
     SitePage.objects.filter(slug="contact").update(body=CLEAN_CONTACT_BODY)
 
-    SiteNavItem.objects.get_or_create(
-        url="page:about",
-        defaults={
-            "title": "درباره ما",
-            "order": 6,
-            "is_hidden": False,
-            "parent": None,
-        },
-    )
+    if not SiteNavItem.objects.filter(parent__isnull=True, url="page:about").exists():
+        SiteNavItem.objects.create(
+            title="درباره ما",
+            url="page:about",
+            order=6,
+            is_hidden=False,
+            parent=None,
+        )
 
 
 def reverse_about_and_contact_cleanup(apps, schema_editor):
     SitePage = apps.get_model("website", "SitePage")
-    SiteNavItem = apps.get_model("website", "SiteNavItem")
 
-    SitePage.objects.filter(slug="about").update(
+    SitePage.objects.filter(slug="about", title=ABOUT_TITLE, body=ABOUT_BODY).update(
         title=OLD_ABOUT_TITLE,
         body=OLD_ABOUT_BODY,
         show_in_app=False,
     )
-    SitePage.objects.filter(slug="contact").update(body=OLD_CONTACT_BODY)
-    SiteNavItem.objects.filter(url="page:about", title="درباره ما").delete()
+    SitePage.objects.filter(slug="contact", body=CLEAN_CONTACT_BODY).update(body=OLD_CONTACT_BODY)
+    # `SiteNavItem` has no migration-ownership marker, so rows pointing to `page:about` cannot be
+    # safely distinguished from admin-created items and are preserved on rollback.
 
 
 class Migration(migrations.Migration):
