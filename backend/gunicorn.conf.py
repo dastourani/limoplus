@@ -66,7 +66,8 @@ def on_starting(server):
     for step in steps:
         done = subprocess.run([sys.executable, "manage.py", *step], cwd=HERE, check=False)
         if done.returncode:
-            print(f"startup step failed: manage.py {' '.join(step)}", file=sys.stderr)
+            print(f"startup step failed: manage.py {' '.join(step)} (exit {done.returncode})", file=sys.stderr, flush=True)
+            raise SystemExit(done.returncode)
 
 
 def when_ready(server):
