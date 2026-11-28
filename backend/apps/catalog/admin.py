@@ -321,6 +321,7 @@ class BookAdmin(admin.ModelAdmin):
                     "status_html": self.status(obj),
                     "change_url": reverse("admin:catalog_book_change", args=[obj.pk]),
                     "classrooms_url": reverse("admin:catalog_book_classrooms_canvas", args=[obj.pk]) if can_classrooms else "",
+                    "study_url": reverse("admin:catalog_book_study_analytics", args=[obj.pk]),
                     "inbox_url": reverse("admin:catalog_book_inbox", args=[obj.pk]),
                     "import_url": reverse("admin:catalog_book_import", args=[obj.pk]),
                 })
@@ -401,18 +402,38 @@ class BookAdmin(admin.ModelAdmin):
         book = ContentNode.objects.filter(pk=object_id, kind=ContentNode.Kind.BOOK).first()
         if book:
             from apps.learning.models import Flashcard, Question
+            from .panel_display import fa_number
 
             chapters = []
+            total_sections = 0
+            total_questions = 0
+            total_flashcards = 0
             for c in book.get_children().filter(kind=ContentNode.Kind.CHAPTER):
                 ids = [c.pk, *c.get_descendants().values_list("pk", flat=True)]
+                sec_count = c.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False).count()
+                draft_count = c.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False, is_published=False).count()
+                q_count = Question.objects.filter(node_id__in=ids, is_archived=False).count()
+                fc_count = Flashcard.objects.filter(node_id__in=ids, is_archived=False).count()
+                if not c.is_archived:
+                    total_sections += sec_count
+                    total_questions += q_count
+                    total_flashcards += fc_count
                 chapters.append({
                     "node": c,
-                    "sections": c.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False).count(),
-                    "drafts": c.get_children().filter(kind=ContentNode.Kind.SECTION, is_archived=False, is_published=False).count(),
-                    "questions": Question.objects.filter(node_id__in=ids, is_archived=False).count(),
-                    "flashcards": Flashcard.objects.filter(node_id__in=ids, is_archived=False).count(),
+                    "sections": sec_count,
+                    "drafts": draft_count,
+                    "questions": q_count,
+                    "flashcards": fc_count,
                 })
             extra["chapters"] = chapters
+            extra["book_studio_stats"] = {
+                "chapters": fa_number(sum(1 for c in chapters if not c["node"].is_archived)),
+                "sections": fa_number(total_sections),
+                "questions": fa_number(total_questions),
+                "flashcards": fa_number(total_flashcards),
+                "status_html": self.status(book),
+                "major": book.majors.order_by("order", "name").first(),
+            }
             from .bookpanel import book_health, gift_context
 
             is_panel_su = access.acts_as_panel_superuser(request)
@@ -481,6 +502,7 @@ class BookAdmin(admin.ModelAdmin):
         custom = [
             path("ai-clean-chunk/", site(panel.ai_clean_chunk_action), name="catalog_ai_clean_chunk"),
             path("label-quick-create/", site(self.label_quick_create_api), name="catalog_label_quick_create"),
+            path("new-major/", site(self.major_quick_create_api), name="catalog_major_quick_create"),
             path("new-draft/", site(self.teacher_create_book_view), name="catalog_book_teacher_new"),
             path("import/", site(lambda r: panel.import_view(self.admin_site, r)), name="catalog_import"),
             path("<int:book_id>/import/", site(lambda r, book_id: panel.import_view(self.admin_site, r, book_id)), name="catalog_book_import"),
@@ -710,6 +732,69 @@ class BookAdmin(admin.ModelAdmin):
                 "style": label.style,
                 "icon": label.icon,
                 "group": label.group,
+            },
+            "is_existing": False,
+        })
+
+    def major_quick_create_api(self, request):
+        import re
+        from django.http import JsonResponse
+
+        if request.method != "POST":
+            return JsonResponse({"ok": False, "error": "فقط درخواست POST مجاز است."}, status=405)
+        if not request.user.is_authenticated or not request.user.is_staff or (
+            not request.user.is_superuser and not access.is_book_teacher(request.user)
+        ):
+            return JsonResponse({"ok": False, "error": "دسترسی غیرمجاز."}, status=403)
+
+        name = " ".join((request.POST.get("name") or "").split()).strip()
+        if not name:
+            return JsonResponse({"ok": False, "error": "نام رشته نمی‌تواند خالی باشد."}, status=400)
+        if len(name) > 80:
+            return JsonResponse({"ok": False, "error": "نام رشته حداکثر ۸۰ نویسه است."}, status=400)
+
+        color = (request.POST.get("color") or "#3FB8A9").strip()
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+            color = "#3FB8A9"
+
+        existing = Major.objects.filter(name__iexact=name).first()
+        if existing:
+            return JsonResponse({
+                "ok": True,
+                "major": {
+                    "id": existing.id,
+                    "name": existing.name,
+                    "color": existing.color,
+                    "slug": existing.slug,
+                },
+                "is_existing": True,
+            })
+
+        base_slug = re.sub(r"[^a-zA-Z0-9-]+", "-", name).strip("-").lower() or "major"
+        slug_candidate = base_slug[:42]
+        suffix = 1
+        while Major.objects.filter(slug=slug_candidate).exists():
+            suffix += 1
+            slug_candidate = f"{base_slug[:36]}-{suffix}"
+        if slug_candidate == "major":
+            n = Major.objects.count() + 1
+            while Major.objects.filter(slug=f"major-{n}").exists():
+                n += 1
+            slug_candidate = f"major-{n}"
+
+        major = Major.objects.create(
+            name=name,
+            slug=slug_candidate,
+            color=color.upper(),
+            order=(Major.objects.order_by("-order").values_list("order", flat=True).first() or 0) + 1,
+        )
+        return JsonResponse({
+            "ok": True,
+            "major": {
+                "id": major.id,
+                "name": major.name,
+                "color": major.color,
+                "slug": major.slug,
             },
             "is_existing": False,
         })

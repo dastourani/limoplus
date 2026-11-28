@@ -82,7 +82,7 @@ def teacher_assigned_books(user, capability="can_edit_content"):
 
 def classroom_books_for_request(request):
     """Books selectable/saveable in ClassroomAdmin for the current panel mode."""
-    if acts_as_panel_superuser(request):
+    if acts_as_panel_superuser(request) or (is_teacher_preview(request) and request.user.is_superuser):
         return ContentNode.objects.filter(
             kind=ContentNode.Kind.BOOK,
             depth=1,

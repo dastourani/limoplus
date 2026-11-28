@@ -9,8 +9,8 @@
     color: #111113 !important;
     border: 1.5px solid #F5C518 !important;
     border-radius: 11px !important;
-    padding: 10px 20px !important;
-    font-size: 14px !important;
+    padding: 9px 18px !important;
+    font-size: 13.5px !important;
     font-weight: 900 !important;
     display: inline-flex !important;
     align-items: center !important;
@@ -34,6 +34,67 @@
     margin: 0;
   }
 
+  /* Clean integrated search bar */
+  #changelist #toolbar {
+    background: var(--lp-card-bg, #161618) !important;
+    border: 1px solid var(--lp-card-border, #27272D) !important;
+    border-radius: 14px !important;
+    padding: 10px 14px !important;
+    margin-bottom: 14px !important;
+  }
+  #changelist-search > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  #changelist-search label[for="searchbar"] {
+    display: inline-flex;
+    align-items: center;
+    opacity: .75;
+    margin: 0;
+  }
+  #changelist-search #searchbar {
+    flex: 1 1 260px;
+    max-width: 440px;
+    min-height: 38px;
+    padding: 7px 12px !important;
+    border-radius: 10px !important;
+    border: 1px solid #2A2A32 !important;
+    background: #111114 !important;
+    color: #F4F4F5 !important;
+    font-size: 13px !important;
+  }
+  #changelist-search #searchbar:focus {
+    outline: none !important;
+    border-color: #F5C518 !important;
+  }
+  #changelist-search input[type="submit"] {
+    min-height: 38px;
+    padding: 7px 16px !important;
+    border-radius: 10px !important;
+    background: #1C1C21 !important;
+    border: 1px solid #2F2F38 !important;
+    color: #F4F4F5 !important;
+    font-weight: 800 !important;
+    cursor: pointer;
+    transition: all .14s ease;
+  }
+  #changelist-search input[type="submit"]:hover {
+    background: #F5C518 !important;
+    border-color: #F5C518 !important;
+    color: #111113 !important;
+  }
+  html[data-theme="light"] #changelist-search #searchbar {
+    background: #F4F4F6 !important;
+    border-color: #D4D4D8 !important;
+    color: #18181B !important;
+  }
+  html[data-theme="light"] #changelist-search input[type="submit"] {
+    background: #18181B !important;
+    color: #F5C518 !important;
+  }
+
   /* Shelf toolbar + horizontal filter chips (Obsidian + Lemon) */
   .lp-shelf-toolbar {
     display: flex;
@@ -41,8 +102,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 14px 16px;
-    margin: 0 0 18px;
+    padding: 12px 16px;
+    margin: 0 0 20px;
     background: var(--lp-card-bg, #161618);
     border: 1px solid var(--lp-card-border, #27272D);
     border-radius: 14px;
@@ -53,6 +114,12 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 7px;
+  }
+  .lp-shelf-divider {
+    width: 1px;
+    height: 20px;
+    background: #2C2C34;
+    margin: 0 4px;
   }
   .lp-shelf-chip {
     display: inline-flex;
@@ -86,35 +153,18 @@
     display: inline-block;
     flex-shrink: 0;
   }
-  .lp-view-switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: #111114;
-    border: 1px solid #2A2A32;
-    border-radius: 10px;
-    padding: 3px;
-  }
-  .lp-view-switch a {
-    padding: 5px 11px;
-    border-radius: 7px;
-    font-size: 12px;
-    font-weight: 700;
-    text-decoration: none !important;
-    color: #A1A1AA;
-  }
-  .lp-view-switch a.is-on {
-    background: #F5C518;
-    color: #111113;
-    font-weight: 800;
-  }
 
-  /* Bookshelf grid */
+  /* Pure Bookshelf Grid — clean 2:3 covers + neat status & price pills */
   .lp-shelf-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
     gap: 20px 18px;
     align-items: stretch;
+  }
+  @media (min-width: 1120px) {
+    .lp-shelf-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
   }
   .lp-book-card {
     position: relative;
@@ -125,45 +175,48 @@
     padding: 16px 14px 14px;
     background: var(--lp-card-bg, #161618);
     border: 1px solid var(--lp-card-border, #27272D);
-    border-radius: 14px;
+    border-radius: 16px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+    cursor: pointer;
     transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
   }
-  .lp-book-card:hover {
-    transform: translateY(-2px);
+  .lp-book-card:hover,
+  .lp-book-card:focus-visible {
+    outline: none;
+    transform: translateY(-3px);
     background: #1B1B20;
     border-color: #E4E4E7;
-    box-shadow: 0 3px 0 #F5C518, 0 14px 28px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 3px 0 #F5C518, 0 14px 28px rgba(0, 0, 0, 0.48);
   }
   .lp-book-card.is-archived {
     opacity: .62;
   }
-  .lp-book-cover-link {
+  .lp-book-cover-box {
     display: flex;
     justify-content: center;
     align-items: center;
-    width: 146px;
-    height: 219px;
+    width: 158px;
+    height: 237px;
     border-radius: 10px;
     overflow: hidden;
-    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.42);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
     background: #111114;
-    text-decoration: none !important;
     margin-bottom: 12px;
     position: relative;
   }
-  .lp-book-cover-link img {
-    width: 146px;
-    height: 219px;
+  .lp-book-cover-box img {
+    width: 158px;
+    height: 237px;
     object-fit: cover;
     display: block;
   }
-  .lp-book-status-row {
+  .lp-book-tags-row {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
+    align-items: center;
     gap: 5px;
-    margin-bottom: 8px;
+    margin-top: auto;
   }
   .lp-shelf-pill {
     font-size: 11px;
@@ -171,72 +224,16 @@
     padding: 2px 9px;
     border-radius: 999px;
     line-height: 1.5;
+    white-space: nowrap;
   }
   .lp-shelf-pill.green { background: rgba(34, 197, 94, 0.16); color: #86EFAC; border: 1px solid rgba(74, 222, 128, 0.30); }
-  .lp-shelf-pill.draft { background: rgba(245, 197, 24, 0.16); color: #F5C518; border: 1px solid rgba(245, 197, 24, 0.40); }
+  .lp-shelf-pill.draft { background: rgba(245, 197, 24, 0.14); color: #F5C518; border: 1px solid rgba(245, 197, 24, 0.38); }
   .lp-shelf-pill.grey { background: #232329; color: #D4D4D8; border: 1px solid #34343D; }
   .lp-shelf-pill.soon { background: rgba(56, 189, 248, 0.16); color: #7DD3FC; border: 1px solid rgba(56, 189, 248, 0.30); }
-
-  .lp-book-card-title {
-    font-size: 14px;
-    font-weight: 800;
-    color: var(--body-fg, #F4F4F5) !important;
-    text-decoration: none !important;
-    line-height: 1.45;
-    margin-bottom: 4px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .lp-book-card-title:hover {
-    color: #F5C518 !important;
-  }
-  .lp-book-card-meta {
-    font-size: 12px;
-    color: var(--body-quiet-color, #A1A1AA);
-    line-height: 1.5;
-    margin-bottom: 12px;
-    min-height: 18px;
-  }
-  .lp-book-card-actions {
-    margin-top: auto;
-    width: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 6px;
-    padding-top: 10px;
-    border-top: 1px dashed #2A2A32;
-  }
-  .lp-card-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 5px 10px;
-    border-radius: 8px;
-    font-size: 11.5px;
-    font-weight: 800;
-    text-decoration: none !important;
-    border: 1px solid #2D2D35;
-    background: #1C1C21;
-    color: #E4E4E7 !important;
-    transition: all .12s ease;
-  }
-  .lp-card-btn:hover {
-    background: rgba(245, 197, 24, 0.14);
-    border-color: #F5C518;
-    color: #F5C518 !important;
-  }
-  .lp-card-btn.primary {
-    background: #F5C518;
-    color: #111113 !important;
-    border-color: #F5C518;
-  }
-  .lp-card-btn.primary:hover {
-    background: #FFD84A;
-    color: #111113 !important;
+  .lp-shelf-pill.price {
+    background: rgba(245, 197, 24, 0.18);
+    color: #F5C518;
+    border: 1px solid rgba(245, 197, 24, 0.48);
   }
 
   /* Dashed "+ New Book" card on the shelf */
@@ -246,28 +243,28 @@
     border: 2px dashed rgba(245, 197, 24, 0.65);
     cursor: pointer;
     text-decoration: none !important;
-    min-height: 315px;
+    min-height: 300px;
   }
   .lp-book-card--add:hover {
     background: #1B1B20;
     border-color: #F5C518;
   }
   .lp-add-plus {
-    width: 60px;
-    height: 60px;
+    width: 58px;
+    height: 58px;
     border-radius: 999px;
     background: #F5C518;
     color: #111113;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 32px;
+    font-size: 30px;
     font-weight: 900;
     box-shadow: 0 8px 18px rgba(245, 197, 24, 0.28);
     margin-bottom: 14px;
   }
   .lp-add-title {
-    font-size: 15px;
+    font-size: 14.5px;
     font-weight: 900;
     color: #F5C518;
     margin-bottom: 6px;
@@ -279,48 +276,176 @@
     max-width: 170px;
   }
 
+  /* Book Quick-Action Modal (opens on book click, closes on × or backdrop click) */
+  .lp-book-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99990;
+    background: rgba(5, 5, 8, 0.72);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+  }
+  .lp-book-modal-backdrop.is-open {
+    display: flex;
+  }
+  .lp-book-modal {
+    position: relative;
+    width: 100%;
+    max-width: 500px;
+    background: #161618;
+    color: #F4F4F5;
+    border: 1px solid #2E2E36;
+    border-top: 3px solid #F5C518;
+    border-radius: 18px;
+    padding: 20px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.70);
+    direction: rtl;
+  }
+  .lp-book-modal-close {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    border: 1px solid #2E2E36;
+    background: #1E1E24;
+    color: #E4E4E7;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .14s ease;
+  }
+  .lp-book-modal-close:hover {
+    background: #F5C518;
+    border-color: #F5C518;
+    color: #111113;
+  }
+  .lp-book-modal-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 14px;
+    padding-inline-end: 36px;
+    border-bottom: 1px solid #27272D;
+    margin-bottom: 14px;
+  }
+  .lp-book-modal-thumb {
+    width: 56px;
+    height: 84px;
+    border-radius: 7px;
+    overflow: hidden;
+    flex: none;
+    background: #111114;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+  }
+  .lp-book-modal-thumb img {
+    width: 56px;
+    height: 84px;
+    object-fit: cover;
+    display: block;
+  }
+  .lp-book-modal-title {
+    margin: 0 0 4px;
+    font-size: 16.5px;
+    font-weight: 900;
+    color: #F4F4F5;
+    line-height: 1.4;
+  }
+  .lp-book-modal-meta {
+    font-size: 12px;
+    color: #A1A1AA;
+    margin-bottom: 6px;
+  }
+  .lp-book-modal-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .lp-book-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  @media (max-width: 460px) {
+    .lp-book-modal-grid { grid-template-columns: 1fr; }
+  }
+  .lp-modal-action {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 13px;
+    border-radius: 11px;
+    background: #1C1C21;
+    border: 1px solid #2C2C34;
+    color: #E4E4E7 !important;
+    font-size: 13px;
+    font-weight: 800;
+    text-decoration: none !important;
+    transition: all .14s ease;
+  }
+  .lp-modal-action:hover {
+    background: #F5C518;
+    border-color: #F5C518;
+    color: #111113 !important;
+    transform: translateY(-1px);
+  }
+  .lp-modal-action.is-primary {
+    grid-column: 1 / -1;
+    background: #F5C518;
+    border-color: #F5C518;
+    color: #111113 !important;
+    font-size: 13.5px;
+    font-weight: 900;
+    justify-content: center;
+  }
+  .lp-modal-action.is-primary:hover {
+    background: #FFD84A;
+  }
+  .lp-modal-action svg {
+    width: 17px;
+    height: 17px;
+    flex: none;
+  }
+
   /* Explicit light mode overrides */
   html[data-theme="light"] .lp-shelf-toolbar,
-  html[data-theme="light"] .lp-book-card {
+  html[data-theme="light"] .lp-book-card,
+  html[data-theme="light"] .lp-book-modal {
     background: #FFFFFF;
     border-color: #E4E4E7;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+    color: #18181B;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
   }
   html[data-theme="light"] .lp-book-card:hover {
     background: #FFFFFF;
     border-color: #18181B;
     box-shadow: 0 3px 0 #F5C518, 0 12px 26px rgba(0, 0, 0, 0.09);
   }
-  html[data-theme="light"] .lp-shelf-chip {
+  html[data-theme="light"] .lp-shelf-chip,
+  html[data-theme="light"] .lp-modal-action,
+  html[data-theme="light"] .lp-book-modal-close {
     background: #F4F4F6;
     border-color: #E4E4E7;
     color: #18181B !important;
   }
-  html[data-theme="light"] .lp-shelf-chip.is-active {
-    background: #18181B;
-    color: #F5C518 !important;
-    border-color: #18181B;
+  html[data-theme="light"] .lp-shelf-chip.is-active,
+  html[data-theme="light"] .lp-modal-action:hover,
+  html[data-theme="light"] .lp-modal-action.is-primary {
+    background: #F5C518;
+    color: #111113 !important;
+    border-color: #F5C518;
   }
-  html[data-theme="light"] .lp-book-card-actions { border-top-color: #E4E4E7; }
-  html[data-theme="light"] .lp-card-btn {
-    background: #F4F4F6;
-    border-color: #E4E4E7;
-    color: #18181B !important;
-  }
-  html[data-theme="light"] .lp-card-btn.primary {
-    background: #18181B;
-    color: #F5C518 !important;
-    border-color: #18181B;
-  }
-  html[data-theme="light"] .lp-view-switch {
-    background: #F4F4F6;
-    border-color: #E4E4E7;
-  }
-  html[data-theme="light"] .lp-view-switch a { color: #52525B; }
-  html[data-theme="light"] .lp-view-switch a.is-on {
-    background: #18181B;
-    color: #F5C518;
-  }
+  html[data-theme="light"] .lp-book-modal-title { color: #18181B; }
+  html[data-theme="light"] .lp-book-modal-head { border-bottom-color: #E4E4E7; }
+  html[data-theme="light"] .lp-shelf-divider { background: #E4E4E7; }
   html[data-theme="light"] .lp-book-card--add {
     background: #FAFAFB;
     border-color: #18181B;
@@ -331,6 +456,7 @@
   html[data-theme="light"] .lp-shelf-pill.draft { background: #FFF6CF; color: #7A4F00; border-color: #F0DC8A; }
   html[data-theme="light"] .lp-shelf-pill.grey { background: #F4F4F6; color: #52525B; border-color: #E4E4E7; }
   html[data-theme="light"] .lp-shelf-pill.soon { background: #E0F2FE; color: #0369A1; border-color: #BAE6FD; }
+  html[data-theme="light"] .lp-shelf-pill.price { background: #FFF6CF; color: #7A4F00; border-color: #E8C745; }
 </style>
 {% endblock %}
 
@@ -374,16 +500,15 @@
       {% for chip in shelf_status_chips %}
         <a href="{{ chip.href }}" class="lp-shelf-chip{% if chip.active %} is-active{% endif %}">{{ chip.label }}</a>
       {% endfor %}
+      {% if shelf_majors %}
+        <span class="lp-shelf-divider" aria-hidden="true"></span>
+      {% endif %}
       {% for m in shelf_majors %}
         <a href="{{ m.href }}" class="lp-shelf-chip{% if m.active %} is-active{% endif %}">
           {% if m.color %}<span class="lp-shelf-dot" style="background:{{ m.color }}"></span>{% endif %}
           {{ m.name }}
         </a>
       {% endfor %}
-    </div>
-    <div class="lp-view-switch" aria-label="تغییر نمای نمایش کتاب‌ها">
-      <a href="{{ toggle_shelf_url }}" class="{% if book_view_mode == 'shelf' %}is-on{% endif %}">📚 نمای قفسه</a>
-      <a href="{{ toggle_table_url }}" class="{% if book_view_mode == 'table' %}is-on{% endif %}">☰ نمای جدول</a>
     </div>
   </div>
 
@@ -400,8 +525,32 @@
       {% endif %}
 
       {% for b in shelf_books %}
-        <article class="lp-book-card{% if b.is_archived %} is-archived{% endif %}">
-          <a href="{{ b.change_url }}" class="lp-book-cover-link" title="{{ b.title }}">
+        <article class="lp-book-card{% if b.is_archived %} is-archived{% endif %}"
+                 role="button"
+                 tabindex="0"
+                 aria-label="باز کردن منوی کتاب {{ b.title }}"
+                 data-book-modal="1"
+                 data-title="{{ b.title }}"
+                 data-en="{{ b.title_en }}"
+                 data-author="{{ b.author }}"
+                 data-edition="{{ b.edition }}"
+                 data-motif="{{ b.cover_motif }}"
+                 data-major="{{ b.major_name }}"
+                 data-strip="{{ b.major_color }}"
+                 data-drawing="{{ b.cover_drawing }}"
+                 data-cover-url="{{ b.cover_url }}"
+                 data-chapters="{{ b.chapters_fa }}"
+                 data-price="{{ b.price_fa }}"
+                 data-free="{% if b.is_free %}1{% else %}0{% endif %}"
+                 data-status="{{ b.status_label }}"
+                 data-change-url="{{ b.change_url }}"
+                 data-import-url="{{ b.import_url }}"
+                 data-classrooms-url="{{ b.classrooms_url }}"
+                 data-inbox-url="{{ b.inbox_url }}"
+                 data-study-url="{{ b.study_url }}"
+                 data-waitlist-url="{% if can_manage_access and b.waiting_count %}{{ b.waitlist_url }}{% endif %}"
+                 data-waiting-fa="{% if can_manage_access and b.waiting_count %}{{ b.waiting_fa }}{% endif %}">
+          <div class="lp-book-cover-box" title="{{ b.title }}">
             {% if b.cover_url %}
               <img src="{{ b.cover_url }}" alt="{{ b.title }}">
             {% else %}
@@ -414,35 +563,171 @@
                     data-major="{{ b.major_name }}"
                     data-strip="{{ b.major_color }}"
                     data-drawing="{{ b.cover_drawing }}"
-                    data-width="146"></span>
+                    data-width="158"></span>
             {% endif %}
-          </a>
+          </div>
 
-          <div class="lp-book-status-row">
+          <div class="lp-book-tags-row">
             {{ b.status_html }}
-          </div>
-
-          <a href="{{ b.change_url }}" class="lp-book-card-title">{{ b.title }}</a>
-          <div class="lp-book-card-meta">
-            {{ b.chapters_fa }} فصل{% if b.author %} · {{ b.author }}{% endif %}{% if b.price_fa %} · {{ b.price_fa }} تومان{% endif %}
-          </div>
-
-          <div class="lp-book-card-actions">
-            <a href="{{ b.change_url }}" class="lp-card-btn primary">مدیریت کتاب</a>
-            {% if b.classrooms_url %}
-              <a href="{{ b.classrooms_url }}" class="lp-card-btn">🎓 کلاس‌ها</a>
+            <span class="lp-shelf-pill grey">{{ b.chapters_fa }} فصل</span>
+            {% if b.price_fa %}
+              <span class="lp-shelf-pill price">{{ b.price_fa }} تومان</span>
+            {% elif b.is_free %}
+              <span class="lp-shelf-pill green">رایگان</span>
             {% endif %}
             {% if can_manage_access and b.waiting_count %}
-              <a href="{{ b.waitlist_url }}" class="lp-card-btn" title="منتظران «خبرم کن»">🔔 {{ b.waiting_fa }} نفر</a>
+              <span class="lp-shelf-pill soon" title="منتظران خبرم کن">🔔 {{ b.waiting_fa }} نفر</span>
             {% endif %}
-            <a href="{{ b.import_url }}" class="lp-card-btn" title="وارد کردن فصل یا کتاب آماده با هوش مصنوعی">🤖 فایل/AI</a>
           </div>
         </article>
       {% empty %}
-        {% if not can_create_book %}
-          <p style="padding:20px;color:#5b6b61;">کتابی مطابق فیلتر انتخاب‌شده یافت نشد.</p>
-        {% endif %}
+        <div style="grid-column:1 / -1; text-align:center; padding:36px 16px; color:var(--body-quiet-color);">
+          هیچ کتابی با این فیلتر پیدا نشد.
+        </div>
       {% endfor %}
     </div>
+
+    <!-- Book Quick-Action Modal -->
+    <div id="lp-book-modal-backdrop" class="lp-book-modal-backdrop" aria-hidden="true">
+      <div class="lp-book-modal" role="dialog" aria-modal="true" aria-labelledby="lp-bm-title">
+        <button type="button" id="lp-book-modal-close" class="lp-book-modal-close" aria-label="بستن">×</button>
+        <div class="lp-book-modal-head">
+          <div id="lp-bm-thumb" class="lp-book-modal-thumb"></div>
+          <div>
+            <h3 id="lp-bm-title" class="lp-book-modal-title"></h3>
+            <div id="lp-bm-meta" class="lp-book-modal-meta"></div>
+            <div id="lp-bm-pills" class="lp-book-modal-pills"></div>
+          </div>
+        </div>
+        <div id="lp-bm-actions" class="lp-book-modal-grid"></div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var searchInput = document.getElementById('searchbar');
+        if (searchInput && !searchInput.getAttribute('placeholder')) {
+          searchInput.setAttribute('placeholder', 'جستجو در نام کتاب، نویسنده یا شناسه...');
+        }
+
+        var backdrop = document.getElementById('lp-book-modal-backdrop');
+        var closeBtn = document.getElementById('lp-book-modal-close');
+        var thumbEl = document.getElementById('lp-bm-thumb');
+        var titleEl = document.getElementById('lp-bm-title');
+        var metaEl = document.getElementById('lp-bm-meta');
+        var pillsEl = document.getElementById('lp-bm-pills');
+        var actionsEl = document.getElementById('lp-bm-actions');
+        if (!backdrop) return;
+
+        var ICONS = {
+          manage: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+          ai: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/></svg>',
+          cover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
+          classrooms: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>',
+          inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+          study: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+          waitlist: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>'
+        };
+
+        function addAction(href, label, iconKey, isPrimary) {
+          if (!href) return;
+          var a = document.createElement('a');
+          a.href = href;
+          a.className = 'lp-modal-action' + (isPrimary ? ' is-primary' : '');
+          a.innerHTML = ICONS[iconKey] || '';
+          var span = document.createElement('span');
+          span.textContent = label;
+          a.appendChild(span);
+          actionsEl.appendChild(a);
+        }
+
+        function addPill(text, cls) {
+          var s = document.createElement('span');
+          s.className = 'lp-shelf-pill ' + cls;
+          s.textContent = text;
+          pillsEl.appendChild(s);
+        }
+
+        function openModal(card) {
+          var d = card.dataset;
+          titleEl.textContent = d.title || '';
+          var metaParts = [];
+          if (d.author) metaParts.push(d.author);
+          if (d.major) metaParts.push(d.major);
+          if (d.edition) metaParts.push(d.edition);
+          metaEl.textContent = metaParts.join(' · ');
+
+          thumbEl.innerHTML = '';
+          if (d.coverUrl) {
+            var img = document.createElement('img');
+            img.src = d.coverUrl;
+            img.alt = d.title || '';
+            thumbEl.appendChild(img);
+          } else if (window.LimoPreview && window.LimoPreview.coverHtml) {
+            var drawing = null;
+            if (d.drawing) { try { drawing = JSON.parse(d.drawing); } catch (e) {} }
+            thumbEl.innerHTML = window.LimoPreview.coverHtml({
+              title: d.title,
+              title_en: d.en,
+              author: d.author,
+              edition: d.edition,
+              motif: d.motif || 'book',
+              major: d.major,
+              strip: d.strip,
+              drawing: drawing
+            }, 'dark', 56);
+          }
+
+          pillsEl.innerHTML = '';
+          if (d.status) addPill(d.status, d.status === 'منتشر' ? 'green' : (d.status === 'پیش‌نویس' ? 'draft' : 'grey'));
+          if (d.chapters) addPill(d.chapters + ' فصل', 'grey');
+          if (d.price) addPill(d.price + ' تومان', 'price');
+          else if (d.free === '1') addPill('رایگان', 'green');
+
+          actionsEl.innerHTML = '';
+          addAction(d.changeUrl, 'مدیریت کتاب و فصل‌ها', 'manage', true);
+          addAction(d.importUrl, 'ورود فصل / کتاب با AI', 'ai', false);
+          addAction(d.changeUrl ? (d.changeUrl + '#tab-meta') : '', 'ویرایش جلد و شناسنامه', 'cover', false);
+          addAction(d.classroomsUrl, 'کلاس‌ها و لینک دعوت', 'classrooms', false);
+          addAction(d.inboxUrl, 'صندوق تست کتاب', 'inbox', false);
+          addAction(d.studyUrl, 'آمار مطالعه کلاس', 'study', false);
+          if (d.waitlistUrl) {
+            addAction(d.waitlistUrl, 'منتظران خبرم کن (' + (d.waitingFa || '') + ' نفر)', 'waitlist', false);
+          }
+
+          backdrop.classList.add('is-open');
+          backdrop.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeModal() {
+          backdrop.classList.remove('is-open');
+          backdrop.setAttribute('aria-hidden', 'true');
+        }
+
+        document.querySelectorAll('.lp-book-card[data-book-modal]').forEach(function (card) {
+          card.addEventListener('click', function () { openModal(card); });
+          card.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              openModal(card);
+            }
+          });
+        });
+
+        closeBtn.addEventListener('click', closeModal);
+        backdrop.addEventListener('click', function (e) {
+          if (e.target === backdrop) closeModal();
+        });
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && backdrop.classList.contains('is-open')) closeModal();
+        });
+      })();
+    </script>
+  {% endif %}
+{% endblock %}
+
+{% block pagination %}
+  {% if cl.result_count %}
+    {{ block.super }}
   {% endif %}
 {% endblock %}

@@ -3938,6 +3938,47 @@ class GerdooPanelThemeTests(TestCase):
         self.assertIn("lp_gerdoo_theme_v1", shelf_body)
         self.assertNotIn("#133a28", shelf_body)
         self.assertNotIn("#1F5E3A", shelf_body)
+        self.assertNotIn("lp-view-switch", shelf_body)
+        self.assertNotIn("lp-book-card-title", shelf_body)
+        self.assertIn("lp-book-modal-backdrop", shelf_body)
+
+    def test_quick_create_major_and_book_studio_tabs(self):
+        self.client.force_login(self.teacher)
+        draft_res = self.client.get(reverse("admin:catalog_book_teacher_new"))
+        self.assertEqual(draft_res.status_code, 200)
+        draft_body = draft_res.content.decode("utf-8")
+        self.assertIn("lp-toggle-new-major", draft_body)
+        self.assertNotIn("id_draft_about", draft_body)
+
+        # Create a new major inline
+        create_res = self.client.post(reverse("admin:catalog_major_quick_create"), {
+            "name": "فیزیوتراپی تخصصی",
+            "color": "#F5C518",
+        })
+        self.assertEqual(create_res.status_code, 200)
+        data = create_res.json()
+        self.assertTrue(data["ok"])
+        self.assertFalse(data["is_existing"])
+        self.assertEqual(data["major"]["name"], "فیزیوتراپی تخصصی")
+        self.assertTrue(Major.objects.filter(name="فیزیوتراپی تخصصی").exists())
+
+        # Duplicate name reuses existing major
+        dup_res = self.client.post(reverse("admin:catalog_major_quick_create"), {
+            "name": "فیزیوتراپی تخصصی",
+            "color": "#10B981",
+        })
+        self.assertTrue(dup_res.json()["is_existing"])
+        self.assertEqual(Major.objects.filter(name="فیزیوتراپی تخصصی").count(), 1)
+
+        # Verify book studio tabs & decluttered toolbar on a book change page
+        book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب استودیو", slug="studio-book")
+        BookEditor.objects.create(book=book, user=self.teacher, can_edit_content=True)
+        change_res = self.client.get(reverse("admin:catalog_book_change", args=[book.pk]))
+        self.assertEqual(change_res.status_code, 200)
+        change_body = change_res.content.decode("utf-8")
+        for marker in ("lp-book-hero", "lp-book-tabs", "tab-chapters", "tab-assistants", "tab-publish", "tab-meta", "lp-perm-card", "lp-tools-more"):
+            self.assertIn(marker, change_body)
+
 
 
 
