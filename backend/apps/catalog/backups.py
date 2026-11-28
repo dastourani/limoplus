@@ -43,6 +43,7 @@ from django.utils._os import safe_join
 log = logging.getLogger(__name__)
 
 KEEP_DB = 7
+KEEP_DB_EXPORTS = 3
 DB_EVERY = timedelta(hours=23)
 DB_LATE = timedelta(hours=30)  # missed the night window (server was down): do it whenever
 MEDIA_EVERY = timedelta(days=7)
@@ -324,7 +325,7 @@ def export_database_json() -> Path:
     finally:
         raw.unlink(missing_ok=True)
         tmp_packed.unlink(missing_ok=True)
-    _prune(folder, "limookhan-db-", KEEP_DB)
+    _prune(folder, "limookhan-db-export-", KEEP_DB_EXPORTS)
     return packed
 
 
@@ -367,7 +368,7 @@ def backup_database(send=True):
             finally:
                 raw.unlink(missing_ok=True)
         run.files, run.size, run.ok = [packed.name], packed.stat().st_size, True
-        _prune(folder, "limookhan-db-", KEEP_DB)
+        _prune(folder, "limookhan-db-", KEEP_DB, exclude_prefixes=("limookhan-db-export-",))
         if send and storage_ready():
             caption = f"🗄 پشتیبان دیتابیس لیموخوان\n{_stamp()}\nاطلاعات کاربران در آن است؛ جای دیگری نفرستید."
             delivery = deliver_backup(packed, kind="db", caption=caption)
@@ -478,7 +479,7 @@ def backup_media(send=True):
             run.sent = delivered == len(parts) and not kept
             if kept:
                 run.note += f"؛ روی سرور مانده: {', '.join(kept)}"
-        _prune(folder, "limookhan-media-", 20)
+        _prune(folder, "limookhan-media-", 20, exclude_prefixes=("limookhan-media-full-",))
     except Exception as exc:  # noqa: BLE001
         log.error("media backup failed: %s: %s", type(exc).__name__, _safe(exc))
         run.ok = False
@@ -488,8 +489,12 @@ def backup_media(send=True):
     return run
 
 
-def _prune(folder: Path, prefix: str, keep: int) -> None:
-    old = sorted(folder.glob(prefix + "*"), key=lambda p: p.stat().st_mtime, reverse=True)[keep:]
+def _prune(folder: Path, prefix: str, keep: int, *, exclude_prefixes: tuple[str, ...] = ()) -> None:
+    matching = [
+        p for p in folder.glob(prefix + "*")
+        if not any(p.name.startswith(ex) for ex in exclude_prefixes)
+    ]
+    old = sorted(matching, key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)[keep:]
     for p in old:
         p.unlink(missing_ok=True)
 

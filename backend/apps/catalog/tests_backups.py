@@ -175,6 +175,49 @@ class StoragePanelExportTests(TestCase):
         self.assertIsNone(none_path)
         self.assertEqual(zero, 0)
 
+    def test_export_and_nightly_backups_have_independent_retention(self):
+        folder = backups.backup_dir()
+        nightly_files = []
+        base_ts = 1_700_000_000
+        for i in range(backups.KEEP_DB):
+            p = folder / f"limookhan-db-2026111{i + 1}-0300.sqlite3.gz"
+            p.write_bytes(f"nightly-{i}".encode("utf-8"))
+            os.utime(p, (base_ts + i * 100, base_ts + i * 100))
+            nightly_files.append(p)
+
+        # Creating many manual exports never deletes any of the 7 nightly backups.
+        exports = []
+        for idx in range(backups.KEEP_DB + 1):
+            exp = backups.export_database_json()
+            os.utime(exp, (base_ts + 10_000 + idx * 10, base_ts + 10_000 + idx * 10))
+            exports.append(exp)
+        for p in nightly_files:
+            self.assertTrue(p.exists(), f"Nightly backup {p.name} should not be pruned by manual exports")
+        kept_exports = [p for p in exports if p.exists()]
+        self.assertEqual(len(kept_exports), backups.KEEP_DB_EXPORTS)
+
+        # Creating a new nightly backup prunes only the oldest nightly backup and leaves exports intact.
+        new_nightly = backups.backup_database(send=False)
+        self.assertTrue(new_nightly.ok)
+        self.assertFalse(nightly_files[0].exists())
+        for p in nightly_files[1:]:
+            self.assertTrue(p.exists())
+        self.assertTrue((folder / new_nightly.files[0]).exists())
+        for exp in kept_exports:
+            self.assertTrue(exp.exists(), f"Manual export {exp.name} should not be pruned by nightly backup")
+
+        # Full media exports are likewise ignored when nightly media backup prunes old zip parts.
+        full_zip, _ = backups.export_full_media()
+        self.assertIsNotNone(full_zip)
+        for i in range(25):
+            mp = folder / f"limookhan-media-202611{i + 1:02d}-0300-1.zip"
+            mp.write_bytes(b"zip")
+            os.utime(mp, (base_ts + i * 10, base_ts + i * 10))
+        with mock.patch.object(backups, "_bale", return_value=None):
+            media_run = backups.backup_media(send=False)
+        self.assertTrue(media_run.ok)
+        self.assertTrue(full_zip.exists())
+
     def test_storage_panel_exports_and_service_probe_roles(self):
         from apps.accounts.sms import SMSNotSent
         from apps.commerce.zibal import GatewayError
