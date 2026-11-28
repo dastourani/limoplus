@@ -196,11 +196,13 @@ class BackupTests(TestCase):
         r_json = self.client.post("/admin/catalog/cleanuprun/export-json/")
         self.assertEqual(r_json.status_code, 200)
         body_json = b"".join(r_json.streaming_content)
+        r_json.close()
         self.assertIsInstance(json.loads(gzip.decompress(body_json).decode("utf-8")), list)
 
         r_media = self.client.post("/admin/catalog/cleanuprun/export-media/")
         self.assertEqual(r_media.status_code, 200)
         body_media = b"".join(r_media.streaming_content)
+        r_media.close()
         with zipfile.ZipFile(io.BytesIO(body_media), "r") as z:
             self.assertEqual(z.namelist(), ["media/content/b/a.png"])
 
@@ -418,7 +420,10 @@ class PostgresAndStorageModeTests(BackupTests):
             done = backups.restore_upload(SimpleUploadedFile("limookhan-db-20261124-0300.json.gz.part2of2", gz_bytes[half:]))
             self.assertTrue(done["db"])
             called_cmds = [c.args[0] for c in mock_cmd.call_args_list]
-            self.assertEqual(called_cmds, ["flush", "loaddata", "migrate"])
+            expected_cmds = ["flush", "loaddata", "migrate"]
+            if backups.connection.vendor == "postgresql":
+                expected_cmds.append("sqlsequencereset")
+            self.assertEqual(called_cmds, expected_cmds)
 
     def test_storage_mode_object_storage_and_both_and_pruning(self):
         fake_s3 = mock.MagicMock()
