@@ -250,6 +250,8 @@ def book_classrooms_canvas(admin_site, request, book_id):
     open_create_modal = False
 
     if request.method == "POST":
+        from .jalali_admin import _parse_admin_date
+
         action = (request.POST.get("action") or "").strip()
         if action == "create":
             if book.is_inbox or book.is_archived:
@@ -257,6 +259,11 @@ def book_classrooms_canvas(admin_site, request, book_id):
                 return redirect(canvas_url)
             post_data = request.POST.copy()
             post_data["book"] = str(book.pk)
+            raw_ends_on = (post_data.get("ends_on") or "").strip()
+            if raw_ends_on:
+                parsed_end = _parse_admin_date(raw_ends_on)
+                if parsed_end:
+                    post_data["ends_on"] = parsed_end.isoformat()
             create_form = ClassroomCreateForm(
                 post_data,
                 user=request.user,
@@ -328,11 +335,9 @@ def book_classrooms_canvas(admin_site, request, book_id):
                 classroom.duration_days = None
                 classroom.is_active = True
             elif mode == "custom_date":
-                from django.utils.dateparse import parse_date
-
-                parsed = parse_date((request.POST.get("custom_ends_on") or "").strip())
+                parsed = _parse_admin_date((request.POST.get("custom_ends_on") or "").strip())
                 if not parsed:
-                    messages.error(request, "تاریخ جدید معتبر نیست.")
+                    messages.error(request, "تاریخ جدید معتبر نیست. لطفاً تاریخ شمسی مانند ۱۴۰۵/۱۰/۳۰ وارد یا از تقویم انتخاب کنید.")
                     return redirect(canvas_url)
                 if parsed < today:
                     messages.error(request, "تاریخ پایان نمی‌تواند در گذشته باشد.")
@@ -468,6 +473,7 @@ def book_classrooms_canvas(admin_site, request, book_id):
         "create_form": create_form,
         "open_create_modal": open_create_modal,
         "today_iso": today.isoformat(),
+        "today_jalali": jalali_date(today),
         "opts": ContentNode._meta,
     }
     return TemplateResponse(request, "admin/catalog/book/classrooms_canvas.html", context)

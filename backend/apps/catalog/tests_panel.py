@@ -3713,7 +3713,38 @@ class BookClassroomsCanvasTests(TestCase):
         self.assertContains(res, "هنوز کلاسی برای این کتاب ساخته نشده است")
         self.assertContains(res, 'class="lp-cover"')
         self.assertContains(res, "catalog/limo-preview.js")
+        self.assertContains(res, "'dark', Number(el.dataset.width) || 68")
+        self.assertContains(res, 'class="lp-jalali-date"')
         self.assertContains(res, "لینک دعوت دانشجو از پنل اساتید جداست")
+
+    def test_jalali_date_create_and_renew_and_join_cover(self):
+        from apps.catalog.jalali import from_jalali
+
+        self.client.force_login(self.teacher)
+        res = self.client.post(self.canvas_url, {
+            "action": "create",
+            "title": "کلاس تقویم شمسی",
+            "capacity": 30,
+            "expiry_policy": self.Classroom.ExpiryPolicy.FIXED_DATE,
+            "ends_on": "۱۴۰۶/۰۱/۲۰",
+        })
+        self.assertRedirects(res, self.canvas_url)
+        c = self.Classroom.objects.get(book=self.book, title="کلاس تقویم شمسی")
+        self.assertEqual(c.ends_on, from_jalali(1406, 1, 20))
+
+        self.client.post(self.canvas_url, {
+            "action": "renew",
+            "classroom_id": c.pk,
+            "renew_mode": "custom_date",
+            "custom_ends_on": "۱۴۰۶/۰۳/۱۵",
+        })
+        c.refresh_from_db()
+        self.assertEqual(c.ends_on, from_jalali(1406, 3, 15))
+
+        join_page = self.client.get(f"/join/{c.code}/")
+        self.assertEqual(join_page.status_code, 200)
+        self.assertContains(join_page, "data-cover=")
+        self.assertContains(join_page, "limo-preview.js")
 
     def test_create_toggle_and_renew_preserves_existing_join_code(self):
         self.client.force_login(self.teacher)
