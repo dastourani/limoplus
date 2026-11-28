@@ -251,14 +251,13 @@ class BookAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         extra = extra_context or {}
         view_param = (request.GET.get("view") or "").strip().lower()
-        if view_param in ("shelf", "table"):
-            request.session["book_list_view"] = view_param
+        if "view" in request.GET:
             qd = request.GET.copy()
             qd.pop("view", None)
             request.GET = qd
-        book_view_mode = request.session.get("book_list_view", "shelf")
-        if book_view_mode not in ("shelf", "table"):
-            book_view_mode = "shelf"
+        # Always clear any legacy session preference left over from before the layout switcher was removed.
+        request.session.pop("book_list_view", None)
+        book_view_mode = "table" if view_param == "table" else "shelf"
 
         is_panel_su = access.acts_as_panel_superuser(request)
         can_create_book = bool(is_panel_su or access.acts_as_panel_teacher(request))

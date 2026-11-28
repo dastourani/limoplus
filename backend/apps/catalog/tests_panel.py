@@ -3862,6 +3862,16 @@ class BookShelfAndCoverDraftTests(TestCase):
         self.assertEqual(table_res.status_code, 200)
         self.assertContains(table_res, 'id="result_list"')
 
+        # Even if a legacy session had book_list_view="table", normal visits always render the shelf
+        session = self.client.session
+        session["book_list_view"] = "table"
+        session.save()
+        legacy_res = self.client.get(reverse("admin:catalog_book_changelist"))
+        self.assertEqual(legacy_res.status_code, 200)
+        self.assertContains(legacy_res, 'class="lp-shelf-grid"')
+        self.assertNotContains(legacy_res, 'id="result_list"')
+        self.assertNotIn("book_list_view", self.client.session)
+
         # Switching back to shelf view
         back_res = self.client.get(reverse("admin:catalog_book_changelist") + "?view=shelf")
         self.assertEqual(back_res.status_code, 200)
