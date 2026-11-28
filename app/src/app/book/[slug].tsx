@@ -100,7 +100,7 @@ export default function Book() {
         return await endpoints.book(String(slug));
       } catch (e) {
         const err = e instanceof ApiError ? e : null;
-        if (err?.status === 0) {
+        if (err && (err.status === 0 || err.status >= 500)) {
           const cached = await offlineBookDetail(String(slug));
           if (cached) return cached;
         }

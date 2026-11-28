@@ -927,3 +927,43 @@ class ProtectedContentMediaTests(TestCase):
         self.assertEqual(ok["Cache-Control"], "private, no-store")
 
 
+class WebappServingTests(TestCase):
+    def test_missing_static_chunks_return_404_instead_of_html_fallback(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from django.test import override_settings
+
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        (root / "_expo" / "static" / "js" / "web").mkdir(parents=True)
+        (root / "index.html").write_text("<html><body>app</body></html>", encoding="utf-8")
+        (root / "_expo" / "static" / "js" / "web" / "entry-abc.js").write_text("console.log(1);", encoding="utf-8")
+
+        with override_settings(WEBAPP_DIR=str(root)):
+            # SPA routes fall back to index.html with no-cache.
+            spa = self.client.get("/profile")
+            self.assertEqual(spa.status_code, 200)
+            self.assertEqual(spa["Cache-Control"], "no-cache")
+            self.assertEqual(b"".join(spa.streaming_content), b"<html><body>app</body></html>")
+
+            book_route = self.client.get("/book/math-1")
+            self.assertEqual(book_route.status_code, 200)
+
+            # Existing hashed bundle serves JS with immutable cache header.
+            js = self.client.get("/_expo/static/js/web/entry-abc.js")
+            self.assertEqual(js.status_code, 200)
+            self.assertIn("immutable", js["Cache-Control"])
+
+            # Missing JS chunk or asset must return 404 (never index.html).
+            for missing in (
+                "/_expo/static/js/web/profile-stale.js",
+                "/assets/fonts/missing.ttf",
+                "/static/app.js",
+                "/chunk-123.js",
+            ):
+                resp = self.client.get(missing)
+                self.assertEqual(resp.status_code, 404, f"Expected 404 for {missing}")
+
+
+

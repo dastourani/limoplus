@@ -25,7 +25,12 @@
     },
     "scheme": "limookhan",
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "asyncRoutes": false
+        }
+      ],
       [
         "expo-build-properties",
         {
