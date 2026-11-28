@@ -800,7 +800,10 @@
                 </span>
               </div>
             </div>
-            <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+            <div style="display:flex; gap:6px; align-items:center; flex-shrink:0; flex-wrap:wrap;">
+              <a href="{% url 'admin:catalog_book_classrooms_canvas' b.pk %}" class="teacher-btn teacher-btn-ghost" style="padding: 4px 9px; font-size: 11.5px; color:var(--body-fg); border-color:var(--hairline-color);" title="نمای بصری کلاس‌ها و لینک‌های دعوت دانشجوی این کتاب">
+                🎓 کلاس‌ها
+              </a>
               <a href="{% url 'admin:catalog_book_study_analytics' b.pk %}" class="teacher-btn teacher-btn-ghost" style="padding: 4px 9px; font-size: 11.5px; color:var(--body-fg); border-color:var(--hairline-color);" title="مشاهده آمار پیشرفت و مطالعه کلاس">
                 📊 آمار
               </a>

@@ -3664,3 +3664,131 @@ class PanelShellAndLayoutTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertNotContains(res, 'id="lp-rail-collapse-btn"')
         self.assertNotContains(res, 'id="lp-cmd-modal"')
+
+
+class BookClassroomsCanvasTests(TestCase):
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.website.models import Classroom
+
+        self.group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        self.superuser = User.objects.create_superuser("09120004100", "pw123")
+        self.teacher = User.objects.create_user("09120004101", is_staff=True)
+        self.teacher.groups.add(self.group)
+        self.other_teacher = User.objects.create_user("09120004102", is_staff=True)
+        self.other_teacher.groups.add(self.group)
+        self.plain_staff = User.objects.create_user("09120004103", is_staff=True)
+
+        self.book = ContentNode.add_root(
+            title="آناتومی کاربردی",
+            title_en="Applied Anatomy",
+            author="دکتر راد",
+            kind=ContentNode.Kind.BOOK,
+            slug="canvas-test-book",
+            cover_motif="anatomy",
+            is_published=False,
+        )
+        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True)
+        self.canvas_url = f"/admin/catalog/book/{self.book.pk}/classrooms/"
+        self.today = timezone.localdate()
+        self.timedelta = timedelta
+        self.Classroom = Classroom
+
+    def test_entry_links_visible_on_dashboard_and_book_change_page(self):
+        self.client.force_login(self.teacher)
+        dash = self.client.get("/admin/")
+        self.assertEqual(dash.status_code, 200)
+        self.assertContains(dash, self.canvas_url)
+
+        book_page = self.client.get(f"/admin/catalog/book/{self.book.pk}/change/")
+        self.assertEqual(book_page.status_code, 200)
+        self.assertContains(book_page, self.canvas_url)
+        self.assertContains(book_page, "کلاس‌ها و لینک‌های این کتاب")
+
+    def test_empty_state_renders_book_cover_and_student_notice(self):
+        self.client.force_login(self.teacher)
+        res = self.client.get(self.canvas_url)
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "هنوز کلاسی برای این کتاب ساخته نشده است")
+        self.assertContains(res, 'class="lp-cover"')
+        self.assertContains(res, "catalog/limo-preview.js")
+        self.assertContains(res, "لینک دعوت دانشجو از پنل اساتید جداست")
+
+    def test_create_toggle_and_renew_preserves_existing_join_code(self):
+        self.client.force_login(self.teacher)
+        res = self.client.post(self.canvas_url, {
+            "action": "create",
+            "title": "کلاس پاییز ۱۴۰۵",
+            "capacity": 40,
+            "expiry_policy": self.Classroom.ExpiryPolicy.FIXED_DATE,
+            "ends_on": (self.today + self.timedelta(days=20)).isoformat(),
+            "description": "گروه صبح",
+        })
+        self.assertRedirects(res, self.canvas_url)
+        c = self.Classroom.objects.get(book=self.book, title="کلاس پاییز ۱۴۰۵")
+        original_code = c.code
+
+        page = self.client.get(self.canvas_url)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, f"/join/{original_code}/")
+        self.assertContains(page, "کپی لینک دعوت دانشجو")
+
+        # Toggle inactive and back active keeps exact code
+        self.client.post(self.canvas_url, {"action": "toggle_active", "classroom_id": c.pk})
+        c.refresh_from_db()
+        self.assertFalse(c.is_active)
+        self.assertEqual(c.code, original_code)
+
+        # Simulate expired classroom and renew without rotating code
+        c.ends_on = self.today - self.timedelta(days=2)
+        c.save(update_fields=["ends_on"])
+        expired_page = self.client.get(self.canvas_url)
+        self.assertContains(expired_page, "منقضی‌شده")
+        self.assertContains(expired_page, "تمدید لینک")
+
+        self.client.post(self.canvas_url, {
+            "action": "renew",
+            "classroom_id": c.pk,
+            "renew_mode": "plus_30",
+        })
+        c.refresh_from_db()
+        self.assertTrue(c.is_active)
+        self.assertGreater(c.ends_on, self.today)
+        self.assertEqual(c.code, original_code)
+
+    def test_teacher_scoping_and_unauthorized_access_blocked(self):
+        # Other teacher without BookEditor on this book cannot access canvas (GET or POST)
+        self.client.force_login(self.other_teacher)
+        self.assertEqual(self.client.get(self.canvas_url).status_code, 403)
+        self.assertEqual(self.client.post(self.canvas_url, {"action": "create", "title": "hack"}).status_code, 403)
+
+        # Plain staff cannot access canvas
+        self.client.force_login(self.plain_staff)
+        self.assertEqual(self.client.get(self.canvas_url).status_code, 403)
+
+        # Even if superuser has a classroom on this book, teacher only sees their own classrooms
+        su_class = self.Classroom.objects.create(
+            teacher=self.superuser,
+            book=self.book,
+            title="کلاس مدیر",
+            expiry_policy=self.Classroom.ExpiryPolicy.UNLIMITED,
+        )
+        t_class = self.Classroom.objects.create(
+            teacher=self.teacher,
+            book=self.book,
+            title="کلاس استاد",
+            expiry_policy=self.Classroom.ExpiryPolicy.UNLIMITED,
+        )
+
+        self.client.force_login(self.teacher)
+        t_page = self.client.get(self.canvas_url)
+        self.assertContains(t_page, t_class.title)
+        self.assertNotContains(t_page, su_class.title)
+
+        # Superuser sees both classrooms
+        self.client.force_login(self.superuser)
+        su_page = self.client.get(self.canvas_url)
+        self.assertContains(su_page, t_class.title)
+        self.assertContains(su_page, su_class.title)
+

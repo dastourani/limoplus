@@ -221,3 +221,254 @@ def waitlist_notify(admin_site, request, book_id):
     }
     context["fa"] = {k: fa_digits(context[k]) for k in ("count", "told", "queued", "failed", "total")}
     return TemplateResponse(request, "admin/catalog/book/waitlist_notify.html", context)
+
+
+def book_classrooms_canvas(admin_site, request, book_id):
+    """Visual canvas («کلاس‌ها و لینک‌های این کتاب») for managing a book's classrooms & student /join/ links."""
+    from django.conf import settings
+    from django.template.response import TemplateResponse
+    from apps.catalog.jalali import jalali_date
+    from apps.catalog.panel_display import fa_number
+    from apps.website.forms import ClassroomCreateForm
+    from apps.website.models import Classroom, ClassroomMember
+    from . import access
+
+    book = get_object_or_404(ContentNode, pk=book_id, kind=ContentNode.Kind.BOOK, depth=1)
+    is_panel_su = access.acts_as_panel_superuser(request)
+    is_panel_teacher = access.acts_as_panel_teacher(request)
+    if not (is_panel_su or is_panel_teacher):
+        raise PermissionDenied("شما مجوز مشاهده کلاس‌های این کتاب را ندارید.")
+    if not is_panel_su and not access.classroom_books_for_request(request).filter(pk=book.pk).exists():
+        raise PermissionDenied("شما مجوز مدیریت کلاس‌های این کتاب را ندارید.")
+
+    canvas_url = reverse("admin:catalog_book_classrooms_canvas", args=[book.pk])
+    classrooms_qs = Classroom.objects.filter(book=book).select_related("teacher").order_by("-created_at", "-id")
+    if not is_panel_su:
+        classrooms_qs = classrooms_qs.filter(teacher=request.user)
+
+    create_form = ClassroomCreateForm(user=request.user, allowed_books=ContentNode.objects.filter(pk=book.pk))
+    open_create_modal = False
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "create":
+            if book.is_inbox or book.is_archived:
+                messages.error(request, "برای کتاب بایگانی‌شده یا صندوق تست امکان ایجاد کلاس وجود ندارد.")
+                return redirect(canvas_url)
+            post_data = request.POST.copy()
+            post_data["book"] = str(book.pk)
+            create_form = ClassroomCreateForm(
+                post_data,
+                user=request.user,
+                allowed_books=ContentNode.objects.filter(pk=book.pk),
+            )
+            if create_form.is_valid():
+                with transaction.atomic():
+                    obj = create_form.save(commit=False)
+                    obj.book = book
+                    obj.teacher = request.user
+                    obj.save()
+                    for phone in getattr(create_form, "normalized_phones", []):
+                        ClassroomMember.objects.get_or_create(
+                            classroom=obj,
+                            phone=phone,
+                            defaults={"join_method": ClassroomMember.JoinMethod.BULK_IMPORT},
+                        )
+                messages.success(
+                    request,
+                    f"کلاس «{obj.title}» با لینک ثابت /join/{obj.code}/ ساخته شد.",
+                )
+                return redirect(canvas_url)
+            open_create_modal = True
+
+        elif action == "toggle_active":
+            classroom = get_object_or_404(classrooms_qs, pk=request.POST.get("classroom_id"))
+            new_active = not classroom.is_active
+            if (
+                new_active
+                and classroom.expiry_policy == Classroom.ExpiryPolicy.FIXED_DATE
+                and classroom.ends_on
+                and classroom.ends_on < timezone.localdate()
+            ):
+                messages.error(
+                    request,
+                    f"مهلت کلاس «{classroom.title}» گذشته است؛ برای بازگشایی مجدد، از «تمدید لینک» تاریخ تازه ثبت کنید.",
+                )
+                return redirect(canvas_url)
+            classroom.is_active = new_active
+            classroom.save(update_fields=["is_active", "updated_at"])
+            state_txt = "فعال" if new_active else "غیرفعال"
+            messages.success(request, f"لینک دعوت کلاس «{classroom.title}» ({classroom.code}) {state_txt} شد.")
+            return redirect(canvas_url)
+
+        elif action == "renew":
+            classroom = get_object_or_404(classrooms_qs, pk=request.POST.get("classroom_id"))
+            mode = (request.POST.get("renew_mode") or "plus_30").strip()
+            today = timezone.localdate()
+            base_date = max(today, classroom.ends_on) if classroom.ends_on else today
+
+            if mode == "plus_30":
+                classroom.expiry_policy = Classroom.ExpiryPolicy.FIXED_DATE
+                classroom.ends_on = base_date + timedelta(days=30)
+                classroom.duration_days = None
+                classroom.is_active = True
+            elif mode == "plus_90":
+                classroom.expiry_policy = Classroom.ExpiryPolicy.FIXED_DATE
+                classroom.ends_on = base_date + timedelta(days=90)
+                classroom.duration_days = None
+                classroom.is_active = True
+            elif mode == "plus_180":
+                classroom.expiry_policy = Classroom.ExpiryPolicy.FIXED_DATE
+                classroom.ends_on = base_date + timedelta(days=180)
+                classroom.duration_days = None
+                classroom.is_active = True
+            elif mode == "unlimited":
+                classroom.expiry_policy = Classroom.ExpiryPolicy.UNLIMITED
+                classroom.ends_on = None
+                classroom.duration_days = None
+                classroom.is_active = True
+            elif mode == "custom_date":
+                from django.utils.dateparse import parse_date
+
+                parsed = parse_date((request.POST.get("custom_ends_on") or "").strip())
+                if not parsed:
+                    messages.error(request, "تاریخ جدید معتبر نیست.")
+                    return redirect(canvas_url)
+                if parsed < today:
+                    messages.error(request, "تاریخ پایان نمی‌تواند در گذشته باشد.")
+                    return redirect(canvas_url)
+                classroom.expiry_policy = Classroom.ExpiryPolicy.FIXED_DATE
+                classroom.ends_on = parsed
+                classroom.duration_days = None
+                classroom.is_active = True
+            else:
+                messages.error(request, "گزینهٔ تمدید نامعتبر است.")
+                return redirect(canvas_url)
+
+            try:
+                classroom.full_clean()
+            except Exception as exc:
+                messages.error(request, str(exc))
+                return redirect(canvas_url)
+            classroom.save(update_fields=["expiry_policy", "ends_on", "duration_days", "is_active", "updated_at"])
+            messages.success(
+                request,
+                f"کلاس «{classroom.title}» با همان لینک قبلی (/join/{classroom.code}/) تمدید و فعال شد.",
+            )
+            return redirect(canvas_url)
+
+    now = timezone.now()
+    today = timezone.localdate()
+    site_url = (getattr(settings, "SITE_URL", "") or "").rstrip("/")
+
+    cards = []
+    active_total = 0
+    expired_total = 0
+    students_total = 0
+
+    for c in classrooms_qs:
+        active_members = c.active_members_count
+        waiting_members = c.members.filter(status=ClassroomMember.Status.WAITING_OTP).count()
+        is_expired = c.is_expired(now)
+        is_full = bool(c.is_active and not is_expired and active_members >= c.capacity)
+
+        if is_expired:
+            state = "expired"
+            state_label = "منقضی‌شده"
+            expired_total += 1
+        elif not c.is_active:
+            state = "inactive"
+            state_label = "غیرفعال"
+        elif is_full:
+            state = "full"
+            state_label = "ظرفیت تکمیل"
+            active_total += 1
+        else:
+            state = "active"
+            state_label = "فعال"
+            active_total += 1
+
+        students_total += active_members
+        pct = min(100, round(100 * active_members / max(1, c.capacity)))
+
+        days_left = None
+        if c.expiry_policy == Classroom.ExpiryPolicy.UNLIMITED:
+            expiry_text = "همیشگی (بدون تاریخ پایان)"
+        elif c.expiry_policy == Classroom.ExpiryPolicy.FIXED_DATE and c.ends_on:
+            days_left = (c.ends_on - today).days
+            expiry_text = f"پایان: {jalali_date(c.ends_on)}"
+        elif c.expiry_policy == Classroom.ExpiryPolicy.FROM_JOIN and c.duration_days:
+            expiry_text = f"{fa_number(c.duration_days)} روز پس از پیوستن دانشجو"
+        else:
+            expiry_text = c.get_expiry_policy_display()
+
+        join_path = f"/join/{c.code}/"
+        join_url = f"{site_url}{join_path}" if site_url else request.build_absolute_uri(join_path)
+
+        cards.append({
+            "obj": c,
+            "pk": c.pk,
+            "title": c.title,
+            "description": c.description,
+            "code": c.code,
+            "join_path": join_path,
+            "join_url": join_url,
+            "state": state,
+            "state_label": state_label,
+            "is_active": c.is_active,
+            "is_expired": is_expired,
+            "is_full": is_full,
+            "active_members": active_members,
+            "active_members_fa": fa_number(active_members),
+            "waiting_members": waiting_members,
+            "waiting_members_fa": fa_number(waiting_members),
+            "capacity": c.capacity,
+            "capacity_fa": fa_number(c.capacity),
+            "pct": pct,
+            "expiry_text": expiry_text,
+            "days_left": days_left,
+            "days_left_fa": fa_number(abs(days_left)) if days_left is not None else "",
+            "is_expiring_soon": bool(days_left is not None and 0 <= days_left <= 7 and c.is_active),
+            "teacher_label": getattr(c.teacher, "full_name", "") or c.teacher.phone,
+            "add_members_url": reverse("admin:website_classroom_add_members", args=[c.pk]),
+            "members_url": reverse("admin:website_classroommember_changelist") + f"?classroom_id={c.pk}",
+            "change_url": reverse("admin:website_classroom_change", args=[c.pk]),
+        })
+
+    chapters_count = ContentNode.objects.filter(path__startswith=book.path, depth=2, is_archived=False).count()
+    sections_count = ContentNode.objects.filter(path__startswith=book.path, depth=3, is_archived=False).count()
+    major = book.majors.first()
+
+    context = {
+        **admin_site.each_context(request),
+        "title": f"کلاس‌ها و لینک‌های «{book.title}»",
+        "book": book,
+        "book_cover": {
+            "title": book.title,
+            "title_en": book.title_en,
+            "author": book.author,
+            "edition": book.edition,
+            "cover_url": book.cover.url if book.cover else "",
+            "cover_motif": book.cover_motif,
+            "cover_drawing": book.cover_drawing,
+            "major_name": major.name if major else "",
+            "major_color": major.color if major else "",
+            "chapters_fa": fa_number(chapters_count),
+            "sections_fa": fa_number(sections_count),
+        },
+        "cards": cards,
+        "summary": {
+            "total_fa": fa_number(len(cards)),
+            "active_fa": fa_number(active_total),
+            "expired_fa": fa_number(expired_total),
+            "students_fa": fa_number(students_total),
+        },
+        "is_panel_su": is_panel_su,
+        "can_create_classroom": bool(not book.is_inbox and not book.is_archived),
+        "create_form": create_form,
+        "open_create_modal": open_create_modal,
+        "today_iso": today.isoformat(),
+        "opts": ContentNode._meta,
+    }
+    return TemplateResponse(request, "admin/catalog/book/classrooms_canvas.html", context)
+
