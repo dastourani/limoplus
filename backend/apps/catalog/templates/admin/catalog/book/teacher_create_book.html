@@ -1,57 +1,364 @@
 {% extends "admin/base_site.html" %}
+{% block extrahead %}
+{{ block.super }}
+{% include "admin/catalog/book/_assets.html" %}
+<style>
+  .lp-draft-shell {
+    max-width: 1060px;
+    margin: 16px auto 36px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.9fr);
+    gap: 22px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .lp-draft-shell { grid-template-columns: 1fr; }
+  }
+  .lp-draft-card {
+    background: var(--body-bg, #ffffff);
+    color: var(--body-fg, #17201A);
+    border: 1px solid #d9e2dc;
+    border-radius: 16px;
+    padding: 24px 26px;
+    box-shadow: 0 8px 24px rgba(19, 58, 40, 0.06);
+  }
+  .lp-draft-intro {
+    background: #E3F3E9;
+    border: 1px solid #bfe3cd;
+    color: #133a28;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.75;
+    margin-bottom: 20px;
+  }
+  .lp-draft-field {
+    margin-bottom: 16px;
+  }
+  .lp-draft-field > label {
+    display: block;
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 6px;
+    color: var(--body-fg, #17201A);
+  }
+  .lp-draft-field input[type="text"],
+  .lp-draft-field select,
+  .lp-draft-field textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    min-height: 42px;
+    line-height: 1.5;
+    border-radius: 10px;
+    border: 1px solid #c9d6ce;
+    background: var(--darkened-bg, #f8faf8);
+    color: var(--body-fg, #17201A);
+    font-family: inherit;
+    font-size: 13.5px;
+  }
+  .lp-draft-row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 600px) {
+    .lp-draft-row2 { grid-template-columns: 1fr; }
+  }
+  .lp-major-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .lp-major-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid #cbd8d0;
+    background: #f6f7f2;
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #17201A;
+    user-select: none;
+  }
+  .lp-major-chip input {
+    margin: 0;
+    accent-color: #1F5E3A;
+  }
+  .lp-major-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    display: inline-block;
+  }
+  .lp-draft-preview-card {
+    position: sticky;
+    top: 20px;
+    background: #133a28;
+    color: #ffffff;
+    border-radius: 18px;
+    padding: 22px 20px;
+    box-shadow: 0 14px 32px rgba(15, 41, 30, 0.22);
+    border: 1px solid rgba(245, 197, 24, 0.25);
+  }
+  .lp-draft-preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .lp-draft-preview-head h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 900;
+    color: #F5C518;
+  }
+  .lp-preview-stage {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 10px 0 14px;
+  }
+  .lp-preview-theme-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .lp-preview-theme-col span {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.78);
+    font-weight: 700;
+  }
+  .lp-draft-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 22px;
+  }
+  .lp-draft-submit {
+    background: #F5C518 !important;
+    color: #133a28 !important;
+    border: 1.5px solid #e0b107 !important;
+    padding: 11px 24px !important;
+    border-radius: 11px !important;
+    font-size: 14.5px !important;
+    font-weight: 900 !important;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(245, 197, 24, 0.34);
+  }
+  .lp-draft-submit:hover {
+    background: #ffd43b !important;
+  }
+  .lp-draft-cancel {
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid #cbd8d0;
+    background: #f6f7f2;
+    color: #17201A !important;
+    text-decoration: none !important;
+    font-size: 13.5px;
+    font-weight: 700;
+  }
+  .lp-optional-files {
+    background: var(--darkened-bg, #f6f7f2);
+    border: 1px dashed #c4d1c9;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-top: 8px;
+  }
+  .lp-optional-files summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 800;
+    color: #1F5E3A;
+  }
+  html[data-theme="dark"] .lp-draft-card {
+    background: #1a241f;
+    border-color: #2c3b33;
+  }
+  html[data-theme="dark"] .lp-draft-intro {
+    background: #163024;
+    border-color: #26533d;
+    color: #d7efe1;
+  }
+  html[data-theme="dark"] .lp-major-chip {
+    background: #233029;
+    border-color: #34473d;
+    color: #e6eee9;
+  }
+  html[data-theme="dark"] .lp-draft-field input[type="text"],
+  html[data-theme="dark"] .lp-draft-field select,
+  html[data-theme="dark"] .lp-draft-field textarea {
+    background: #141c18;
+    border-color: #34473d;
+    color: #f1f5f3;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="card" style="max-width: 650px; margin: 20px auto; padding: 28px; background: var(--body-bg, #fff); color: var(--body-fg, #111827); border-radius: 12px; border: 1px solid var(--hairline-color, #e5e7eb); box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
-  <h2 style="margin-top:0; color: var(--body-fg, #111827); font-size:20px; font-weight:800;">{{ title }}</h2>
-  <div style="background: var(--darkened-bg, #f8fafc); border: 1px solid var(--hairline-color, #e2e8f0); border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; font-size: 13.5px; line-height: 1.8; color: var(--body-fg, #1e293b);">
-    <p style="margin: 0 0 8px;">
-      با تکمیل این فرم، ساختار کتاب در وضعیت <b>«پیش‌نویس اختصاصی (غیرعمومی)»</b> ایجاد شده و جنابعالی به عنوان مؤلف و مدیر محتوایی آن تعیین می‌شوید. در این وضعیت، دسترسی کامل برای تدوین سرفصل‌ها، نگارش درسنامه‌ها و بارگذاری بانک تست در اختیار شما خواهد بود.
-    </p>
-    <p style="margin: 0; font-size: 12.5px; color: var(--body-quiet-color, #475569);">
-      ساخت پیش‌نویس و استفادهٔ خصوصی برای دانشجویان کلاس‌های خودتان <b>کاملاً رایگان</b> است. اگر بعداً بخواهید کتاب در ویترین عمومی عرضه شود، سهم پلتفرم از فروش تکی بسته به پیچیدگی فرمول‌ها و شکل‌ها در بازهٔ <b>۱۰٪ تا ۴۰٪</b> هنگام بررسی انتشار عمومی پیشنهاد و پس از پذیرش شما فعال می‌شود.
-    </p>
+{{ majors_json|json_script:"lp-draft-majors" }}
+<div class="lp-draft-shell">
+  <div class="lp-draft-card">
+    <h2 style="margin:0 0 12px; font-size:20px; font-weight:900;">{{ title }}</h2>
+    <div class="lp-draft-intro">
+      در این مرحله فقط <b>جلد و مشخصات اصلی کتاب پیش‌نویس</b> را بسازید. ساخت پیش‌نویس و استفادهٔ خصوصی برای کلاس‌های خودتان <b>کاملاً رایگان</b> است (برای عرضهٔ عمومی، سهم پلتفرم در بازهٔ <b>۱۰٪ تا ۴۰٪</b> هنگام بررسی پیشنهاد می‌شود). بلافاصله پس از ساخت، وارد صفحهٔ کتاب می‌شوید تا فصل بنویسید یا کتاب آماده را با <b>هوش مصنوعی</b> وارد کنید.
+    </div>
+
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+
+      <div class="lp-draft-field">
+        <label for="id_draft_title">عنوان فارسی کتاب <span style="color:#dc2626;">*</span></label>
+        <input type="text" name="title" id="id_draft_title" required value="{{ form_data.title }}" placeholder="مثلاً: ریاضی عمومی ۱ یا شیمی آلی پیشرفته">
+      </div>
+
+      <div class="lp-draft-row2">
+        <div class="lp-draft-field">
+          <label for="id_draft_title_en">عنوان لاتین (اختیاری)</label>
+          <input type="text" name="title_en" id="id_draft_title_en" dir="ltr" value="{{ form_data.title_en }}" placeholder="Calculus I">
+        </div>
+        <div class="lp-draft-field">
+          <label for="id_draft_edition">ویرایش (اختیاری)</label>
+          <input type="text" name="edition" id="id_draft_edition" value="{{ form_data.edition }}" placeholder="مثلاً: ویرایش دوم">
+        </div>
+      </div>
+
+      <div class="lp-draft-field">
+        <label for="id_draft_author">نام مؤلف / استاد</label>
+        <input type="text" name="author" id="id_draft_author" value="{{ form_data.author }}" placeholder="مثلاً: دکتر محمدی">
+      </div>
+
+      {% if majors %}
+      <div class="lp-draft-field">
+        <label>رشته / نوار رنگی جلد (اختیاری)</label>
+        <div class="lp-major-chips">
+          {% for m in majors %}
+            <label class="lp-major-chip">
+              <input type="checkbox" name="majors" value="{{ m.pk }}" class="lp-draft-major-cb" {% if m.pk in form_data.selected_majors %}checked{% endif %}>
+              <span class="lp-major-dot" style="background:{{ m.color|default:'#3FB8A9' }}"></span>
+              <span>{{ m.name }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="lp-draft-field">
+        <label for="id_draft_cover_motif">نقش و طرح روی جلد</label>
+        <select name="cover_motif" id="id_draft_cover_motif">
+          {% for val, label in motifs %}
+            <option value="{{ val }}" {% if form_data.cover_motif == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <details class="lp-optional-files">
+        <summary>🎨 آپلود عکس جلد یا فایل طرح خطی SVG (اختیاری)</summary>
+        <div class="lp-draft-field" style="margin-top:12px;">
+          <label for="id_draft_cover">عکس جلد آماده (اختیاری — جایگزین جلد خودکار می‌شود)</label>
+          <input type="file" name="cover" id="id_draft_cover" accept="image/png,image/jpeg,image/webp">
+        </div>
+        <div class="lp-draft-field" style="margin-bottom:0;">
+          <label for="id_draft_drawing">یا فایل SVG طرح اختصاصی روی جلد</label>
+          <input type="file" name="drawing_file" id="id_draft_drawing" accept=".svg">
+        </div>
+      </details>
+
+      <div class="lp-draft-field" style="margin-top:16px;">
+        <label for="id_draft_about">معرفی کوتاه کتاب (اختیاری)</label>
+        <textarea name="about" id="id_draft_about" rows="3" placeholder="توضیح مختصر درباره محتوای درس و مخاطبان کتاب...">{{ form_data.about }}</textarea>
+      </div>
+
+      <div class="lp-draft-actions">
+        <button type="submit" class="lp-draft-submit">✓ ساخت جلد و ایجاد کتاب پیش‌نویس</button>
+        <a href="{% url 'admin:catalog_book_changelist' %}" class="lp-draft-cancel">بازگشت به قفسه کتاب‌ها</a>
+      </div>
+    </form>
   </div>
 
-  <form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-
-    <div style="margin-bottom: 18px;">
-      <label for="id_title" style="display:block; font-weight:700; margin-bottom:6px; color:var(--body-fg);">عنوان فارسی کتاب: <span style="color:#ef4444;">*</span></label>
-      <input type="text" name="title" id="id_title" required placeholder="مثلاً: ریاضی عمومی ۱ یا شیمی آلی پیشرفته" style="width:100%; box-sizing:border-box; padding:10px 12px; background:var(--darkened-bg, #f9fafb); color:var(--body-fg, #111); border:1px solid var(--hairline-color, #d1d5db); border-radius:8px; font-size:14px;">
+  <aside class="lp-draft-preview-card" aria-label="پیش‌نمایش زنده جلد">
+    <div class="lp-draft-preview-head">
+      <h3>پیش‌نمایش زندهٔ جلد</h3>
+      <span style="font-size:11.5px; opacity:.8;">نمای اپ و قفسه</span>
     </div>
-
-    <div style="margin-bottom: 18px;">
-      <label for="id_title_en" style="display:block; font-weight:700; margin-bottom:6px; color:var(--body-fg);">عنوان لاتین کتاب (اختیاری):</label>
-      <input type="text" name="title_en" id="id_title_en" dir="ltr" placeholder="Calculus I" style="width:100%; box-sizing:border-box; padding:10px 12px; background:var(--darkened-bg, #f9fafb); color:var(--body-fg, #111); border:1px solid var(--hairline-color, #d1d5db); border-radius:8px; font-size:14px;">
-    </div>
-
-    <div style="margin-bottom: 18px;">
-      <label for="id_author" style="display:block; font-weight:700; margin-bottom:6px; color:var(--body-fg);">نام مؤلف / استاد:</label>
-      <input type="text" name="author" id="id_author" placeholder="مثلاً: دکتر محمدی" style="width:100%; box-sizing:border-box; padding:10px 12px; background:var(--darkened-bg, #f9fafb); color:var(--body-fg, #111); border:1px solid var(--hairline-color, #d1d5db); border-radius:8px; font-size:14px;">
-    </div>
-
-    <div style="margin-bottom: 18px;">
-      <label for="id_about" style="display:block; font-weight:700; margin-bottom:6px; color:var(--body-fg);">معرفی و توضیح کوتاه کتاب:</label>
-      <textarea name="about" id="id_about" rows="3" placeholder="توضیح مختصر درباره محتوای درس و جامعه هدف..." style="width:100%; box-sizing:border-box; padding:10px 12px; background:var(--darkened-bg, #f9fafb); color:var(--body-fg, #111); border:1px solid var(--hairline-color, #d1d5db); border-radius:8px; font-size:14px;"></textarea>
-    </div>
-
-    <div style="margin-bottom: 22px; background: var(--darkened-bg, #f8fafc); padding: 16px 18px; border-radius: 10px; border: 1px dashed var(--hairline-color, #cbd5e1);">
-      <label for="id_initial_file" style="display:block; font-weight:700; margin-bottom:6px; color:var(--body-fg);">
-        بارگذاری مستقیم اولین فصل یا سرفصل (اختیاری):
-      </label>
-      <input type="file" name="initial_file" id="id_initial_file" accept=".md,.tex,.pptx,.zip" style="font-size:13px; color:var(--body-quiet-color); width:100%;">
-      <p style="margin: 8px 0 0; font-size: 12px; color: var(--body-quiet-color); line-height: 1.6;">
-        می‌توانید فایل سرفصل یا جزوه اول خود (با پسوند <code>.tex</code>، <code>.pptx</code>، <code>.md</code> یا <code>.zip</code>) را همین‌جا بارگذاری کنید تا خودکار ایجاد و تبدیل شود، یا بعداً در صفحه کتاب فایل‌ها را اضافه کنید.
-      </p>
-    </div>
-
-    <div style="display: flex; gap: 12px; margin-top: 24px;">
-      <button type="submit" class="button" style="background: #10b981; color: white; padding: 10px 24px; border-radius: 8px; border: none; font-size:14.5px; font-weight: 800; cursor: pointer;">
-        ✓ ایجاد پیش‌نویس کتاب
-      </button>
-      <a href="{% url 'admin:catalog_book_changelist' %}" class="button" style="background: var(--darkened-bg, #f3f4f6); color: var(--body-fg, #374151); border: 1px solid var(--hairline-color); padding: 10px 18px; border-radius: 8px; text-decoration: none; font-size:14px; font-weight: 700;">
-        انصراف
-      </a>
-    </div>
-  </form>
+    <div id="lp-draft-cover-preview" class="lp-preview-stage"></div>
+    <p style="margin:0; font-size:12px; line-height:1.7; color:rgba(255,255,255,0.82); text-align:center;">
+      رنگ نوار کناری از رشتهٔ انتخاب‌شده و نقش مرکزی از طرح جلد گرفته می‌شود. هر کاربر در اپ می‌تواند تم تیره یا روشن را انتخاب کند.
+    </p>
+  </aside>
 </div>
+
+<script>
+(function () {
+  var P = window.LimoPreview;
+  if (!P || !P.coverHtml) return;
+  var majors = {};
+  try {
+    majors = JSON.parse(document.getElementById('lp-draft-majors').textContent || '{}');
+    if (typeof majors === 'string') majors = JSON.parse(majors);
+  } catch (e) { majors = {}; }
+
+  var box = document.getElementById('lp-draft-cover-preview');
+  var coverInput = document.getElementById('id_draft_cover');
+  var uploadedImgUrl = null;
+
+  function val(id) {
+    var el = document.getElementById(id);
+    return el ? el.value : '';
+  }
+
+  function render() {
+    if (uploadedImgUrl) {
+      box.innerHTML =
+        '<div class="lp-preview-theme-col">' +
+        '<img src="' + uploadedImgUrl + '" alt="پیش‌نمایش جلد" style="width:170px;height:255px;object-fit:cover;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,0.35);">' +
+        '<span>تصویر آپلودشده</span></div>';
+      return;
+    }
+    var checked = document.querySelector('.lp-draft-major-cb:checked');
+    var m = (checked && majors[checked.value]) || { name: 'پیش‌نویس استاد', color: '#3FB8A9' };
+    var book = {
+      title: val('id_draft_title') || 'عنوان کتاب شما',
+      title_en: val('id_draft_title_en'),
+      author: val('id_draft_author') || 'نام مؤلف',
+      edition: val('id_draft_edition'),
+      motif: val('id_draft_cover_motif') || 'book',
+      major: m.name,
+      strip: m.color,
+      drawing: null
+    };
+    box.innerHTML =
+      '<div class="lp-preview-theme-col">' + P.coverHtml(book, 'dark', 142) + '<span>تم تیره</span></div>' +
+      '<div class="lp-preview-theme-col">' + P.coverHtml(book, 'light', 142) + '<span>تم روشن</span></div>';
+  }
+
+  ['id_draft_title', 'id_draft_title_en', 'id_draft_author', 'id_draft_edition', 'id_draft_cover_motif'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', render);
+      el.addEventListener('change', render);
+    }
+  });
+  document.querySelectorAll('.lp-draft-major-cb').forEach(function (cb) {
+    cb.addEventListener('change', render);
+  });
+  if (coverInput) {
+    coverInput.addEventListener('change', function () {
+      if (uploadedImgUrl) { URL.revokeObjectURL(uploadedImgUrl); uploadedImgUrl = null; }
+      if (coverInput.files && coverInput.files[0]) {
+        uploadedImgUrl = URL.createObjectURL(coverInput.files[0]);
+      }
+      render();
+    });
+  }
+  render();
+})();
+</script>
 {% endblock %}
