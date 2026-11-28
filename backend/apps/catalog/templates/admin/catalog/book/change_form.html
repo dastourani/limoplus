@@ -4,10 +4,10 @@
   {% if original %}
     <li><a href="{% url 'admin:catalog_book_inbox' original.pk %}" style="background:#f59e0b;color:#1e293b;font-weight:800;" title="میز کار موقت و صندوق تست‌های اختصاصی همین کتاب برای بارگذاری دسته‌ای تست‌ها بدون تأثیر بر فصول کتاب">📥 صندوق تست کتاب</a></li>
     {% if can_edit_book_content %}
-      <li><a href="{% url 'admin:catalog_book_import' original.pk %}" style="background:#1F5E3A;color:#F5C518;font-weight:800;border:1px solid #F5C518;" title="وارد کردن فصل یا کتاب آماده از فایل با کمک هوش مصنوعی">🤖 ورود فایل/کتاب با هوش مصنوعی</a></li>
+      <li><a href="{% url 'admin:catalog_book_import' original.pk %}" style="background:#1B1B20;color:#F5C518;font-weight:800;border:1px solid #F5C518;" title="وارد کردن فصل یا کتاب آماده از فایل با کمک هوش مصنوعی">🤖 ورود فایل/کتاب با هوش مصنوعی</a></li>
     {% endif %}
     {% if can_view_classrooms_canvas %}
-      <li><a href="{% url 'admin:catalog_book_classrooms_canvas' original.pk %}" style="background:#133a28;color:#F5C518;font-weight:800;border:1px solid #F5C518;" title="نمای بصری کلاس‌ها و لینک‌های دعوت دانشجوی این کتاب">🎓 کلاس‌ها و لینک‌های این کتاب</a></li>
+      <li><a href="{% url 'admin:catalog_book_classrooms_canvas' original.pk %}" style="background:#161618;color:#F5C518;font-weight:800;border:1px solid rgba(245,197,24,0.55);" title="نمای بصری کلاس‌ها و لینک‌های دعوت دانشجوی این کتاب">🎓 کلاس‌ها و لینک‌های این کتاب</a></li>
     {% endif %}
     {% if can_view_study %}
       <li><a href="{% url 'admin:catalog_book_study_analytics' original.pk %}" style="background:#0284c7;color:#fff;font-weight:700;">📊 آمار مطالعه کلاس</a></li>
@@ -186,18 +186,18 @@
       </div>
       <button class="btn primary" type="submit" style="margin-top:10px">ساختن و باز کردن</button>
     </form>
-    <div class="cm-card" id="lp-ai-import-card" style="flex:1;min-width:300px;background:linear-gradient(135deg,#133a28 0%,#1F5E3A 100%);color:#ffffff;border:1px solid rgba(245,197,24,0.45);display:flex;flex-direction:column;justify-content:space-between;gap:10px;">
+    <div class="cm-card" id="lp-ai-import-card" style="flex:1;min-width:300px;background:radial-gradient(circle at top left, rgba(245,197,24,0.10), transparent 55%), #161618;color:#F4F4F5;border:1px solid rgba(245,197,24,0.40);display:flex;flex-direction:column;justify-content:space-between;gap:10px;">
       <div>
         <b style="color:#F5C518;font-size:15px;">🤖 وارد کردن کتاب یا فصل آماده (با هوش مصنوعی)</b>
-        <p class="hint" style="color:rgba(255,255,255,0.88);margin:8px 0 0;line-height:1.75;">
-          اگر جزوه یا کتاب آماده‌ای با فرمت <code style="background:rgba(255,255,255,0.16);color:#F5C518;padding:1px 6px;border-radius:4px;">.tex</code>،
-          <code style="background:rgba(255,255,255,0.16);color:#F5C518;padding:1px 6px;border-radius:4px;">.pptx</code>،
-          <code style="background:rgba(255,255,255,0.16);color:#F5C518;padding:1px 6px;border-radius:4px;">.md</code> یا
-          <code style="background:rgba(255,255,255,0.16);color:#F5C518;padding:1px 6px;border-radius:4px;">.zip</code> دارید، می‌توانید فایل را وارد کرده و بخش‌ها و فرمول‌ها را با <b>دستیار هوش مصنوعی</b> تمیزکاری و پیش‌نمایش کنید.
+        <p class="hint" style="color:rgba(244,244,245,0.86);margin:8px 0 0;line-height:1.75;">
+          اگر جزوه یا کتاب آماده‌ای با فرمت <code style="background:rgba(255,255,255,0.12);color:#F5C518;padding:1px 6px;border-radius:4px;">.tex</code>،
+          <code style="background:rgba(255,255,255,0.12);color:#F5C518;padding:1px 6px;border-radius:4px;">.pptx</code>،
+          <code style="background:rgba(255,255,255,0.12);color:#F5C518;padding:1px 6px;border-radius:4px;">.md</code> یا
+          <code style="background:rgba(255,255,255,0.12);color:#F5C518;padding:1px 6px;border-radius:4px;">.zip</code> دارید، می‌توانید فایل را وارد کرده و بخش‌ها و فرمول‌ها را با <b>دستیار هوش مصنوعی</b> تمیزکاری و پیش‌نمایش کنید.
         </p>
       </div>
       <div>
-        <a class="btn" href="{% url 'admin:catalog_book_import' original.pk %}" style="background:#F5C518;color:#133a28;font-weight:900;border:none;padding:9px 18px;border-radius:9px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+        <a class="btn" href="{% url 'admin:catalog_book_import' original.pk %}" style="background:#F5C518;color:#111113;font-weight:900;border:none;padding:9px 18px;border-radius:9px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
           🤖 باز کردن ابزار ورود فایل و هوش مصنوعی
         </a>
       </div>

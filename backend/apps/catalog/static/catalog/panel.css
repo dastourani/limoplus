@@ -48,7 +48,9 @@
 .lp .btn { border: 1px solid var(--line); background: var(--card); color: var(--body-fg, #333); border-radius: 8px; padding: 6px 12px; cursor: pointer;
   line-height: 1.6; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .lp .btn:hover { border-color: #b9a23a; }
-.lp .btn.primary { background: var(--ink); color: var(--lemon); border-color: var(--ink); font-weight: 700; }
+.lp .btn.primary { background: #F5C518; color: #111113; border-color: #F5C518; font-weight: 800; }
+.lp .btn.primary:hover { background: #FFD84A; border-color: #FFD84A; }
+html[data-theme="light"] .lp .btn.primary { background: #18181B; color: #F5C518; border-color: #18181B; font-weight: 700; }
 .lp .btn.primary:disabled { opacity: .45; cursor: default; }
 .lp .btn.danger { color: var(--err); }
 .lp .btn.small { padding: 2px 8px; font-size: 12px; }

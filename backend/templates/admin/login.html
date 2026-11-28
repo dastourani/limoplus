@@ -3,38 +3,38 @@
 
 {% block extrastyle %}{{ block.super }}
 <style>
-  /* Align the login shell with LimoKhan's panel palette in both light and dark modes, without sidebar clutter or Django blue defaults. */
+  /* Align the login shell with Gerdoo obsidian charcoal + LimooKhan lemon yellow (#F5C518), without sidebar clutter. */
   body.login {
     --lp-accent: #F5C518;
-    --lp-ink: #17201A;
-    --header-bg: #17201A;
-    --header-color: #FFFFFF;
+    --lp-ink: #111113;
+    --header-bg: #111114;
+    --header-color: #F4F4F5;
     --header-link-color: #FEFCE8;
     --header-branding-color: #F5C518;
-    --primary: #15803D;
-    --secondary: #166534;
-    --primary-fg: #FFFFFF;
-    --link-fg: #15803D;
-    --link-hover-color: #166534;
-    --link-selected-fg: #15803D;
-    --body-bg: #FFFFFF;
-    --darkened-bg: #F5F6F2;
-    --body-fg: #17201A;
-    --body-quiet-color: #526056;
-    --border-color: #D7DDD6;
-    --hairline-color: #E3E7E1;
-    --lp-surface: var(--body-bg);
-    --lp-surface-alt: var(--darkened-bg);
-    --lp-card-shadow: 0 14px 36px rgba(23, 32, 26, 0.08);
-    --lp-btn-bg: #17201A;
-    --lp-btn-fg: #F5C518;
-    --lp-btn-hover: #24332A;
-    --lp-notice-bg: rgba(46, 158, 91, 0.14);
-    --lp-notice-fg: #1C6B3F;
-    --lp-notice-border: rgba(46, 158, 91, 0.34);
-    --lp-error-bg: rgba(214, 69, 69, 0.12);
-    --lp-error-fg: #A31F1F;
-    --lp-error-border: rgba(214, 69, 69, 0.34);
+    --primary: #F5C518;
+    --secondary: #1E1E24;
+    --primary-fg: #111113;
+    --link-fg: #F5C518;
+    --link-hover-color: #FFD84A;
+    --link-selected-fg: #F5C518;
+    --body-bg: #161618;
+    --darkened-bg: #0D0D0F;
+    --body-fg: #F4F4F5;
+    --body-quiet-color: #A1A1AA;
+    --border-color: #2A2A32;
+    --hairline-color: #27272D;
+    --lp-surface: #161618;
+    --lp-surface-alt: #111114;
+    --lp-card-shadow: 0 18px 44px rgba(0, 0, 0, 0.50);
+    --lp-btn-bg: #F5C518;
+    --lp-btn-fg: #111113;
+    --lp-btn-hover: #FFD84A;
+    --lp-notice-bg: rgba(34, 197, 94, 0.16);
+    --lp-notice-fg: #86EFAC;
+    --lp-notice-border: rgba(74, 222, 128, 0.30);
+    --lp-error-bg: rgba(239, 68, 68, 0.16);
+    --lp-error-fg: #FCA5A5;
+    --lp-error-border: rgba(248, 113, 113, 0.32);
     background: var(--darkened-bg);
     min-height: 100vh;
     padding: 0 !important;
@@ -45,74 +45,43 @@
     margin: 0 !important;
   }
   body.login.lp-login-teacher {
-    --header-bg: #133A28;
-    --lp-btn-bg: #15803D;
-    --lp-btn-fg: #FFFFFF;
-    --lp-btn-hover: #166534;
-  }
-  html[data-theme="dark"] body.login {
-    --header-bg: #111713;
-    --primary: #F5C518;
-    --primary-fg: #17201A;
-    --link-fg: #F5C518;
-    --link-hover-color: #FFD84A;
-    --link-selected-fg: #F5C518;
-    --body-bg: #1B231E;
-    --darkened-bg: #131915;
-    --body-fg: #F3F6F4;
-    --body-quiet-color: #B4C0B7;
-    --border-color: #2E3A32;
-    --hairline-color: #263129;
-    --lp-surface: #1B231E;
-    --lp-surface-alt: #131915;
-    --lp-card-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+    --header-bg: #111114;
     --lp-btn-bg: #F5C518;
-    --lp-btn-fg: #17201A;
+    --lp-btn-fg: #111113;
     --lp-btn-hover: #FFD84A;
-    --lp-notice-bg: rgba(46, 158, 91, 0.18);
-    --lp-notice-fg: #7FE3A8;
-    --lp-notice-border: rgba(111, 211, 154, 0.32);
-    --lp-error-bg: rgba(214, 69, 69, 0.18);
-    --lp-error-fg: #FF9E9E;
-    --lp-error-border: rgba(255, 154, 154, 0.32);
   }
-  html[data-theme="dark"] body.login.lp-login-teacher {
-    --header-bg: #0F291E;
-    --link-fg: #4ADE80;
-    --link-hover-color: #86EFAC;
+  html[data-theme="light"] body.login {
+    --header-bg: #111114;
+    --primary: #18181B;
+    --secondary: #27272A;
+    --primary-fg: #F5C518;
+    --link-fg: #18181B;
+    --link-hover-color: #3F3F46;
+    --link-selected-fg: #18181B;
+    --body-bg: #FFFFFF;
+    --darkened-bg: #F4F4F6;
+    --body-fg: #18181B;
+    --body-quiet-color: #52525B;
+    --border-color: #D4D4D8;
+    --hairline-color: #E4E4E7;
+    --lp-surface: #FFFFFF;
+    --lp-surface-alt: #F4F4F6;
+    --lp-card-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
+    --lp-btn-bg: #18181B;
+    --lp-btn-fg: #F5C518;
+    --lp-btn-hover: #27272A;
+    --lp-notice-bg: rgba(34, 197, 94, 0.12);
+    --lp-notice-fg: #166534;
+    --lp-notice-border: rgba(34, 197, 94, 0.32);
+    --lp-error-bg: rgba(220, 38, 38, 0.10);
+    --lp-error-fg: #991B1B;
+    --lp-error-border: rgba(220, 38, 38, 0.30);
   }
-  @media (prefers-color-scheme: dark) {
-    html:not([data-theme="light"]) body.login {
-      --header-bg: #111713;
-      --primary: #F5C518;
-      --primary-fg: #17201A;
-      --link-fg: #F5C518;
-      --link-hover-color: #FFD84A;
-      --link-selected-fg: #F5C518;
-      --body-bg: #1B231E;
-      --darkened-bg: #131915;
-      --body-fg: #F3F6F4;
-      --body-quiet-color: #B4C0B7;
-      --border-color: #2E3A32;
-      --hairline-color: #263129;
-      --lp-surface: #1B231E;
-      --lp-surface-alt: #131915;
-      --lp-card-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
-      --lp-btn-bg: #F5C518;
-      --lp-btn-fg: #17201A;
-      --lp-btn-hover: #FFD84A;
-      --lp-notice-bg: rgba(46, 158, 91, 0.18);
-      --lp-notice-fg: #7FE3A8;
-      --lp-notice-border: rgba(111, 211, 154, 0.32);
-      --lp-error-bg: rgba(214, 69, 69, 0.18);
-      --lp-error-fg: #FF9E9E;
-      --lp-error-border: rgba(255, 154, 154, 0.32);
-    }
-    html:not([data-theme="light"]) body.login.lp-login-teacher {
-      --header-bg: #0F291E;
-      --link-fg: #4ADE80;
-      --link-hover-color: #86EFAC;
-    }
+  html[data-theme="light"] body.login.lp-login-teacher {
+    --header-bg: #111114;
+    --lp-btn-bg: #F5C518;
+    --lp-btn-fg: #111113;
+    --lp-btn-hover: #FFD84A;
   }
   body.login #header {
     display: flex;

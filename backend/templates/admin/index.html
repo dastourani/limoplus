@@ -3,12 +3,13 @@
 
 {% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "admin/css/dashboard.css" %}">
 <style>
-  /* Full-width dashboard layout next to the Navigation Rail */
+  /* Centered airy Gerdoo-style dashboard layout next to Navigation Rail */
   @media (min-width: 1025px) {
     .dashboard #content {
       width: auto !important;
-      max-width: 1320px;
-      padding: 20px 24px 36px;
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 32px 44px 56px;
     }
   }
   .dashboard #content-main {
@@ -18,10 +19,10 @@
   .dashboard #content-related {
     float: none !important;
     width: 100% !important;
-    margin: 20px 0 0 !important;
+    margin: 24px 0 0 !important;
     background: var(--lp-card-bg);
     border: 1px solid var(--lp-card-border);
-    border-radius: 12px;
+    border-radius: 14px;
     overflow: hidden;
   }
 
@@ -32,11 +33,11 @@
     gap: 8px;
     flex-wrap: wrap;
     padding: 10px 14px;
-    margin-bottom: 18px;
+    margin-bottom: 20px;
     background: var(--lp-card-bg);
     border: 1px solid var(--lp-card-border);
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(23, 32, 26, 0.04);
+    border-radius: 14px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
   }
   .lp-shortcuts-label {
     font-size: 12px;
@@ -53,9 +54,9 @@
     font-size: 12px;
     font-weight: 700;
     text-decoration: none;
-    background: var(--darkened-bg);
-    border: 1px solid var(--lp-card-border);
-    color: var(--body-fg) !important;
+    background: #1C1C21;
+    border: 1px solid #2A2A32;
+    color: #E4E4E7 !important;
     cursor: pointer;
     font-family: inherit;
     transition: all .15s ease;
@@ -63,22 +64,34 @@
   .lp-shortcut-pill:hover {
     border-color: #F5C518;
     background: rgba(245, 197, 24, 0.14);
+    color: #F5C518 !important;
     transform: translateY(-1px);
   }
   .lp-shortcut-pill--cmd {
     margin-inline-start: auto;
-    background: #133a28;
-    border-color: #1F5E3A;
+    background: rgba(245, 197, 24, 0.10);
+    border-color: rgba(245, 197, 24, 0.55);
     color: #F5C518 !important;
   }
   .lp-shortcut-pill--cmd:hover {
-    background: #1F5E3A;
+    background: #F5C518;
     border-color: #F5C518;
+    color: #111113 !important;
+  }
+  html[data-theme="light"] .lp-shortcut-pill {
+    background: #F4F4F6;
+    border-color: #E4E4E7;
+    color: #18181B !important;
+  }
+  html[data-theme="light"] .lp-shortcut-pill--cmd {
+    background: #18181B;
+    border-color: #18181B;
+    color: #F5C518 !important;
   }
 
   /* KPI Grid (3x2 on desktop, 2x3 on tablet, 1 col on mobile) */
-  .admin-kpi-section { margin-bottom: 22px; }
-  .admin-kpi-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 20px; }
+  .admin-kpi-section { margin-bottom: 24px; }
+  .admin-kpi-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 22px; }
   @media (min-width: 720px) {
     .admin-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
@@ -89,19 +102,25 @@
   .admin-kpi-card {
     background: var(--lp-card-bg);
     border: 1px solid var(--lp-card-border);
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 15px 17px;
-    box-shadow: 0 2px 8px rgba(23, 32, 26, 0.04);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
     position: relative;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
   }
   .admin-kpi-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(23, 32, 26, 0.08);
-    border-color: rgba(245, 197, 24, 0.55);
+    background: #1B1B20;
+    border-color: #E4E4E7;
+    box-shadow: 0 3px 0 #F5C518, 0 14px 28px rgba(0, 0, 0, 0.45);
+  }
+  html[data-theme="light"] .admin-kpi-card:hover {
+    background: #FFFFFF;
+    border-color: #18181B;
+    box-shadow: 0 3px 0 #F5C518, 0 10px 24px rgba(0, 0, 0, 0.08);
   }
   .admin-kpi-card::before {
     content: "";
@@ -109,8 +128,8 @@
     top: 0;
     right: 0;
     left: 0;
-    height: 3px;
-    background: linear-gradient(90deg, #F5C518, #1F5E3A);
+    height: 2px;
+    background: linear-gradient(90deg, #F5C518, rgba(245, 197, 24, 0.20));
   }
   .admin-kpi-header {
     display: flex;
@@ -244,9 +263,9 @@
   .admin-kpi-link {
     font-size: 11px;
     font-weight: 800;
-    color: #1F5E3A;
-    background: #E3F3E9;
-    border: 1px solid #BFE2CC;
+    color: #F5C518;
+    background: rgba(245, 197, 24, 0.12);
+    border: 1px solid rgba(245, 197, 24, 0.35);
     padding: 2px 9px;
     border-radius: 999px;
     text-decoration: none;
@@ -256,53 +275,55 @@
     transition: all .15s ease;
   }
   .admin-kpi-link:hover {
-    background: #1F5E3A;
-    color: #FFFFFF !important;
-    border-color: #1F5E3A;
+    background: #F5C518;
+    color: #111113 !important;
+    border-color: #F5C518;
     text-decoration: none;
   }
-  html[data-theme="dark"] .admin-kpi-link {
-    color: #F5C518;
-    background: rgba(245, 197, 24, 0.14);
-    border-color: rgba(245, 197, 24, 0.35);
+  html[data-theme="light"] .admin-kpi-link {
+    color: #18181B;
+    background: #FFF6CF;
+    border-color: #E8C745;
   }
-  html[data-theme="dark"] .admin-kpi-link:hover {
-    background: #F5C518;
-    color: #17201A !important;
+  html[data-theme="light"] .admin-kpi-link:hover {
+    background: #18181B;
+    color: #F5C518 !important;
+    border-color: #18181B;
   }
-  html[data-theme="dark"] .admin-kpi-val-box { background: rgba(255, 255, 255, 0.04); }
+  .admin-kpi-val-box { background: rgba(255, 255, 255, 0.03); }
+  html[data-theme="light"] .admin-kpi-val-box { background: #F4F4F6; }
 
   /* Teacher Hero & Cards */
   .teacher-dash { margin-bottom: 24px; }
   .teacher-hero {
-    background: linear-gradient(135deg, #133a28 0%, #1B2620 100%);
-    color: #fff;
+    background: radial-gradient(circle at top left, rgba(245, 197, 24, 0.09), transparent 55%), #161618;
+    color: #F4F4F5;
     border-radius: 14px;
-    padding: 20px 24px;
+    padding: 22px 24px;
     margin-bottom: 18px;
-    border: 1px solid rgba(245, 197, 24, 0.25);
-    box-shadow: 0 6px 20px rgba(23, 32, 26, 0.14);
+    border: 1px solid rgba(245, 197, 24, 0.30);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.30);
   }
   .teacher-hero h2 { margin: 0 0 6px; font-size: 20px; color: #F5C518; }
-  .teacher-hero p { margin: 0; color: #E3F3E9; font-size: 13.5px; }
+  .teacher-hero p { margin: 0; color: #D4D4D8; font-size: 13.5px; }
   .teacher-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
   .teacher-btn {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 7px 15px; border-radius: 999px; font-size: 12.5px; font-weight: 800;
     text-decoration: none; transition: all .15s ease; cursor: pointer; border: 0; font-family: inherit;
   }
-  .teacher-btn-primary { background: #F5C518; color: #17201A !important; }
-  .teacher-btn-primary:hover { background: #FFD84A; color: #17201A !important; }
-  .teacher-btn-ghost { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.25); }
-  .teacher-btn-ghost:hover { background: rgba(255,255,255,0.22); color: #F5C518; }
+  .teacher-btn-primary { background: #F5C518; color: #111113 !important; }
+  .teacher-btn-primary:hover { background: #FFD84A; color: #111113 !important; }
+  .teacher-btn-ghost { background: #1E1E24; color: #E4E4E7; border: 1px solid #2E2E36; }
+  .teacher-btn-ghost:hover { background: #26262E; border-color: rgba(245, 197, 24, 0.55); color: #F5C518; }
 
   .teacher-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 22px; }
   .teacher-card {
     background: var(--lp-card-bg);
     border: 1px solid var(--lp-card-border);
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 16px 18px;
-    box-shadow: 0 2px 8px rgba(23, 32, 26, 0.04);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
   }
   .teacher-card-head {
     display: flex; justify-content: space-between; align-items: center;
@@ -310,10 +331,11 @@
   }
   .teacher-card-head h3 { margin: 0; font-size: 15px; font-weight: 800; color: var(--body-fg); display: flex; align-items: center; gap: 6px; }
   .teacher-card-head .count {
-    font-size: 11px; font-weight: 800; background: #E3F3E9; color: #1F5E3A;
+    font-size: 11px; font-weight: 800; background: rgba(245, 197, 24, 0.14); color: #F5C518;
+    border: 1px solid rgba(245, 197, 24, 0.35);
     padding: 2px 9px; border-radius: 999px;
   }
-  html[data-theme="dark"] .teacher-card-head .count { background: rgba(245, 197, 24, 0.16); color: #F5C518; }
+  html[data-theme="light"] .teacher-card-head .count { background: #FFF6CF; color: #18181B; border-color: #E8C745; }
 
   .teacher-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   .teacher-list-item {
@@ -326,7 +348,7 @@
   }
   .lp-book-cover-slot {
     flex: none; width: 46px; height: 69px; border-radius: 7px; overflow: hidden;
-    background: #17201A; box-shadow: 0 4px 10px rgba(23, 32, 26, 0.16);
+    background: #111114; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
     display: flex; align-items: center; justify-content: center;
   }
   .lp-book-thumb-img {
@@ -334,39 +356,37 @@
   }
   .teacher-list-item .meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .teacher-list-item .title { font-weight: 800; color: var(--body-fg); text-decoration: none; }
-  .teacher-list-item .title:hover { text-decoration: underline; color: #1F5E3A; }
-  html[data-theme="dark"] .teacher-list-item .title:hover { color: #F5C518; }
+  .teacher-list-item .title:hover { text-decoration: underline; color: #F5C518; }
   .teacher-list-item .sub { font-size: 11.5px; color: var(--body-quiet-color); }
   .teacher-list-empty { padding: 14px; text-align: center; color: var(--body-quiet-color); font-size: 12.5px; font-style: italic; }
   .copy-btn {
     font-size: 11.5px; padding: 5px 10px; border-radius: 8px;
-    background: #1F5E3A; color: #FFFFFF; border: 1px solid #1F5E3A;
+    background: #1E1E24; color: #F5C518; border: 1px solid rgba(245, 197, 24, 0.45);
     cursor: pointer; font-family: inherit; font-weight: 700; transition: all .15s ease;
   }
-  .copy-btn:hover { background: #133a28; }
-  .copy-btn.is-copied { background: #E3F3E9; color: #1F5E3A; border-color: #BFE2CC; }
+  .copy-btn:hover { background: #F5C518; color: #111113; border-color: #F5C518; }
+  .copy-btn.is-copied { background: rgba(245, 197, 24, 0.22); color: #F5C518; border-color: #F5C518; }
 
-  /* Bento Toolbar: Category Tabs + Live Filter */
+  /* Gerdoo-style Toolbar: Live Search + Category Filter Chips */
   .lp-modules-toolbar {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: stretch;
     gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 14px;
+    margin-bottom: 18px;
   }
   .lp-cat-tabs {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     flex-wrap: wrap;
   }
   .lp-cat-tab {
-    padding: 6px 13px;
+    padding: 6px 14px;
     border-radius: 999px;
     border: 1px solid var(--lp-card-border);
-    background: var(--lp-card-bg);
-    color: var(--body-fg);
+    background: #141417;
+    color: #A1A1AA;
     font-family: inherit;
     font-size: 12px;
     font-weight: 700;
@@ -374,110 +394,315 @@
     transition: all .15s ease;
   }
   .lp-cat-tab:hover {
-    border-color: #F5C518;
+    border-color: rgba(245, 197, 24, 0.65);
+    color: #F4F4F5;
   }
   .lp-cat-tab.is-active {
-    background: #133a28;
-    border-color: #133a28;
-    color: #F5C518;
-    box-shadow: 0 2px 8px rgba(19, 58, 40, 0.2);
+    background: #F5C518;
+    border-color: #F5C518;
+    color: #111113;
+    font-weight: 800;
+    box-shadow: 0 2px 12px rgba(245, 197, 24, 0.25);
+  }
+  html[data-theme="light"] .lp-cat-tab {
+    background: #FFFFFF;
+    color: #52525B;
+  }
+  html[data-theme="light"] .lp-cat-tab.is-active {
+    background: #F5C518;
+    color: #111113;
   }
   .lp-dash-filter {
-    min-width: 220px;
-    padding: 6px 12px !important;
-    border-radius: 999px !important;
-    border: 1px solid var(--lp-card-border) !important;
-    background: var(--lp-card-bg) !important;
-    color: var(--body-fg) !important;
-    font-size: 12.5px !important;
+    width: 100%;
+    max-width: 460px;
+    padding: 9px 14px !important;
+    border-radius: 10px !important;
+    border: 1px solid #26262C !important;
+    background: #141417 !important;
+    color: #F4F4F5 !important;
+    font-size: 13px !important;
+    box-sizing: border-box;
+  }
+  .lp-dash-filter::placeholder { color: #71717A; }
+  .lp-dash-filter:focus {
+    outline: none !important;
+    border-color: #F5C518 !important;
+  }
+  html[data-theme="light"] .lp-dash-filter {
+    background: #FFFFFF !important;
+    border-color: #E4E4E7 !important;
+    color: #18181B !important;
   }
 
-  /* Multi-column Bento Grid for App Modules (Superadmin & Teacher) */
+  /* Gerdoo 4-Column Book-Cover-Sized App Grid (Superadmin & Teacher) */
   .lp-bento-grid,
   .teacher-mode-apps {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 14px;
-    align-items: start;
+    gap: 18px;
+    align-items: stretch;
   }
-  @media (min-width: 760px) {
+  @media (min-width: 560px) {
     .lp-bento-grid,
     .teacher-mode-apps {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
-  @media (min-width: 1120px) {
-    .lp-bento-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
+  @media (min-width: 860px) {
+    .lp-bento-grid,
     .teacher-mode-apps {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1120px) {
+    .lp-bento-grid,
+    .teacher-mode-apps {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
   }
   .lp-bento-grid .module,
   .teacher-mode-apps .module {
     background: var(--lp-card-bg) !important;
     border: 1px solid var(--lp-card-border) !important;
-    border-radius: 12px !important;
-    overflow: hidden;
+    border-radius: 14px !important;
+    padding: 16px 15px 14px;
     margin-bottom: 0 !important;
-    box-shadow: 0 2px 8px rgba(23, 32, 26, 0.04);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 360px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.26);
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
+  }
+  @media (min-width: 1120px) {
+    .lp-bento-grid .module,
+    .teacher-mode-apps .module {
+      aspect-ratio: 2 / 3;
+      min-height: 375px;
+    }
+  }
+  .lp-bento-grid .module:hover,
+  .teacher-mode-apps .module:hover {
+    background: #1B1B20 !important;
+    border-color: #E4E4E7 !important;
+    box-shadow: 0 3px 0 #F5C518, 0 16px 32px rgba(0, 0, 0, 0.50) !important;
+    transform: translateY(-2px);
+  }
+  html[data-theme="light"] .lp-bento-grid .module:hover,
+  html[data-theme="light"] .teacher-mode-apps .module:hover {
+    background: #FFFFFF !important;
+    border-color: #18181B !important;
+    box-shadow: 0 3px 0 #F5C518, 0 12px 26px rgba(0, 0, 0, 0.10) !important;
+  }
+
+  /* Gerdoo Card Header (Icon Box + Badge + Title + Short Desc) */
+  .lp-gerdoo-head {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--hairline-color);
+  }
+  .lp-gerdoo-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .lp-gerdoo-ic {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: #222228;
+    border: 1px solid #303038;
+    color: #F4F4F5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color .15s ease, color .15s ease;
+  }
+  .lp-gerdoo-ic svg { width: 19px; height: 19px; }
+  .module:hover .lp-gerdoo-ic {
+    border-color: rgba(245, 197, 24, 0.55);
+    color: #F5C518;
+  }
+  html[data-theme="light"] .lp-gerdoo-ic {
+    background: #F4F4F6;
+    border-color: #E4E4E7;
+    color: #18181B;
+  }
+  .lp-gerdoo-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(245, 197, 24, 0.60);
+    background: rgba(245, 197, 24, 0.08);
+    color: #F5C518;
+    font-size: 10.5px;
+    font-weight: 800;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+  html[data-theme="light"] .lp-gerdoo-count {
+    background: #FFF6CF;
+    color: #18181B;
+    border-color: #E8C745;
+  }
+  .lp-gerdoo-title {
+    margin: 2px 0 0;
+    font-size: 15px;
+    font-weight: 900;
+    color: var(--body-loud-color);
+    line-height: 1.4;
+  }
+  .lp-gerdoo-desc {
+    margin: 0;
+    font-size: 11.5px;
+    color: var(--body-quiet-color);
+    line-height: 1.55;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Submenu Tag-Pills ("برچسب") on the Card — Base Gerdoo Color, Lemon Yellow on Hover */
+  .lp-gerdoo-tags-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    margin-top: 10px;
+    padding-inline-end: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: #303038 transparent;
   }
   .lp-bento-grid .module table,
   .teacher-mode-apps .module table {
     width: 100%;
     border-collapse: collapse;
+    display: block;
+    background: transparent !important;
+  }
+  .lp-bento-grid .module tbody,
+  .teacher-mode-apps .module tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
   }
   .lp-bento-grid .module caption,
-  .lp-bento-grid .module h2,
-  .teacher-mode-apps .module caption,
-  .teacher-mode-apps .module h2 {
-    background: linear-gradient(135deg, #133a28 0%, #1F5E3A 100%) !important;
+  .teacher-mode-apps .module caption {
+    background: transparent !important;
     color: #F5C518 !important;
-    padding: 10px 14px !important;
-    font-size: 13.5px !important;
-    font-weight: 800 !important;
-    border-bottom: 1px solid rgba(245, 197, 24, 0.25) !important;
+    border: 0 !important;
+    padding: 0 !important;
   }
-  .lp-bento-grid .module caption a,
-  .teacher-mode-apps .module caption a {
-    color: #F5C518 !important;
-    text-decoration: none;
+  .lp-bento-grid .module.lp-card-ready caption,
+  .teacher-mode-apps .module.lp-card-ready caption {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .lp-bento-grid .module tbody tr,
+  .teacher-mode-apps .module tbody tr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    width: 100%;
+    background: #1C1C21 !important;
+    border: 1px solid #2C2C34 !important;
+    border-radius: 9px;
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: background .14s ease, border-color .14s ease, transform .12s ease;
+  }
+  html[data-theme="light"] .lp-bento-grid .module tbody tr,
+  html[data-theme="light"] .teacher-mode-apps .module tbody tr {
+    background: #F4F4F6 !important;
+    border-color: #E4E4E7 !important;
+  }
+  .lp-bento-grid .module tbody tr:hover,
+  .teacher-mode-apps .module tbody tr:hover {
+    background: #F5C518 !important;
+    border-color: #F5C518 !important;
   }
   .lp-bento-grid .module th,
-  .lp-bento-grid .module td,
-  .teacher-mode-apps .module th,
-  .teacher-mode-apps .module td {
-    padding: 7px 12px !important;
-    border-bottom: 1px solid var(--hairline-color) !important;
+  .teacher-mode-apps .module th {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 0 !important;
+    border: 0 !important;
     background: transparent !important;
-    color: var(--body-fg) !important;
-    font-size: 12.5px !important;
-    vertical-align: middle;
+    text-align: right;
   }
-  .lp-bento-grid .module tr:hover,
-  .teacher-mode-apps .module tr:hover {
-    background: rgba(31, 94, 58, 0.05) !important;
+  .lp-bento-grid .module td,
+  .teacher-mode-apps .module td {
+    flex: none;
+    width: auto !important;
+    padding: 0 0 0 6px !important;
+    border: 0 !important;
+    background: transparent !important;
+    display: flex;
+    align-items: center;
   }
-  .lp-bento-grid .module tr:last-child th,
-  .lp-bento-grid .module tr:last-child td,
-  .teacher-mode-apps .module tr:last-child th,
-  .teacher-mode-apps .module tr:last-child td {
-    border-bottom: none !important;
+  .lp-bento-grid .module td:empty,
+  .teacher-mode-apps .module td:empty {
+    display: none !important;
   }
   .lp-bento-grid .module th a,
   .teacher-mode-apps .module th a {
-    color: var(--body-fg) !important;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 6px 10px;
+    color: #E4E4E7 !important;
+    font-size: 12px !important;
     font-weight: 700;
+    line-height: 1.45;
     text-decoration: none;
   }
-  .lp-bento-grid .module th a:hover,
-  .teacher-mode-apps .module th a:hover {
-    color: #1F5E3A !important;
+  html[data-theme="light"] .lp-bento-grid .module th a,
+  html[data-theme="light"] .teacher-mode-apps .module th a {
+    color: #18181B !important;
   }
-  html[data-theme="dark"] .lp-bento-grid .module th a:hover,
-  html[data-theme="dark"] .teacher-mode-apps .module th a:hover {
+  .lp-bento-grid .module tbody tr:hover th a,
+  .teacher-mode-apps .module tbody tr:hover th a {
+    color: #111113 !important;
+    font-weight: 800;
+  }
+  .lp-bento-grid .module tbody tr:hover .lp-menu-badge,
+  .teacher-mode-apps .module tbody tr:hover .lp-menu-badge {
+    background: #111113 !important;
     color: #F5C518 !important;
+  }
+  .lp-bento-grid .module tbody tr .lp-help-icon,
+  .teacher-mode-apps .module tbody tr .lp-help-icon {
+    margin-inline-start: 0;
+    margin-inline-end: 6px;
+    flex: none;
+  }
+  .lp-bento-grid .module tbody tr:hover .lp-help-icon,
+  .teacher-mode-apps .module tbody tr:hover .lp-help-icon {
+    background: rgba(17, 17, 19, 0.14);
+    color: #111113;
+    border-color: rgba(17, 17, 19, 0.35);
   }
   /* Compact '+' add button & hide repetitive change/view text in grid */
   .lp-bento-grid a.changelink,
@@ -486,49 +711,45 @@
   .teacher-mode-apps a.viewlink {
     display: none !important;
   }
-  .lp-bento-grid td,
-  .teacher-mode-apps td {
-    width: 34px;
-    text-align: left;
-  }
   .lp-bento-grid a.addlink,
   .teacher-mode-apps a.addlink {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     padding: 0 !important;
-    border-radius: 7px;
-    background: #E3F3E9;
-    color: #1F5E3A !important;
+    border-radius: 6px;
+    background: #25252C;
+    color: #E4E4E7 !important;
     font-size: 0 !important;
     text-decoration: none;
+    transition: all .14s ease;
   }
   .lp-bento-grid a.addlink::before,
   .teacher-mode-apps a.addlink::before {
     content: "+";
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 900;
     line-height: 1;
   }
+  .lp-bento-grid .module tbody tr:hover a.addlink,
+  .teacher-mode-apps .module tbody tr:hover a.addlink {
+    background: rgba(17, 17, 19, 0.16);
+    color: #111113 !important;
+  }
   .lp-bento-grid a.addlink:hover,
   .teacher-mode-apps a.addlink:hover {
-    background: #F5C518;
-    color: #17201A !important;
-  }
-  html[data-theme="dark"] .lp-bento-grid a.addlink,
-  html[data-theme="dark"] .teacher-mode-apps a.addlink {
-    background: rgba(245, 197, 24, 0.14);
+    background: #111113 !important;
     color: #F5C518 !important;
   }
 
   /* Collapsible Audit & Logs Drawer */
   .lp-audit-drawer {
-    margin-top: 18px;
+    margin-top: 22px;
     background: var(--lp-card-bg);
     border: 1px solid var(--lp-card-border);
-    border-radius: 12px;
+    border-radius: 14px;
     overflow: hidden;
   }
   .lp-audit-summary {
@@ -541,9 +762,10 @@
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    background: var(--darkened-bg);
+    background: #141417;
     list-style: none;
   }
+  html[data-theme="light"] .lp-audit-summary { background: #F4F4F6; }
   .lp-audit-summary::-webkit-details-marker { display: none; }
   .lp-audit-grid {
     width: 100%;
@@ -559,9 +781,16 @@
     justify-content: space-between;
     padding: 6px 10px;
     border: 1px solid var(--hairline-color);
-    border-radius: 8px;
-    background: var(--darkened-bg);
+    border-radius: 9px;
+    background: #1C1C21;
+    transition: background .14s ease, border-color .14s ease;
   }
+  html[data-theme="light"] .lp-audit-grid tr { background: #F4F4F6; }
+  .lp-audit-grid tr:hover {
+    background: #F5C518;
+    border-color: #F5C518;
+  }
+  .lp-audit-grid tr:hover th a { color: #111113 !important; font-weight: 800; }
   .lp-audit-grid th,
   .lp-audit-grid td {
     border: 0 !important;
@@ -572,11 +801,12 @@
 
   /* Recent actions bottom card */
   #recent-actions-module h2 {
-    background: linear-gradient(135deg, #133a28 0%, #1F5E3A 100%) !important;
+    background: #1B1B20 !important;
     color: #F5C518 !important;
     padding: 10px 16px !important;
     margin: 0 !important;
     font-size: 13.5px !important;
+    border-bottom: 1px solid rgba(245, 197, 24, 0.25);
   }
   #recent-actions-module h3 {
     padding: 10px 16px 0 !important;
@@ -611,7 +841,7 @@
     font-weight: 700;
     cursor: help;
     background: rgba(245, 197, 24, 0.16);
-    color: #b45309;
+    color: #F5C518;
     border: 1px solid rgba(245, 197, 24, 0.4);
     line-height: 1;
     transition: all .15s ease;
@@ -620,18 +850,18 @@
   }
   .lp-help-icon:hover {
     background: #F5C518;
-    color: #17201A;
+    color: #111113;
     border-color: #F5C518;
     transform: scale(1.1);
   }
-  html[data-theme="dark"] .lp-help-icon {
+  html[data-theme="light"] .lp-help-icon {
     background: rgba(245, 197, 24, 0.18);
-    color: #F5C518;
-    border-color: rgba(245, 197, 24, 0.35);
+    color: #92400E;
+    border-color: rgba(245, 197, 24, 0.45);
   }
-  html[data-theme="dark"] .lp-help-icon:hover {
+  html[data-theme="light"] .lp-help-icon:hover {
     background: #F5C518;
-    color: #17201A;
+    color: #111113;
   }
   .lp-guides-off .lp-help-icon { display: none !important; }
 
@@ -640,14 +870,14 @@
     z-index: 99999;
     pointer-events: none;
     max-width: min(290px, calc(100vw - 24px));
-    background: #17201A;
-    color: #FFFFFF;
-    border: 1px solid rgba(245, 197, 24, 0.4);
+    background: #18181D;
+    color: #F4F4F5;
+    border: 1px solid rgba(245, 197, 24, 0.45);
     border-radius: 12px;
     padding: 10px 14px;
     font-size: 12px;
     line-height: 1.65;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
     opacity: 0;
     transform: translateY(4px);
     transition: opacity .15s ease, transform .15s ease;
@@ -655,10 +885,10 @@
   .lp-menu-bubble.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
   .lp-menu-bubble::after {
     content: ""; position: absolute; top: 100%; right: 24px;
-    border-width: 6px; border-style: solid; border-color: #17201A transparent transparent transparent;
+    border-width: 6px; border-style: solid; border-color: #18181D transparent transparent transparent;
   }
   .lp-menu-bubble.arrow-top::after {
-    top: auto; bottom: 100%; border-color: transparent transparent #17201A transparent;
+    top: auto; bottom: 100%; border-color: transparent transparent #18181D transparent;
   }
   .lp-menu-bubble b { display: block; color: #F5C518; font-size: 12.5px; margin-bottom: 3px; }
 </style>
@@ -1404,6 +1634,103 @@
         if (dashFilter) {
           dashFilter.addEventListener('input', applyDashboardFilters);
         }
+      }
+
+      // Gerdoo Book-Cover Card Header + Clickable Submenu Tag-Pills Enhancer (Superadmin & Teacher)
+      if (container) {
+        var APP_ICONS = {
+          catalog: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+          catalog_ai: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M5 18l.8 1.8L7.6 20.6l-1.8.8L5 23l-.8-1.6-1.8-.8 1.8-.8z"/></svg>',
+          teacher_workflows: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>',
+          commerce: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+          commerce_teacher: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>',
+          learning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+          accounts: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+          study: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+          website: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+          guard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+          diagnostics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+          releases: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>',
+          auth: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+        };
+        var DEFAULT_APP_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
+        var APP_DESCRIPTIONS = {
+          catalog: 'مدیریت کتاب‌ها، فصل‌ها، درسنامه‌ها، قفسه‌ها و برچسب‌های محتوایی.',
+          catalog_ai: 'پیکربندی مدل‌های هوش مصنوعی و ابزارهای کمکی تألیف کتاب.',
+          learning: 'بانک تست‌ها، فلش‌کارت‌های لایتنر، منابع آزمون و بررسی ایرادها.',
+          teacher_workflows: 'کلاس‌های ترمی، همکاران کتاب، پروفایل اساتید و درخواست‌های انتشار.',
+          commerce: 'سفارش‌ها، اشتراک‌ها، کمپین‌های تخفیف، کیف پول و تسویه حساب اساتید.',
+          commerce_teacher: 'درآمد فروش و اشتراک، حساب بانکی و درخواست‌های تسویه حساب.',
+          accounts: 'مدیریت حساب‌های کاربری دانشجویان، اساتید و نشست‌های فعال.',
+          study: 'کارنامه‌های آزمون، زمان مطالعه، پیشرفت دروس و آمار یادگیری.',
+          website: 'تنظیمات وب‌سایت، منو، صفحه‌های راهنما و پرسش‌های پرتکرار.',
+          guard: 'ردیابی اثرانگشت متون و صیانت از مالکیت محتوای مؤلفان.',
+          diagnostics: 'گزارش خطاهای سرور و اپلیکیشن برای پایش سلامت سامانه.',
+          releases: 'انتشار و مدیریت نسخه‌های به‌روز اپلیکیشن لیموخوان.',
+          auth: 'تعریف گروه‌های کاربری و سطوح دسترسی پنل مدیریت.'
+        };
+        function toFaDigits(val) {
+          return String(val).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; });
+        }
+
+        container.querySelectorAll('.module').forEach(function (mod) {
+          if (mod.getAttribute('data-empty-mod') === '1') return;
+          var cls = Array.prototype.find.call(mod.classList, function (c) { return c.indexOf('app-') === 0; });
+          var appKey = cls ? cls.slice(4) : '';
+          var table = mod.querySelector('table');
+          if (!table) return;
+          var caption = table.querySelector('caption');
+          var capLink = caption ? caption.querySelector('a') : null;
+          var appTitle = (capLink ? capLink.textContent : (caption ? caption.textContent : '')).trim();
+          var rows = table.querySelectorAll('tbody tr');
+          if (!rows.length) return;
+
+          var head = document.createElement('div');
+          head.className = 'lp-gerdoo-head';
+
+          var top = document.createElement('div');
+          top.className = 'lp-gerdoo-top';
+
+          var ic = document.createElement('span');
+          ic.className = 'lp-gerdoo-ic';
+          ic.setAttribute('aria-hidden', 'true');
+          ic.innerHTML = APP_ICONS[appKey] || DEFAULT_APP_ICON;
+
+          var badge = document.createElement('span');
+          badge.className = 'lp-gerdoo-count';
+          badge.textContent = toFaDigits(rows.length) + ' بخش';
+
+          top.appendChild(ic);
+          top.appendChild(badge);
+          head.appendChild(top);
+
+          var h3 = document.createElement('h3');
+          h3.className = 'lp-gerdoo-title';
+          h3.textContent = appTitle;
+          head.appendChild(h3);
+
+          var desc = document.createElement('p');
+          desc.className = 'lp-gerdoo-desc';
+          desc.textContent = APP_DESCRIPTIONS[appKey] || 'دسترسی سریع به بخش‌ها و زیرمنوهای مدیریتی این گروه.';
+          head.appendChild(desc);
+
+          var wrap = document.createElement('div');
+          wrap.className = 'lp-gerdoo-tags-wrap';
+          table.parentNode.insertBefore(head, table);
+          table.parentNode.insertBefore(wrap, table);
+          wrap.appendChild(table);
+          mod.classList.add('lp-card-ready');
+
+          rows.forEach(function (tr) {
+            tr.addEventListener('click', function (e) {
+              if (e.target.closest('a, button, .lp-help-icon')) return;
+              var mainLink = tr.querySelector('th a');
+              if (mainLink && mainLink.href) {
+                window.location.href = mainLink.href;
+              }
+            });
+          });
+        });
       }
 
       if (bubble) {
