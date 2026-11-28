@@ -1697,6 +1697,10 @@ class StorageAdmin(admin.ModelAdmin):
         whole = sum(x["bytes"] for x in space) or 1
         for x in space:
             x["share"] = round(x["bytes"] / whole * 100, 2)
+        from django.conf import settings
+
+        from apps.accounts.sms import pattern_ready
+
         context = {
             **self.admin_site.each_context(request),
             "title": "فضای سرور",
@@ -1705,7 +1709,7 @@ class StorageAdmin(admin.ModelAdmin):
             "media_bytes": sum(f["bytes"] for f in report["folders"]),
             "media_files": sum(f["files"] for f in report["folders"]),
             "runs": [{"at": jalali_datetime(r.at), "summary": r.summary} for r in CleanupRun.objects.all()[:10]],
-            "can_run": request.user.is_superuser,
+            "can_run": access.acts_as_panel_superuser(request),
             "backups": [
                 {"at": jalali_datetime(b.at), "kind": b.get_kind_display(), "ok": b.ok, "sent": b.sent, "size": b.size, "note": b.note}
                 for b in BackupRun.objects.all()[:12]
@@ -1714,6 +1718,11 @@ class StorageAdmin(admin.ModelAdmin):
             "object_storage_ready": object_storage_ready(),
             "storage_ready": storage_ready(),
             "backup_storage_mode": storage_mode(),
+            "sms_backend": settings.SMS_BACKEND,
+            "sms_pattern_ready": pattern_ready(),
+            "default_test_phone": getattr(request.user, "phone", "") or "",
+            "payments_enabled": bool(settings.PAYMENTS_ENABLED),
+            "zibal_is_sandbox": settings.ZIBAL_MERCHANT == "zibal",
             "disk": disk(),
             "local": [{**b, "at": jalali_datetime(b["at"])} for b in local_backups()[:12]],
             "next_backup": jalali_datetime(next_db_backup()),
@@ -1732,11 +1741,15 @@ class StorageAdmin(admin.ModelAdmin):
         site = self.admin_site.admin_view
         custom = [
             path("backup-now/", transaction.non_atomic_requests(site(self.backup_now)), name="catalog_backup_now"),
+            path("export-json/", transaction.non_atomic_requests(site(self.export_json)), name="catalog_export_json"),
+            path("export-media/", site(self.export_media), name="catalog_export_media"),
             # Not inside the request's transaction: the database file itself is replaced.
             path("restore/", transaction.non_atomic_requests(site(self.restore)), name="catalog_restore"),
             path("restore-local/", transaction.non_atomic_requests(site(self.restore_local)), name="catalog_restore_local"),
             path("backup-file/", site(self.backup_file), name="catalog_backup_file"),
             path("test-bale/", site(self.test_bale), name="catalog_test_bale"),
+            path("test-sms/", site(self.test_sms), name="catalog_test_sms"),
+            path("test-zibal/", site(self.test_zibal), name="catalog_test_zibal"),
         ]
         return custom + super().get_urls()
 
@@ -1843,6 +1856,100 @@ class StorageAdmin(admin.ModelAdmin):
             messages.error(request, f"پیام نرسید: {_safe(exc)}")
             return redirect("..")
         messages.success(request, "پیام آزمایشی در بله فرستاده شد.")
+        return redirect("..")
+
+    def export_json(self, request):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.http import FileResponse
+        from django.shortcuts import redirect
+
+        from .backups import _safe, export_database_json
+
+        if request.method != "POST" or not access.acts_as_panel_superuser(request):
+            raise PermissionDenied
+        try:
+            path = export_database_json()
+        except Exception as exc:  # noqa: BLE001
+            messages.error(request, f"ساخت خروجی JSON ناموفق بود: {_safe(exc)}")
+            return redirect("..")
+        return FileResponse(open(path, "rb"), as_attachment=True, filename=path.name)
+
+    def export_media(self, request):
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.http import FileResponse
+        from django.shortcuts import redirect
+
+        from .backups import _safe, export_full_media
+
+        if request.method != "POST" or not access.acts_as_panel_superuser(request):
+            raise PermissionDenied
+        try:
+            path, _count = export_full_media()
+        except Exception as exc:  # noqa: BLE001
+            messages.error(request, f"ساخت آرشیو کامل عکس‌ها ناموفق بود: {_safe(exc)}")
+            return redirect("..")
+        if path is None:
+            messages.info(request, "هیچ عکس یا فایل آپلودی در پوشه‌ی media وجود ندارد.")
+            return redirect("..")
+        return FileResponse(open(path, "rb"), as_attachment=True, filename=path.name)
+
+    def test_sms(self, request):
+        from django.conf import settings
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import redirect
+
+        from apps.accounts.phone import InvalidPhone, normalize_phone
+        from apps.accounts.sms import SMSError, pattern_ready, send_login_code
+
+        if request.method != "POST" or not access.acts_as_panel_superuser(request):
+            raise PermissionDenied
+        raw_phone = (request.POST.get("phone") or getattr(request.user, "phone", "") or "").strip()
+        try:
+            phone = normalize_phone(raw_phone)
+        except InvalidPhone as exc:
+            messages.error(request, str(exc))
+            return redirect("..")
+        try:
+            send_login_code(phone, "123456", "آزمایش اتصال پیامک لیموخوان: 123456")
+        except SMSError as exc:
+            messages.error(request, f"خطا در ارسال پیامک آزمایشی به {phone}: {exc}")
+            return redirect("..")
+        if settings.SMS_BACKEND == "console":
+            messages.warning(request, f"SMS_BACKEND روی console است؛ پیامک آزمایشی برای {phone} فقط در لاگ سرور چاپ شد.")
+        else:
+            mode = "الگو (Pattern)" if pattern_ready() else "خط ارسال مستقیم"
+            messages.success(request, f"پیامک آزمایشی به {phone} ارسال شد (روش: {mode}).")
+        return redirect("..")
+
+    def test_zibal(self, request):
+        from django.conf import settings
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import redirect
+
+        from apps.commerce.zibal import GatewayError, request_payment
+
+        if request.method != "POST" or not access.acts_as_panel_superuser(request):
+            raise PermissionDenied
+        try:
+            track_id = request_payment(
+                amount_rial=10000,
+                order_id=0,
+                callback_url=request.build_absolute_uri("/"),
+                description="آزمایش اتصال درگاه لیموخوان",
+            )
+        except GatewayError as exc:
+            messages.error(request, f"خطا در اتصال به درگاه زیبال: {exc}")
+            return redirect("..")
+        if not settings.PAYMENTS_ENABLED:
+            messages.warning(request, f"اتصال به زیبال برقرار است (کد پیگیری آزمایشی: {track_id})، ولی PAYMENTS_ENABLED=False است و خرید خاموش است.")
+        elif settings.ZIBAL_MERCHANT == "zibal":
+            messages.warning(request, f"اتصال به زیبال برقرار است (کد پیگیری آزمایشی: {track_id})، ولی مرچنت روی مقدار آزمایشی zibal است.")
+        else:
+            messages.success(request, f"اتصال به درگاه واقعی زیبال برقرار است (کد پیگیری آزمایشی: {track_id}).")
         return redirect("..")
 
 

@@ -809,3 +809,65 @@ class BrowserDiagnosticsTests(TestCase):
             "at https://panel.example.com/static/site.js:18:3",
         )
 
+    def test_diagnostics_admin_build_filter_and_prune_resolved(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.accounts.models import User
+
+        now = timezone.now()
+        old = now - timedelta(days=40)
+        recent = now - timedelta(days=5)
+
+        g_old_resolved = ErrorGroup.objects.create(
+            fingerprint="fp-old-resolved",
+            source=ErrorGroup.Source.CLIENT,
+            kind=ErrorGroup.Kind.CLIENT_ERROR,
+            code="old_res",
+            title="خطای قدیمی حل‌شده",
+            status=ErrorGroup.Status.RESOLVED,
+            last_build="1.0.1",
+            first_seen_at=old,
+            last_seen_at=old,
+        )
+        g_recent_resolved = ErrorGroup.objects.create(
+            fingerprint="fp-recent-resolved",
+            source=ErrorGroup.Source.CLIENT,
+            kind=ErrorGroup.Kind.CLIENT_ERROR,
+            code="rec_res",
+            title="خطای تازه حل‌شده",
+            status=ErrorGroup.Status.RESOLVED,
+            last_build="1.0.2",
+            first_seen_at=recent,
+            last_seen_at=recent,
+        )
+        g_old_open = ErrorGroup.objects.create(
+            fingerprint="fp-old-open",
+            source=ErrorGroup.Source.SERVER,
+            kind=ErrorGroup.Kind.EXCEPTION,
+            code="old_open",
+            title="خطای قدیمی باز",
+            status=ErrorGroup.Status.OPEN,
+            last_build="1.0.1",
+            first_seen_at=old,
+            last_seen_at=old,
+        )
+
+        staff = User.objects.create_user("09120000031", is_staff=True)
+        self.client.force_login(staff)
+        self.assertEqual(self.client.post("/admin/diagnostics/errorgroup/prune-resolved/").status_code, 403)
+
+        boss = User.objects.create_superuser("09120000032", password="x-strong-pass-1")
+        self.client.force_login(boss)
+
+        r_filtered = self.client.get("/admin/diagnostics/errorgroup/?build=1.0.2")
+        self.assertEqual(r_filtered.status_code, 200)
+        self.assertContains(r_filtered, "خطای تازه حل‌شده")
+        self.assertNotContains(r_filtered, "خطای قدیمی باز")
+
+        r_prune = self.client.post("/admin/diagnostics/errorgroup/prune-resolved/", follow=True)
+        self.assertEqual(r_prune.status_code, 200)
+        self.assertContains(r_prune, "پاک شد")
+        self.assertFalse(ErrorGroup.objects.filter(pk=g_old_resolved.pk).exists())
+        self.assertTrue(ErrorGroup.objects.filter(pk=g_recent_resolved.pk).exists())
+        self.assertTrue(ErrorGroup.objects.filter(pk=g_old_open.pk).exists())
+

@@ -43,6 +43,7 @@ from django.utils._os import safe_join
 log = logging.getLogger(__name__)
 
 KEEP_DB = 7
+KEEP_DB_EXPORTS = 3
 DB_EVERY = timedelta(hours=23)
 DB_LATE = timedelta(hours=30)  # missed the night window (server was down): do it whenever
 MEDIA_EVERY = timedelta(days=7)
@@ -78,6 +79,10 @@ def backup_dir() -> Path:
 
 def _stamp(now=None) -> str:
     return timezone.localtime(now or timezone.now()).strftime("%Y%m%d-%H%M")
+
+
+def _unique_stamp(now=None) -> str:
+    return f"{timezone.localtime(now or timezone.now()).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
 
 # --- Storage destinations (Bale & S3-compatible object storage) ---------------------------------------------------
@@ -285,9 +290,12 @@ def _db_copy(target: Path) -> Path:
             raise RuntimeError(f"pg_dump failed: {(proc.stderr or proc.stdout).strip()}")
         return dump_path
 
+    return _dump_json(target.with_suffix(".json"))
+
+
+def _dump_json(json_path: Path) -> Path:
     from django.core.management import call_command
 
-    json_path = target.with_suffix(".json")
     with open(json_path, "w", encoding="utf-8") as out:
         if connection.vendor == "postgresql" and not connection.in_atomic_block:
             with transaction.atomic():
@@ -297,6 +305,50 @@ def _db_copy(target: Path) -> Path:
         else:
             call_command("dumpdata", "--natural-foreign", "--exclude=contenttypes", "--exclude=auth.permission", stdout=out)
     return json_path
+
+
+def export_database_json() -> Path:
+    """Create a portable gzipped JSON fixture (`limookhan-db-export-...json.gz`) for cross-engine migration."""
+    folder = backup_dir()
+    token = uuid.uuid4().hex[:8]
+    raw = folder / f".tmp-export-{token}.json"
+    tmp_packed = folder / f".tmp-export-{token}.json.gz"
+    packed = folder / f"limookhan-db-export-{_unique_stamp()}.json.gz"
+    try:
+        _dump_json(raw)
+        with open(raw, "rb") as src, gzip.open(tmp_packed, "wb", compresslevel=6) as dst:
+            shutil.copyfileobj(src, dst)
+        os.replace(tmp_packed, packed)
+    except Exception:
+        packed.unlink(missing_ok=True)
+        raise
+    finally:
+        raw.unlink(missing_ok=True)
+        tmp_packed.unlink(missing_ok=True)
+    _prune(folder, "limookhan-db-export-", KEEP_DB_EXPORTS)
+    return packed
+
+
+def export_full_media() -> tuple[Path | None, int]:
+    """Archive every file under MEDIA_ROOT (excluding apk/ and imports/) into a single restore-ready .zip."""
+    files = _media_files(since=None)
+    if not files:
+        return None, 0
+    folder = backup_dir()
+    tmp_zip = folder / f".tmp-media-{uuid.uuid4().hex[:8]}.zip"
+    out = folder / f"limookhan-media-full-{_unique_stamp()}.zip"
+    try:
+        with zipfile.ZipFile(tmp_zip, "w", zipfile.ZIP_STORED) as archive:
+            for path, rel in files:
+                archive.write(path, "media/" + rel)
+        os.replace(tmp_zip, out)
+    except Exception:
+        out.unlink(missing_ok=True)
+        raise
+    finally:
+        tmp_zip.unlink(missing_ok=True)
+    _prune(folder, "limookhan-media-full-", 2)
+    return out, len(files)
 
 
 def backup_database(send=True):
@@ -316,7 +368,7 @@ def backup_database(send=True):
             finally:
                 raw.unlink(missing_ok=True)
         run.files, run.size, run.ok = [packed.name], packed.stat().st_size, True
-        _prune(folder, "limookhan-db-", KEEP_DB)
+        _prune(folder, "limookhan-db-", KEEP_DB, exclude_prefixes=("limookhan-db-export-",))
         if send and storage_ready():
             caption = f"🗄 پشتیبان دیتابیس لیموخوان\n{_stamp()}\nاطلاعات کاربران در آن است؛ جای دیگری نفرستید."
             delivery = deliver_backup(packed, kind="db", caption=caption)
@@ -427,7 +479,7 @@ def backup_media(send=True):
             run.sent = delivered == len(parts) and not kept
             if kept:
                 run.note += f"؛ روی سرور مانده: {', '.join(kept)}"
-        _prune(folder, "limookhan-media-", 20)
+        _prune(folder, "limookhan-media-", 20, exclude_prefixes=("limookhan-media-full-",))
     except Exception as exc:  # noqa: BLE001
         log.error("media backup failed: %s: %s", type(exc).__name__, _safe(exc))
         run.ok = False
@@ -437,8 +489,12 @@ def backup_media(send=True):
     return run
 
 
-def _prune(folder: Path, prefix: str, keep: int) -> None:
-    old = sorted(folder.glob(prefix + "*"), key=lambda p: p.stat().st_mtime, reverse=True)[keep:]
+def _prune(folder: Path, prefix: str, keep: int, *, exclude_prefixes: tuple[str, ...] = ()) -> None:
+    matching = [
+        p for p in folder.glob(prefix + "*")
+        if not any(p.name.startswith(ex) for ex in exclude_prefixes)
+    ]
+    old = sorted(matching, key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)[keep:]
     for p in old:
         p.unlink(missing_ok=True)
 

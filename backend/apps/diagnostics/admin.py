@@ -54,6 +54,26 @@ class PlatformFilter(admin.SimpleListFilter):
         return queryset
 
 
+class BuildFilter(admin.SimpleListFilter):
+    title = "نسخهٔ بیلد"
+    parameter_name = "build"
+
+    def lookups(self, request, model_admin):
+        builds = (
+            ErrorGroup.objects.exclude(last_build="")
+            .values_list("last_build", flat=True)
+            .distinct()
+            .order_by("-last_build")[:25]
+        )
+        return [(b, b) for b in builds]
+
+    def queryset(self, request, queryset):
+        val = self.value()
+        if val:
+            return queryset.filter(last_build=val)
+        return queryset
+
+
 @admin.register(ErrorGroup)
 class ErrorGroupAdmin(SuperuserOnlyAdmin):
     list_display = (
@@ -67,7 +87,7 @@ class ErrorGroupAdmin(SuperuserOnlyAdmin):
         "last_build",
         "last_seen_col",
     )
-    list_filter = ("status", "severity", "source", PlatformFilter, "kind")
+    list_filter = ("status", "severity", "source", PlatformFilter, BuildFilter, "kind")
     search_fields = ("title", "code", "route", "first_build", "last_build", "events__event_id", "events__request_id")
     readonly_fields = (
         "fingerprint",
@@ -119,9 +139,26 @@ class ErrorGroupAdmin(SuperuserOnlyAdmin):
         site = self.admin_site.admin_view
         custom = [
             path("run-checks/", site(self.run_checks_view), name="diagnostics_errorgroup_run_checks"),
+            path("prune-resolved/", site(self.prune_resolved_view), name="diagnostics_errorgroup_prune_resolved"),
             path("<int:group_id>/set-status/", site(self.set_status_view), name="diagnostics_errorgroup_set_status"),
         ]
         return custom + super().get_urls()
+
+    def prune_resolved_view(self, request):
+        if request.method != "POST" or not request.user.is_superuser:
+            raise PermissionDenied
+        cutoff = timezone.now() - timedelta(days=30)
+        qs = ErrorGroup.objects.filter(
+            status__in=[ErrorGroup.Status.RESOLVED, ErrorGroup.Status.IGNORED],
+            last_seen_at__lt=cutoff,
+        )
+        group_ids = list(qs.values_list("id", flat=True))
+        if not group_ids:
+            messages.info(request, "گروه حل‌شده یا نادیده‌گرفته‌شده‌ی قدیمی‌تر از ۳۰ روز وجود ندارد.")
+            return redirect("admin:diagnostics_errorgroup_changelist")
+        ErrorGroup.objects.filter(id__in=group_ids).delete()
+        messages.success(request, f"{fa_number(len(group_ids))} گروه خطای حل‌شده/نادیده‌گرفته‌شده‌ی قدیمی پاک شد.")
+        return redirect("admin:diagnostics_errorgroup_changelist")
 
     def run_checks_view(self, request):
         if request.method != "POST" or not request.user.is_superuser:

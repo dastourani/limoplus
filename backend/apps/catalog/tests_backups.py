@@ -4,19 +4,24 @@ import json
 import os
 import shutil
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import zipfile
 from datetime import datetime, timezone as dt_tz
 from pathlib import Path
 from unittest import mock
 
+from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 
 from apps.accounts.models import User
 
 from . import backups
-from .models import BackupRun
+from .access import BOOK_EDITOR_GROUP
+from .media import sign_content_path
+from .models import BackupRun, BookEditor, ContentNode
 
 
 class BackupTests(TestCase):
@@ -123,6 +128,176 @@ class BackupTests(TestCase):
             done = backups.run_due()
             self.assertIn("royalty-release(3)", done)
             mock_release.assert_called_once()
+
+
+class StoragePanelExportTests(TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.media = self.tmp / "media"
+        (self.media / "content" / "b").mkdir(parents=True)
+        (self.media / "content" / "b" / "a.png").write_bytes(b"png")
+        self.override = override_settings(MEDIA_ROOT=str(self.media), BACKUP_DIR=str(self.tmp / "backups"))
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+
+    def test_export_database_json_unique_names_and_contents(self):
+        out1 = backups.export_database_json()
+        out2 = backups.export_database_json()
+        self.assertNotEqual(out1.name, out2.name)
+        self.assertTrue(out1.exists() and out2.exists())
+        self.assertTrue(out1.name.startswith("limookhan-db-export-") and out1.name.endswith(".json.gz"))
+        for out in (out1, out2):
+            with gzip.open(out, "rt", encoding="utf-8") as f:
+                payload = json.load(f)
+            self.assertIsInstance(payload, list)
+            models_seen = {item.get("model") for item in payload}
+            self.assertNotIn("contenttypes.contenttype", models_seen)
+            self.assertNotIn("auth.permission", models_seen)
+            self.assertIn(out.name, [item["name"] for item in backups.local_backups()])
+        self.assertEqual(list(backups.backup_dir().glob(".tmp-*")), [])
+
+    def test_export_full_media_unique_names_and_empty_media(self):
+        zip1, count1 = backups.export_full_media()
+        zip2, count2 = backups.export_full_media()
+        self.assertIsNotNone(zip1)
+        self.assertIsNotNone(zip2)
+        self.assertNotEqual(zip1.name, zip2.name)
+        self.assertEqual((count1, count2), (1, 1))
+        for zp in (zip1, zip2):
+            with zipfile.ZipFile(zp, "r") as z:
+                self.assertEqual(z.namelist(), ["media/content/b/a.png"])
+        self.assertEqual(list(backups.backup_dir().glob(".tmp-*")), [])
+
+        shutil.rmtree(self.media)
+        self.media.mkdir()
+        none_path, zero = backups.export_full_media()
+        self.assertIsNone(none_path)
+        self.assertEqual(zero, 0)
+
+    def test_export_and_nightly_backups_have_independent_retention(self):
+        folder = backups.backup_dir()
+        nightly_files = []
+        base_ts = 1_700_000_000
+        for i in range(backups.KEEP_DB):
+            p = folder / f"limookhan-db-2026111{i + 1}-0300.sqlite3.gz"
+            p.write_bytes(f"nightly-{i}".encode("utf-8"))
+            os.utime(p, (base_ts + i * 100, base_ts + i * 100))
+            nightly_files.append(p)
+
+        # Creating many manual exports never deletes any of the 7 nightly backups.
+        exports = []
+        for idx in range(backups.KEEP_DB + 1):
+            exp = backups.export_database_json()
+            os.utime(exp, (base_ts + 10_000 + idx * 10, base_ts + 10_000 + idx * 10))
+            exports.append(exp)
+        for p in nightly_files:
+            self.assertTrue(p.exists(), f"Nightly backup {p.name} should not be pruned by manual exports")
+        kept_exports = [p for p in exports if p.exists()]
+        self.assertEqual(len(kept_exports), backups.KEEP_DB_EXPORTS)
+
+        # Creating a new nightly backup prunes only the oldest nightly backup and leaves exports intact.
+        new_nightly = backups.backup_database(send=False)
+        self.assertTrue(new_nightly.ok)
+        self.assertFalse(nightly_files[0].exists())
+        for p in nightly_files[1:]:
+            self.assertTrue(p.exists())
+        self.assertTrue((folder / new_nightly.files[0]).exists())
+        for exp in kept_exports:
+            self.assertTrue(exp.exists(), f"Manual export {exp.name} should not be pruned by nightly backup")
+
+        # Full media exports are likewise ignored when nightly media backup prunes old zip parts.
+        full_zip, _ = backups.export_full_media()
+        self.assertIsNotNone(full_zip)
+        for i in range(25):
+            mp = folder / f"limookhan-media-202611{i + 1:02d}-0300-1.zip"
+            mp.write_bytes(b"zip")
+            os.utime(mp, (base_ts + i * 10, base_ts + i * 10))
+        with mock.patch.object(backups, "_bale", return_value=None):
+            media_run = backups.backup_media(send=False)
+        self.assertTrue(media_run.ok)
+        self.assertTrue(full_zip.exists())
+
+    def test_storage_panel_exports_and_service_probe_roles(self):
+        from apps.accounts.sms import SMSNotSent
+        from apps.commerce.zibal import GatewayError
+
+        book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب تست", slug="t-book")
+        teacher_group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        teacher = User.objects.create_user("09120000018", is_staff=True)
+        teacher.groups.add(teacher_group)
+        BookEditor.objects.create(book=book, user=teacher)
+
+        endpoints = ("export-json/", "export-media/", "test-sms/", "test-zibal/")
+
+        # 1. Real book teacher cannot access manager-only storage probes/exports.
+        self.client.force_login(teacher)
+        for endpoint in endpoints:
+            self.assertEqual(self.client.post(f"/admin/catalog/cleanuprun/{endpoint}").status_code, 403)
+
+        # 2. Superuser inside «نمای استاد» preview cannot bypass teacher restrictions.
+        boss = User.objects.create_superuser("09120000020", password="x-strong-pass-1")
+        self.client.force_login(boss)
+        session = self.client.session
+        session["admin_view_mode"] = "teacher"
+        session.save()
+        for endpoint in endpoints:
+            self.assertEqual(self.client.post(f"/admin/catalog/cleanuprun/{endpoint}").status_code, 403)
+
+        # 3. Manager in normal admin mode succeeds on all endpoints.
+        session = self.client.session
+        session.pop("admin_view_mode", None)
+        session.save()
+
+        page = self.client.get("/admin/catalog/cleanuprun/")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "خروجی قابل انتقال (JSON)")
+        self.assertContains(page, "بکاپ کامل عکس‌ها (zip)")
+        self.assertContains(page, "آزمایش پیامک")
+        self.assertContains(page, "آزمایش درگاه زیبال")
+
+        r_json = self.client.post("/admin/catalog/cleanuprun/export-json/")
+        self.assertEqual(r_json.status_code, 200)
+        body_json = b"".join(r_json.streaming_content)
+        self.assertIsInstance(json.loads(gzip.decompress(body_json).decode("utf-8")), list)
+
+        r_media = self.client.post("/admin/catalog/cleanuprun/export-media/")
+        self.assertEqual(r_media.status_code, 200)
+        body_media = b"".join(r_media.streaming_content)
+        with zipfile.ZipFile(io.BytesIO(body_media), "r") as z:
+            self.assertEqual(z.namelist(), ["media/content/b/a.png"])
+
+        shutil.rmtree(self.media)
+        self.media.mkdir()
+        r_empty_media = self.client.post("/admin/catalog/cleanuprun/export-media/", follow=True)
+        self.assertEqual(r_empty_media.status_code, 200)
+        self.assertContains(r_empty_media, "هیچ عکس یا فایل آپلودی در پوشه‌ی media وجود ندارد.")
+
+        # SMS test endpoint
+        with override_settings(SMS_BACKEND="raygan", RAYGAN_ACCESS_HASH="h", RAYGAN_OTP_PATTERN_ID="p"), \
+                mock.patch("apps.accounts.sms.send_login_code") as mock_sms:
+            r_sms = self.client.post("/admin/catalog/cleanuprun/test-sms/", {"phone": "09121112233"}, follow=True)
+        mock_sms.assert_called_once()
+        self.assertContains(r_sms, "پیامک آزمایشی به 09121112233 ارسال شد")
+
+        with mock.patch("apps.accounts.sms.send_login_code", side_effect=SMSNotSent("bad creds")):
+            r_sms_err = self.client.post("/admin/catalog/cleanuprun/test-sms/", {"phone": "09121112233"}, follow=True)
+        self.assertContains(r_sms_err, "خطا در ارسال پیامک آزمایشی")
+
+        r_sms_bad = self.client.post("/admin/catalog/cleanuprun/test-sms/", {"phone": "123"}, follow=True)
+        self.assertContains(r_sms_bad, "شماره موبایل معتبر نیست.")
+
+        # Zibal test endpoint
+        with override_settings(PAYMENTS_ENABLED=True, ZIBAL_MERCHANT="real-merchant"), \
+                mock.patch("apps.commerce.zibal.request_payment", return_value="998877") as mock_zibal:
+            r_zibal = self.client.post("/admin/catalog/cleanuprun/test-zibal/", follow=True)
+        mock_zibal.assert_called_once()
+        self.assertContains(r_zibal, "اتصال به درگاه واقعی زیبال برقرار است")
+        self.assertContains(r_zibal, "998877")
+
+        with mock.patch("apps.commerce.zibal.request_payment", side_effect=GatewayError("timeout")):
+            r_zibal_err = self.client.post("/admin/catalog/cleanuprun/test-zibal/", follow=True)
+        self.assertContains(r_zibal_err, "خطا در اتصال به درگاه زیبال")
 
 
 class TokenTests(TestCase):
@@ -503,5 +678,130 @@ class NightlyAndGunicornConfigTests(TestCase):
         self.assertIn('CMD ["gunicorn", "-c", "gunicorn.conf.py"]', dockerfile)
         self.assertNotIn("--workers 3", dockerfile)
         self.assertIn("collectstatic --noinput", dockerfile)
+
+
+class SqliteToActiveDatabaseRestoreAcceptanceTests(TransactionTestCase):
+    """Unmocked cross-engine acceptance test: export a real SQLite DB + media zip and restore via panel."""
+
+    def test_sqlite_json_and_media_restore_via_panel_then_create_and_read(self):
+        from django.conf import settings as django_settings
+
+        from apps.learning.models import Choice, Question
+
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        src_db = tmp / "source.sqlite3"
+        src_media = tmp / "src_media"
+        dst_media = tmp / "dst_media"
+        src_backups = tmp / "src_backups"
+        dst_backups = tmp / "dst_backups"
+        (src_media / "content" / "old-book").mkdir(parents=True)
+        dst_media.mkdir(parents=True)
+        (src_media / "content" / "old-book" / "page.png").write_bytes(b"old-png-bytes")
+
+        helper = """
+import json, os, django
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+django.setup()
+from django.core.management import call_command
+from apps.accounts.models import User
+from apps.catalog import backups
+from apps.catalog.models import ContentNode
+from apps.learning.models import Choice, Question
+
+call_command("migrate", verbosity=0)
+User.objects.create_superuser("09120000099", password="x-strong-pass-1")
+book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب قدیمی", slug="old-book", is_published=True)
+ch = book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل قدیمی", slug="old-ch-1", is_published=True)
+q = Question.objects.create(
+    node=ch, slug="old-q-1", stem="سؤال قدیمی", explanation="توضیح قدیمی", difficulty=Question.Difficulty.EASY
+)
+Choice.objects.create(question=q, text="گزینه اول", is_correct=True, order=0)
+json_path = backups.export_database_json()
+media_path, media_count = backups.export_full_media()
+print(json.dumps({"json": str(json_path), "media": str(media_path), "media_count": media_count}))
+"""
+        env = {
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "config.settings",
+            "DATABASE_URL": f"sqlite:///{src_db}",
+            "MEDIA_ROOT": str(src_media),
+            "BACKUP_DIR": str(src_backups),
+            "DEBUG": "True",
+            "SECRET_KEY": "sqlite-export-acceptance-key",
+        }
+        proc = subprocess.run(
+            [sys.executable, "-c", helper],
+            cwd=str(django_settings.BASE_DIR),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+        exported = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(exported["media_count"], 1)
+        json_gz_bytes = Path(exported["json"]).read_bytes()
+        media_zip_bytes = Path(exported["media"]).read_bytes()
+
+        initial_boss = User.objects.create_superuser("09120000088", password="x-strong-pass-1")
+        self.client.force_login(initial_boss)
+
+        with override_settings(MEDIA_ROOT=str(dst_media), BACKUP_DIR=str(dst_backups), SERVE_MEDIA=True), \
+                mock.patch.object(backups, "_db_copy", return_value=dst_backups / "before-restore-test.sqlite3"):
+            r_db = self.client.post(
+                "/admin/catalog/cleanuprun/restore/",
+                {
+                    "confirm": "بازگردانی",
+                    "file": SimpleUploadedFile(Path(exported["json"]).name, json_gz_bytes),
+                },
+            )
+            self.assertEqual(r_db.status_code, 302)
+
+            restored_boss = User.objects.get(phone="09120000099")
+            self.client.force_login(restored_boss)
+
+            r_media = self.client.post(
+                "/admin/catalog/cleanuprun/restore/",
+                {
+                    "confirm": "بازگردانی",
+                    "file": SimpleUploadedFile(Path(exported["media"]).name, media_zip_bytes),
+                },
+            )
+            self.assertEqual(r_media.status_code, 302)
+
+            old_book = ContentNode.objects.get(slug="old-book", depth=1)
+            old_ch = ContentNode.objects.get(slug="old-ch-1")
+            self.assertEqual(old_ch.get_parent().pk, old_book.pk)
+            self.assertTrue(Question.objects.filter(node=old_ch, stem="سؤال قدیمی").exists())
+
+            # Create new records after restore (proving PostgreSQL PK sequences stay in sync).
+            new_user = User.objects.create_user("09120000098")
+            self.assertNotEqual(new_user.pk, restored_boss.pk)
+            new_book = ContentNode.add_root(kind=ContentNode.Kind.BOOK, title="کتاب جدید", slug="new-book", is_published=True)
+            new_ch = new_book.add_child(kind=ContentNode.Kind.CHAPTER, title="فصل جدید", slug="new-ch-1", is_published=True)
+            added_ch_to_old = old_book.add_child(
+                kind=ContentNode.Kind.CHAPTER,
+                title="فصل دوم کتاب قدیمی",
+                slug="old-ch-2",
+                is_published=True,
+            )
+            new_q = Question.objects.create(
+                node=new_ch, slug="new-q-1", stem="سؤال جدید", explanation="توضیح جدید", difficulty=Question.Difficulty.MEDIUM
+            )
+            Choice.objects.create(question=new_q, text="گزینه جدید", is_correct=True, order=0)
+
+            self.assertEqual(new_ch.get_parent().pk, new_book.pk)
+            self.assertEqual(added_ch_to_old.get_parent().pk, old_book.pk)
+            self.assertEqual(new_book.get_children_count(), 1)
+            self.assertEqual(old_book.get_children_count(), 2)
+            self.assertEqual(new_q.node_id, new_ch.pk)
+
+            # Verify restored old media file opens via signed URL.
+            signed_rel, _ = sign_content_path("content/old-book/page.png")
+            img_resp = self.client.get(f"/media/{signed_rel}")
+            self.assertEqual(img_resp.status_code, 200)
+            self.assertEqual(b"".join(img_resp.streaming_content), b"old-png-bytes")
+
 
 

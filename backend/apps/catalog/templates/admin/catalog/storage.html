@@ -73,7 +73,24 @@
         <button class="button default" type="submit">پشتیبان همین حالا</button>
         {% if storage_ready %}<label style="margin-inline-start:8px"><input type="checkbox" name="media" value="1"> عکس‌ها هم</label>{% endif %}
       </form>
-      {% if bale_ready %}<form method="post" action="test-bale/">{% csrf_token %}<button class="button" type="submit">آزمایش بله</button></form>{% endif %}
+      <form method="post" action="export-json/">{% csrf_token %}<button class="button" type="submit">خروجی قابل انتقال (JSON)</button></form>
+      <form method="post" action="export-media/">{% csrf_token %}<button class="button" type="submit">بکاپ کامل عکس‌ها (zip)</button></form>
+    </div>
+    <div class="sv-card" style="margin: 0 0 14px;">
+      <h3>آزمایش اتصال سرویس‌های بیرونی</h3>
+      <div class="sv-sub" style="margin-bottom:10px">
+        پیامک: <code>{{ sms_backend }}</code>{% if sms_backend == "raygan" %} ({% if sms_pattern_ready %}الگوی خدماتی فعال{% else %}ارسال با خط عادی{% endif %}){% endif %}
+        · پرداخت زیبال: {% if payments_enabled %}{% if zibal_is_sandbox %}مرچنت آزمایشی (zibal){% else %}مرچنت واقعی فعال{% endif %}{% else %}خاموش (PAYMENTS_ENABLED=False){% endif %}
+        · بله: {% if bale_ready %}متصل{% else %}تنظیم‌نشده{% endif %}
+      </div>
+      <div class="sv-actions" style="margin:0">
+        {% if bale_ready %}<form method="post" action="test-bale/">{% csrf_token %}<button class="button" type="submit">آزمایش بله</button></form>{% endif %}
+        <form method="post" action="test-sms/" style="display:flex;gap:6px;align-items:center">{% csrf_token %}
+          <input type="text" name="phone" value="{{ default_test_phone }}" placeholder="09xxxxxxxxx" size="13" dir="ltr" required>
+          <button class="button" type="submit">آزمایش پیامک</button>
+        </form>
+        <form method="post" action="test-zibal/">{% csrf_token %}<button class="button" type="submit">آزمایش درگاه زیبال</button></form>
+      </div>
     </div>
     {% endif %}
     <table>
