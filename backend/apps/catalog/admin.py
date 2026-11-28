@@ -250,11 +250,140 @@ class BookAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         extra = extra_context or {}
+        view_param = (request.GET.get("view") or "").strip().lower()
+        if view_param in ("shelf", "table"):
+            request.session["book_list_view"] = view_param
+            qd = request.GET.copy()
+            qd.pop("view", None)
+            request.GET = qd
+        book_view_mode = request.session.get("book_list_view", "shelf")
+        if book_view_mode not in ("shelf", "table"):
+            book_view_mode = "shelf"
+
         is_panel_su = access.acts_as_panel_superuser(request)
+        can_create_book = bool(is_panel_su or access.acts_as_panel_teacher(request))
         extra["orphans"] = [n for n in panel.orphans() if not n.is_archived] if is_panel_su else []
         extra["can_manage_access"] = is_panel_su
-        extra["can_create_book"] = bool(is_panel_su or access.acts_as_panel_teacher(request))
-        return super().changelist_view(request, extra_context=extra)
+        extra["can_create_book"] = can_create_book
+        extra["book_view_mode"] = book_view_mode
+
+        response = super().changelist_view(request, extra_context=extra)
+        if hasattr(response, "context_data") and "cl" in response.context_data:
+            from .panel_display import fa_number
+
+            cl = response.context_data["cl"]
+            classroom_book_ids = (
+                set(access.classroom_books_for_request(request).values_list("pk", flat=True))
+                if not is_panel_su
+                else set()
+            )
+            can_teacher = access.acts_as_panel_teacher(request)
+            shelf_books = []
+            for obj in cl.result_list:
+                majors_sorted = sorted(obj.majors.all(), key=lambda m: (m.order, m.name))
+                major = majors_sorted[0] if majors_sorted else None
+                n_chapters = getattr(obj, "n_chapters", None)
+                if n_chapters is None:
+                    n_chapters = obj.get_children().filter(kind=ContentNode.Kind.CHAPTER, is_archived=False).count()
+                n_waiting = getattr(obj, "n_waiting", None)
+                if n_waiting is None:
+                    n_waiting = obj.waitlist.filter(is_active=True).count()
+                if obj.is_archived:
+                    status_label, status_kind = "بایگانی", "grey"
+                elif obj.is_published:
+                    status_label, status_kind = "منتشر", "green"
+                else:
+                    status_label, status_kind = "پیش‌نویس", "draft"
+                can_classrooms = bool(is_panel_su or can_teacher or obj.pk in classroom_book_ids)
+                shelf_books.append({
+                    "pk": obj.pk,
+                    "title": obj.title,
+                    "title_en": obj.title_en,
+                    "author": obj.author,
+                    "edition": obj.edition,
+                    "cover_url": obj.cover.url if obj.cover else "",
+                    "cover_motif": obj.cover_motif,
+                    "cover_drawing": obj.cover_drawing,
+                    "major_name": major.name if major else "",
+                    "major_color": major.color if major else "",
+                    "chapters_count": n_chapters,
+                    "chapters_fa": fa_number(n_chapters),
+                    "price_fa": fa_number(obj.price) if obj.price is not None else "",
+                    "waiting_count": n_waiting,
+                    "waiting_fa": fa_number(n_waiting),
+                    "waitlist_url": reverse("admin:catalog_bookwaitlist_changelist") + f"?book_id={obj.pk}",
+                    "is_published": obj.is_published,
+                    "is_coming_soon": obj.is_coming_soon,
+                    "is_archived": obj.is_archived,
+                    "is_free": obj.is_free,
+                    "status_label": status_label,
+                    "status_kind": status_kind,
+                    "status_html": self.status(obj),
+                    "change_url": reverse("admin:catalog_book_change", args=[obj.pk]),
+                    "classrooms_url": reverse("admin:catalog_book_classrooms_canvas", args=[obj.pk]) if can_classrooms else "",
+                    "inbox_url": reverse("admin:catalog_book_inbox", args=[obj.pk]),
+                    "import_url": reverse("admin:catalog_book_import", args=[obj.pk]),
+                })
+
+            base_qs_params = request.GET.copy()
+            base_qs_params.pop("p", None)
+            def _qs_with(**updates):
+                q = base_qs_params.copy()
+                for k, v in updates.items():
+                    if v is None:
+                        q.pop(k, None)
+                    else:
+                        q[k] = str(v)
+                encoded = q.urlencode()
+                return f"?{encoded}" if encoded else "?"
+
+            active_published = request.GET.get("is_published__exact", "")
+            active_archived = request.GET.get("is_archived__exact", "")
+            active_major = request.GET.get("majors__id__exact", "")
+
+            majors_qs = Major.objects.order_by("order", "name")
+            if not is_panel_su:
+                user_book_ids = access.book_editor_ids(request.user, capability=None)
+                majors_qs = majors_qs.filter(books__id__in=user_book_ids).distinct()
+
+            response.context_data.update({
+                "shelf_books": shelf_books,
+                "shelf_majors": [
+                    {
+                        "id": str(m.pk),
+                        "name": m.name,
+                        "color": m.color,
+                        "active": active_major == str(m.pk),
+                        "href": _qs_with(majors__id__exact=None if active_major == str(m.pk) else m.pk),
+                    }
+                    for m in majors_qs
+                ],
+                "shelf_status_chips": [
+                    {
+                        "label": "همه کتاب‌ها",
+                        "active": not active_published and not active_archived and not active_major,
+                        "href": "?",
+                    },
+                    {
+                        "label": "منتشرشده",
+                        "active": active_published == "1",
+                        "href": _qs_with(is_published__exact="1" if active_published != "1" else None, is_archived__exact=None),
+                    },
+                    {
+                        "label": "پیش‌نویس",
+                        "active": active_published == "0",
+                        "href": _qs_with(is_published__exact="0" if active_published != "0" else None, is_archived__exact=None),
+                    },
+                    {
+                        "label": "بایگانی",
+                        "active": active_archived == "1",
+                        "href": _qs_with(is_archived__exact="1" if active_archived != "1" else None, is_published__exact=None),
+                    },
+                ],
+                "toggle_table_url": _qs_with(view="table"),
+                "toggle_shelf_url": _qs_with(view="shelf"),
+            })
+        return response
 
     def _majors_json(self):
         import json
@@ -395,15 +524,68 @@ class BookAdmin(admin.ModelAdmin):
         if not request.user.is_superuser and not access.is_book_teacher(request.user):
             raise PermissionDenied("فقط اساتید تأییدشده و مدیران امکان ایجاد کتاب دارند.")
 
+        majors_all = list(Major.objects.order_by("order", "name"))
+        valid_motifs = {v for v, _ in ContentNode.Motif.choices if v != ContentNode.Motif.CUSTOM}
+        form_data = {
+            "title": "",
+            "title_en": "",
+            "author": getattr(request.user, "full_name", "") or "",
+            "edition": "",
+            "about": "",
+            "cover_motif": ContentNode.Motif.BOOK,
+            "selected_majors": [],
+        }
+
         if request.method == "POST":
             title = request.POST.get("title", "").strip()
             title_en = request.POST.get("title_en", "").strip()
             author = request.POST.get("author", "").strip()
+            edition = request.POST.get("edition", "").strip()
             about = request.POST.get("about", "").strip()
+            motif = (request.POST.get("cover_motif") or ContentNode.Motif.BOOK).strip()
+            if motif not in valid_motifs:
+                motif = ContentNode.Motif.BOOK
+            selected_major_ids = [m for m in request.POST.getlist("majors") if str(m).isdigit()]
 
+            form_data.update({
+                "title": title,
+                "title_en": title_en,
+                "author": author,
+                "edition": edition,
+                "about": about,
+                "cover_motif": motif,
+                "selected_majors": [int(x) for x in selected_major_ids],
+            })
+
+            has_error = False
             if not title:
                 messages.error(request, "عنوان کتاب الزامی است.")
-            else:
+                has_error = True
+
+            cleaned_drawing = ""
+            drawing_upload = request.FILES.get("drawing_file")
+            if drawing_upload:
+                if not drawing_upload.name.lower().endswith(".svg"):
+                    messages.error(request, "برای طرح سفارشی فقط فایل SVG مجاز است.")
+                    has_error = True
+                else:
+                    try:
+                        cleaned_drawing = dumps_drawing(clean_svg(drawing_upload.read()))
+                        motif = ContentNode.Motif.CUSTOM
+                    except DrawingError as exc:
+                        messages.error(request, str(exc))
+                        has_error = True
+
+            cleaned_cover = None
+            cover_upload = request.FILES.get("cover")
+            if cover_upload:
+                try:
+                    cleaned_cover = forms.ImageField().clean(cover_upload)
+                except forms.ValidationError as exc:
+                    messages.error(request, f"تصویر جلد معتبر نیست: {'، '.join(exc.messages)}")
+                    has_error = True
+
+            if not has_error:
                 # Generate clean unique slug
                 base_slug = re.sub(r"[^\w\s-]", "", title_en or title).strip()
                 base_slug = re.sub(r"[-\s]+", "-", base_slug) or "book"
@@ -413,17 +595,25 @@ class BookAdmin(admin.ModelAdmin):
                     slug_candidate = f"{base_slug}-{request.user.pk}-{suffix}".lower()
                     suffix += 1
 
+                default_author = (getattr(request.user, "full_name", "") or "").strip() or f"استاد {request.user.phone}"
                 with transaction.atomic():
                     book = ContentNode(
                         kind=ContentNode.Kind.BOOK,
                         title=title,
                         title_en=title_en,
                         slug=slug_candidate,
-                        author=author or (f"استاد {request.user.phone}"),
+                        author=author or default_author,
+                        edition=edition,
                         about=about,
+                        cover_motif=motif,
+                        cover_drawing=cleaned_drawing,
                         is_published=False,  # strictly draft
                     )
+                    if cleaned_cover:
+                        book.cover = cleaned_cover
                     ContentNode.add_root(instance=book)
+                    if selected_major_ids:
+                        book.majors.set(Major.objects.filter(pk__in=selected_major_ids))
 
                     # Assign teacher as editor with full draft rights
                     from .models import BookEditor
@@ -437,7 +627,7 @@ class BookAdmin(admin.ModelAdmin):
                         note="ایجادشده توسط مؤلف",
                     )
 
-                    # Optional initial file import
+                    # Optional initial file import (kept for compatibility if submitted)
                     initial_file = request.FILES.get("initial_file")
                     imported_summary = ""
                     if initial_file:
@@ -451,13 +641,20 @@ class BookAdmin(admin.ModelAdmin):
                         else:
                             messages.warning(request, f"کتاب ایجاد شد، اما فایل اولیه به دلیل خطا وارد نشد: {'، '.join(str(e) for e in parsed.errors[:3])}")
 
-                messages.success(request, f"کتاب پیش‌نویس «{book.title}» با موفقیت ایجاد شد.{imported_summary}")
+                messages.success(
+                    request,
+                    f"جلد کتاب پیش‌نویس «{book.title}» ساخته شد.{imported_summary} اکنون می‌توانید فصل‌ها را بنویسید یا کتاب آماده را با هوش مصنوعی وارد کنید.",
+                )
                 return redirect(reverse("admin:catalog_book_change", args=[book.pk]))
 
         context = {
             **self.admin_site.each_context(request),
-            "title": "ایجاد کتاب پیش‌نویس تازه",
+            "title": "ساخت جلد و کتاب پیش‌نویس تازه",
             "opts": self.model._meta,
+            "majors": majors_all,
+            "majors_json": self._majors_json(),
+            "motifs": [(v, l) for v, l in ContentNode.Motif.choices if v != ContentNode.Motif.CUSTOM],
+            "form_data": form_data,
         }
         return render(request, "admin/catalog/book/teacher_create_book.html", context)
 

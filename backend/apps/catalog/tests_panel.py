@@ -3823,3 +3823,78 @@ class BookClassroomsCanvasTests(TestCase):
         self.assertContains(su_page, t_class.title)
         self.assertContains(su_page, su_class.title)
 
+
+class BookShelfAndCoverDraftTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+        from .access import BOOK_EDITOR_GROUP
+
+        self.major = Major.objects.create(name="مهندسی پزشکی", slug="bme-shelf", color="#2F7D4F")
+        self.teacher = User.objects.create(phone="09123334455", first_name="مریم", last_name="حسینی", is_staff=True)
+        grp, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        self.teacher.groups.add(grp)
+
+        self.book = ContentNode.add_root(
+            kind=ContentNode.Kind.BOOK,
+            title="فیزیک پزشکی ۱",
+            title_en="Medical Physics I",
+            slug="med-phys-shelf",
+            author="دکتر حسینی",
+            cover_motif=ContentNode.Motif.ATOM,
+            is_published=False,
+        )
+        self.book.majors.add(self.major)
+        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True)
+
+    def test_book_changelist_defaults_to_visual_shelf_with_table_toggle(self):
+        self.client.force_login(self.teacher)
+        shelf_res = self.client.get(reverse("admin:catalog_book_changelist"))
+        self.assertEqual(shelf_res.status_code, 200)
+        self.assertContains(shelf_res, 'class="lp-shelf-grid"')
+        self.assertContains(shelf_res, 'class="lp-create-book-cta"')
+        self.assertContains(shelf_res, 'class="lp-cover"')
+        self.assertContains(shelf_res, f"/admin/catalog/book/{self.book.pk}/import/")
+        self.assertContains(shelf_res, self.major.name)
+        self.assertNotContains(shelf_res, 'id="result_list"')
+
+        # Switching to table view works directly with HTTP 200 and no ?e=1 redirect
+        table_res = self.client.get(reverse("admin:catalog_book_changelist") + "?view=table")
+        self.assertEqual(table_res.status_code, 200)
+        self.assertContains(table_res, 'id="result_list"')
+
+        # Switching back to shelf view
+        back_res = self.client.get(reverse("admin:catalog_book_changelist") + "?view=shelf")
+        self.assertEqual(back_res.status_code, 200)
+        self.assertContains(back_res, 'class="lp-shelf-grid"')
+
+    def test_teacher_new_draft_focuses_on_cover_and_book_page_highlights_ai_import(self):
+        self.client.force_login(self.teacher)
+        get_res = self.client.get(reverse("admin:catalog_book_teacher_new"))
+        self.assertEqual(get_res.status_code, 200)
+        self.assertContains(get_res, 'id="lp-draft-cover-preview"')
+        self.assertContains(get_res, 'name="cover_motif"')
+        self.assertContains(get_res, self.major.name)
+        self.assertNotContains(get_res, 'name="initial_file"')
+
+        post_res = self.client.post(reverse("admin:catalog_book_teacher_new"), {
+            "title": "تصویربرداری MRI پیشرفته",
+            "title_en": "Advanced MRI",
+            "author": "دکتر حسینی",
+            "edition": "ویرایش اول",
+            "cover_motif": ContentNode.Motif.MRI,
+            "majors": [str(self.major.pk)],
+            "about": "مرجع کلاس تصویربرداری",
+        })
+        created = ContentNode.objects.get(title="تصویربرداری MRI پیشرفته")
+        self.assertRedirects(post_res, reverse("admin:catalog_book_change", args=[created.pk]))
+        self.assertEqual(created.cover_motif, ContentNode.Motif.MRI)
+        self.assertEqual(created.edition, "ویرایش اول")
+        self.assertEqual(list(created.majors.values_list("pk", flat=True)), [self.major.pk])
+        self.assertFalse(created.is_published)
+
+        change_res = self.client.get(reverse("admin:catalog_book_change", args=[created.pk]))
+        self.assertEqual(change_res.status_code, 200)
+        self.assertContains(change_res, 'id="lp-ai-import-card"')
+        self.assertContains(change_res, reverse("admin:catalog_book_import", args=[created.pk]))
+
+
