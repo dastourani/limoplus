@@ -78,7 +78,15 @@ export function _setRetryDelaysForTests(delays: number[]) {
 
 export async function api<T>(
   path: string,
-  options: { method?: string; body?: unknown; baseUrl?: string; timeoutMs?: number; opId?: string; skipDiagnostics?: boolean } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    baseUrl?: string;
+    timeoutMs?: number;
+    opId?: string;
+    skipDiagnostics?: boolean;
+    retryOnGatewayError?: boolean;
+  } = {},
 ): Promise<T> {
   const cleanPath = path.replace(/^\//, '');
   const method = (options.method ?? (options.body === undefined ? 'GET' : 'POST')).toUpperCase();
@@ -101,25 +109,18 @@ export async function api<T>(
   const installId = await getInstallId().catch(() => '');
   if (installId) headers['X-App-Install-Id'] = installId;
 
-  const canRetryGateway = method === 'GET' && !isDiag;
+  const canRetryGateway = method === 'GET' && Boolean(options.retryOnGatewayError) && !isDiag;
   const maxAttempts = canRetryGateway ? 1 + retryDelaysMs.length : 1;
-  const base = options.baseUrl ?? (await getApiUrl());
+  const deadline = Date.now() + (options.timeoutMs ?? TIMEOUT_MS);
 
-  let response!: Response;
+  let base = options.baseUrl ?? '';
+  let response: Response | null = null;
   let data: Record<string, unknown> = {};
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? TIMEOUT_MS);
-    try {
-      response = await fetch(`${base}/api/v1/${cleanPath}`, {
-        method,
-        headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        signal: controller.signal,
-      });
-    } catch {
-      clearTimeout(timer);
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      if (response) break;
       if (!isDiag) addBreadcrumb('api', `${method} /api/v1/${cleanPath}`, online ? 'network_error' : 'offline');
       throw new ApiError(
         0,
@@ -128,14 +129,48 @@ export async function api<T>(
       );
     }
 
-    data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), remainingMs);
+    let currentResponse: Response;
+    try {
+      if (!base) base = await getApiUrl();
+      currentResponse = await fetch(`${base}/api/v1/${cleanPath}`, {
+        method,
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: controller.signal,
+      });
+    } catch {
+      clearTimeout(timer);
+      if (response) break;
+      if (!isDiag) addBreadcrumb('api', `${method} /api/v1/${cleanPath}`, online ? 'network_error' : 'offline');
+      throw new ApiError(
+        0,
+        'network',
+        online ? 'سرور در دسترس نیست. کمی بعد دوباره تلاش کنید.' : 'اینترنت قطع است. اتصال را بررسی کنید و دوباره تلاش کنید.',
+      );
+    }
+
+    response = currentResponse;
+    data = (await currentResponse.json().catch(() => ({}))) as Record<string, unknown>;
     clearTimeout(timer);
-    if (canRetryGateway && TRANSIENT_GATEWAY_STATUSES.has(response.status) && attempt < maxAttempts) {
+
+    if (canRetryGateway && TRANSIENT_GATEWAY_STATUSES.has(currentResponse.status) && attempt < maxAttempts) {
       const waitMs = retryDelaysMs[attempt - 1] ?? 0;
+      if (deadline - Date.now() <= waitMs) break;
       if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
       continue;
     }
     break;
+  }
+
+  if (!response) {
+    if (!isDiag) addBreadcrumb('api', `${method} /api/v1/${cleanPath}`, online ? 'network_error' : 'offline');
+    throw new ApiError(
+      0,
+      'network',
+      online ? 'سرور در دسترس نیست. کمی بعد دوباره تلاش کنید.' : 'اینترنت قطع است. اتصال را بررسی کنید و دوباره تلاش کنید.',
+    );
   }
 
   if (!isDiag) addBreadcrumb('api', `${method} /api/v1/${cleanPath}`, String(response.status));
