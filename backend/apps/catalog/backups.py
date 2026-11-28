@@ -285,9 +285,12 @@ def _db_copy(target: Path) -> Path:
             raise RuntimeError(f"pg_dump failed: {(proc.stderr or proc.stdout).strip()}")
         return dump_path
 
+    return _dump_json(target.with_suffix(".json"))
+
+
+def _dump_json(json_path: Path) -> Path:
     from django.core.management import call_command
 
-    json_path = target.with_suffix(".json")
     with open(json_path, "w", encoding="utf-8") as out:
         if connection.vendor == "postgresql" and not connection.in_atomic_block:
             with transaction.atomic():
@@ -297,6 +300,42 @@ def _db_copy(target: Path) -> Path:
         else:
             call_command("dumpdata", "--natural-foreign", "--exclude=contenttypes", "--exclude=auth.permission", stdout=out)
     return json_path
+
+
+def export_database_json() -> Path:
+    """Create a portable gzipped JSON fixture (`limookhan-db-export-...json.gz`) for cross-engine migration."""
+    folder = backup_dir()
+    raw = folder / f".tmp-export-{uuid.uuid4().hex[:8]}.json"
+    packed = folder / f"limookhan-db-export-{_stamp()}.json.gz"
+    try:
+        _dump_json(raw)
+        with open(raw, "rb") as src, gzip.open(packed, "wb", compresslevel=6) as dst:
+            shutil.copyfileobj(src, dst)
+    except Exception:
+        packed.unlink(missing_ok=True)
+        raise
+    finally:
+        raw.unlink(missing_ok=True)
+    _prune(folder, "limookhan-db-", KEEP_DB)
+    return packed
+
+
+def export_full_media() -> tuple[Path | None, int]:
+    """Archive every file under MEDIA_ROOT (excluding apk/ and imports/) into a single restore-ready .zip."""
+    files = _media_files(since=None)
+    if not files:
+        return None, 0
+    folder = backup_dir()
+    out = folder / f"limookhan-media-full-{_stamp()}.zip"
+    try:
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as archive:
+            for path, rel in files:
+                archive.write(path, "media/" + rel)
+    except Exception:
+        out.unlink(missing_ok=True)
+        raise
+    _prune(folder, "limookhan-media-full-", 2)
+    return out, len(files)
 
 
 def backup_database(send=True):
@@ -760,6 +799,25 @@ def _restore_sql_file(path: Path) -> str:
     return aside.name
 
 
+def _reset_postgres_sequences() -> int:
+    """Sync PostgreSQL primary-key sequences after JSON fixture load so inserts never collide on existing IDs."""
+    if connection.vendor != "postgresql":
+        return 0
+    import io
+
+    from django.apps import apps
+    from django.core.management import call_command
+
+    buf = io.StringIO()
+    call_command("sqlsequencereset", *[app.label for app in apps.get_app_configs()], no_color=True, stdout=buf)
+    statements = [line.strip() for line in buf.getvalue().splitlines() if line.strip() and not line.strip().startswith("--")]
+    if statements:
+        with connection.cursor() as cur:
+            for stmt in statements:
+                cur.execute(stmt)
+    return len(statements)
+
+
 def _restore_json_file(path: Path) -> str:
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -777,6 +835,7 @@ def _restore_json_file(path: Path) -> str:
             call_command("flush", interactive=False, verbosity=0)
             call_command("loaddata", str(path), verbosity=0)
         call_command("migrate", interactive=False, verbosity=0)
+        _reset_postgres_sequences()
     except Exception as exc:  # noqa: BLE001
         raise RestoreError(f"بازگردانی JSON ناموفق بود ({exc}). نسخه‌ی قبلی در backups/{aside.name} است.") from exc
     _prune(backup_dir(), "before-restore-", 10)

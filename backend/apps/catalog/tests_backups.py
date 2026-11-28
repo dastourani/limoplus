@@ -124,6 +124,118 @@ class BackupTests(TestCase):
             self.assertIn("royalty-release(3)", done)
             mock_release.assert_called_once()
 
+    def test_export_database_json_and_reset_postgres_sequences(self):
+        out = backups.export_database_json()
+        self.assertTrue(out.exists())
+        self.assertTrue(out.name.startswith("limookhan-db-export-"))
+        self.assertTrue(out.name.endswith(".json.gz"))
+        with gzip.open(out, "rt", encoding="utf-8") as f:
+            payload = json.load(f)
+        self.assertIsInstance(payload, list)
+        models_seen = {item.get("model") for item in payload}
+        self.assertNotIn("contenttypes.contenttype", models_seen)
+        self.assertNotIn("auth.permission", models_seen)
+        self.assertIn(out.name, [item["name"] for item in backups.local_backups()])
+
+        # _reset_postgres_sequences is a no-op on SQLite
+        with mock.patch.object(backups.connection, "vendor", "sqlite"):
+            self.assertEqual(backups._reset_postgres_sequences(), 0)
+
+        # On PostgreSQL, executes sqlsequencereset statements
+        fake_cursor = mock.MagicMock()
+        fake_cursor_cm = mock.MagicMock()
+        fake_cursor_cm.__enter__.return_value = fake_cursor
+        with mock.patch.object(backups.connection, "vendor", "postgresql"), \
+                mock.patch.object(backups.connection, "cursor", return_value=fake_cursor_cm), \
+                mock.patch("django.core.management.call_command", side_effect=lambda *a, **kw: kw["stdout"].write("-- comment\nSELECT setval('t_id_seq', 10);\n")):
+            ran = backups._reset_postgres_sequences()
+        self.assertEqual(ran, 1)
+        fake_cursor.execute.assert_called_once_with("SELECT setval('t_id_seq', 10);")
+
+    def test_restore_json_file_runs_sequence_reset(self):
+        sample = self.tmp / "fixture.json"
+        sample.write_text("[]", encoding="utf-8")
+        with mock.patch.object(backups, "_db_copy", return_value=Path(backups.backup_dir()) / "before-restore-test.sqlite3"), \
+                mock.patch("django.core.management.call_command"), \
+                mock.patch.object(backups, "_reset_postgres_sequences", return_value=5) as mock_reset:
+            aside = backups._restore_json_file(sample)
+        self.assertEqual(aside, "before-restore-test.sqlite3")
+        mock_reset.assert_called_once_with()
+
+    def test_export_full_media_and_empty_media(self):
+        zip_path, count = backups.export_full_media()
+        self.assertIsNotNone(zip_path)
+        self.assertEqual(count, 1)
+        with zipfile.ZipFile(zip_path, "r") as z:
+            self.assertEqual(z.namelist(), ["media/content/b/a.png"])
+        shutil.rmtree(self.media)
+        self.media.mkdir()
+        none_path, zero = backups.export_full_media()
+        self.assertIsNone(none_path)
+        self.assertEqual(zero, 0)
+
+    def test_storage_panel_exports_and_service_test_endpoints(self):
+        from apps.accounts.sms import SMSNotSent
+        from apps.commerce.zibal import GatewayError
+
+        staff = User.objects.create_user("09120000019", is_staff=True)
+        self.client.force_login(staff)
+        for endpoint in ("export-json/", "export-media/", "test-sms/", "test-zibal/"):
+            self.assertEqual(self.client.post(f"/admin/catalog/cleanuprun/{endpoint}").status_code, 403)
+
+        boss = User.objects.create_superuser("09120000020", password="x-strong-pass-1")
+        self.client.force_login(boss)
+
+        page = self.client.get("/admin/catalog/cleanuprun/")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "خروجی قابل انتقال (JSON)")
+        self.assertContains(page, "بکاپ کامل عکس‌ها (zip)")
+        self.assertContains(page, "آزمایش پیامک")
+        self.assertContains(page, "آزمایش درگاه زیبال")
+
+        r_json = self.client.post("/admin/catalog/cleanuprun/export-json/")
+        self.assertEqual(r_json.status_code, 200)
+        body_json = b"".join(r_json.streaming_content)
+        self.assertIsInstance(json.loads(gzip.decompress(body_json).decode("utf-8")), list)
+
+        r_media = self.client.post("/admin/catalog/cleanuprun/export-media/")
+        self.assertEqual(r_media.status_code, 200)
+        body_media = b"".join(r_media.streaming_content)
+        with zipfile.ZipFile(io.BytesIO(body_media), "r") as z:
+            self.assertEqual(z.namelist(), ["media/content/b/a.png"])
+
+        shutil.rmtree(self.media)
+        self.media.mkdir()
+        r_empty_media = self.client.post("/admin/catalog/cleanuprun/export-media/", follow=True)
+        self.assertEqual(r_empty_media.status_code, 200)
+        self.assertContains(r_empty_media, "هیچ عکس یا فایل آپلودی در پوشه‌ی media وجود ندارد.")
+
+        # SMS test endpoint
+        with override_settings(SMS_BACKEND="raygan", RAYGAN_ACCESS_HASH="h", RAYGAN_OTP_PATTERN_ID="p"), \
+                mock.patch("apps.accounts.sms.send_login_code") as mock_sms:
+            r_sms = self.client.post("/admin/catalog/cleanuprun/test-sms/", {"phone": "09121112233"}, follow=True)
+        mock_sms.assert_called_once()
+        self.assertContains(r_sms, "پیامک آزمایشی به 09121112233 ارسال شد")
+
+        with mock.patch("apps.accounts.sms.send_login_code", side_effect=SMSNotSent("bad creds")):
+            r_sms_err = self.client.post("/admin/catalog/cleanuprun/test-sms/", {"phone": "09121112233"}, follow=True)
+        self.assertContains(r_sms_err, "خطا در ارسال پیامک آزمایشی")
+
+        r_sms_bad = self.client.post("/admin/catalog/cleanuprun/test-sms/", {"phone": "123"}, follow=True)
+        self.assertContains(r_sms_bad, "شماره موبایل معتبر نیست.")
+
+        # Zibal test endpoint
+        with override_settings(PAYMENTS_ENABLED=True, ZIBAL_MERCHANT="real-merchant"), \
+                mock.patch("apps.commerce.zibal.request_payment", return_value="998877") as mock_zibal:
+            r_zibal = self.client.post("/admin/catalog/cleanuprun/test-zibal/", follow=True)
+        mock_zibal.assert_called_once()
+        self.assertContains(r_zibal, "اتصال به درگاه واقعی زیبال برقرار است")
+        self.assertContains(r_zibal, "998877")
+
+        with mock.patch("apps.commerce.zibal.request_payment", side_effect=GatewayError("timeout")):
+            r_zibal_err = self.client.post("/admin/catalog/cleanuprun/test-zibal/", follow=True)
+        self.assertContains(r_zibal_err, "خطا در اتصال به درگاه زیبال")
+
 
 class TokenTests(TestCase):
     @override_settings(BALE_BOT_TOKEN="123:SECRET")

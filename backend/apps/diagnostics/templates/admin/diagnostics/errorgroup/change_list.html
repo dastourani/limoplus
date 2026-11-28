@@ -15,10 +15,16 @@
   <div class="lp-quiet">
     گروه‌های باز یا در حال بررسی: <b>{{ open_count }}</b> (بحرانی: <b>{{ critical_open_count }}</b>)
   </div>
-  <form method="post" action="{% url 'admin:diagnostics_errorgroup_run_checks' %}">
-    {% csrf_token %}
-    <button type="submit" class="button default">اجرای بررسی سلامت همین حالا</button>
-  </form>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <form method="post" action="{% url 'admin:diagnostics_errorgroup_run_checks' %}">
+      {% csrf_token %}
+      <button type="submit" class="button default">اجرای بررسی سلامت همین حالا</button>
+    </form>
+    <form method="post" action="{% url 'admin:diagnostics_errorgroup_prune_resolved' %}">
+      {% csrf_token %}
+      <button type="submit" class="button">پاک‌کردن حل‌شده‌های قدیمی (۳۰+ روز)</button>
+    </form>
+  </div>
 </div>
 <div class="dg-strip">
   {% for c in health_cards %}
