@@ -2300,26 +2300,39 @@ def _assets_each_context_with_version(request):
         from apps.learning.models import Report
         from .models import BookEditor, BookTeamTask
 
+        def _teacher_book_entry(b):
+            ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
+            pending_tasks = BookTeamTask.objects.filter(book=b, is_done=False).count()
+            report_q = (
+                Q(node__path__startswith=b.path)
+                | Q(question__node__path__startswith=b.path)
+                | Q(flashcard__node__path__startswith=b.path)
+            )
+            pending_reports = Report.objects.filter(report_q, status=Report.Status.OPEN).count()
+            major = next(iter(b.majors.all()), None)
+            return {
+                "pk": b.pk,
+                "title": b.title,
+                "title_en": b.title_en,
+                "author": b.author,
+                "edition": b.edition,
+                "cover_url": b.cover.url if b.cover else "",
+                "cover_motif": b.cover_motif,
+                "cover_drawing": b.cover_drawing,
+                "major_name": major.name if major else "",
+                "major_color": major.color if major else "",
+                "chapters_count": ch_count,
+                "pending_tasks_count": pending_tasks,
+                "pending_reports_count": pending_reports,
+            }
+
         if user.is_superuser:
             # For superuser previewing teacher portal: show recently edited draft books or all books (excluding inbox)
-            teacher_books = []
-            for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, is_published=False, is_inbox=False)[:6]:
-                ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
-                pending_tasks = BookTeamTask.objects.filter(book=b, is_done=False).count()
-                report_q = (
-                    Q(node__path__startswith=b.path)
-                    | Q(question__node__path__startswith=b.path)
-                    | Q(flashcard__node__path__startswith=b.path)
-                )
-                pending_reports = Report.objects.filter(report_q, status=Report.Status.OPEN).count()
-                teacher_books.append({
-                    "pk": b.pk,
-                    "title": b.title,
-                    "author": b.author,
-                    "chapters_count": ch_count,
-                    "pending_tasks_count": pending_tasks,
-                    "pending_reports_count": pending_reports,
-                })
+            teacher_books = [
+                _teacher_book_entry(b)
+                for b in ContentNode.objects.filter(kind=ContentNode.Kind.BOOK, is_published=False, is_inbox=False)
+                .prefetch_related("majors")[:6]
+            ]
             context["teacher_books"] = teacher_books
 
             classrooms = []
@@ -2343,24 +2356,11 @@ def _assets_each_context_with_version(request):
             context["site_url"] = site_url
         else:
             book_ids = list(BookEditor.objects.filter(user=user).values_list("book_id", flat=True))
-            teacher_books = []
-            for b in ContentNode.objects.filter(pk__in=book_ids, kind=ContentNode.Kind.BOOK, is_inbox=False):
-                ch_count = ContentNode.objects.filter(path__startswith=b.path, depth=2, is_archived=False).count()
-                pending_tasks = BookTeamTask.objects.filter(book=b, is_done=False).count()
-                report_q = (
-                    Q(node__path__startswith=b.path)
-                    | Q(question__node__path__startswith=b.path)
-                    | Q(flashcard__node__path__startswith=b.path)
-                )
-                pending_reports = Report.objects.filter(report_q, status=Report.Status.OPEN).count()
-                teacher_books.append({
-                    "pk": b.pk,
-                    "title": b.title,
-                    "author": b.author,
-                    "chapters_count": ch_count,
-                    "pending_tasks_count": pending_tasks,
-                    "pending_reports_count": pending_reports,
-                })
+            teacher_books = [
+                _teacher_book_entry(b)
+                for b in ContentNode.objects.filter(pk__in=book_ids, kind=ContentNode.Kind.BOOK, is_inbox=False)
+                .prefetch_related("majors")
+            ]
             context["teacher_books"] = teacher_books
 
             classrooms = []

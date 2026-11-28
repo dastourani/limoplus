@@ -1,0 +1,372 @@
+{% load i18n %}
+<button class="sticky toggle-nav-sidebar" id="toggle-nav-sidebar" aria-label="{% translate 'Toggle navigation' %}"></button>
+<nav class="sticky" id="nav-sidebar" aria-label="{% translate 'Sidebar' %}">
+  <div class="lp-rail-top">
+    <div class="lp-rail-search-wrap">
+      <input type="search" id="nav-filter"
+             placeholder="فیلتر سریع منو…"
+             aria-label="{% translate 'Filter navigation items' %}">
+      <button type="button" class="lp-rail-cmd-mini" id="lp-rail-cmd-btn" title="جستجوی سراسری (Ctrl+K)">⌘K</button>
+    </div>
+  </div>
+  <div class="lp-rail-tiles" id="lp-rail-tiles" aria-label="دسته‌بندی‌های سریع"></div>
+  <div class="lp-rail-scroll" id="lp-rail-scroll">
+    {% include 'admin/app_list.html' with app_list=available_apps show_changelinks=False %}
+  </div>
+  <div class="lp-rail-footer">
+    <button type="button" class="lp-rail-collapse-btn" id="lp-rail-collapse-btn" aria-expanded="true" title="جمع‌کردن یا بازکردن نوار کناری">
+      <svg class="lp-rail-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="13 17 18 12 13 7"></polyline>
+        <polyline points="6 17 11 12 6 7"></polyline>
+      </svg>
+      <span class="lp-rail-collapse-text">جمع‌کردن منو</span>
+    </button>
+  </div>
+</nav>
+<div class="lp-rail-flyout" id="lp-rail-flyout" role="dialog" aria-modal="false" hidden></div>
+
+<script>
+(function () {
+  var RAIL_KEY = 'lp_nav_rail_collapsed';
+  var OPEN_KEY = 'lp_rail_open_apps';
+  var DESKTOP_MQ = '(min-width: 960px)';
+
+  var ICONS = {
+    catalog: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+    catalog_ai: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M5 18l.8 1.8L7.6 20.6l-1.8.8L5 23l-.8-1.6-1.8-.8 1.8-.8z"/></svg>',
+    teacher_workflows: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>',
+    commerce: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+    commerce_teacher: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>',
+    learning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+    accounts: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    study: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+    website: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+    guard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+    diagnostics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+    releases: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>',
+    auth: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+  };
+
+  var SHORT_LABELS = {
+    catalog: 'محتوا',
+    catalog_ai: 'دستیار AI',
+    teacher_workflows: 'اساتید',
+    commerce: 'فروش',
+    commerce_teacher: 'درآمد',
+    learning: 'تست‌ها',
+    accounts: 'کاربران',
+    study: 'مطالعه',
+    website: 'سایت',
+    guard: 'حفاظت',
+    diagnostics: 'پایش',
+    releases: 'نسخه‌ها',
+    auth: 'مجوزها'
+  };
+
+  var DEFAULT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>';
+
+  function faToInt(str) {
+    var map = { '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+    var norm = String(str || '').replace(/[۰-۹]/g, function (c) { return map[c]; });
+    var n = parseInt(norm, 10);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function toFa(n) {
+    return String(n).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; });
+  }
+
+  function getAppKey(mod) {
+    var cls = Array.prototype.find.call(mod.classList, function (c) { return c.indexOf('app-') === 0; });
+    return cls ? cls.slice(4) : '';
+  }
+
+  function readOpenSet() {
+    try {
+      var raw = sessionStorage.getItem(OPEN_KEY);
+      if (raw) return new Set(JSON.parse(raw));
+    } catch (e) {}
+    return null;
+  }
+
+  function saveOpenSet(set) {
+    try { sessionStorage.setItem(OPEN_KEY, JSON.stringify(Array.from(set))); } catch (e) {}
+  }
+
+  // Apply saved collapse preference immediately on desktop to avoid flicker
+  try {
+    if (window.matchMedia && window.matchMedia(DESKTOP_MQ).matches && localStorage.getItem(RAIL_KEY) === '1') {
+      document.documentElement.classList.add('lp-rail-collapsed');
+    }
+  } catch (e) {}
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.getElementById('nav-sidebar');
+    if (!sidebar) return;
+    var scrollWrap = document.getElementById('lp-rail-scroll');
+    var tilesWrap = document.getElementById('lp-rail-tiles');
+    var flyout = document.getElementById('lp-rail-flyout');
+    var collapseBtn = document.getElementById('lp-rail-collapse-btn');
+    var filterInput = document.getElementById('nav-filter');
+    var cmdMiniBtn = document.getElementById('lp-rail-cmd-btn');
+    if (!scrollWrap || !tilesWrap || !flyout) return;
+
+    var modules = Array.prototype.slice.call(scrollWrap.querySelectorAll('.module'));
+    var savedOpen = readOpenSet();
+    var hasCurrent = modules.some(function (m) { return m.classList.contains('current-app') || !!m.querySelector('.current-model'); });
+    if (!savedOpen) {
+      savedOpen = new Set();
+      modules.forEach(function (m, idx) {
+        var key = getAppKey(m);
+        if (m.classList.contains('current-app') || m.querySelector('.current-model') || (!hasCurrent && idx < 2)) {
+          savedOpen.add(key);
+        }
+      });
+    } else {
+      modules.forEach(function (m) {
+        if (m.classList.contains('current-app') || m.querySelector('.current-model')) {
+          savedOpen.add(getAppKey(m));
+        }
+      });
+    }
+
+    var searchItems = [];
+    var activeTileKey = null;
+
+    function closeFlyout() {
+      flyout.hidden = true;
+      flyout.innerHTML = '';
+      activeTileKey = null;
+      tilesWrap.querySelectorAll('.lp-rail-tile').forEach(function (t) {
+        t.classList.remove('is-open');
+        t.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    function openFlyout(tile, appTitle, rowsData) {
+      var key = tile.getAttribute('data-app');
+      if (!flyout.hidden && activeTileKey === key) {
+        closeFlyout();
+        return;
+      }
+      closeFlyout();
+      activeTileKey = key;
+      tile.classList.add('is-open');
+      tile.setAttribute('aria-expanded', 'true');
+
+      var hdr = document.createElement('div');
+      hdr.className = 'lp-flyout-head';
+      hdr.textContent = appTitle;
+      flyout.appendChild(hdr);
+
+      var list = document.createElement('div');
+      list.className = 'lp-flyout-list';
+      rowsData.forEach(function (item) {
+        var row = document.createElement('div');
+        row.className = 'lp-flyout-item' + (item.isCurrent ? ' is-current' : '');
+
+        var a = document.createElement('a');
+        a.className = 'lp-flyout-link';
+        a.href = item.url;
+        a.innerHTML = item.html;
+        row.appendChild(a);
+
+        if (item.addUrl) {
+          var addA = document.createElement('a');
+          addA.className = 'lp-flyout-add';
+          addA.href = item.addUrl;
+          addA.title = 'افزودن مورد جدید';
+          addA.textContent = '+';
+          row.appendChild(addA);
+        }
+        list.appendChild(row);
+      });
+      flyout.appendChild(list);
+
+      flyout.hidden = false;
+      var rect = tile.getBoundingClientRect();
+      var flyH = flyout.offsetHeight || 260;
+      var top = Math.max(64, Math.min(rect.top, window.innerHeight - flyH - 12));
+      flyout.style.top = top + 'px';
+      var railRect = sidebar.getBoundingClientRect();
+      var rightOffset = Math.max(76, window.innerWidth - railRect.left + 8);
+      flyout.style.right = rightOffset + 'px';
+    }
+
+    modules.forEach(function (mod) {
+      var key = getAppKey(mod);
+      var caption = mod.querySelector('caption');
+      var capLink = caption ? caption.querySelector('a') : null;
+      var appTitle = (capLink ? capLink.textContent : (caption ? caption.textContent : '')).trim();
+      var iconSvg = ICONS[key] || DEFAULT_SVG;
+      var shortLabel = SHORT_LABELS[key] || appTitle.split(/\s+/)[0] || 'بخش';
+
+      var badgeSum = 0;
+      var rowsData = [];
+      mod.querySelectorAll('tr').forEach(function (tr) {
+        var th = tr.querySelector('th');
+        var a = th ? th.querySelector('a') : null;
+        if (!a) return;
+        var addA = tr.querySelector('a.addlink');
+        var badgeEl = th.querySelector('.lp-menu-badge');
+        var bVal = badgeEl ? faToInt(badgeEl.textContent) : 0;
+        badgeSum += bVal;
+
+        // Clean plain title without badge text for Ctrl+K search
+        var clone = a.cloneNode(true);
+        clone.querySelectorAll('.lp-menu-badge, .lp-help-icon').forEach(function (n) { n.remove(); });
+        var cleanTitle = clone.textContent.trim();
+
+        searchItems.push({
+          category: appTitle,
+          title: cleanTitle,
+          url: a.getAttribute('href'),
+          addUrl: addA ? addA.getAttribute('href') : '',
+          badge: bVal
+        });
+
+        rowsData.push({
+          url: a.getAttribute('href'),
+          html: a.innerHTML,
+          addUrl: addA ? addA.getAttribute('href') : '',
+          isCurrent: tr.classList.contains('current-model')
+        });
+      });
+
+      // Enhance caption into accessible accordion header
+      if (caption) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'lp-rail-group-btn';
+        btn.setAttribute('aria-expanded', savedOpen.has(key) ? 'true' : 'false');
+
+        var ic = document.createElement('span');
+        ic.className = 'lp-rail-group-ic';
+        ic.innerHTML = iconSvg;
+
+        var lbl = document.createElement('span');
+        lbl.className = 'lp-rail-group-title';
+        lbl.textContent = appTitle;
+
+        btn.appendChild(ic);
+        btn.appendChild(lbl);
+
+        if (badgeSum > 0) {
+          var gb = document.createElement('span');
+          gb.className = 'lp-rail-group-badge';
+          gb.textContent = toFa(badgeSum);
+          btn.appendChild(gb);
+        }
+
+        var caret = document.createElement('span');
+        caret.className = 'lp-rail-group-caret';
+        caret.textContent = '‹';
+        btn.appendChild(caret);
+
+        caption.replaceChildren(btn);
+
+        var applyModState = function (open) {
+          mod.classList.toggle('lp-group-collapsed', !open);
+          btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        };
+        applyModState(savedOpen.has(key));
+
+        btn.addEventListener('click', function () {
+          var isOpen = btn.getAttribute('aria-expanded') === 'true';
+          if (isOpen) savedOpen.delete(key);
+          else savedOpen.add(key);
+          saveOpenSet(savedOpen);
+          applyModState(!isOpen);
+        });
+      }
+
+      // Build compact rail icon tile for collapsed rail mode
+      var tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'lp-rail-tile' + ((mod.classList.contains('current-app') || mod.querySelector('.current-model')) ? ' is-current' : '');
+      tile.setAttribute('data-app', key);
+      tile.setAttribute('aria-expanded', 'false');
+      tile.setAttribute('title', appTitle);
+
+      var tileIc = document.createElement('span');
+      tileIc.className = 'lp-rail-tile-ic';
+      tileIc.innerHTML = iconSvg;
+      tile.appendChild(tileIc);
+
+      var tileLbl = document.createElement('span');
+      tileLbl.className = 'lp-rail-tile-lbl';
+      tileLbl.textContent = shortLabel;
+      tile.appendChild(tileLbl);
+
+      if (badgeSum > 0) {
+        var dot = document.createElement('span');
+        dot.className = 'lp-rail-tile-badge';
+        dot.textContent = toFa(badgeSum);
+        tile.appendChild(dot);
+      }
+
+      tile.addEventListener('click', function (e) {
+        e.stopPropagation();
+        openFlyout(tile, appTitle, rowsData);
+      });
+      tilesWrap.appendChild(tile);
+    });
+
+    window.LimoRailApps = searchItems;
+    window.dispatchEvent(new CustomEvent('limo:rail-ready'));
+
+    // Keep accordions expanded during active sidebar text filtering
+    if (filterInput) {
+      filterInput.addEventListener('input', function () {
+        var q = filterInput.value.trim();
+        modules.forEach(function (mod) {
+          if (q) {
+            mod.classList.remove('lp-group-collapsed');
+          } else {
+            var key = getAppKey(mod);
+            var open = savedOpen.has(key);
+            mod.classList.toggle('lp-group-collapsed', !open);
+          }
+        });
+      });
+    }
+
+    // Collapse / Expand rail toggle (desktop)
+    function syncCollapseUI() {
+      var collapsed = document.documentElement.classList.contains('lp-rail-collapsed');
+      if (collapseBtn) {
+        collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        var txt = collapseBtn.querySelector('.lp-rail-collapse-text');
+        if (txt) txt.textContent = collapsed ? '' : 'جمع‌کردن منو';
+      }
+      if (!collapsed) closeFlyout();
+    }
+
+    if (collapseBtn) {
+      collapseBtn.addEventListener('click', function () {
+        var next = !document.documentElement.classList.contains('lp-rail-collapsed');
+        document.documentElement.classList.toggle('lp-rail-collapsed', next);
+        try { localStorage.setItem(RAIL_KEY, next ? '1' : '0'); } catch (e) {}
+        syncCollapseUI();
+      });
+    }
+    syncCollapseUI();
+
+    if (cmdMiniBtn) {
+      cmdMiniBtn.addEventListener('click', function () {
+        window.dispatchEvent(new CustomEvent('limo:open-cmd'));
+      });
+    }
+
+    document.addEventListener('click', function (e) {
+      if (!flyout.hidden && !flyout.contains(e.target) && !tilesWrap.contains(e.target)) {
+        closeFlyout();
+      }
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !flyout.hidden) closeFlyout();
+    });
+    window.addEventListener('resize', closeFlyout);
+  });
+})();
+</script>

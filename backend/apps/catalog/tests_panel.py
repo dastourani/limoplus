@@ -3613,9 +3613,54 @@ class StepFourAdminPanelTests(TestCase):
         self.assertEqual(self.client.get("/admin/catalog/book/study-analytics/").status_code, 403)
 
 
+class PanelShellAndLayoutTests(TestCase):
+    def setUp(self):
+        self.group, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        self.superuser = User.objects.create_superuser("09120004000", "pw123")
+        self.teacher = User.objects.create_user("09120004001", is_staff=True)
+        self.teacher.groups.add(self.group)
+        self.book = ContentNode.add_root(
+            title="فیزیک سیستم‌های تصویربرداری",
+            title_en="Medical Imaging Systems",
+            author="دکتر نمونه",
+            kind=ContentNode.Kind.BOOK,
+            slug="layout-test-book",
+            cover_motif="ct",
+            is_published=False,
+        )
+        BookEditor.objects.create(book=self.book, user=self.teacher, can_edit_content=True)
 
+    def test_superadmin_dashboard_renders_rail_cmd_palette_tabs_and_audit_drawer(self):
+        self.client.force_login(self.superuser)
+        res = self.client.get("/admin/")
+        self.assertEqual(res.status_code, 200)
+        for token in (
+            'id="nav-sidebar"',
+            'id="lp-rail-collapse-btn"',
+            'id="lp-rail-flyout"',
+            'id="lp-cmd-trigger"',
+            'id="lp-cmd-modal"',
+            'class="lp-shortcuts-bar"',
+            'id="lp-cat-tabs"',
+            'class="lp-bento-grid"',
+            'id="lp-audit-drawer"',
+        ):
+            self.assertContains(res, token)
 
+    def test_teacher_dashboard_fetches_real_book_cover_and_renders_rail(self):
+        self.client.force_login(self.teacher)
+        res = self.client.get("/admin/")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, 'id="nav-sidebar"')
+        self.assertContains(res, 'id="lp-cmd-modal"')
+        self.assertContains(res, 'class="lp-book-cover-slot"')
+        self.assertContains(res, 'class="lp-cover"')
+        self.assertContains(res, f'data-title="{self.book.title}"')
+        self.assertContains(res, 'data-motif="ct"')
+        self.assertContains(res, "catalog/limo-preview.js")
 
-
-
-
+    def test_admin_login_keeps_sidebar_and_cmd_modal_disabled(self):
+        res = self.client.get("/admin/login/")
+        self.assertEqual(res.status_code, 200)
+        self.assertNotContains(res, 'id="lp-rail-collapse-btn"')
+        self.assertNotContains(res, 'id="lp-cmd-modal"')
