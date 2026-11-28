@@ -3898,3 +3898,46 @@ class BookShelfAndCoverDraftTests(TestCase):
         self.assertContains(change_res, reverse("admin:catalog_book_import", args=[created.pk]))
 
 
+class GerdooPanelThemeTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+        from .access import BOOK_EDITOR_GROUP
+
+        self.superuser = User.objects.create_superuser(phone="09120009911", password="x")
+        self.teacher = User.objects.create(phone="09120009922", first_name="علی", last_name="رضایی", is_staff=True)
+        grp, _ = Group.objects.get_or_create(name=BOOK_EDITOR_GROUP)
+        self.teacher.groups.add(grp)
+
+    def test_admin_index_uses_gerdoo_charcoal_and_lemon_four_column_book_cards(self):
+        for user in (self.superuser, self.teacher):
+            self.client.force_login(user)
+            res = self.client.get(reverse("admin:index"))
+            self.assertEqual(res.status_code, 200)
+            body = res.content.decode("utf-8")
+            self.assertIn("lp_gerdoo_theme_v1", body)
+            self.assertIn("--lp-card-bg: #161618", body)
+            self.assertIn("repeat(4, minmax(0, 1fr))", body)
+            self.assertIn("aspect-ratio: 2 / 3", body)
+            self.assertIn("lp-gerdoo-head", body)
+            self.assertIn("lp-gerdoo-tags-wrap", body)
+            self.assertIn("#F5C518", body)
+            self.assertNotIn("#133a28", body)
+            self.assertNotIn("#1F5E3A", body)
+
+    def test_login_and_book_changelist_harmonized_without_legacy_forest_green(self):
+        login_res = self.client.get(reverse("admin:login"))
+        self.assertEqual(login_res.status_code, 200)
+        login_body = login_res.content.decode("utf-8")
+        self.assertIn("--body-bg: #161618", login_body)
+        self.assertNotIn("#133A28", login_body)
+
+        self.client.force_login(self.teacher)
+        shelf_res = self.client.get(reverse("admin:catalog_book_changelist"))
+        self.assertEqual(shelf_res.status_code, 200)
+        shelf_body = shelf_res.content.decode("utf-8")
+        self.assertIn("lp_gerdoo_theme_v1", shelf_body)
+        self.assertNotIn("#133a28", shelf_body)
+        self.assertNotIn("#1F5E3A", shelf_body)
+
+
+
