@@ -3,6 +3,9 @@
 {% block object-tools-items %}
   {% if original %}
     <li><a href="{% url 'admin:catalog_book_inbox' original.pk %}" style="background:#f59e0b;color:#1e293b;font-weight:800;" title="میز کار موقت و صندوق تست‌های اختصاصی همین کتاب برای بارگذاری دسته‌ای تست‌ها بدون تأثیر بر فصول کتاب">📥 صندوق تست کتاب</a></li>
+    {% if can_view_classrooms_canvas %}
+      <li><a href="{% url 'admin:catalog_book_classrooms_canvas' original.pk %}" style="background:#133a28;color:#F5C518;font-weight:800;border:1px solid #F5C518;" title="نمای بصری کلاس‌ها و لینک‌های دعوت دانشجوی این کتاب">🎓 کلاس‌ها و لینک‌های این کتاب</a></li>
+    {% endif %}
     {% if can_view_study %}
       <li><a href="{% url 'admin:catalog_book_study_analytics' original.pk %}" style="background:#0284c7;color:#fff;font-weight:700;">📊 آمار مطالعه کلاس</a></li>
     {% endif %}
@@ -51,10 +54,15 @@
     <div style="margin-top:14px; padding:14px 16px; background:var(--darkened-bg); border-radius:10px; border:1px solid var(--hairline-color); font-size:13px; line-height:1.75;">
       <div style="margin-bottom:10px; color:var(--body-fg);">
         <b>دسترسی دانشجویان دوره:</b> شما می‌توانید در هر مرحله از نگارش، دسترسی به این اثر را صرفاً برای دانشجویان کلاس خود فعال فرمایید. دانشجویان منتخب (چه پیش‌تر در سامانه لیموخوان عضویت داشته باشند و چه کاربر جدید باشند) بلافاصله پس از ورود به وب‌اپلیکیشن یا نرم‌افزار، کتاب را در کتابخانه شخصی خود مشاهده خواهند کرد، در حالی که این اثر در ویترین و جستجوی عمومی سامانه برای سایر کاربران نمایش داده نخواهد شد.
-        {% if can_request_group_access %}
-          <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:8px;">
-            <a href="{% url 'admin:website_bookaccessrequest_add' %}?book={{ original.pk }}" class="btn small" style="font-weight:700;">👥 ثبت شماره‌های دانشجویان دوره</a>
-            <a href="{% url 'admin:website_bookaccessrequest_changelist' %}?book__id__exact={{ original.pk }}" class="btn small">پیگیری درخواست‌های دسترسی گروهی</a>
+        {% if can_view_classrooms_canvas or can_request_group_access %}
+          <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;">
+            {% if can_view_classrooms_canvas %}
+              <a href="{% url 'admin:catalog_book_classrooms_canvas' original.pk %}" class="btn small primary" style="font-weight:800;">🎓 کلاس‌ها و لینک‌های این کتاب</a>
+            {% endif %}
+            {% if can_request_group_access %}
+              <a href="{% url 'admin:website_bookaccessrequest_add' %}?book={{ original.pk }}" class="btn small" style="font-weight:700;">👥 ثبت شماره‌های دانشجویان دوره</a>
+              <a href="{% url 'admin:website_bookaccessrequest_changelist' %}?book__id__exact={{ original.pk }}" class="btn small">پیگیری درخواست‌های دسترسی گروهی</a>
+            {% endif %}
           </div>
         {% endif %}
       </div>

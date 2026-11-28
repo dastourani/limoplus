@@ -320,6 +320,9 @@ class BookAdmin(admin.ModelAdmin):
                 or (access.is_book_teacher(request.user) and BookEditor.objects.filter(book=book, user=request.user, can_view_aggregate_study=True).exists())
             )
             extra["can_view_study"] = can_view_study
+            extra["can_view_classrooms_canvas"] = bool(
+                is_panel_su or access.classroom_books_for_request(request).filter(pk=book.pk).exists()
+            )
             extra["can_edit_book_content"] = access.can_edit_book(request.user, book)
             extra["can_export_technical_files"] = access.can_export_book_technical_files(request.user, book, request=request)
             if not is_panel_su and access.acts_as_panel_teacher(request):
@@ -361,6 +364,7 @@ class BookAdmin(admin.ModelAdmin):
             path("<int:book_id>/team-tasks/", site(self.book_team_tasks_action), name="catalog_book_team_tasks_action"),
             path("study-analytics/", site(self.study_analytics_index_view), name="catalog_book_study_analytics_index"),
             path("<int:book_id>/study-analytics/", site(self.book_study_analytics_view), name="catalog_book_study_analytics"),
+            path("<int:book_id>/classrooms/", site(lambda r, book_id: bookpanel.book_classrooms_canvas(self.admin_site, r, book_id)), name="catalog_book_classrooms_canvas"),
             path("<int:book_id>/trace/", site(self.book_trace_view), name="catalog_book_trace"),
             path("<int:book_id>/request-publication/", site(self.book_request_publication_view), name="catalog_book_request_publication"),
             path("<int:book_id>/respond-offer/", site(self.book_respond_offer_view), name="catalog_book_respond_offer"),
