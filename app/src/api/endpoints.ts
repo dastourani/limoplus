@@ -619,8 +619,8 @@ export const endpoints = {
   allBooks: () => api<BookListItem[]>('books/'),
   /** The home page rows: each shelf set in the panel, then «کتاب‌های دیگر». */
   shelves: () => api<Shelf[]>('shelves/'),
-  book: (slug: string) => api<BookDetail>(`books/${encodeURIComponent(slug)}/`),
-  node: (id: number) => api<NodeDetail>(`nodes/${id}/`),
+  book: (slug: string) => api<BookDetail>(`books/${encodeURIComponent(slug)}/`, { retryOnGatewayError: true }),
+  node: (id: number) => api<NodeDetail>(`nodes/${id}/`, { retryOnGatewayError: true }),
   notifyBook: (slug: string, on: boolean) => api<{ notify: boolean; can_cancel: boolean }>(`books/${encodeURIComponent(slug)}/notify/`, { body: { on } }),
   submitReview: (slug: string, data: { rating: number; satisfaction_percent: number; body: string }) =>
     api<{ status: string; message: string; review_id: number }>(`books/${encodeURIComponent(slug)}/reviews/`, { body: data }),

@@ -146,8 +146,8 @@ export default function Section() {
         } else {
           setError(new ApiError(err.status, err.code, resolved.message, err.data));
         }
-      } else if (err.status === 0) {
-        // No internet: read the encrypted offline copy if this book was downloaded.
+      } else if (err.status === 0 || err.status >= 500) {
+        // No internet or temporary server error: read the encrypted offline copy if this book was downloaded.
         const copy = await offlineSection(nodeId);
         if (copy) {
           const book = (await offlineBooks()).find((b) => b.slug === copy.bookSlug);

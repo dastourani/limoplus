@@ -100,7 +100,10 @@ def numbering_for(access, node) -> dict | None:
     if node.kind == node.Kind.CHAPTER:
         chapter = node
     elif node.kind == node.Kind.SECTION:
-        chapter = node.get_parent()
+        chapter = next(
+            (n for n in access.nodes.values() if n.kind == node.Kind.CHAPTER and node.path.startswith(n.path)),
+            None,
+        ) or node.get_parent()
     else:
         return None
     starts, _ = chapter_numbering(chapter, access.children(chapter))

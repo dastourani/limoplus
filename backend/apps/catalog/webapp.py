@@ -7,9 +7,23 @@ every change, branch «web-build») in the folder WEBAPP_DIR. Without that folde
 import mimetypes
 from pathlib import Path
 
+from pathlib import PurePosixPath
+
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse
 from django.utils._os import safe_join
+
+_ASSET_PREFIXES = ("_expo/", "assets/", "static/")
+
+
+def _looks_like_asset_path(path: str) -> bool:
+    clean = path.lstrip("/")
+    if not clean:
+        return False
+    if clean.startswith(_ASSET_PREFIXES):
+        return True
+    last = PurePosixPath(clean).name
+    return "." in last and not last.startswith(".")
 
 
 def webapp(request, path=""):
@@ -27,6 +41,8 @@ def webapp(request, path=""):
     except Exception:
         raise Http404
     if not file.is_file():
+        if _looks_like_asset_path(path):
+            raise Http404
         file = index  # a page of the app (e.g. /book/math-1): the app finds its own way from index.html
     kind, _ = mimetypes.guess_type(str(file))
     if request.method == "HEAD":  # the browser's «is the server there?» check: headers only, no body to drop
