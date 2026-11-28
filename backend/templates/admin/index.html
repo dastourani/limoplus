@@ -3,23 +3,95 @@
 
 {% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "admin/css/dashboard.css" %}">
 <style>
-  .admin-kpi-section { margin-bottom: 24px; }
+  /* Full-width dashboard layout next to the Navigation Rail */
   @media (min-width: 1025px) {
     .dashboard #content {
-      width: auto;
-      max-width: 1080px;
+      width: auto !important;
+      max-width: 1320px;
+      padding: 20px 24px 36px;
     }
   }
-  .admin-kpi-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 22px; }
-  @media (min-width: 760px) {
+  .dashboard #content-main {
+    float: none !important;
+    width: 100% !important;
+  }
+  .dashboard #content-related {
+    float: none !important;
+    width: 100% !important;
+    margin: 20px 0 0 !important;
+    background: var(--lp-card-bg);
+    border: 1px solid var(--lp-card-border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  /* Top Quick-Shortcuts Strip (Superadmin) */
+  .lp-shortcuts-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    margin-bottom: 18px;
+    background: var(--lp-card-bg);
+    border: 1px solid var(--lp-card-border);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(23, 32, 26, 0.04);
+  }
+  .lp-shortcuts-label {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--body-quiet-color);
+    margin-inline-end: 4px;
+  }
+  .lp-shortcut-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+    background: var(--darkened-bg);
+    border: 1px solid var(--lp-card-border);
+    color: var(--body-fg) !important;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .15s ease;
+  }
+  .lp-shortcut-pill:hover {
+    border-color: #F5C518;
+    background: rgba(245, 197, 24, 0.14);
+    transform: translateY(-1px);
+  }
+  .lp-shortcut-pill--cmd {
+    margin-inline-start: auto;
+    background: #133a28;
+    border-color: #1F5E3A;
+    color: #F5C518 !important;
+  }
+  .lp-shortcut-pill--cmd:hover {
+    background: #1F5E3A;
+    border-color: #F5C518;
+  }
+
+  /* KPI Grid (3x2 on desktop, 2x3 on tablet, 1 col on mobile) */
+  .admin-kpi-section { margin-bottom: 22px; }
+  .admin-kpi-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 20px; }
+  @media (min-width: 720px) {
     .admin-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
+  @media (min-width: 1120px) {
+    .admin-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .admin-kpi-grid.lp-teacher-kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
   .admin-kpi-card {
-    background: var(--body-bg);
-    border: 1px solid var(--hairline-color);
+    background: var(--lp-card-bg);
+    border: 1px solid var(--lp-card-border);
     border-radius: 12px;
-    padding: 16px 18px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    padding: 15px 17px;
+    box-shadow: 0 2px 8px rgba(23, 32, 26, 0.04);
     position: relative;
     overflow: hidden;
     display: flex;
@@ -28,8 +100,8 @@
   }
   .admin-kpi-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0,0,0,0.06);
-    border-color: rgba(245, 197, 24, 0.4);
+    box-shadow: 0 8px 20px rgba(23, 32, 26, 0.08);
+    border-color: rgba(245, 197, 24, 0.55);
   }
   .admin-kpi-card::before {
     content: "";
@@ -38,50 +110,47 @@
     right: 0;
     left: 0;
     height: 3px;
-    background: linear-gradient(90deg, #F5C518, #10b981);
+    background: linear-gradient(90deg, #F5C518, #1F5E3A);
   }
   .admin-kpi-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     min-height: 28px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--hairline-color);
   }
   .admin-kpi-title {
-    font-size: 14.5px;
+    font-size: 14px;
     font-weight: 800;
     color: var(--body-fg);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     white-space: nowrap;
   }
-  .admin-kpi-icon {
-    font-size: 17px;
-    line-height: 1;
-  }
+  .admin-kpi-icon { font-size: 16px; line-height: 1; }
   .admin-kpi-val-box {
     background: var(--darkened-bg);
     border: 1px solid var(--hairline-color);
     border-radius: 8px;
-    padding: 10px 14px;
+    padding: 9px 13px;
     display: flex;
     align-items: baseline;
     gap: 8px;
     margin-bottom: 10px;
   }
   .admin-kpi-num {
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 900;
     color: var(--body-fg);
     line-height: 1;
     letter-spacing: -0.5px;
   }
   .admin-kpi-unit {
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 700;
     color: var(--body-quiet-color);
   }
@@ -94,16 +163,13 @@
     flex-wrap: wrap;
     line-height: 1.45;
   }
-  .admin-kpi-sub b {
-    color: var(--body-fg);
-    font-weight: 800;
-  }
+  .admin-kpi-sub b { color: var(--body-fg); font-weight: 800; }
   .admin-kpi-main-val {
     font-size: 22px;
     font-weight: 900;
     color: var(--body-fg);
     line-height: 1.25;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     display: flex;
     align-items: baseline;
     gap: 6px;
@@ -114,24 +180,22 @@
     align-items: center;
     gap: 6px;
     max-width: 100%;
-    padding: 4px 10px;
-    border-radius: 10px;
+    padding: 3px 9px;
+    border-radius: 999px;
     background: var(--darkened-bg);
     border: 1px solid var(--hairline-color);
     color: var(--body-quiet-color);
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 600;
     line-height: 1.45;
     text-decoration: none;
     transition: background .15s ease, border-color .15s ease, color .15s ease;
   }
-  html[data-theme="dark"] .lp-kpi-pill {
-    background: rgba(255, 255, 255, 0.045);
-  }
+  html[data-theme="dark"] .lp-kpi-pill { background: rgba(255, 255, 255, 0.05); }
   a.lp-kpi-pill:hover {
     color: var(--body-fg);
-    border-color: rgba(245, 197, 24, 0.45);
-    background: rgba(245, 197, 24, 0.08);
+    border-color: rgba(245, 197, 24, 0.55);
+    background: rgba(245, 197, 24, 0.10);
     text-decoration: none;
   }
   .lp-kpi-cnt {
@@ -172,19 +236,17 @@
     margin-inline-start: auto;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     flex-wrap: nowrap;
     flex-shrink: 0;
   }
-  .admin-kpi-links .admin-kpi-link {
-    margin-inline-start: 0;
-  }
+  .admin-kpi-links .admin-kpi-link { margin-inline-start: 0; }
   .admin-kpi-link {
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 800;
-    color: #0284c7;
-    background: rgba(2, 132, 199, 0.12);
-    border: 1px solid rgba(2, 132, 199, 0.25);
+    color: #1F5E3A;
+    background: #E3F3E9;
+    border: 1px solid #BFE2CC;
     padding: 2px 9px;
     border-radius: 999px;
     text-decoration: none;
@@ -194,95 +256,346 @@
     transition: all .15s ease;
   }
   .admin-kpi-link:hover {
-    background: rgba(2, 132, 199, 0.22);
-    border-color: rgba(2, 132, 199, 0.45);
+    background: #1F5E3A;
+    color: #FFFFFF !important;
+    border-color: #1F5E3A;
     text-decoration: none;
   }
   html[data-theme="dark"] .admin-kpi-link {
-    color: #38bdf8;
-    background: rgba(2, 132, 199, 0.18);
-    border-color: rgba(56, 189, 248, 0.35);
+    color: #F5C518;
+    background: rgba(245, 197, 24, 0.14);
+    border-color: rgba(245, 197, 24, 0.35);
   }
-  html[data-theme="dark"] .admin-kpi-val-box {
-    background: rgba(255, 255, 255, 0.04);
+  html[data-theme="dark"] .admin-kpi-link:hover {
+    background: #F5C518;
+    color: #17201A !important;
   }
+  html[data-theme="dark"] .admin-kpi-val-box { background: rgba(255, 255, 255, 0.04); }
 
+  /* Teacher Hero & Cards */
   .teacher-dash { margin-bottom: 24px; }
-  .teacher-hero { background: linear-gradient(135deg, #17201A 0%, #1e3328 100%); color: #fff; border-radius: 14px; padding: 22px 26px; margin-bottom: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .teacher-hero {
+    background: linear-gradient(135deg, #133a28 0%, #1B2620 100%);
+    color: #fff;
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-bottom: 18px;
+    border: 1px solid rgba(245, 197, 24, 0.25);
+    box-shadow: 0 6px 20px rgba(23, 32, 26, 0.14);
+  }
   .teacher-hero h2 { margin: 0 0 6px; font-size: 20px; color: #F5C518; }
-  .teacher-hero p { margin: 0; color: #D1D5DB; font-size: 13.5px; }
-  .teacher-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
-  .teacher-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 800; text-decoration: none; transition: all .15s ease; cursor: pointer; border: 0; }
-  .teacher-btn-primary { background: #F5C518; color: #000000 !important; }
-  .teacher-btn-primary:hover { background: #FFD84A; color: #000000 !important; }
+  .teacher-hero p { margin: 0; color: #E3F3E9; font-size: 13.5px; }
+  .teacher-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  .teacher-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 15px; border-radius: 999px; font-size: 12.5px; font-weight: 800;
+    text-decoration: none; transition: all .15s ease; cursor: pointer; border: 0; font-family: inherit;
+  }
+  .teacher-btn-primary { background: #F5C518; color: #17201A !important; }
+  .teacher-btn-primary:hover { background: #FFD84A; color: #17201A !important; }
   .teacher-btn-ghost { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.25); }
-  .teacher-btn-ghost:hover { background: rgba(255,255,255,0.2); color: #fff; }
+  .teacher-btn-ghost:hover { background: rgba(255,255,255,0.22); color: #F5C518; }
 
-  .teacher-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
-  .teacher-card { background: var(--body-bg); border: 1px solid var(--hairline-color); border-radius: 12px; padding: 16px 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
-  .teacher-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--hairline-color); }
+  .teacher-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 22px; }
+  .teacher-card {
+    background: var(--lp-card-bg);
+    border: 1px solid var(--lp-card-border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 8px rgba(23, 32, 26, 0.04);
+  }
+  .teacher-card-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--hairline-color);
+  }
   .teacher-card-head h3 { margin: 0; font-size: 15px; font-weight: 800; color: var(--body-fg); display: flex; align-items: center; gap: 6px; }
-  .teacher-card-head .count { font-size: 11px; font-weight: 700; background: var(--darkened-bg); padding: 2px 8px; border-radius: 999px; }
+  .teacher-card-head .count {
+    font-size: 11px; font-weight: 800; background: #E3F3E9; color: #1F5E3A;
+    padding: 2px 9px; border-radius: 999px;
+  }
+  html[data-theme="dark"] .teacher-card-head .count { background: rgba(245, 197, 24, 0.16); color: #F5C518; }
 
-  .teacher-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-  .teacher-list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--darkened-bg); border-radius: 8px; font-size: 13.5px; }
-  .teacher-list-item .meta { display: flex; flex-direction: column; gap: 2px; }
-  .teacher-list-item .title { font-weight: 700; color: var(--body-fg); text-decoration: none; }
-  .teacher-list-item .title:hover { text-decoration: underline; color: #15803d; }
+  .teacher-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .teacher-list-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 10px 12px; background: var(--darkened-bg);
+    border: 1px solid var(--hairline-color); border-radius: 10px; font-size: 13.5px;
+  }
+  .lp-book-row-main {
+    display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto;
+  }
+  .lp-book-cover-slot {
+    flex: none; width: 46px; height: 69px; border-radius: 7px; overflow: hidden;
+    background: #17201A; box-shadow: 0 4px 10px rgba(23, 32, 26, 0.16);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .lp-book-thumb-img {
+    width: 46px; height: 69px; object-fit: cover; display: block;
+  }
+  .teacher-list-item .meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .teacher-list-item .title { font-weight: 800; color: var(--body-fg); text-decoration: none; }
+  .teacher-list-item .title:hover { text-decoration: underline; color: #1F5E3A; }
+  html[data-theme="dark"] .teacher-list-item .title:hover { color: #F5C518; }
   .teacher-list-item .sub { font-size: 11.5px; color: var(--body-quiet-color); }
   .teacher-list-empty { padding: 14px; text-align: center; color: var(--body-quiet-color); font-size: 12.5px; font-style: italic; }
-  .copy-btn { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; cursor: pointer; font-family: inherit; font-weight: 700; }
-  .copy-btn:hover { background: #bae6fd; }
+  .copy-btn {
+    font-size: 11.5px; padding: 5px 10px; border-radius: 8px;
+    background: #1F5E3A; color: #FFFFFF; border: 1px solid #1F5E3A;
+    cursor: pointer; font-family: inherit; font-weight: 700; transition: all .15s ease;
+  }
+  .copy-btn:hover { background: #133a28; }
+  .copy-btn.is-copied { background: #E3F3E9; color: #1F5E3A; border-color: #BFE2CC; }
 
-  /* Teacher dashboard custom styling for app list modules */
+  /* Bento Toolbar: Category Tabs + Live Filter */
+  .lp-modules-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .lp-cat-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .lp-cat-tab {
+    padding: 6px 13px;
+    border-radius: 999px;
+    border: 1px solid var(--lp-card-border);
+    background: var(--lp-card-bg);
+    color: var(--body-fg);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .lp-cat-tab:hover {
+    border-color: #F5C518;
+  }
+  .lp-cat-tab.is-active {
+    background: #133a28;
+    border-color: #133a28;
+    color: #F5C518;
+    box-shadow: 0 2px 8px rgba(19, 58, 40, 0.2);
+  }
+  .lp-dash-filter {
+    min-width: 220px;
+    padding: 6px 12px !important;
+    border-radius: 999px !important;
+    border: 1px solid var(--lp-card-border) !important;
+    background: var(--lp-card-bg) !important;
+    color: var(--body-fg) !important;
+    font-size: 12.5px !important;
+  }
+
+  /* Multi-column Bento Grid for App Modules (Superadmin & Teacher) */
+  .lp-bento-grid,
+  .teacher-mode-apps {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    align-items: start;
+  }
+  @media (min-width: 760px) {
+    .lp-bento-grid,
+    .teacher-mode-apps {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1120px) {
+    .lp-bento-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .teacher-mode-apps {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  .lp-bento-grid .module,
   .teacher-mode-apps .module {
-    background: var(--body-bg) !important;
-    border: 1px solid var(--hairline-color) !important;
+    background: var(--lp-card-bg) !important;
+    border: 1px solid var(--lp-card-border) !important;
     border-radius: 12px !important;
     overflow: hidden;
-    margin-bottom: 16px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+    margin-bottom: 0 !important;
+    box-shadow: 0 2px 8px rgba(23, 32, 26, 0.04);
   }
+  .lp-bento-grid .module table,
   .teacher-mode-apps .module table {
     width: 100%;
     border-collapse: collapse;
   }
+  .lp-bento-grid .module caption,
+  .lp-bento-grid .module h2,
   .teacher-mode-apps .module caption,
   .teacher-mode-apps .module h2 {
-    background: linear-gradient(135deg, #17201A 0%, #1e3328 100%) !important;
+    background: linear-gradient(135deg, #133a28 0%, #1F5E3A 100%) !important;
     color: #F5C518 !important;
-    padding: 10px 16px !important;
-    font-size: 14px !important;
+    padding: 10px 14px !important;
+    font-size: 13.5px !important;
     font-weight: 800 !important;
-    border-bottom: 1px solid var(--hairline-color) !important;
+    border-bottom: 1px solid rgba(245, 197, 24, 0.25) !important;
   }
+  .lp-bento-grid .module caption a,
   .teacher-mode-apps .module caption a {
     color: #F5C518 !important;
+    text-decoration: none;
   }
+  .lp-bento-grid .module th,
+  .lp-bento-grid .module td,
   .teacher-mode-apps .module th,
   .teacher-mode-apps .module td {
-    padding: 9px 16px !important;
+    padding: 7px 12px !important;
     border-bottom: 1px solid var(--hairline-color) !important;
-    background: var(--body-bg) !important;
+    background: transparent !important;
     color: var(--body-fg) !important;
-    font-size: 13px !important;
+    font-size: 12.5px !important;
+    vertical-align: middle;
   }
+  .lp-bento-grid .module tr:hover,
+  .teacher-mode-apps .module tr:hover {
+    background: rgba(31, 94, 58, 0.05) !important;
+  }
+  .lp-bento-grid .module tr:last-child th,
+  .lp-bento-grid .module tr:last-child td,
   .teacher-mode-apps .module tr:last-child th,
   .teacher-mode-apps .module tr:last-child td {
     border-bottom: none !important;
   }
-  .teacher-mode-apps .module a {
+  .lp-bento-grid .module th a,
+  .teacher-mode-apps .module th a {
     color: var(--body-fg) !important;
-    font-weight: 600;
-  }
-  .teacher-mode-apps .module a:hover {
-    color: #15803d !important;
-  }
-  .teacher-mode-apps .module a.addlink,
-  .teacher-mode-apps .module a.changelink,
-  .teacher-mode-apps .module a.viewlink {
     font-weight: 700;
-    font-size: 12px;
+    text-decoration: none;
+  }
+  .lp-bento-grid .module th a:hover,
+  .teacher-mode-apps .module th a:hover {
+    color: #1F5E3A !important;
+  }
+  html[data-theme="dark"] .lp-bento-grid .module th a:hover,
+  html[data-theme="dark"] .teacher-mode-apps .module th a:hover {
+    color: #F5C518 !important;
+  }
+  /* Compact '+' add button & hide repetitive change/view text in grid */
+  .lp-bento-grid a.changelink,
+  .lp-bento-grid a.viewlink,
+  .teacher-mode-apps a.changelink,
+  .teacher-mode-apps a.viewlink {
+    display: none !important;
+  }
+  .lp-bento-grid td,
+  .teacher-mode-apps td {
+    width: 34px;
+    text-align: left;
+  }
+  .lp-bento-grid a.addlink,
+  .teacher-mode-apps a.addlink {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0 !important;
+    border-radius: 7px;
+    background: #E3F3E9;
+    color: #1F5E3A !important;
+    font-size: 0 !important;
+    text-decoration: none;
+  }
+  .lp-bento-grid a.addlink::before,
+  .teacher-mode-apps a.addlink::before {
+    content: "+";
+    font-size: 15px;
+    font-weight: 900;
+    line-height: 1;
+  }
+  .lp-bento-grid a.addlink:hover,
+  .teacher-mode-apps a.addlink:hover {
+    background: #F5C518;
+    color: #17201A !important;
+  }
+  html[data-theme="dark"] .lp-bento-grid a.addlink,
+  html[data-theme="dark"] .teacher-mode-apps a.addlink {
+    background: rgba(245, 197, 24, 0.14);
+    color: #F5C518 !important;
+  }
+
+  /* Collapsible Audit & Logs Drawer */
+  .lp-audit-drawer {
+    margin-top: 18px;
+    background: var(--lp-card-bg);
+    border: 1px solid var(--lp-card-border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .lp-audit-summary {
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--body-fg);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: var(--darkened-bg);
+    list-style: none;
+  }
+  .lp-audit-summary::-webkit-details-marker { display: none; }
+  .lp-audit-grid {
+    width: 100%;
+    border-collapse: collapse;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 8px;
+    padding: 12px;
+  }
+  .lp-audit-grid tr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border: 1px solid var(--hairline-color);
+    border-radius: 8px;
+    background: var(--darkened-bg);
+  }
+  .lp-audit-grid th,
+  .lp-audit-grid td {
+    border: 0 !important;
+    padding: 2px !important;
+    background: transparent !important;
+    font-size: 12px !important;
+  }
+
+  /* Recent actions bottom card */
+  #recent-actions-module h2 {
+    background: linear-gradient(135deg, #133a28 0%, #1F5E3A 100%) !important;
+    color: #F5C518 !important;
+    padding: 10px 16px !important;
+    margin: 0 !important;
+    font-size: 13.5px !important;
+  }
+  #recent-actions-module h3 {
+    padding: 10px 16px 0 !important;
+    margin: 0 !important;
+    font-size: 12.5px !important;
+    color: var(--body-quiet-color);
+  }
+  #recent-actions-module .actionlist {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 8px;
+    padding: 12px 16px 16px !important;
+    margin: 0 !important;
+  }
+  #recent-actions-module .actionlist li {
+    padding: 8px 12px;
+    border: 1px solid var(--hairline-color);
+    border-radius: 8px;
+    background: var(--darkened-bg);
   }
 
   /* Menu item tooltips and inline guide icon */
@@ -293,7 +606,7 @@
     width: 17px;
     height: 17px;
     border-radius: 50%;
-    margin-inline-start: 7px;
+    margin-inline-start: 6px;
     font-size: 10.5px;
     font-weight: 700;
     cursor: help;
@@ -320,9 +633,7 @@
     background: #F5C518;
     color: #17201A;
   }
-  .lp-guides-off .lp-help-icon {
-    display: none !important;
-  }
+  .lp-guides-off .lp-help-icon { display: none !important; }
 
   .lp-menu-bubble {
     position: fixed;
@@ -341,52 +652,23 @@
     transform: translateY(4px);
     transition: opacity .15s ease, transform .15s ease;
   }
-  html[data-theme="light"] .lp-menu-bubble {
-    background: #1e293b;
-    color: #f8fafc;
-    border-color: rgba(245, 197, 24, 0.3);
-  }
-  .lp-menu-bubble.visible {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-  }
+  .lp-menu-bubble.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
   .lp-menu-bubble::after {
-    content: "";
-    position: absolute;
-    top: 100%;
-    right: 24px;
-    border-width: 6px;
-    border-style: solid;
-    border-color: #17201A transparent transparent transparent;
-  }
-  html[data-theme="light"] .lp-menu-bubble::after {
-    border-color: #1e293b transparent transparent transparent;
+    content: ""; position: absolute; top: 100%; right: 24px;
+    border-width: 6px; border-style: solid; border-color: #17201A transparent transparent transparent;
   }
   .lp-menu-bubble.arrow-top::after {
-    top: auto;
-    bottom: 100%;
-    border-color: transparent transparent #17201A transparent;
+    top: auto; bottom: 100%; border-color: transparent transparent #17201A transparent;
   }
-  html[data-theme="light"] .lp-menu-bubble.arrow-top::after {
-    border-color: transparent transparent #1e293b transparent;
-  }
-  .lp-menu-bubble b {
-    display: block;
-    color: #F5C518;
-    font-size: 12.5px;
-    margin-bottom: 3px;
-  }
+  .lp-menu-bubble b { display: block; color: #F5C518; font-size: 12.5px; margin-bottom: 3px; }
 </style>
 {% endblock %}
 
-{% block coltype %}colMS{% endblock %}
+{% block coltype %}colM{% endblock %}
 
 {% block bodyclass %}{{ block.super }} dashboard{% endblock %}
 
 {% block nav-breadcrumbs %}{% endblock %}
-
-{% block nav-sidebar %}{% endblock %}
 
 {% block content_title %}{% endblock %}
 
@@ -404,11 +686,14 @@
         <a href="{% url 'admin:website_classroom_add' %}" class="teacher-btn teacher-btn-ghost">
           + ایجاد کلاس جدید
         </a>
+        <button type="button" class="teacher-btn teacher-btn-ghost" onclick="window.dispatchEvent(new CustomEvent('limo:open-cmd'))">
+          🔍 جستجوی سریع (Ctrl+K)
+        </button>
       </div>
     </div>
 
     {% if teacher_kpis %}
-    <div class="admin-kpi-grid" style="margin-bottom: 20px;">
+    <div class="admin-kpi-grid lp-teacher-kpi-grid" style="margin-bottom: 20px;">
       <!-- کارت دانشجویان من -->
       <div class="admin-kpi-card">
         <div class="admin-kpi-header">
@@ -471,7 +756,7 @@
     {% endif %}
 
     <div class="teacher-grid">
-      <!-- کتاب‌های من -->
+      <!-- کتاب‌های من (با جلد واقعی واکشی‌شده از کتاب) -->
       <div class="teacher-card">
         <div class="teacher-card-head">
           <h3>📚 کتاب‌های در دست تألیف من</h3>
@@ -481,27 +766,45 @@
         <ul class="teacher-list">
           {% for b in teacher_books %}
           <li class="teacher-list-item">
-            <div class="meta">
-              <a href="{% url 'admin:catalog_book_change' b.pk %}" class="title">{{ b.title }}</a>
-              <span class="sub">
-                {{ b.author|default:"بدون نام نویسنده" }} • {{ b.chapters_count }} فصل
-                {% if b.pending_tasks_count %}
-                  <span class="teacher-badge" style="background:#fef3c7; color:#92400e; padding:1px 6px; border-radius:10px; font-size:11px; margin-inline-start:6px;" title="وظایف باز تیم">
-                    📝 {{ b.pending_tasks_count }} یادداشت
-                  </span>
+            <div class="lp-book-row-main">
+              <div class="lp-book-cover-slot">
+                {% if b.cover_url %}
+                  <img src="{{ b.cover_url }}" alt="{{ b.title }}" class="lp-book-thumb-img">
+                {% else %}
+                  <span class="lp-cover"
+                        data-title="{{ b.title }}"
+                        data-en="{{ b.title_en }}"
+                        data-author="{{ b.author }}"
+                        data-edition="{{ b.edition }}"
+                        data-motif="{{ b.cover_motif }}"
+                        data-major="{{ b.major_name }}"
+                        data-strip="{{ b.major_color }}"
+                        data-drawing="{{ b.cover_drawing }}"
+                        data-width="46"></span>
                 {% endif %}
-                {% if b.pending_reports_count %}
-                  <span class="teacher-badge" style="background:#fee2e2; color:#b91c1c; padding:1px 6px; border-radius:10px; font-size:11px; margin-inline-start:4px;" title="گزارش‌های اشکال بررسی‌نشده">
-                    ⚠️ {{ b.pending_reports_count }} اشکال
-                  </span>
-                {% endif %}
-              </span>
+              </div>
+              <div class="meta">
+                <a href="{% url 'admin:catalog_book_change' b.pk %}" class="title">{{ b.title }}</a>
+                <span class="sub">
+                  {{ b.author|default:"بدون نام نویسنده" }} • {{ b.chapters_count }} فصل
+                  {% if b.pending_tasks_count %}
+                    <span class="teacher-badge" style="background:#FFF6CF; color:#8A6A00; padding:1px 6px; border-radius:10px; font-size:11px; margin-inline-start:6px;" title="وظایف باز تیم">
+                      📝 {{ b.pending_tasks_count }} یادداشت
+                    </span>
+                  {% endif %}
+                  {% if b.pending_reports_count %}
+                    <span class="teacher-badge" style="background:#fee2e2; color:#b91c1c; padding:1px 6px; border-radius:10px; font-size:11px; margin-inline-start:4px;" title="گزارش‌های اشکال بررسی‌نشده">
+                      ⚠️ {{ b.pending_reports_count }} اشکال
+                    </span>
+                  {% endif %}
+                </span>
+              </div>
             </div>
-            <div style="display:flex; gap:6px; align-items:center;">
-              <a href="{% url 'admin:catalog_book_study_analytics' b.pk %}" class="teacher-btn teacher-btn-ghost" style="padding: 4px 8px; font-size: 11.5px; color:var(--body-fg); border-color:var(--hairline-color);" title="مشاهده آمار پیشرفت و مطالعه کلاس">
+            <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+              <a href="{% url 'admin:catalog_book_study_analytics' b.pk %}" class="teacher-btn teacher-btn-ghost" style="padding: 4px 9px; font-size: 11.5px; color:var(--body-fg); border-color:var(--hairline-color);" title="مشاهده آمار پیشرفت و مطالعه کلاس">
                 📊 آمار
               </a>
-              <a href="{% url 'admin:catalog_book_change' b.pk %}" class="teacher-btn teacher-btn-primary" style="padding: 4px 10px; font-size: 11.5px;">
+              <a href="{% url 'admin:catalog_book_change' b.pk %}" class="teacher-btn teacher-btn-primary" style="padding: 4px 11px; font-size: 11.5px;">
                 ورود به کتاب
               </a>
             </div>
@@ -536,11 +839,11 @@
                 کتاب: {{ c.book.title }} • {{ c.members_count }} از {{ c.capacity }} دانشجو
               </span>
             </div>
-            <div style="display:flex; gap:4px; align-items:center;">
-              <button type="button" class="copy-btn" onclick="navigator.clipboard.writeText('{{ site_url }}/join/{{ c.code }}/').then(function(){alert('لینک دعوت دانشجو کپی شد.');});">
+            <div style="display:flex; gap:5px; align-items:center; flex-shrink:0;">
+              <button type="button" class="copy-btn" data-copy-url="{{ site_url }}/join/{{ c.code }}/">
                 کپی لینک
               </button>
-              <a href="{% url 'admin:website_classroom_change' c.pk %}" class="teacher-btn teacher-btn-ghost" style="padding: 3px 8px; font-size: 11px; color:var(--body-fg); border-color:var(--border-color);">
+              <a href="{% url 'admin:website_classroom_change' c.pk %}" class="teacher-btn teacher-btn-ghost" style="padding: 4px 9px; font-size: 11px; color:var(--body-fg); border-color:var(--hairline-color);">
                 مدیریت
               </a>
             </div>
@@ -556,6 +859,27 @@
   {% endif %}
 
   {% if show_admin_kpis and not is_teacher %}
+  <!-- نوار میانبرهای پرکاربرد مدیر کل -->
+  <div class="lp-shortcuts-bar" aria-label="میانبرهای پرکاربرد">
+    <span class="lp-shortcuts-label">دسترسی سریع:</span>
+    <a href="{% url 'admin:catalog_book_changelist' %}" class="lp-shortcut-pill">📚 کتاب‌ها</a>
+    <a href="{% url 'admin:website_classroom_changelist' %}" class="lp-shortcut-pill">🎓 کلاس‌ها</a>
+    <a href="{% url 'admin:accounts_user_changelist' %}" class="lp-shortcut-pill">👥 کاربران</a>
+    <a href="{% url 'admin:commerce_order_changelist' %}" class="lp-shortcut-pill">💳 سفارش‌ها</a>
+    <a href="{% url 'admin:learning_report_changelist' %}?status__exact=open" class="lp-shortcut-pill">
+      ⚠️ گزارش‌های ایراد
+      {% if kpi_open_reports_count %}<span class="lp-kpi-cnt lp-kpi-cnt--alert">{{ kpi_open_reports }}</span>{% endif %}
+    </a>
+    <a href="{% url 'admin:diagnostics_errorgroup_changelist' %}?status__exact=open" class="lp-shortcut-pill">
+      🩺 خطاهای سیستم
+      {% if kpi_open_errors_count %}<span class="lp-kpi-cnt lp-kpi-cnt--alert">{{ kpi_open_errors }}</span>{% endif %}
+    </a>
+    <a href="{% url 'admin:catalog_cleanuprun_changelist' %}" class="lp-shortcut-pill">💾 فضای سرور</a>
+    <button type="button" class="lp-shortcut-pill lp-shortcut-pill--cmd" onclick="window.dispatchEvent(new CustomEvent('limo:open-cmd'))">
+      🔍 پرش سریع ⌘K
+    </button>
+  </div>
+
   <div class="admin-kpi-section">
     <div class="admin-kpi-grid">
       <!-- کارت اعضای جدید -->
@@ -649,16 +973,84 @@
       </div>
     </div>
   </div>
+
+  <!-- تب‌های دسته‌بندی و فیلتر سریع بخش‌های مدیریت -->
+  <div class="lp-modules-toolbar" id="lp-modules-toolbar">
+    <div class="lp-cat-tabs" id="lp-cat-tabs" role="tablist" aria-label="دسته‌بندی بخش‌های پنل">
+      <button type="button" class="lp-cat-tab is-active" data-cat="all" role="tab" aria-selected="true">همه بخش‌ها</button>
+      <button type="button" class="lp-cat-tab" data-cat="content" role="tab" aria-selected="false">📚 تألیف و تست</button>
+      <button type="button" class="lp-cat-tab" data-cat="teaching" role="tab" aria-selected="false">🎓 اساتید و کلاس‌ها</button>
+      <button type="button" class="lp-cat-tab" data-cat="commerce" role="tab" aria-selected="false">💳 فروش و اشتراک</button>
+      <button type="button" class="lp-cat-tab" data-cat="users" role="tab" aria-selected="false">👥 کاربران و مطالعه</button>
+      <button type="button" class="lp-cat-tab" data-cat="system" role="tab" aria-selected="false">⚙️ سایت و پایش</button>
+    </div>
+    <input type="search" id="lp-dash-filter" class="lp-dash-filter" placeholder="فیلتر سریع در بخش‌های مدیریت…" aria-label="فیلتر بخش‌های مدیریت">
+  </div>
   {% endif %}
 
-  <div class="{% if is_teacher %}teacher-mode-apps{% endif %}" id="lp-apps-container">
+  <div class="{% if is_teacher %}teacher-mode-apps{% else %}lp-bento-grid{% endif %}" id="lp-apps-container">
     {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
   </div>
 
+  {% if show_admin_kpis and not is_teacher %}
+  <details class="lp-audit-drawer" id="lp-audit-drawer" hidden>
+    <summary class="lp-audit-summary">
+      <span>🗂️ لاگ‌ها، تاریخچه و تنظیمات کم‌مصرف سیستم (<span id="lp-audit-count">۰</span> مورد)</span>
+      <span style="font-size:11.5px; color:var(--body-quiet-color);">کلیک برای باز یا بستن ▾</span>
+    </summary>
+    <table class="lp-audit-grid" id="lp-audit-table"><tbody></tbody></table>
+  </details>
+  {% endif %}
+
   <div id="lp-bubble" class="lp-menu-bubble" role="tooltip"></div>
+
+  {% if is_teacher and teacher_books %}
+  <script src="{% static 'catalog/limo-preview.js' %}?v={{ assets_v }}"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var P = window.LimoPreview;
+      if (!P || !P.coverHtml) return;
+      document.querySelectorAll('.teacher-dash .lp-cover').forEach(function (el) {
+        var d = el.dataset;
+        var drawing = null;
+        try { drawing = d.drawing ? JSON.parse(d.drawing) : null; } catch (e) { drawing = null; }
+        el.innerHTML = P.coverHtml({
+          title: d.title,
+          title_en: d.en,
+          author: d.author,
+          edition: d.edition,
+          motif: d.motif,
+          major: d.major,
+          strip: d.strip,
+          drawing: drawing
+        }, 'dark', Number(d.width || 46));
+        el.style.display = 'inline-block';
+      });
+    });
+  </script>
+  {% endif %}
 
   <script>
     (function () {
+      // Classroom link copy inline confirmation (no alert popup)
+      document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.copy-btn[data-copy-url]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var url = btn.getAttribute('data-copy-url');
+            if (!url || !navigator.clipboard) return;
+            navigator.clipboard.writeText(url).then(function () {
+              var orig = btn.textContent;
+              btn.textContent = '✓ کپی شد';
+              btn.classList.add('is-copied');
+              setTimeout(function () {
+                btn.textContent = orig;
+                btn.classList.remove('is-copied');
+              }, 2200);
+            });
+          });
+        });
+      });
+
       var GUIDES = {
         // دسترسی و نقش‌ها (auth)
         'auth-group': { title: 'گروه‌ها', desc: 'مدیریت گروه‌های دسترسی پنل از جمله گروه «استاد کتاب» و مجوزهای پایه.' },
@@ -757,15 +1149,15 @@
       var container = document.getElementById('lp-apps-container');
 
       var KEY = 'lp_admin_menu_guide_enabled';
-      var isEnabled = localStorage.getItem(KEY) !== 'false'; // default true
+      var isEnabled = localStorage.getItem(KEY) !== 'false';
 
       function updateToggleUI() {
         if (container) {
-          if (isEnabled) {
-            container.classList.remove('lp-guides-off');
-          } else {
-            container.classList.add('lp-guides-off');
-          }
+          container.classList.toggle('lp-guides-off', !isEnabled);
+        }
+        var auditDrawer = document.getElementById('lp-audit-drawer');
+        if (auditDrawer) {
+          auditDrawer.classList.toggle('lp-guides-off', !isEnabled);
         }
         if (!toggleBtn) return;
         if (isEnabled) {
@@ -808,7 +1200,6 @@
         if (left < 10) left = 10;
         if (left + bubbleW > window.innerWidth - 10) left = window.innerWidth - bubbleW - 10;
 
-        // Position above target icon; fallback to below if close to window top
         var top = rect.top - bubbleH - 12;
         if (top < 10) {
           top = rect.bottom + 12;
@@ -842,14 +1233,11 @@
         var link = th.querySelector('a');
         var txt = (link ? link.textContent : th.textContent).trim();
         for (var k in GUIDES) {
-          if (GUIDES[k].title === txt) {
-            return GUIDES[k];
-          }
+          if (GUIDES[k].title === txt) return GUIDES[k];
         }
         return null;
       }
 
-      // Attach inline help icons to model headers across all app modules
       if (container) {
         container.querySelectorAll('.module tr th').forEach(function (th) {
           var data = resolveGuide(th);
@@ -887,6 +1275,134 @@
         });
       }
 
+      // Superadmin Bento Organization: Category Tabs + Live Filter + Collapsible Audit/Logs Drawer
+      var tabsWrap = document.getElementById('lp-cat-tabs');
+      var dashFilter = document.getElementById('lp-dash-filter');
+      var auditDrawer = document.getElementById('lp-audit-drawer');
+      var auditTbody = auditDrawer ? auditDrawer.querySelector('tbody') : null;
+      var auditCountEl = document.getElementById('lp-audit-count');
+
+      if (container && tabsWrap && auditDrawer && auditTbody) {
+        var APP_CATEGORIES = {
+          catalog: 'content',
+          catalog_ai: 'content',
+          learning: 'content',
+          guard: 'content',
+          teacher_workflows: 'teaching',
+          commerce: 'commerce',
+          accounts: 'users',
+          study: 'users',
+          website: 'system',
+          diagnostics: 'system',
+          releases: 'system',
+          auth: 'system'
+        };
+
+        var AUDIT_IDS = new Set([
+          'auth-group',
+          'teacher_workflows-publicationrequestevent',
+          'teacher_workflows-bookaccessrequestevent',
+          'teacher_workflows-bookaccessevent',
+          'teacher_workflows-bookaccessmember',
+          'catalog-bookboxmapping',
+          'catalog-bookassistantauditlog',
+          'catalog-bookchange',
+          'commerce-orderauthorrevenue',
+          'commerce-orderrevenuesnapshot',
+          'commerce-wallettransaction',
+          'commerce-poolbookshare',
+          'guard-tracehit',
+          'guard-copyevent',
+          'study-librarybook',
+          'study-studytime',
+          'study-mistakenote',
+          'study-sectionprogress',
+          'study-note'
+        ]);
+
+        var auditRows = [];
+        container.querySelectorAll('.module').forEach(function (mod) {
+          var cls = Array.prototype.find.call(mod.classList, function (c) { return c.indexOf('app-') === 0; });
+          var appKey = cls ? cls.slice(4) : '';
+          var cat = APP_CATEGORIES[appKey] || 'system';
+          mod.setAttribute('data-cat', cat);
+
+          mod.querySelectorAll('tr').forEach(function (tr) {
+            var th = tr.querySelector('th');
+            if (!th) return;
+            tr.setAttribute('data-cat', cat);
+            if (AUDIT_IDS.has(th.id)) {
+              auditTbody.appendChild(tr);
+              auditRows.push(tr);
+            }
+          });
+
+          if (!mod.querySelectorAll('tbody tr').length) {
+            mod.style.display = 'none';
+            mod.setAttribute('data-empty-mod', '1');
+          }
+        });
+
+        if (auditRows.length > 0) {
+          auditDrawer.hidden = false;
+          if (auditCountEl) {
+            auditCountEl.textContent = String(auditRows.length).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; });
+          }
+        }
+
+        var activeCat = 'all';
+        function applyDashboardFilters() {
+          var q = (dashFilter ? dashFilter.value : '').trim().toLowerCase();
+          container.querySelectorAll('.module').forEach(function (mod) {
+            if (mod.getAttribute('data-empty-mod') === '1') {
+              mod.style.display = 'none';
+              return;
+            }
+            var modCat = mod.getAttribute('data-cat');
+            var catOk = (activeCat === 'all' || modCat === activeCat);
+            if (!catOk) {
+              mod.style.display = 'none';
+              return;
+            }
+            var visibleRows = 0;
+            mod.querySelectorAll('tbody tr').forEach(function (tr) {
+              var text = tr.textContent.toLowerCase();
+              var show = !q || text.indexOf(q) !== -1;
+              tr.style.display = show ? '' : 'none';
+              if (show) visibleRows++;
+            });
+            mod.style.display = visibleRows > 0 ? '' : 'none';
+          });
+
+          var visibleAudit = 0;
+          auditRows.forEach(function (tr) {
+            var catOk = (activeCat === 'all' || tr.getAttribute('data-cat') === activeCat);
+            var text = tr.textContent.toLowerCase();
+            var show = catOk && (!q || text.indexOf(q) !== -1);
+            tr.style.display = show ? '' : 'none';
+            if (show) visibleAudit++;
+          });
+          auditDrawer.hidden = visibleAudit === 0;
+          if (q && visibleAudit > 0) auditDrawer.open = true;
+        }
+
+        tabsWrap.querySelectorAll('.lp-cat-tab').forEach(function (tab) {
+          tab.addEventListener('click', function () {
+            activeCat = tab.getAttribute('data-cat') || 'all';
+            tabsWrap.querySelectorAll('.lp-cat-tab').forEach(function (t) {
+              var on = (t === tab);
+              t.classList.toggle('is-active', on);
+              t.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            applyDashboardFilters();
+          });
+        });
+
+        if (dashFilter) {
+          dashFilter.addEventListener('input', applyDashboardFilters);
+        }
+      }
+
       if (bubble) {
         bubble.addEventListener('click', function (e) {
           e.stopPropagation();
@@ -919,7 +1435,7 @@
             {% if is_teacher %}
               {% with admin_log=teacher_admin_log %}
                 {% if not admin_log %}
-                <p style="padding:8px 0; color:var(--body-quiet-color); font-size:12.5px;">هنوز فعالیتی در کارگاه تدریس و تألیف ثبت نشده است.</p>
+                <p style="padding:12px 16px; color:var(--body-quiet-color); font-size:12.5px;">هنوز فعالیتی در کارگاه تدریس و تألیف ثبت نشده است.</p>
                 {% else %}
                 <ul class="actionlist">
                 {% for entry in admin_log %}
@@ -944,7 +1460,7 @@
             {% else %}
               {% get_admin_log 10 as admin_log for_user user %}
               {% if not admin_log %}
-              <p>{% translate 'None available' %}</p>
+              <p style="padding:12px 16px;">{% translate 'None available' %}</p>
               {% else %}
               <ul class="actionlist">
               {% for entry in admin_log %}
