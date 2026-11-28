@@ -231,15 +231,17 @@
   .lp-book-cover-box {
     width: 68px;
     min-width: 68px;
+    height: 102px;
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 6px 14px rgba(19, 58, 40, 0.22);
-    background: #F6F7F2;
+    background: #17201A;
     line-height: 0;
+    flex-shrink: 0;
   }
   .lp-book-cover-box img {
     width: 68px;
-    height: auto;
+    height: 102px;
     display: block;
     object-fit: cover;
   }
@@ -725,13 +727,33 @@
   .lp-form-field textarea {
     width: 100%;
     box-sizing: border-box;
-    padding: 9px 11px;
+    padding: 8px 11px;
+    min-height: 42px;
+    height: auto;
+    line-height: 1.5;
     border-radius: 9px;
     border: 1px solid #C8D3CC;
     background: #FFFFFF;
     color: #17201A;
     font-family: inherit;
     font-size: 13px;
+  }
+  .lp-form-field .lp-jalali-wrap {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .lp-form-field .lp-jalali-wrap > input.lp-jalali-date {
+    flex: 1;
+    width: auto;
+    max-width: none;
+    text-align: center;
+  }
+  .lp-form-field .lp-jalali-trigger {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
   }
   .lp-form-field .helptext {
     display: block;
@@ -1023,7 +1045,15 @@
 
       <div class="lp-form-field" id="lp-field-ends-on">
         <label for="{{ create_form.ends_on.id_for_label }}">{{ create_form.ends_on.label }}</label>
-        <input type="date" name="ends_on" id="{{ create_form.ends_on.id_for_label }}" value="{{ create_form.ends_on.value|default:'' }}" min="{{ today_iso }}">
+        <input type="text"
+               name="ends_on"
+               id="{{ create_form.ends_on.id_for_label }}"
+               class="lp-jalali-date"
+               value="{{ create_form.ends_on.value|default:'' }}"
+               placeholder="مثلاً {{ today_jalali }}"
+               dir="ltr"
+               autocomplete="off"
+               inputmode="numeric">
         {% if create_form.ends_on.errors %}<div class="lp-form-errors">{{ create_form.ends_on.errors }}</div>{% endif %}
       </div>
 
@@ -1077,8 +1107,15 @@
       </div>
 
       <div class="lp-form-field">
-        <label for="lp-renew-custom-date">یا انتخاب تاریخ پایان دلخواه:</label>
-        <input type="date" id="lp-renew-custom-date" name="custom_ends_on" min="{{ today_iso }}">
+        <label for="lp-renew-custom-date">یا انتخاب تاریخ پایان شمسی دلخواه:</label>
+        <input type="text"
+               id="lp-renew-custom-date"
+               name="custom_ends_on"
+               class="lp-jalali-date"
+               placeholder="مثلاً {{ today_jalali }}"
+               dir="ltr"
+               autocomplete="off"
+               inputmode="numeric">
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
@@ -1094,18 +1131,19 @@
     // 1. Render real book cover via LimoPreview if no uploaded image
     if (window.LimoPreview) {
       document.querySelectorAll('.lp-cover').forEach(function (el) {
-        var drawing = [];
+        var drawing = null;
         try { if (el.dataset.drawing) drawing = JSON.parse(el.dataset.drawing); } catch (e) {}
         el.innerHTML = window.LimoPreview.coverHtml({
           title: el.dataset.title || '',
-          en: el.dataset.en || '',
+          title_en: el.dataset.en || '',
           author: el.dataset.author || '',
           edition: el.dataset.edition || '',
           motif: el.dataset.motif || '',
-          majorName: el.dataset.major || '',
+          major: el.dataset.major || '',
           strip: el.dataset.strip || '',
           drawing: drawing
-        }, Number(el.dataset.width) || 68);
+        }, 'dark', Number(el.dataset.width) || 68);
+        el.style.display = 'inline-block';
       });
     }
 

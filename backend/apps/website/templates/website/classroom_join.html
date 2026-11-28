@@ -50,8 +50,8 @@
 
       <!-- Book Card -->
       <div style="background: #f9fafb; border: 1px solid #f3f4f6; border-radius: 12px; padding: 18px; margin-bottom: 24px; display: flex; align-items: center; gap: 16px; text-align: right;">
-        <div style="width: 56px; height: 75px; background: #1e293b; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #F5C518; font-weight: bold; font-size: 22px; flex-shrink: 0;">
-          📖
+        <div class="cover" data-cover="{{ book_cover }}" data-w="58" style="width: 58px; flex-shrink: 0; border-radius: 6px; overflow: hidden;">
+          <div class="cover-ph"><b>{{ book.title }}</b></div>
         </div>
         <div style="flex: 1;">
           <h3 style="margin: 0 0 6px 0; font-size: 16px; color: #111827;">{{ book.title }}</h3>
@@ -283,3 +283,4 @@
 })();
 </script>
 {% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

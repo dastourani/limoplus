@@ -48,7 +48,9 @@
     <div class="fcol wide"><b>لیموخوان</b><p>{{ s.footer_about }}</p></div>
     <div class="fcol"><b>لینک‌ها</b>{% for item in nav_items %}<a href="{{ item.href }}">{{ item.title }}</a>{% endfor %}</div>
     <div class="fcol"><b>پشتیبانی</b><a href="{% url 'website:faq' %}">پرسش‌های پرتکرار</a><a href="{% url 'website:teacher-application' %}">درخواست همکاری آموزشی</a><a href="{% url 'teacher-login' %}">ورود اساتید و مؤلفان</a>{% for p in footer_pages %}<a href="{% url 'website:page' p.slug %}">{{ p.title }}</a>{% endfor %}</div>
+    {% if s.email or s.phone or s.telegram_url or s.instagram_url %}
     <div class="fcol"><b>تماس</b>{% if s.email %}<a href="mailto:{{ s.email }}" dir="ltr">{{ s.email }}</a>{% endif %}{% if s.phone %}<span dir="ltr">{{ s.phone }}</span>{% endif %}{% if s.telegram_url %}<a href="{{ s.telegram_url }}">تلگرام</a>{% endif %}{% if s.instagram_url %}<a href="{{ s.instagram_url }}">اینستاگرام</a>{% endif %}</div>
+    {% endif %}
     {% if s.enamad_html %}<div class="enamad">{{ s.enamad_html|safe }}</div>{% endif %}
   </div>
 </footer>

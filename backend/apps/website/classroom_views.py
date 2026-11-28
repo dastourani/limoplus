@@ -22,7 +22,7 @@ from apps.catalog.panel_display import jalali_date
 
 from .group_access import activate_approved_members, activate_classroom_members, is_valid_cohort_book
 from .models import Classroom, ClassroomMember
-from .views import _base, app_url
+from .views import _base, _cover, app_url
 
 
 def _web_app_book_handoff(user: User, book) -> str:
@@ -245,6 +245,7 @@ def classroom_join(request, code):
     context.update({
         "classroom": classroom,
         "book": classroom.book,
+        "book_cover": _cover(request, classroom.book),
         "teacher": classroom.teacher,
         "already_member": already_member,
         "error_state": error_state,

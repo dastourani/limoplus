@@ -413,6 +413,9 @@ class ClassroomJoinLandingTests(TestCase):
         ):
             landing = site_client.get(f"/join/{cls.code}/")
             self.assertEqual(landing.status_code, 200)
+            self.assertContains(landing, "data-cover=")
+            self.assertContains(landing, "website/site.js")
+            self.assertNotContains(landing, "<b>تماس</b>")
 
             res = site_client.post(
                 f"/join/{cls.code}/",
