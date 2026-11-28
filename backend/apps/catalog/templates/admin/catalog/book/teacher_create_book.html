@@ -4,11 +4,11 @@
 {% include "admin/catalog/book/_assets.html" %}
 <style>
   .lp-draft-shell {
-    max-width: 1060px;
-    margin: 16px auto 36px;
+    max-width: 1080px;
+    margin: 18px auto 40px;
     display: grid;
-    grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.9fr);
-    gap: 22px;
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
+    gap: 24px;
     align-items: start;
   }
   @media (max-width: 900px) {
@@ -18,13 +18,13 @@
     background: var(--lp-card-bg, #161618);
     color: var(--body-fg, #F4F4F5);
     border: 1px solid var(--lp-card-border, #27272D);
-    border-radius: 14px;
+    border-radius: 16px;
     padding: 24px 26px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   }
   .lp-draft-intro {
-    background: rgba(245, 197, 24, 0.10);
-    border: 1px solid rgba(245, 197, 24, 0.32);
+    background: rgba(245, 197, 24, 0.08);
+    border: 1px solid rgba(245, 197, 24, 0.28);
     color: var(--body-fg, #F4F4F5);
     border-radius: 12px;
     padding: 12px 16px;
@@ -35,12 +35,24 @@
   .lp-draft-field {
     margin-bottom: 16px;
   }
-  .lp-draft-field > label {
+  .lp-draft-field-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .lp-draft-field > label,
+  .lp-draft-field-head > label {
     display: block;
     font-size: 13px;
     font-weight: 800;
     margin-bottom: 6px;
     color: var(--body-fg, #F4F4F5);
+  }
+  .lp-draft-field-head > label {
+    margin-bottom: 0;
   }
   .lp-draft-field input[type="text"],
   .lp-draft-field select,
@@ -51,11 +63,16 @@
     min-height: 42px;
     line-height: 1.5;
     border-radius: 10px;
-    border: 1px solid var(--border-color, #2A2A32);
-    background: var(--darkened-bg, #111114);
-    color: var(--body-fg, #F4F4F5);
+    border: 1px solid #2E2E36;
+    background: #111114;
+    color: #F4F4F5;
     font-family: inherit;
     font-size: 13.5px;
+  }
+  .lp-draft-field input[type="text"]:focus,
+  .lp-draft-field select:focus {
+    outline: none;
+    border-color: #F5C518;
   }
   .lp-draft-row2 {
     display: grid;
@@ -65,6 +82,8 @@
   @media (max-width: 600px) {
     .lp-draft-row2 { grid-template-columns: 1fr; }
   }
+
+  /* Sleek Major Chips + Inline Quick-Add Drawer */
   .lp-major-chips {
     display: flex;
     flex-wrap: wrap;
@@ -73,42 +92,121 @@
   .lp-major-chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
+    gap: 8px;
+    padding: 7px 14px;
     border-radius: 999px;
-    border: 1px solid #2A2A32;
+    border: 1px solid #2C2C34;
     background: #1C1C21;
     cursor: pointer;
     font-size: 12.5px;
     font-weight: 700;
     color: #E4E4E7;
     user-select: none;
+    transition: all .14s ease;
+  }
+  .lp-major-chip:hover {
+    border-color: rgba(245, 197, 24, 0.55);
   }
   .lp-major-chip input {
-    margin: 0;
-    accent-color: #F5C518;
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+  .lp-major-chip.is-selected {
+    background: rgba(245, 197, 24, 0.14);
+    border-color: #F5C518;
+    color: #F5C518;
+    font-weight: 800;
   }
   .lp-major-dot {
-    width: 9px;
-    height: 9px;
+    width: 10px;
+    height: 10px;
     border-radius: 999px;
     display: inline-block;
+    flex: none;
   }
+  .lp-add-major-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(245, 197, 24, 0.55);
+    background: rgba(245, 197, 24, 0.10);
+    color: #F5C518;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all .14s ease;
+  }
+  .lp-add-major-btn:hover {
+    background: #F5C518;
+    color: #111113;
+  }
+  .lp-new-major-drawer {
+    margin-top: 10px;
+    padding: 14px;
+    border-radius: 12px;
+    background: #111114;
+    border: 1px solid rgba(245, 197, 24, 0.35);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .lp-new-major-drawer[hidden] {
+    display: none;
+  }
+  .lp-new-major-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .lp-color-swatches {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .lp-color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform .12s ease, border-color .12s ease;
+  }
+  .lp-color-swatch.is-on {
+    border-color: #FFFFFF;
+    transform: scale(1.12);
+  }
+  .lp-new-major-msg {
+    font-size: 12px;
+    color: #FCA5A5;
+  }
+
+  /* Vertical Live Cover Preview Card */
   .lp-draft-preview-card {
     position: sticky;
     top: 20px;
     background: #161618;
     color: #F4F4F5;
     border-radius: 16px;
-    padding: 22px 20px;
+    padding: 20px;
     box-shadow: 0 14px 32px rgba(0, 0, 0, 0.42);
-    border: 1px solid rgba(245, 197, 24, 0.35);
+    border: 1px solid rgba(245, 197, 24, 0.32);
   }
   .lp-draft-preview-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #27272D;
   }
   .lp-draft-preview-head h3 {
     margin: 0;
@@ -118,21 +216,21 @@
   }
   .lp-preview-stage {
     display: flex;
-    justify-content: center;
-    gap: 16px;
-    flex-wrap: wrap;
-    padding: 10px 0 14px;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    padding: 8px 0 14px;
   }
   .lp-preview-theme-col {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
   }
   .lp-preview-theme-col span {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.78);
-    font-weight: 700;
+    font-size: 11.5px;
+    color: #A1A1AA;
+    font-weight: 800;
   }
   .lp-draft-actions {
     display: flex;
@@ -166,10 +264,10 @@
     font-weight: 700;
   }
   .lp-optional-files {
-    background: var(--darkened-bg, #111114);
-    border: 1px dashed #34343D;
+    background: #111114;
+    border: 1px solid #2A2A32;
     border-radius: 12px;
-    padding: 14px 16px;
+    padding: 12px 16px;
     margin-top: 8px;
   }
   .lp-optional-files summary {
@@ -178,8 +276,11 @@
     font-weight: 800;
     color: #F5C518;
   }
-  html[data-theme="light"] .lp-draft-card {
+
+  html[data-theme="light"] .lp-draft-card,
+  html[data-theme="light"] .lp-draft-preview-card {
     background: #FFFFFF;
+    color: #18181B;
     border-color: #E4E4E7;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
   }
@@ -188,21 +289,27 @@
     border-color: #E8C745;
     color: #18181B;
   }
-  html[data-theme="light"] .lp-major-chip {
+  html[data-theme="light"] .lp-draft-field input[type="text"],
+  html[data-theme="light"] .lp-draft-field select {
     background: #F4F4F6;
-    border-color: #E4E4E7;
+    border-color: #D4D4D8;
     color: #18181B;
   }
-  html[data-theme="light"] .lp-draft-cancel {
+  html[data-theme="light"] .lp-major-chip,
+  html[data-theme="light"] .lp-draft-cancel,
+  html[data-theme="light"] .lp-optional-files,
+  html[data-theme="light"] .lp-new-major-drawer {
     background: #F4F4F6;
     border-color: #E4E4E7;
     color: #18181B !important;
   }
-  html[data-theme="light"] .lp-optional-files {
-    background: #F4F4F6;
-    border-color: #D4D4D8;
+  html[data-theme="light"] .lp-major-chip.is-selected {
+    background: #FFF6CF;
+    border-color: #18181B;
+    color: #18181B !important;
   }
-  html[data-theme="light"] .lp-optional-files summary { color: #18181B; }
+  html[data-theme="light"] .lp-optional-files summary,
+  html[data-theme="light"] .lp-draft-preview-head h3 { color: #18181B; }
 </style>
 {% endblock %}
 
@@ -210,7 +317,6 @@
 {{ majors_json|json_script:"lp-draft-majors" }}
 <div class="lp-draft-shell">
   <div class="lp-draft-card">
-    <h2 style="margin:0 0 12px; font-size:20px; font-weight:900;">{{ title }}</h2>
     <div class="lp-draft-intro">
       در این مرحله فقط <b>جلد و مشخصات اصلی کتاب پیش‌نویس</b> را بسازید. ساخت پیش‌نویس و استفادهٔ خصوصی برای کلاس‌های خودتان <b>کاملاً رایگان</b> است (برای عرضهٔ عمومی، سهم پلتفرم در بازهٔ <b>۱۰٪ تا ۴۰٪</b> هنگام بررسی پیشنهاد می‌شود). بلافاصله پس از ساخت، وارد صفحهٔ کتاب می‌شوید تا فصل بنویسید یا کتاب آماده را با <b>هوش مصنوعی</b> وارد کنید.
     </div>
@@ -239,20 +345,43 @@
         <input type="text" name="author" id="id_draft_author" value="{{ form_data.author }}" placeholder="مثلاً: دکتر محمدی">
       </div>
 
-      {% if majors %}
       <div class="lp-draft-field">
-        <label>رشته / نوار رنگی جلد (اختیاری)</label>
-        <div class="lp-major-chips">
+        <div class="lp-draft-field-head">
+          <label>رشته / نوار رنگی جلد (اختیاری)</label>
+          <button type="button" id="lp-toggle-new-major" class="lp-add-major-btn">＋ افزودن رشته جدید</button>
+        </div>
+        <div id="lp-major-chips" class="lp-major-chips">
           {% for m in majors %}
-            <label class="lp-major-chip">
+            <label class="lp-major-chip{% if m.pk in form_data.selected_majors %} is-selected{% endif %}">
               <input type="checkbox" name="majors" value="{{ m.pk }}" class="lp-draft-major-cb" {% if m.pk in form_data.selected_majors %}checked{% endif %}>
               <span class="lp-major-dot" style="background:{{ m.color|default:'#3FB8A9' }}"></span>
               <span>{{ m.name }}</span>
             </label>
           {% endfor %}
         </div>
+
+        <div id="lp-new-major-drawer" class="lp-new-major-drawer" hidden>
+          <div class="lp-new-major-row">
+            <input type="text" id="lp-new-major-name" maxlength="80" placeholder="نام رشته جدید (مثلاً: فیزیوتراپی یا مهندسی پزشکی)" style="flex:1 1 200px;">
+            <input type="color" id="lp-new-major-color" value="#3FB8A9" title="رنگ نوار جلد" style="width:42px;height:38px;border:1px solid #2E2E36;border-radius:8px;background:#161618;cursor:pointer;padding:2px;">
+          </div>
+          <div class="lp-new-major-row" style="justify-content:space-between;">
+            <div class="lp-color-swatches" aria-label="رنگ‌های پیشنهادی">
+              <button type="button" class="lp-color-swatch is-on" data-color="#3FB8A9" style="background:#3FB8A9;" title="فیروزه‌ای"></button>
+              <button type="button" class="lp-color-swatch" data-color="#F5C518" style="background:#F5C518;" title="زرد لیمویی"></button>
+              <button type="button" class="lp-color-swatch" data-color="#4A54C9" style="background:#4A54C9;" title="نیلی"></button>
+              <button type="button" class="lp-color-swatch" data-color="#10B981" style="background:#10B981;" title="زمردی"></button>
+              <button type="button" class="lp-color-swatch" data-color="#E11D48" style="background:#E11D48;" title="زرشکی"></button>
+              <button type="button" class="lp-color-swatch" data-color="#F97316" style="background:#F97316;" title="نارنجی"></button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" id="lp-cancel-new-major" class="lp-draft-cancel" style="padding:6px 12px;font-size:12px;">انصراف</button>
+              <button type="button" id="lp-save-new-major" class="lp-draft-submit" style="padding:7px 14px !important;font-size:12.5px !important;">ثبت و انتخاب رشته</button>
+            </div>
+          </div>
+          <div id="lp-new-major-msg" class="lp-new-major-msg" hidden></div>
+        </div>
       </div>
-      {% endif %}
 
       <div class="lp-draft-field">
         <label for="id_draft_cover_motif">نقش و طرح روی جلد</label>
@@ -264,7 +393,7 @@
       </div>
 
       <details class="lp-optional-files">
-        <summary>🎨 آپلود عکس جلد یا فایل طرح خطی SVG (اختیاری)</summary>
+        <summary>آپلود عکس جلد یا فایل طرح خطی SVG (اختیاری)</summary>
         <div class="lp-draft-field" style="margin-top:12px;">
           <label for="id_draft_cover">عکس جلد آماده (اختیاری — جایگزین جلد خودکار می‌شود)</label>
           <input type="file" name="cover" id="id_draft_cover" accept="image/png,image/jpeg,image/webp">
@@ -274,11 +403,6 @@
           <input type="file" name="drawing_file" id="id_draft_drawing" accept=".svg">
         </div>
       </details>
-
-      <div class="lp-draft-field" style="margin-top:16px;">
-        <label for="id_draft_about">معرفی کوتاه کتاب (اختیاری)</label>
-        <textarea name="about" id="id_draft_about" rows="3" placeholder="توضیح مختصر درباره محتوای درس و مخاطبان کتاب...">{{ form_data.about }}</textarea>
-      </div>
 
       <div class="lp-draft-actions">
         <button type="submit" class="lp-draft-submit">✓ ساخت جلد و ایجاد کتاب پیش‌نویس</button>
@@ -290,11 +414,11 @@
   <aside class="lp-draft-preview-card" aria-label="پیش‌نمایش زنده جلد">
     <div class="lp-draft-preview-head">
       <h3>پیش‌نمایش زندهٔ جلد</h3>
-      <span style="font-size:11.5px; opacity:.8;">نمای اپ و قفسه</span>
+      <span style="font-size:11.5px; color:var(--body-quiet-color);">نمای اپ و قفسه</span>
     </div>
     <div id="lp-draft-cover-preview" class="lp-preview-stage"></div>
-    <p style="margin:0; font-size:12px; line-height:1.7; color:rgba(255,255,255,0.82); text-align:center;">
-      رنگ نوار کناری از رشتهٔ انتخاب‌شده و نقش مرکزی از طرح جلد گرفته می‌شود. هر کاربر در اپ می‌تواند تم تیره یا روشن را انتخاب کند.
+    <p style="margin:0; font-size:12px; line-height:1.7; color:var(--body-quiet-color); text-align:center;">
+      رنگ نوار بالای جلد از رشتهٔ انتخاب‌شده و نقش مرکزی از طرح جلد گرفته می‌شود. هر کاربر در اپ می‌تواند تم تیره یا روشن را انتخاب کند.
     </p>
   </aside>
 </div>
@@ -302,7 +426,6 @@
 <script>
 (function () {
   var P = window.LimoPreview;
-  if (!P || !P.coverHtml) return;
   var majors = {};
   try {
     majors = JSON.parse(document.getElementById('lp-draft-majors').textContent || '{}');
@@ -318,11 +441,26 @@
     return el ? el.value : '';
   }
 
+  function syncChipClasses() {
+    document.querySelectorAll('.lp-major-chip').forEach(function (chip) {
+      var cb = chip.querySelector('.lp-draft-major-cb');
+      chip.classList.toggle('is-selected', !!(cb && cb.checked));
+    });
+  }
+
+  function bindChip(cb) {
+    cb.addEventListener('change', function () {
+      syncChipClasses();
+      render();
+    });
+  }
+
   function render() {
+    if (!P || !P.coverHtml || !box) return;
     if (uploadedImgUrl) {
       box.innerHTML =
         '<div class="lp-preview-theme-col">' +
-        '<img src="' + uploadedImgUrl + '" alt="پیش‌نمایش جلد" style="width:170px;height:255px;object-fit:cover;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,0.35);">' +
+        '<img src="' + uploadedImgUrl + '" alt="پیش‌نمایش جلد" style="width:192px;height:288px;object-fit:cover;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,0.45);">' +
         '<span>تصویر آپلودشده</span></div>';
       return;
     }
@@ -339,8 +477,8 @@
       drawing: null
     };
     box.innerHTML =
-      '<div class="lp-preview-theme-col">' + P.coverHtml(book, 'dark', 142) + '<span>تم تیره</span></div>' +
-      '<div class="lp-preview-theme-col">' + P.coverHtml(book, 'light', 142) + '<span>تم روشن</span></div>';
+      '<div class="lp-preview-theme-col">' + P.coverHtml(book, 'dark', 192) + '<span>تم تیره</span></div>' +
+      '<div class="lp-preview-theme-col">' + P.coverHtml(book, 'light', 192) + '<span>تم روشن</span></div>';
   }
 
   ['id_draft_title', 'id_draft_title_en', 'id_draft_author', 'id_draft_edition', 'id_draft_cover_motif'].forEach(function (id) {
@@ -350,9 +488,8 @@
       el.addEventListener('change', render);
     }
   });
-  document.querySelectorAll('.lp-draft-major-cb').forEach(function (cb) {
-    cb.addEventListener('change', render);
-  });
+  document.querySelectorAll('.lp-draft-major-cb').forEach(bindChip);
+
   if (coverInput) {
     coverInput.addEventListener('change', function () {
       if (uploadedImgUrl) { URL.revokeObjectURL(uploadedImgUrl); uploadedImgUrl = null; }
@@ -362,6 +499,109 @@
       render();
     });
   }
+
+  // Inline "+ افزودن رشته جدید" drawer
+  var toggleNewMajor = document.getElementById('lp-toggle-new-major');
+  var drawer = document.getElementById('lp-new-major-drawer');
+  var nameInput = document.getElementById('lp-new-major-name');
+  var colorInput = document.getElementById('lp-new-major-color');
+  var saveMajorBtn = document.getElementById('lp-save-new-major');
+  var cancelMajorBtn = document.getElementById('lp-cancel-new-major');
+  var msgEl = document.getElementById('lp-new-major-msg');
+  var chipsWrap = document.getElementById('lp-major-chips');
+
+  if (toggleNewMajor && drawer) {
+    toggleNewMajor.addEventListener('click', function () {
+      drawer.hidden = !drawer.hidden;
+      if (!drawer.hidden && nameInput) nameInput.focus();
+    });
+  }
+  if (cancelMajorBtn && drawer) {
+    cancelMajorBtn.addEventListener('click', function () {
+      drawer.hidden = true;
+      if (msgEl) msgEl.hidden = true;
+    });
+  }
+  document.querySelectorAll('.lp-color-swatch').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var c = btn.getAttribute('data-color');
+      if (colorInput && c) colorInput.value = c;
+      document.querySelectorAll('.lp-color-swatch').forEach(function (b) {
+        b.classList.toggle('is-on', b === btn);
+      });
+    });
+  });
+  if (colorInput) {
+    colorInput.addEventListener('input', function () {
+      document.querySelectorAll('.lp-color-swatch').forEach(function (b) {
+        b.classList.toggle('is-on', b.getAttribute('data-color').toUpperCase() === colorInput.value.toUpperCase());
+      });
+    });
+  }
+  if (saveMajorBtn) {
+    saveMajorBtn.addEventListener('click', function () {
+      var name = (nameInput ? nameInput.value : '').trim();
+      if (!name) {
+        if (msgEl) { msgEl.textContent = 'نام رشته را وارد کنید.'; msgEl.hidden = false; }
+        return;
+      }
+      if (msgEl) msgEl.hidden = true;
+      saveMajorBtn.disabled = true;
+
+      var csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+      var fd = new FormData();
+      fd.append('name', name);
+      fd.append('color', colorInput ? colorInput.value : '#3FB8A9');
+      if (csrfInput) fd.append('csrfmiddlewaretoken', csrfInput.value);
+
+      fetch('{% url "admin:catalog_major_quick_create" %}', {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin'
+      }).then(function (r) { return r.json(); }).then(function (res) {
+        saveMajorBtn.disabled = false;
+        if (!res || !res.ok || !res.major) {
+          if (msgEl) { msgEl.textContent = (res && res.error) || 'خطا در ثبت رشته.'; msgEl.hidden = false; }
+          return;
+        }
+        var m = res.major;
+        majors[String(m.id)] = { name: m.name, color: m.color };
+
+        var existingCb = chipsWrap.querySelector('.lp-draft-major-cb[value="' + m.id + '"]');
+        if (existingCb) {
+          existingCb.checked = true;
+        } else {
+          var label = document.createElement('label');
+          label.className = 'lp-major-chip is-selected';
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.name = 'majors';
+          cb.value = String(m.id);
+          cb.className = 'lp-draft-major-cb';
+          cb.checked = true;
+          bindChip(cb);
+          var dot = document.createElement('span');
+          dot.className = 'lp-major-dot';
+          dot.style.background = m.color || '#3FB8A9';
+          var txt = document.createElement('span');
+          txt.textContent = m.name;
+          label.appendChild(cb);
+          label.appendChild(dot);
+          label.appendChild(txt);
+          chipsWrap.appendChild(label);
+        }
+        if (nameInput) nameInput.value = '';
+        drawer.hidden = true;
+        syncChipClasses();
+        render();
+      }).catch(function () {
+        saveMajorBtn.disabled = false;
+        if (msgEl) { msgEl.textContent = 'خطا در ارتباط با سرور.'; msgEl.hidden = false; }
+      });
+    });
+  }
+
+  syncChipClasses();
   render();
 })();
 </script>

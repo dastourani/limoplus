@@ -240,7 +240,8 @@ table.lp-table { width: 100%; border-collapse: collapse; } table.lp-table td, ta
 .lp-health { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
 .lp-health li { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border-radius: 10px; border-right: 4px solid #E0A100; background: rgba(224,161,0,.10); }
 .lp-health li.error { border-right-color: #D9534F; background: rgba(217,83,79,.10); }
-.lp-ok { margin: 6px 0 0; padding: 10px 14px; border-radius: 10px; background: rgba(63,184,169,.12); color: #2E8F83; font-weight: 700; }
+.lp-ok { margin: 6px 0 0; padding: 10px 14px; border-radius: 10px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(52, 211, 153, 0.28); color: #6EE7B7; font-weight: 700; }
+html[data-theme="light"] .lp-ok { background: #ECFDF5; border-color: #A7F3D0; color: #065F46; }
 
 /* Label buttons («برچسب‌های متن»): grouped, coloured by the label's look. */
 .lbl-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); background: var(--soft); }
