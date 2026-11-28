@@ -1,0 +1,16 @@
+{% extends "website/base.html" %}
+{% block title %}{{ title }} | لیموخوان{% endblock %}
+
+{% block main %}
+<section class="sec wrap narrow" style="max-width: 560px; margin: 48px auto; padding: 0 16px;">
+  <div class="page-card" style="background: #ffffff; border-radius: 16px; padding: 32px 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); text-align: center;">
+    <div style="font-size: 42px; margin-bottom: 12px;">🔒</div>
+    <h1 class="h2" style="color: #b91c1c; margin-bottom: 12px;">{{ title }}</h1>
+    <p class="mut" style="color: #475569; line-height: 1.8; margin-bottom: 24px;">{{ message }}</p>
+    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+      <a href="{{ teacher_login_url }}" class="btn dark" style="padding: 10px 22px; text-decoration: none;">ورود به پنل اساتید</a>
+      <a href="{% url 'website:home' %}" class="btn" style="padding: 10px 20px; text-decoration: none;">صفحهٔ اصلی لیموخوان</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "website/base.html" %}
+{% block title %}درخواست همکاری آموزشی، لیموخوان{% endblock %}
+{% block description %}فرم درخواست همکاری آموزشی با لیموخوان برای بررسی مدیر.{% endblock %}
+{% block head %}<meta name="robots" content="noindex,nofollow">{% endblock %}
+{% block main %}
+<section class="sec wrap narrow teacher-application-page">
+  <div class="page-card">
+    <header class="page-head">
+      <div>
+        <h1 class="h2">همکاری با لیموخوان به‌عنوان استاد و مؤلف</h1>
+        <p class="mut">اگر کتاب، جزوه یا بانک تست دارید یا برای دانشجویان خود کلاس برگزار می‌کنید، مشخصاتتان را ثبت کنید. در صورت تأیید، لینک دعوت به میز تألیف برایتان ارسال می‌شود.</p>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a class="btn ghost small" href="{% url 'website:faq' %}#teachers">پرسش‌های اساتید و مؤلفان</a>
+        <a class="btn ghost small" href="{% url 'teacher-login' %}">ورود به درگاه اساتید</a>
+      </div>
+    </header>
+
+    {% if submitted %}
+      <div class="teacher-application-result" role="status">
+        <h2>درخواست همکاری شما ثبت شد</h2>
+        <p>درخواست همکاری شما ثبت شد. در صورت تأیید، لینک دعوت به میز تألیف برایتان ارسال می‌شود.</p>
+        <p>اگر برای کلاس‌های خودتان کتاب آماده می‌کنید، ساخت پیش‌نویس و استفادهٔ خصوصی برای دانشجویان خودتان رایگان است.</p>
+      </div>
+      <p class="center" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <a class="btn lemon small" href="{% url 'website:books' %}">مشاهدهٔ کتاب‌های لیموخوان</a>
+        <a class="btn dark small" href="{% url 'website:home' %}">بازگشت به لیموخوان</a>
+      </p>
+    {% else %}
+      {% if rate_limited %}
+        <div class="teacher-application-alert" role="alert">تعداد ارسال درخواست از این نشانی زیاد است؛ کمی بعد دوباره تلاش کنید.</div>
+      {% endif %}
+      {% if application_form.non_field_errors %}<div class="teacher-application-alert" role="alert">{{ application_form.non_field_errors }}</div>{% endif %}
+
+      <form class="teacher-application-form" method="post" action="{% url 'website:teacher-application' %}">
+        {% csrf_token %}
+        {% for field in application_form %}
+          {% if field.name == "website" %}
+            <div class="teacher-application-honeypot" aria-hidden="true">{{ field }}</div>
+          {% else %}
+            <div class="teacher-application-field{% if field.errors %} has-errors{% endif %}">
+              <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %}<span aria-hidden="true"> *</span>{% endif %}</label>
+              {{ field }}
+              {% if field.help_text %}<small class="teacher-application-help">{{ field.help_text }}</small>{% endif %}
+              {% if field.errors %}<ul class="teacher-application-errors" aria-live="polite">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+        <p class="teacher-application-note">برای بررسی درخواست، مشخصات این فرم در اختیار تیم بررسی همکاری قرار می‌گیرد، در سایت منتشر نمی‌شود و ممکن است از طریق کانال اطلاع‌رسانی مدیریتی لیموخوان (پیام‌رسان بله) به مسئول بررسی ارسال شود.</p>
+        <button class="btn lemon wide" type="submit">ارسال درخواست همکاری</button>
+      </form>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

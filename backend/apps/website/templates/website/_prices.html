@@ -1,0 +1,69 @@
+{% load site_icons %}
+<h2 class="center">تعرفه‌ها و روش‌های دسترسی</h2>
+<p class="sub center">فصل اول همه‌ی کتاب‌ها کاملاً رایگان است؛ ابتدا کیفیت درسنامه و تست‌ها را بسنج، سپس انتخاب کن</p>
+<div class="prices">
+  <div class="feat price-card">
+    <span class="price-tag">شروع و ارزیابی</span>
+    <b>حساب رایگان</b>
+    <div class="price">۰ تومان</div>
+    <p class="price-desc">مناسب آشنایی با ساختار درسنامه، چکیده و تست‌های هر کتاب پیش از خرید</p>
+    <ul class="checks small">
+      <li>{% icon "check" 16 3 %}مطالعه‌ی کامل فصل اول همه‌ی کتاب‌ها</li>
+      <li>{% icon "check" 16 3 %}حل تست‌های نمونه با پاسخ تشریحی</li>
+      <li>{% icon "check" 16 3 %}برنامه‌ی مرور روزانه و لیموی پیشرفت</li>
+      <li>{% icon "check" 16 3 %}همگام‌سازی خودکار روی ۲ دستگاه</li>
+    </ul>
+    <a class="btn ghost-dark wide" href="{{ app_url }}">شروع رایگان در وب‌اپ</a>
+  </div>
+  {% for p in plans %}
+  <div class="feat star price-card">
+    <span class="badge">پیشنهاد ویژه</span>
+    <span class="price-tag">دسترسی جامع</span>
+    <b>{{ p.title }}</b>
+    <div class="price">{% if p.discount %}<del class="price-old">{{ p.regular_price }}</del>{% endif %}{{ p.price }}</div>
+    {% if p.discount %}<div class="price-promo"><span>{{ p.discount.percent }}٪ تخفیف زمان‌دار</span>{% if p.discount.end_date %}<small>تا {{ p.discount.end_date }}</small>{% endif %}</div>{% endif %}
+    <p class="price-desc">مبلغ درج‌شده، هزینه‌ی کلِ {{ p.months }} ماه اشتراک است؛ مناسب داوطلبانی که چند درس و منبع را هم‌زمان می‌خوانند.</p>
+    <ul class="checks small">
+      <li>{% icon "check" 16 3 %}باز شدن تمام کتاب‌ها به مدت {{ p.months }} ماه</li>
+      <li>{% icon "check" 16 3 %}تمام بانک تست کنکور، فلش‌کارت‌ها و آزمون‌ها</li>
+      <li>{% icon "check" 16 3 %}دسترسی خودکار به کتاب‌های جدید منتشرشده</li>
+      <li>{% icon "check" 16 3 %}دانلود آفلاین در اپلیکیشن اندروید</li>
+    </ul>
+    <a class="btn lemon wide" href="{{ subscribe_url }}">تهیه‌ی اشتراک در اپ</a>
+  </div>
+  {% empty %}
+  <div class="feat star price-card">
+    <span class="badge">پیشنهاد ویژه</span>
+    <span class="price-tag">دسترسی کامل به یک منبع</span>
+    <b>خرید تک‌کتاب (دائمی)</b>
+    <div class="price">{% if min_price %}از {{ min_price }}{% else %}به‌زودی{% endif %}</div>
+    <p class="price-desc">پرداخت یک‌باره و مالکیت همیشگی همان کتاب بدون محدودیت زمانی</p>
+    <ul class="checks small">
+      <li>{% icon "check" 16 3 %}دسترسی دائمی به تمام فصل‌ها و بخش‌ها</li>
+      <li>{% icon "check" 16 3 %}بانک کامل تست‌های کنکور و دفترچه‌ی اشتباهات</li>
+      <li>{% icon "check" 16 3 %}دریافت رایگان تمام ویرایش‌ها و تست‌های بعدی</li>
+      <li>{% icon "check" 16 3 %}دانلود آفلاین کتاب در اپلیکیشن اندروید</li>
+    </ul>
+    <a class="btn lemon wide" href="{% url 'website:books' %}">انتخاب از فهرست کتاب‌ها</a>
+  </div>
+  {% endfor %}
+  {% if plans %}
+  <div class="feat price-card">
+    <span class="price-tag">مالکیت دائمی</span>
+    <b>خرید تک‌کتاب</b>
+    <div class="price">{% if min_price %}از {{ min_price }}{% else %}به‌زودی{% endif %}</div>
+    <p class="price-desc">مناسب زمانی که فقط یک یا دو کتاب تخصصی خاص را نیاز دارید</p>
+    <ul class="checks small">
+      <li>{% icon "check" 16 3 %}همیشه در کتابخانه‌ی حساب شما می‌ماند</li>
+      <li>{% icon "check" 16 3 %}تمام فصل‌ها، تست‌ها، فلش‌کارت‌ها و آزمون‌ها</li>
+      <li>{% icon "check" 16 3 %}دریافت رایگان به‌روزرسانی‌های بعدی کتاب</li>
+      <li>{% icon "check" 16 3 %}دانلود آفلاین در اپلیکیشن اندروید</li>
+    </ul>
+    <a class="btn ghost-dark wide" href="{% url 'website:books' %}">مشاهده‌ی کتاب‌ها</a>
+  </div>
+  {% endif %}
+</div>
+<div class="price-guarantee">
+  {% icon "circle-check" 22 %}
+  <span><b>ضمانت شفافیت لیموخوان:</b> پیش از هرگونه پرداخت، فصل اول هر کتاب را به‌طور کامل و رایگان مطالعه کنید تا از کیفیت درسنامه، فرمول‌ها و پاسخ‌های تشریحی مطمئن شوید.</span>
+</div>

@@ -1,0 +1,102 @@
+from django.db import migrations
+
+
+ABOUT_TITLE = "درباره ما"
+
+ABOUT_BODY = """لیموخوان بستر مطالعهٔ تعاملی کتاب‌های درسی و دانشگاهی است؛ جایی که متن کتاب به‌صورت منظم و فصل‌به‌فصل، همراه با خلاصه، تست با پاسخ تشریحی، فلش‌کارت و برنامهٔ مرور هوشمند در اختیار دانشجویان قرار می‌گیرد.
+
+## هدف لیموخوان چیست؟
+بسیاری از کتاب‌های دانشگاهی و مرجع، حجیم و پراکنده هستند و دانشجو هنگام مطالعه یا مرور پیش از امتحان با انبوهی از نکته‌ها و فرمول‌ها روبه‌رو می‌شود. لیموخوان برای این ساخته شده است که یادگیری هر کتاب، مرحله‌به‌مرحله، قابل اندازه‌گیری و متناسب با نیاز واقعی دانشجو پیش برود؛ بدون حاشیه و بدون پراکندگی.
+
+## امکانات لیموخوان برای دانشجویان
+- مطالعهٔ بخش‌به‌بخش با پشتیبانی کامل از فرمول‌های ریاضی، نمودارها و کادرهای آموزشی
+- فصل اول رایگان در هر کتاب برای بررسی کیفیت محتوا پیش از خرید
+- تست‌های چهارگزینه‌ای با پاسخ‌های تشریحی و ثبت خودکار غلط‌های پرتکرار برای مرور هدفمند
+- فلش‌کارت و برنامهٔ مرور روزانه (تکرار فاصله‌دار) برای ماندگاری مفاهیم در حافظه
+- همگام‌سازی پیشرفت مطالعه، نشانه‌گذاری‌ها و یادداشت‌ها در حساب کاربری (تا ۲ دستگاه، در وب‌اپ و اپلیکیشن اندروید)
+- امکان مطالعهٔ آفلاین رمزنگاری‌شده در اپلیکیشن اندروید پس از دریافت بخش‌ها
+
+## خرید تکی یا اشتراک؛ شفاف و بدون ابهام
+در لیموخوان می‌توانید یک کتاب را به‌صورت تکی خریداری کنید تا دسترسی آن برای همیشه در حساب شما بماند، یا برای مطالعهٔ هم‌زمان چند کتاب از طرح‌های اشتراک استفاده کنید. تمام شرایط خرید، پرداخت و امکان انصراف تا ۷ روز کاری در صفحهٔ «شرایط استفاده و خرید» به‌روشنی توضیح داده شده است.
+
+## همکاری با اساتید و مؤلفان
+اساتید دانشگاه و مؤلفان می‌توانند کتاب‌ها یا جزوه‌های خود را از طریق کارگاه تألیف لیموخوان به‌صورت تعاملی منتشر کنند، برای کلاس‌های خود دسترسی اختصاصی بسازند و از سامانهٔ شفاف تسویهٔ درآمد و حفاظت از حقوق نشر بهره‌مند شوند. برای شروع همکاری می‌توانید از بخش «درخواست همکاری آموزشی» اقدام کنید.
+
+## بهره‌بردار، اعتماد و پشتیبانی
+لیموخوان متعهد به شفافیت با کاربران و حفظ حریم خصوصی اطلاعات مطالعه و حساب کاربری است. برای پیگیری سفارش‌ها، درخواست‌های حریم خصوصی، طرح پرسش یا ارسال پیشنهاد می‌توانید همواره از صفحهٔ «تماس با ما» با ما در ارتباط باشید."""
+
+CLEAN_CONTACT_BODY = (
+    "برای پیگیری سفارش و پرداخت، مسائل حساب کاربری، درخواست‌های حریم خصوصی، گزارش اشکال "
+    "یا ثبت پیشنهاد، پیام خود را از طریق فرم زیر ارسال کنید تا با کد پیگیری بررسی شود."
+)
+
+OLD_CONTACT_BODY = """برای پیگیری پرداخت و خرید، درخواست انصراف یا حریم خصوصی، گزارش خطا در کتاب‌ها یا ارسال پیشنهاد، می‌توانید از فرم زیر استفاده کنید تا پیام شما با کد پیگیری ثبت شود.
+
+## راهنمای پاسخ‌گویی سریع‌تر
+- اگر در پرداخت بانکی یا باز نشدن کتاب پس از خرید مشکلی پیش آمده، موضوع «پیگیری خرید یا پرداخت ناموفق» را انتخاب کنید و شمارهٔ سفارش یا کد رهگیری پرداخت را بنویسید.
+- برای درخواست انصراف و بازپرداخت (تا ۷ روز کاری) یا درخواست‌های مرتبط با داده‌های شخصی و حذف حساب، شمارهٔ موبایل ثبت‌نامی خود را وارد کنید؛ نتیجه حداکثر تا ۷ روز کاری به شما اعلام می‌شود.
+- اگر استاد یا مؤلف هستید و قصد انتشار کتاب یا ساخت کلاس رایگان دارید، از صفحهٔ «درخواست همکاری آموزشی» استفاده کنید."""
+
+OLD_ABOUT_TITLE = "درباره‌ی ما"
+OLD_ABOUT_BODY = (
+    "این متن نمونه است؛ از پنل (سایت › صفحه‌های سایت) عوضش کنید.\n\n"
+    "لیموخوان برای این ساخته شده که دانشجوها کتاب‌های درسی را منظم و کم‌حجم بخوانند و برای کنکور و امتحان آماده شوند."
+)
+
+
+def apply_about_and_contact_cleanup(apps, schema_editor):
+    SitePage = apps.get_model("website", "SitePage")
+    SiteNavItem = apps.get_model("website", "SiteNavItem")
+
+    about, created = SitePage.objects.get_or_create(
+        slug="about",
+        defaults={
+            "title": ABOUT_TITLE,
+            "body": ABOUT_BODY,
+            "order": 4,
+            "show_in_app": True,
+            "show_in_footer": True,
+        },
+    )
+    if not created:
+        about.title = ABOUT_TITLE
+        about.body = ABOUT_BODY
+        about.order = 4
+        about.show_in_app = True
+        about.show_in_footer = True
+        about.save(update_fields=["title", "body", "order", "show_in_app", "show_in_footer", "updated_at"])
+
+    SitePage.objects.filter(slug="contact").update(body=CLEAN_CONTACT_BODY)
+
+    if not SiteNavItem.objects.filter(parent__isnull=True, url="page:about").exists():
+        SiteNavItem.objects.create(
+            title="درباره ما",
+            url="page:about",
+            order=6,
+            is_hidden=False,
+            parent=None,
+        )
+
+
+def reverse_about_and_contact_cleanup(apps, schema_editor):
+    SitePage = apps.get_model("website", "SitePage")
+
+    SitePage.objects.filter(slug="about", title=ABOUT_TITLE, body=ABOUT_BODY).update(
+        title=OLD_ABOUT_TITLE,
+        body=OLD_ABOUT_BODY,
+        show_in_app=False,
+    )
+    SitePage.objects.filter(slug="contact", body=CLEAN_CONTACT_BODY).update(body=OLD_CONTACT_BODY)
+    # `SiteNavItem` has no migration-ownership marker, so rows pointing to `page:about` cannot be
+    # safely distinguished from admin-created items and are preserved on rollback.
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("website", "0023_contact_message_and_legal_nav"),
+    ]
+
+    operations = [
+        migrations.RunPython(apply_about_and_contact_cleanup, reverse_about_and_contact_cleanup),
+    ]

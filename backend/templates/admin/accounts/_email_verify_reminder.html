@@ -1,0 +1,11 @@
+{% if request.user.is_authenticated and not request.user.is_superuser and not request.user.is_email_verified %}
+  <div style="margin:0 0 14px; padding:10px 14px; border-radius:8px; border:1px solid #f59e0b; background:#fffbeb; color:#92400e; font-size:12.5px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between;" dir="rtl">
+    <span>برای دریافت اعلان‌ها، ایمیل کاری‌تان را تأیید کنید.</span>
+    <span style="display:inline-flex; gap:8px; flex-wrap:wrap;">
+      {% if request.user.email %}
+        <a href="{% url 'admin:accounts_user_send_verification' %}" class="button" style="padding:4px 10px; font-size:12px;">ارسال مجدد لینک تأیید</a>
+      {% endif %}
+      <a href="{% url 'admin:accounts_user_change_email' %}" class="button" style="padding:4px 10px; font-size:12px;">{% if request.user.email %}ویرایش ایمیل{% else %}ثبت ایمیل کاری{% endif %}</a>
+    </span>
+  </div>
+{% endif %}

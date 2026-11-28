@@ -1,0 +1,22 @@
+{% extends "admin/change_form.html" %}
+
+{% block content %}
+  {% if original and original.status != "sent" %}
+    <div style="margin-bottom:16px; padding:14px 18px; border-radius:10px; border:1px solid #f59e0b; background:#fffbeb; color:#92400e; display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;" dir="rtl">
+      <div>
+        <strong>وضعیت فعلی: {{ original.get_status_display }}</strong>
+        {% if original.last_error %}
+          <div style="font-size:12.5px; margin-top:4px;">{{ original.last_error }}</div>
+        {% endif %}
+      </div>
+      <form method="post" action="{% url 'admin:accounts_teachernotification_retry' original.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit" class="button" style="background:#0f766e; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-weight:700; cursor:pointer;">
+          ↻ تلاش مجدد برای ارسال ایمیل
+        </button>
+      </form>
+    </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "admin/change_list.html" %}
+
+{% block result_list %}
+<div class="lp-ov" style="margin-bottom: 14px">
+  <div class="lp-ov-card">
+    <h3>وضعیت لحظه‌ای نشست‌ها و دستگاه‌ها</h3>
+    <div class="lp-ov-stats" style="margin-bottom: 10px">
+      <div class="lp-ov-stat"><b>{{ active_total }}</b><span>دستگاه فعال هم‌اکنون</span></div>
+      <div class="lp-ov-stat"><b>{{ active_users }}</b><span>کاربر آنلاین/فعال</span></div>
+      <div class="lp-ov-stat"><b>{{ active_android }}</b><span>اپلیکیشن اندروید</span></div>
+      <div class="lp-ov-stat"><b>{{ active_web }}</b><span>مرورگر وب (آیفون/کامپیوتر)</span></div>
+    </div>
+    <p class="lp-ov-links" style="margin: 0">
+      {% if only_active %}
+      <a class="button" href="?">نمایش همه‌ی نشست‌ها (فعال و خارج‌شده)</a>
+      {% else %}
+      <a class="button default" href="?state=active">فقط نشست‌های فعال هم‌اکنون ({{ active_total }})</a>
+      {% endif %}
+    </p>
+  </div>
+</div>
+{{ block.super }}
+{% endblock %}

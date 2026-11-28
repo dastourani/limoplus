@@ -1,0 +1,50 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">شروع</a> › <a href="{% url 'admin:catalog_book_changelist' %}">کتاب‌ها</a> › <a href="{% url 'admin:catalog_book_change' book.pk %}">{{ book.title }}</a> › خبر دادن به منتظران</div>{% endblock %}
+{% block content %}
+<style>
+  .wl { max-width: 680px; }
+  .wl .nums { display: flex; gap: 12px; flex-wrap: wrap; margin: 6px 0 16px; }
+  .wl .nums div { background: var(--darkened-bg); border-radius: 12px; padding: 10px 14px; min-width: 120px; }
+  .wl .nums b { display: block; font-size: 22px; }
+  .wl textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 15px; line-height: 1.8; padding: 10px; border-radius: 10px; }
+  .wl .warn { background: rgba(245, 197, 24, .2); border-radius: 10px; padding: 10px 14px; margin: 0 0 12px; }
+  .wl .err { background: rgba(214, 69, 69, .15); border-radius: 10px; padding: 10px 14px; margin: 0 0 12px; }
+  .wl button { background: #F5C518; color: #1D2B23; border: 0; border-radius: 10px; padding: 10px 18px; font: inherit; font-weight: 800; cursor: pointer; }
+  .wl button[disabled] { opacity: .45; cursor: not-allowed; }
+</style>
+<div class="wl">
+  <h2>«{{ book.title }}»</h2>
+  <div class="nums">
+    <div>منتظر خبر<b>{{ fa.count }}</b></div>
+    <div>پیش‌تر خبر داده شده<b>{{ fa.told }}</b></div>
+    {% if queued %}<div>در حال ارسال<b>{{ fa.queued }}</b></div>{% endif %}
+    {% if failed %}<div>ناموفق در دفعه‌ی قبل (این بار دوباره فرستاده می‌شود)<b>{{ fa.failed }}</b></div>{% endif %}
+  </div>
+  {% for p in problems %}<p class="warn">{{ p }}</p>{% endfor %}
+  {% for e in errors %}<p class="err">{{ e }}</p>{% endfor %}
+  <form method="post">{% csrf_token %}
+    <p><label for="wl-text"><b>متن پیامک</b></label></p>
+    <textarea id="wl-text" name="text" rows="4" maxlength="300">{{ text }}</textarea>
+    <p class="help" id="wl-len"></p>
+    <p>به هر نفر فقط یک پیامک می‌رود؛ با زدن دوباره‌ی دکمه، به کسی که خبر گرفته دوباره پیامک نمی‌رود.
+       برآورد مصرف: <b id="wl-total">{{ fa.total }}</b> پیامک.</p>
+    <button type="submit" {% if problems or not count %}disabled{% endif %}
+            onclick="return confirm('برای {{ fa.count }} نفر پیامک فرستاده شود؟')">فرستادن برای {{ fa.count }} نفر</button>
+    <a href="{% url 'admin:catalog_book_change' book.pk %}" style="margin-inline-start:12px">انصراف</a>
+  </form>
+</div>
+<script>
+  (function () {
+    var t = document.getElementById("wl-text"), out = document.getElementById("wl-len"), total = document.getElementById("wl-total");
+    var people = {{ count }};
+    function fa(n) { return String(n).replace(/[0-9]/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹"[d]; }); }
+    function show() {
+      var n = t.value.length, parts = n <= 70 ? 1 : Math.ceil(n / 67);
+      out.textContent = fa(n) + " نویسه؛ " + fa(parts) + " پیامک برای هر نفر";
+      total.textContent = fa(parts * people);
+    }
+    t.addEventListener("input", show); show();
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,1299 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block nav-sidebar %}{% endblock %}
+{% block coltype %}colM{% endblock %}
+{% block bodyclass %}{{ block.super }} lp-book-canvas-page{% endblock %}
+{% block nav-breadcrumbs %}{% endblock %}
+{% block content_title %}{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>
+  window.LIMO_STATIC = '{% static "catalog/" %}';
+  window.LIMO_FONTS = {
+    '400': '{% static "catalog/fonts/Vazirmatn_400Regular.ttf" %}',
+    '700': '{% static "catalog/fonts/Vazirmatn_700Bold.ttf" %}',
+    '800': '{% static "catalog/fonts/Vazirmatn_800ExtraBold.ttf" %}',
+    '900': '{% static "catalog/fonts/Vazirmatn_900Black.ttf" %}'
+  };
+</script>
+<script src="{% static 'catalog/limo-preview.js' %}?v={{ assets_v }}"></script>
+<style>
+  /* Full-bleed canvas shell matching Gerdoo obsidian charcoal + LimooKhan lemon yellow (#F5C518) */
+  .lp-book-canvas-page #content {
+    padding: 0 !important;
+    background: #0D0D0F !important;
+    max-width: 100% !important;
+  }
+  .lp-book-canvas-page #content-main {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .lp-canvas-wrap {
+    min-height: calc(100vh - 58px);
+    background-color: #0D0D0F;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.10) 1.25px, transparent 1.25px);
+    background-size: 22px 22px;
+    color: #F4F4F5;
+    direction: rtl;
+  }
+  .lp-canvas-topbar {
+    background: #141417;
+    border-bottom: 2px solid #F5C518;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+  .lp-canvas-topbar-start {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .lp-canvas-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 13px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #FFFFFF !important;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: all .15s ease;
+  }
+  .lp-canvas-back:hover {
+    background: rgba(245, 197, 24, 0.16);
+    border-color: #F5C518;
+    color: #F5C518 !important;
+  }
+  .lp-canvas-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .lp-canvas-heading h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 900;
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .lp-canvas-heading .lp-canvas-sub {
+    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.78);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .lp-canvas-stat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: #1C1C21;
+    border: 1px solid #2A2A32;
+    color: #F5C518;
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .lp-canvas-topbar-end {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .lp-canvas-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 18px;
+    border-radius: 10px;
+    background: #F5C518;
+    color: #111113 !important;
+    border: none;
+    font-size: 13.5px;
+    font-weight: 900;
+    cursor: pointer;
+    font-family: inherit;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(245, 197, 24, 0.28);
+    transition: transform .14s ease, filter .14s ease;
+  }
+  .lp-canvas-cta:hover {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+  }
+  .lp-canvas-body {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 20px 24px 44px;
+  }
+  .lp-canvas-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: #161618;
+    border: 1px solid rgba(245, 197, 24, 0.32);
+    border-radius: 12px;
+    padding: 10px 16px;
+    margin-bottom: 24px;
+    font-size: 12.5px;
+    color: rgba(244, 244, 245, 0.92);
+    line-height: 1.6;
+  }
+  .lp-canvas-notice code {
+    background: rgba(0, 0, 0, 0.3);
+    color: #F5C518;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 12px;
+    direction: ltr;
+    display: inline-block;
+  }
+  .lp-canvas-stage {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (min-width: 960px) {
+    .lp-canvas-stage {
+      grid-template-columns: 330px minmax(0, 1fr);
+      gap: 96px;
+      padding: 14px 4px;
+    }
+  }
+  .lp-canvas-wires {
+    display: none;
+  }
+  @media (min-width: 960px) {
+    .lp-canvas-wires {
+      display: block;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      overflow: visible;
+    }
+  }
+  .lp-canvas-book-col {
+    position: relative;
+    z-index: 2;
+  }
+  @media (min-width: 960px) {
+    .lp-canvas-book-col {
+      position: sticky;
+      top: 76px;
+    }
+  }
+  .lp-canvas-book-node {
+    position: relative;
+    background: #FFFFFF;
+    color: #17201A;
+    border-radius: 18px;
+    padding: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+  }
+  .lp-canvas-book-node::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 4px;
+    border-radius: 18px 18px 0 0;
+    background: linear-gradient(90deg, #F5C518, #1F5E3A);
+  }
+  .lp-book-node-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .lp-book-cover-box {
+    width: 68px;
+    min-width: 68px;
+    height: 102px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 6px 14px rgba(19, 58, 40, 0.22);
+    background: #17201A;
+    line-height: 0;
+    flex-shrink: 0;
+  }
+  .lp-book-cover-box img {
+    width: 68px;
+    height: 102px;
+    display: block;
+    object-fit: cover;
+  }
+  .lp-book-node-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .lp-book-node-kicker {
+    font-size: 11px;
+    font-weight: 800;
+    color: #1F5E3A;
+    margin-bottom: 3px;
+  }
+  .lp-book-node-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 900;
+    color: #17201A;
+    line-height: 1.4;
+  }
+  .lp-book-node-author {
+    font-size: 12.5px;
+    color: #55635A;
+    margin-top: 3px;
+  }
+  .lp-book-node-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 14px;
+  }
+  .lp-node-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #E3F3E9;
+    color: #133a28;
+    font-size: 11.5px;
+    font-weight: 800;
+  }
+  .lp-node-pill--draft {
+    background: #FFF6CF;
+    color: #8A6A00;
+  }
+  .lp-book-node-foot {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed #DDE4DF;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .lp-book-node-foot a {
+    color: #1F5E3A !important;
+    font-weight: 800;
+    text-decoration: none;
+  }
+  .lp-book-node-foot a:hover {
+    text-decoration: underline;
+  }
+
+  /* Anchor port dots on Book Node (left edge in RTL) & Classroom Cards (right edge in RTL) */
+  .lp-port-out,
+  .lp-port-in {
+    display: none;
+  }
+  @media (min-width: 960px) {
+    .lp-port-out {
+      display: block;
+      position: absolute;
+      left: -7px;
+      top: 50%;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #F5C518;
+      border: 3px solid #133a28;
+      transform: translateY(-50%);
+      box-shadow: 0 0 0 3px rgba(245, 197, 24, 0.25);
+    }
+    .lp-port-in {
+      display: block;
+      position: absolute;
+      right: -7px;
+      top: 38px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #34D399;
+      border: 3px solid #FFFFFF;
+      box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.35);
+    }
+    .lp-canvas-class-card[data-state="active"] .lp-port-in {
+      background: #F5C518;
+      box-shadow: 0 0 0 3px rgba(245, 197, 24, 0.35);
+    }
+    .lp-canvas-class-card[data-state="expired"] .lp-port-in,
+    .lp-canvas-class-card[data-state="inactive"] .lp-port-in {
+      background: #94A3B8;
+      box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.35);
+    }
+  }
+
+  /* Mobile vertical stem connecting Book card to Classroom list */
+  .lp-mobile-stem {
+    display: flex;
+    justify-content: center;
+    margin: -8px 0;
+  }
+  .lp-mobile-stem span {
+    width: 3px;
+    height: 28px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #F5C518, #2F7D4F);
+  }
+  @media (min-width: 960px) {
+    .lp-mobile-stem { display: none; }
+  }
+
+  /* Classroom cards column */
+  .lp-canvas-classes-col {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .lp-canvas-class-card {
+    position: relative;
+    background: #FFFFFF;
+    color: #17201A;
+    border-radius: 18px;
+    padding: 18px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .lp-canvas-class-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 42px rgba(0, 0, 0, 0.3);
+  }
+  .lp-canvas-class-card[data-state="inactive"] {
+    opacity: 0.9;
+  }
+  .lp-class-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .lp-class-title-wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
+  }
+  .lp-class-icon-badge {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    border-radius: 12px;
+    background: #E3F3E9;
+    color: #133a28;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+  .lp-canvas-class-card[data-state="expired"] .lp-class-icon-badge {
+    background: #FFF6CF;
+    color: #8A6A00;
+  }
+  .lp-canvas-class-card[data-state="inactive"] .lp-class-icon-badge {
+    background: #F1F5F9;
+    color: #475569;
+  }
+  .lp-class-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 900;
+    color: #17201A;
+    line-height: 1.4;
+  }
+  .lp-class-desc {
+    margin: 3px 0 0;
+    font-size: 12.5px;
+    color: #55635A;
+    line-height: 1.5;
+  }
+  .lp-class-state-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .lp-class-state-pill--active {
+    background: #E3F3E9;
+    color: #133a28;
+  }
+  .lp-class-state-pill--full {
+    background: #FEF3C7;
+    color: #92400E;
+  }
+  .lp-class-state-pill--expired {
+    background: #FFF6CF;
+    color: #8A6A00;
+  }
+  .lp-class-state-pill--inactive {
+    background: #F1F5F9;
+    color: #475569;
+  }
+
+  .lp-class-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px;
+    background: #F6F7F2;
+    border: 1px solid #E5EAE6;
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+  }
+  .lp-metric-block {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .lp-metric-label {
+    font-size: 11.5px;
+    color: #55635A;
+    font-weight: 700;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+  }
+  .lp-metric-label b {
+    color: #17201A;
+    font-size: 12.5px;
+  }
+  .lp-capacity-bar {
+    height: 7px;
+    background: #DDE4DF;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .lp-capacity-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #1F5E3A, #2F7D4F);
+  }
+  .lp-canvas-class-card[data-state="full"] .lp-capacity-bar > span {
+    background: #D97706;
+  }
+
+  .lp-class-invite-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .lp-invite-url-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    background: #F6F7F2;
+    border: 1px dashed #B9C7BE;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+    color: #133a28;
+    direction: ltr;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lp-class-primary-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .lp-btn-copy-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 9px 16px;
+    border-radius: 10px;
+    background: #133a28;
+    color: #FFFFFF;
+    border: 1px solid #133a28;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background .15s ease, transform .12s ease;
+  }
+  .lp-btn-copy-link:hover {
+    background: #1F5E3A;
+    transform: translateY(-1px);
+  }
+  .lp-copy-feedback {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: #E3F3E9;
+    color: #133a28;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .lp-copy-feedback.is-visible {
+    display: inline-flex;
+  }
+  .lp-btn-renew {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 10px;
+    background: #FFF6CF;
+    color: #133a28;
+    border: 1.5px solid #F5C518;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .15s ease;
+  }
+  .lp-btn-renew:hover {
+    background: #F5C518;
+  }
+  .lp-class-secondary-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-top: 10px;
+    border-top: 1px solid #EEF2EF;
+  }
+  .lp-sec-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    background: #F6F7F2;
+    border: 1px solid #DCE3DE;
+    color: #17201A !important;
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .lp-sec-link:hover {
+    border-color: #133a28;
+    background: #E3F3E9;
+  }
+  .lp-sec-link--warn {
+    color: #92400E !important;
+    background: #FEF3C7;
+    border-color: #FDE68A;
+  }
+
+  /* Empty state card */
+  .lp-canvas-empty {
+    position: relative;
+    background: #FFFFFF;
+    color: #17201A;
+    border-radius: 18px;
+    padding: 32px 26px;
+    text-align: center;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+  }
+  .lp-canvas-empty-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: #E3F3E9;
+    color: #133a28;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    margin-bottom: 12px;
+  }
+  .lp-canvas-empty h2 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 900;
+    color: #17201A;
+  }
+  .lp-canvas-empty p {
+    margin: 0 auto 18px;
+    max-width: 480px;
+    font-size: 13.5px;
+    color: #55635A;
+    line-height: 1.75;
+  }
+
+  /* Modals */
+  .lp-canvas-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 950;
+    background: rgba(11, 24, 18, 0.72);
+    backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .lp-canvas-modal.is-open {
+    display: flex;
+  }
+  .lp-canvas-dialog {
+    width: min(560px, 100%);
+    max-height: 90vh;
+    overflow-y: auto;
+    background: #FFFFFF;
+    color: #17201A;
+    border-radius: 18px;
+    border: 1px solid #DDE4DF;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+    padding: 20px 22px;
+  }
+  .lp-dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 12px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid #E5EAE6;
+  }
+  .lp-dialog-head h3 {
+    margin: 0;
+    font-size: 16.5px;
+    font-weight: 900;
+    color: #133a28;
+  }
+  .lp-dialog-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid #DCE3DE;
+    background: #F6F7F2;
+    color: #17201A;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  .lp-form-field {
+    margin-bottom: 12px;
+  }
+  .lp-form-field label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 800;
+    color: #17201A;
+    margin-bottom: 5px;
+  }
+  .lp-form-field input,
+  .lp-form-field select,
+  .lp-form-field textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 11px;
+    min-height: 42px;
+    height: auto;
+    line-height: 1.5;
+    border-radius: 9px;
+    border: 1px solid #C8D3CC;
+    background: #FFFFFF;
+    color: #17201A;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .lp-form-field .lp-jalali-wrap {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .lp-form-field .lp-jalali-wrap > input.lp-jalali-date {
+    flex: 1;
+    width: auto;
+    max-width: none;
+    text-align: center;
+  }
+  .lp-form-field .lp-jalali-trigger {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+  }
+  .lp-form-field .helptext {
+    display: block;
+    margin-top: 4px;
+    font-size: 11.5px;
+    color: #55635A;
+  }
+  .lp-form-errors {
+    background: #FEE2E2;
+    color: #991B1B;
+    border: 1px solid #FCA5A5;
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 12.5px;
+  }
+  .lp-renew-presets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .lp-renew-preset-btn {
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1.5px solid #DCE3DE;
+    background: #F6F7F2;
+    color: #17201A;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    text-align: center;
+  }
+  .lp-renew-preset-btn:hover,
+  .lp-renew-preset-btn.is-selected {
+    border-color: #133a28;
+    background: #E3F3E9;
+    color: #133a28;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <div class="lp-canvas-wrap">
+    <div class="lp-canvas-topbar">
+      <div class="lp-canvas-topbar-start">
+        <a href="{% url 'admin:catalog_book_change' book.pk %}" class="lp-canvas-back">
+          → بازگشت به کتاب
+        </a>
+        <div class="lp-canvas-heading">
+          <h1>
+            <span>🎓</span>
+            <span>کلاس‌ها و لینک‌های این کتاب</span>
+          </h1>
+          <div class="lp-canvas-sub">
+            <span>{{ book.title }}</span>
+            <span class="lp-canvas-stat-chip">{{ summary.total_fa }} کلاس</span>
+            <span class="lp-canvas-stat-chip">{{ summary.active_fa }} فعال</span>
+            <span class="lp-canvas-stat-chip">{{ summary.students_fa }} دانشجوی فعال</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="lp-canvas-topbar-end">
+        {% if can_create_classroom %}
+          <button type="button" class="lp-canvas-cta" id="lp-open-create-class">
+            <span>+</span>
+            <span>ساخت کلاس جدید</span>
+          </button>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="lp-canvas-body">
+      <div class="lp-canvas-notice">
+        <div>
+          <b>لینک دعوت دانشجو از پنل اساتید جداست:</b>
+          آدرس‌های <code>/join/CODE/</code> فقط برای پیوستن و مطالعهٔ دانشجویان در اپ و وب‌اپ لیموخوان است. کپی یا تمدید لینک، کد قبلی دانشجویان را تغییر نمی‌دهد.
+        </div>
+        <a href="{% url 'admin:website_classroom_changelist' %}?book__id__exact={{ book.pk }}" style="color:#F5C518; font-weight:800; text-decoration:none; white-space:nowrap;">
+          جدول کامل کلاس‌ها ↗
+        </a>
+      </div>
+
+      <div class="lp-canvas-stage" id="lp-canvas-stage">
+        <svg class="lp-canvas-wires" id="lp-canvas-wires" aria-hidden="true"></svg>
+
+        <!-- گره کتاب (ستون راست در دسکتاپ RTL / کارت بالا در موبایل) -->
+        <div class="lp-canvas-book-col">
+          <div class="lp-canvas-book-node" id="lp-canvas-book-node">
+            <span class="lp-port-out" id="lp-book-port-out" aria-hidden="true"></span>
+            <div class="lp-book-node-top">
+              <div class="lp-book-cover-box">
+                {% if book_cover.cover_url %}
+                  <img src="{{ book_cover.cover_url }}" alt="{{ book_cover.title }}">
+                {% else %}
+                  <span class="lp-cover"
+                        data-title="{{ book_cover.title }}"
+                        data-en="{{ book_cover.title_en }}"
+                        data-author="{{ book_cover.author }}"
+                        data-edition="{{ book_cover.edition }}"
+                        data-motif="{{ book_cover.cover_motif }}"
+                        data-major="{{ book_cover.major_name }}"
+                        data-strip="{{ book_cover.major_color }}"
+                        data-drawing="{{ book_cover.cover_drawing }}"
+                        data-width="68"></span>
+                {% endif %}
+              </div>
+              <div class="lp-book-node-meta">
+                <div class="lp-book-node-kicker">کتاب مرجع کلاس‌ها</div>
+                <h2 class="lp-book-node-title">{{ book_cover.title }}</h2>
+                {% if book_cover.author %}
+                  <div class="lp-book-node-author">{{ book_cover.author }}</div>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="lp-book-node-pills">
+              <span class="lp-node-pill">📑 {{ book_cover.chapters_fa }} فصل · {{ book_cover.sections_fa }} بخش</span>
+              {% if book.is_published %}
+                <span class="lp-node-pill">✓ منتشرشده در ویترین</span>
+              {% else %}
+                <span class="lp-node-pill lp-node-pill--draft">پیش‌نویس (اختصاصی کلاس)</span>
+              {% endif %}
+            </div>
+
+            <div class="lp-book-node-foot">
+              <a href="{% url 'admin:catalog_book_change' book.pk %}">ویرایش سرفصل‌ها و اطلاعات کتاب</a>
+              <a href="{% url 'admin:catalog_book_study_analytics' book.pk %}">📊 آمار مطالعه</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="lp-mobile-stem" aria-hidden="true"><span></span></div>
+
+        <!-- ستون کلاس‌ها (ستون چپ در دسکتاپ RTL / فهرست خوانا در موبایل) -->
+        <div class="lp-canvas-classes-col" id="lp-canvas-classes-col">
+          {% if cards %}
+            {% for c in cards %}
+              <article class="lp-canvas-class-card" data-state="{{ c.state }}" data-card-id="{{ c.pk }}">
+                <span class="lp-port-in" aria-hidden="true"></span>
+                <div class="lp-class-head">
+                  <div class="lp-class-title-wrap">
+                    <div class="lp-class-icon-badge" aria-hidden="true">
+                      {% if c.state == "expired" %}🕒{% elif c.state == "inactive" %}⏸️{% else %}🎓{% endif %}
+                    </div>
+                    <div>
+                      <h3 class="lp-class-title">
+                        {{ c.title }}
+                        {% if is_panel_su %}
+                          <span style="font-size:11px; font-weight:700; color:#55635A; margin-inline-start:6px;">(مدرس: {{ c.teacher_label }})</span>
+                        {% endif %}
+                      </h3>
+                      {% if c.description %}
+                        <p class="lp-class-desc">{{ c.description|truncatechars:120 }}</p>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <span class="lp-class-state-pill lp-class-state-pill--{{ c.state }}">
+                    {% if c.state == "active" %}● {% endif %}{{ c.state_label }}
+                  </span>
+                </div>
+
+                <div class="lp-class-metrics">
+                  <div class="lp-metric-block">
+                    <div class="lp-metric-label">
+                      <span>دانشجویان فعال / سقف</span>
+                      <b>{{ c.active_members_fa }} / {{ c.capacity_fa }}</b>
+                    </div>
+                    <div class="lp-capacity-bar" aria-hidden="true"><span style="width: {{ c.pct }}%;"></span></div>
+                    {% if c.waiting_members %}
+                      <span style="font-size:11px; color:#55635A;">{{ c.waiting_members_fa }} شماره در انتظار اولین ورود با OTP</span>
+                    {% endif %}
+                  </div>
+                  <div class="lp-metric-block">
+                    <div class="lp-metric-label">
+                      <span>سیاست دسترسی و انقضا</span>
+                      <b>{{ c.expiry_text }}</b>
+                    </div>
+                    {% if c.is_expiring_soon %}
+                      <span style="font-size:11.5px; color:#B45309; font-weight:800;">⚠️ {{ c.days_left_fa }} روز تا پایان مهلت کلاس</span>
+                    {% elif c.state == "expired" %}
+                      <span style="font-size:11.5px; color:#8A6A00; font-weight:800;">دانشجوی جدید نمی‌تواند عضو شود؛ برای بازگشایی لینک را تمدید کنید.</span>
+                    {% else %}
+                      <span style="font-size:11px; color:#55635A;">لینک دعوت ثابت: <b dir="ltr">{{ c.join_path }}</b></span>
+                    {% endif %}
+                  </div>
+                </div>
+
+                <div class="lp-class-invite-row">
+                  <div class="lp-class-primary-actions">
+                    <button type="button"
+                            class="lp-btn-copy-link"
+                            data-copy-url="{{ c.join_url }}">
+                      <span>📋</span>
+                      <span>کپی لینک دعوت دانشجو</span>
+                    </button>
+                    <span class="lp-copy-feedback" role="status" aria-live="polite">✓ کپی شد</span>
+
+                    {% if c.state == "expired" or c.state == "inactive" %}
+                      <button type="button"
+                              class="lp-btn-renew"
+                              data-renew-id="{{ c.pk }}"
+                              data-renew-title="{{ c.title }}"
+                              data-renew-code="{{ c.code }}">
+                        <span>↻</span>
+                        <span>تمدید لینک</span>
+                      </button>
+                    {% endif %}
+                  </div>
+
+                  <span class="lp-invite-url-chip" title="{{ c.join_url }}">{{ c.join_url }}</span>
+                </div>
+
+                <div class="lp-class-secondary-actions">
+                  <a href="{{ c.add_members_url }}" class="lp-sec-link">+ افزودن شماره دانشجو</a>
+                  <a href="{{ c.members_url }}" class="lp-sec-link">👥 لیست اعضا ({{ c.active_members_fa }})</a>
+                  <a href="{{ c.change_url }}" class="lp-sec-link">⚙️ ویرایش کلاس</a>
+                  <a href="{{ c.join_path }}" target="_blank" rel="noopener" class="lp-sec-link">👁️ پیش‌نمایش صفحهٔ دانشجو</a>
+                  {% if c.state != "expired" %}
+                    <form method="post" style="display:inline; margin-inline-start:auto;">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="toggle_active">
+                      <input type="hidden" name="classroom_id" value="{{ c.pk }}">
+                      <button type="submit" class="lp-sec-link {% if c.is_active %}lp-sec-link--warn{% endif %}">
+                        {% if c.is_active %}⏸️ غیرفعال کردن لینک{% else %}▶️ فعال‌سازی لینک{% endif %}
+                      </button>
+                    </form>
+                  {% endif %}
+                </div>
+              </article>
+            {% endfor %}
+          {% else %}
+            <div class="lp-canvas-empty" id="lp-canvas-empty-node">
+              <span class="lp-port-in" aria-hidden="true"></span>
+              <div class="lp-canvas-empty-icon">🎓</div>
+              <h2>هنوز کلاسی برای این کتاب ساخته نشده است</h2>
+              <p>
+                با ساخت یک کلاس، یک لینک دعوت اختصاصی (<code>/join/CODE/</code>) برای دانشجویان همین کتاب ساخته می‌شود تا با شماره موبایل خود وارد کتاب شوند.
+              </p>
+              {% if can_create_classroom %}
+                <button type="button" class="lp-canvas-cta" id="lp-empty-create-btn">
+                  <span>+</span>
+                  <span>ساخت اولین کلاس این کتاب</span>
+                </button>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: ساخت کلاس جدید روی همین کتاب -->
+<div class="lp-canvas-modal {% if open_create_modal %}is-open{% endif %}" id="lp-create-class-modal" role="dialog" aria-modal="true" aria-labelledby="lp-create-modal-title">
+  <div class="lp-canvas-dialog">
+    <div class="lp-dialog-head">
+      <h3 id="lp-create-modal-title">+ ساخت کلاس جدید برای «{{ book.title }}»</h3>
+      <button type="button" class="lp-dialog-close" data-close-modal="lp-create-class-modal" aria-label="بستن">✕</button>
+    </div>
+    <form method="post" id="lp-create-class-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create">
+      {% if create_form.non_field_errors %}
+        <div class="lp-form-errors">{{ create_form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="lp-form-field">
+        <label for="{{ create_form.title.id_for_label }}">{{ create_form.title.label }}</label>
+        {{ create_form.title }}
+        {% if create_form.title.errors %}<div class="lp-form-errors">{{ create_form.title.errors }}</div>{% endif %}
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px;">
+        <div class="lp-form-field">
+          <label for="{{ create_form.capacity.id_for_label }}">{{ create_form.capacity.label }}</label>
+          {{ create_form.capacity }}
+          {% if create_form.capacity.errors %}<div class="lp-form-errors">{{ create_form.capacity.errors }}</div>{% endif %}
+        </div>
+        <div class="lp-form-field">
+          <label for="{{ create_form.expiry_policy.id_for_label }}">{{ create_form.expiry_policy.label }}</label>
+          {{ create_form.expiry_policy }}
+          {% if create_form.expiry_policy.errors %}<div class="lp-form-errors">{{ create_form.expiry_policy.errors }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="lp-form-field" id="lp-field-ends-on">
+        <label for="{{ create_form.ends_on.id_for_label }}">{{ create_form.ends_on.label }}</label>
+        <input type="text"
+               name="ends_on"
+               id="{{ create_form.ends_on.id_for_label }}"
+               class="lp-jalali-date"
+               value="{{ create_form.ends_on.value|default:'' }}"
+               placeholder="مثلاً {{ today_jalali }}"
+               dir="ltr"
+               autocomplete="off"
+               inputmode="numeric">
+        {% if create_form.ends_on.errors %}<div class="lp-form-errors">{{ create_form.ends_on.errors }}</div>{% endif %}
+      </div>
+
+      <div class="lp-form-field" id="lp-field-duration-days" style="display:none;">
+        <label for="{{ create_form.duration_days.id_for_label }}">{{ create_form.duration_days.label }}</label>
+        {{ create_form.duration_days }}
+        {% if create_form.duration_days.errors %}<div class="lp-form-errors">{{ create_form.duration_days.errors }}</div>{% endif %}
+      </div>
+
+      <div class="lp-form-field">
+        <label for="{{ create_form.description.id_for_label }}">{{ create_form.description.label }}</label>
+        {{ create_form.description }}
+      </div>
+
+      <div class="lp-form-field">
+        <label for="{{ create_form.member_phones.id_for_label }}">{{ create_form.member_phones.label }}</label>
+        {{ create_form.member_phones }}
+        <span class="helptext">{{ create_form.member_phones.help_text }}</span>
+        {% if create_form.member_phones.errors %}<div class="lp-form-errors">{{ create_form.member_phones.errors }}</div>{% endif %}
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" class="lp-sec-link" data-close-modal="lp-create-class-modal">انصراف</button>
+        <button type="submit" class="lp-canvas-cta">ساخت کلاس و صدور لینک</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: تمدید لینک کلاس منقضی/غیرفعال بدون تغییر کد -->
+<div class="lp-canvas-modal" id="lp-renew-class-modal" role="dialog" aria-modal="true" aria-labelledby="lp-renew-modal-title">
+  <div class="lp-canvas-dialog">
+    <div class="lp-dialog-head">
+      <h3 id="lp-renew-modal-title">↻ تمدید لینک دعوت کلاس</h3>
+      <button type="button" class="lp-dialog-close" data-close-modal="lp-renew-class-modal" aria-label="بستن">✕</button>
+    </div>
+    <p style="margin:0 0 12px; font-size:13px; color:#55635A; line-height:1.7;">
+      با تمدید کلاس <b id="lp-renew-title-label" style="color:#17201A;"></b>، همان کد دعوت قبلی (<code id="lp-renew-code-label" dir="ltr" style="background:#F6F7F2; padding:2px 6px; border-radius:6px; color:#133a28;"></code>) دوباره فعال می‌شود و لینک‌های ارسال‌شدهٔ قبلی از کار نمی‌افتند.
+    </p>
+    <form method="post" id="lp-renew-class-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="renew">
+      <input type="hidden" name="classroom_id" id="lp-renew-class-id" value="">
+      <input type="hidden" name="renew_mode" id="lp-renew-mode-input" value="plus_30">
+
+      <div class="lp-renew-presets">
+        <button type="button" class="lp-renew-preset-btn is-selected" data-renew-preset="plus_30">+ ۳۰ روز تمدید</button>
+        <button type="button" class="lp-renew-preset-btn" data-renew-preset="plus_90">+ ۹۰ روز (یک ترم)</button>
+        <button type="button" class="lp-renew-preset-btn" data-renew-preset="plus_180">+ ۱۸۰ روز (یک سال تحصیلی)</button>
+        <button type="button" class="lp-renew-preset-btn" data-renew-preset="unlimited">تبدیل به همیشگی</button>
+      </div>
+
+      <div class="lp-form-field">
+        <label for="lp-renew-custom-date">یا انتخاب تاریخ پایان شمسی دلخواه:</label>
+        <input type="text"
+               id="lp-renew-custom-date"
+               name="custom_ends_on"
+               class="lp-jalali-date"
+               placeholder="مثلاً {{ today_jalali }}"
+               dir="ltr"
+               autocomplete="off"
+               inputmode="numeric">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" class="lp-sec-link" data-close-modal="lp-renew-class-modal">انصراف</button>
+        <button type="submit" class="lp-canvas-cta">تمدید و فعال‌سازی لینک</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    // 1. Render real book cover via LimoPreview if no uploaded image
+    if (window.LimoPreview) {
+      document.querySelectorAll('.lp-cover').forEach(function (el) {
+        var drawing = null;
+        try { if (el.dataset.drawing) drawing = JSON.parse(el.dataset.drawing); } catch (e) {}
+        el.innerHTML = window.LimoPreview.coverHtml({
+          title: el.dataset.title || '',
+          title_en: el.dataset.en || '',
+          author: el.dataset.author || '',
+          edition: el.dataset.edition || '',
+          motif: el.dataset.motif || '',
+          major: el.dataset.major || '',
+          strip: el.dataset.strip || '',
+          drawing: drawing
+        }, 'dark', Number(el.dataset.width) || 68);
+        el.style.display = 'inline-block';
+      });
+    }
+
+    // 2. Copy existing /join/CODE/ URL with inline feedback (never rotates code)
+    document.querySelectorAll('[data-copy-url]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var url = btn.getAttribute('data-copy-url') || '';
+        var feedback = btn.parentElement ? btn.parentElement.querySelector('.lp-copy-feedback') : null;
+        var markCopied = function () {
+          if (feedback) {
+            feedback.classList.add('is-visible');
+            setTimeout(function () { feedback.classList.remove('is-visible'); }, 2400);
+          }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(markCopied).catch(function () {});
+        } else {
+          var tmp = document.createElement('input');
+          tmp.value = url;
+          document.body.appendChild(tmp);
+          tmp.select();
+          try { document.execCommand('copy'); markCopied(); } catch (e) {}
+          document.body.removeChild(tmp);
+        }
+      });
+    });
+
+    // 3. Modals open/close
+    function openModal(id) {
+      var m = document.getElementById(id);
+      if (m) m.classList.add('is-open');
+    }
+    function closeModal(id) {
+      var m = document.getElementById(id);
+      if (m) m.classList.remove('is-open');
+    }
+    ['lp-open-create-class', 'lp-empty-create-btn'].forEach(function (btnId) {
+      var b = document.getElementById(btnId);
+      if (b) b.addEventListener('click', function () { openModal('lp-create-class-modal'); });
+    });
+    document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+      btn.addEventListener('click', function () { closeModal(btn.getAttribute('data-close-modal')); });
+    });
+    document.querySelectorAll('.lp-canvas-modal').forEach(function (m) {
+      m.addEventListener('click', function (e) { if (e.target === m) m.classList.remove('is-open'); });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.lp-canvas-modal.is-open').forEach(function (m) { m.classList.remove('is-open'); });
+      }
+    });
+
+    // 4. Create form dynamic expiry policy fields
+    var policySelect = document.getElementById('{{ create_form.expiry_policy.id_for_label }}');
+    var endsOnWrap = document.getElementById('lp-field-ends-on');
+    var durationWrap = document.getElementById('lp-field-duration-days');
+    function syncPolicyFields() {
+      if (!policySelect) return;
+      var v = policySelect.value;
+      if (endsOnWrap) endsOnWrap.style.display = (v === 'fixed_date') ? '' : 'none';
+      if (durationWrap) durationWrap.style.display = (v === 'from_join') ? '' : 'none';
+    }
+    if (policySelect) {
+      policySelect.addEventListener('change', syncPolicyFields);
+      syncPolicyFields();
+    }
+
+    // 5. Renew modal binding
+    var renewModeInput = document.getElementById('lp-renew-mode-input');
+    var renewCustomDate = document.getElementById('lp-renew-custom-date');
+    document.querySelectorAll('[data-renew-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.getElementById('lp-renew-class-id').value = btn.getAttribute('data-renew-id');
+        document.getElementById('lp-renew-title-label').textContent = btn.getAttribute('data-renew-title') || '';
+        document.getElementById('lp-renew-code-label').textContent = '/join/' + (btn.getAttribute('data-renew-code') || '') + '/';
+        if (renewModeInput) renewModeInput.value = 'plus_30';
+        if (renewCustomDate) renewCustomDate.value = '';
+        document.querySelectorAll('.lp-renew-preset-btn').forEach(function (p) {
+          p.classList.toggle('is-selected', p.getAttribute('data-renew-preset') === 'plus_30');
+        });
+        openModal('lp-renew-class-modal');
+      });
+    });
+    document.querySelectorAll('.lp-renew-preset-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.querySelectorAll('.lp-renew-preset-btn').forEach(function (p) { p.classList.remove('is-selected'); });
+        btn.classList.add('is-selected');
+        if (renewModeInput) renewModeInput.value = btn.getAttribute('data-renew-preset');
+        if (renewCustomDate) renewCustomDate.value = '';
+      });
+    });
+    if (renewCustomDate) {
+      renewCustomDate.addEventListener('input', function () {
+        if (renewCustomDate.value) {
+          document.querySelectorAll('.lp-renew-preset-btn').forEach(function (p) { p.classList.remove('is-selected'); });
+          if (renewModeInput) renewModeInput.value = 'custom_date';
+        }
+      });
+    }
+
+    // 6. Desktop Bezier wires connecting Book Node to Classroom Cards
+    var stage = document.getElementById('lp-canvas-stage');
+    var svg = document.getElementById('lp-canvas-wires');
+    var bookPort = document.getElementById('lp-book-port-out');
+
+    function drawWires() {
+      if (!stage || !svg || !bookPort) return;
+      if (window.innerWidth < 960) {
+        svg.innerHTML = '';
+        return;
+      }
+      var stageRect = stage.getBoundingClientRect();
+      var outRect = bookPort.getBoundingClientRect();
+      var x1 = outRect.left + outRect.width / 2 - stageRect.left;
+      var y1 = outRect.top + outRect.height / 2 - stageRect.top;
+
+      var targets = stage.querySelectorAll('.lp-canvas-class-card, #lp-canvas-empty-node');
+      var paths = [];
+      targets.forEach(function (card, idx) {
+        var portIn = card.querySelector('.lp-port-in');
+        if (!portIn) return;
+        var inRect = portIn.getBoundingClientRect();
+        var x2 = inRect.left + inRect.width / 2 - stageRect.left;
+        var y2 = inRect.top + inRect.height / 2 - stageRect.top;
+        var dx = Math.abs(x1 - x2) * 0.48;
+        var d = 'M ' + x1 + ' ' + y1 + ' C ' + (x1 - dx) + ' ' + y1 + ', ' + (x2 + dx) + ' ' + y2 + ', ' + x2 + ' ' + y2;
+
+        var state = card.getAttribute('data-state') || 'empty';
+        var stroke = '#F5C518';
+        var dash = '';
+        if (state === 'active') stroke = (idx % 2 === 0) ? '#F5C518' : '#34D399';
+        else if (state === 'full') stroke = '#F59E0B';
+        else if (state === 'expired' || state === 'inactive') { stroke = '#94A3B8'; dash = '6 5'; }
+        else { stroke = '#F5C518'; dash = '6 5'; }
+
+        paths.push('<path d="' + d + '" fill="none" stroke="' + stroke + '" stroke-width="2.5" stroke-linecap="round"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + ' opacity="0.92" />');
+      });
+      svg.setAttribute('viewBox', '0 0 ' + Math.max(1, stageRect.width) + ' ' + Math.max(1, stageRect.height));
+      svg.innerHTML = paths.join('');
+    }
+
+    drawWires();
+    window.addEventListener('resize', drawWires);
+    window.addEventListener('scroll', drawWires, { passive: true });
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(drawWires);
+    }
+    if (window.ResizeObserver && stage) {
+      new ResizeObserver(drawWires).observe(stage);
+    }
+  });
+</script>
+{% endblock %}

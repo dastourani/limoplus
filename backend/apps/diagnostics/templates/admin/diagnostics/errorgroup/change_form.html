@@ -1,0 +1,105 @@
+{% extends "admin/change_form.html" %}
+{% block extrastyle %}{{ block.super }}
+<style>
+  .dg-box { background: var(--body-bg); border: 1px solid var(--hairline-color); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; direction: rtl; }
+  .dg-box h2 { margin: 0 0 10px; font-size: 15px; }
+  .dg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .dg-kv { background: var(--darkened-bg); border-radius: 10px; padding: 10px 12px; }
+  .dg-kv b { display: block; font-size: 12px; color: var(--body-quiet-color); margin-bottom: 4px; }
+  .dg-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .dg-ai { width: 100%; min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace, Vazirmatn; font-size: 12.5px; line-height: 1.6; padding: 10px; border-radius: 8px; border: 1px solid var(--hairline-color); background: var(--darkened-bg); color: var(--body-fg); }
+  .dg-samples { width: 100%; border-collapse: collapse; }
+  .dg-samples th, .dg-samples td { padding: 8px 10px; border-bottom: 1px solid var(--hairline-color); text-align: right; vertical-align: top; font-size: 12.5px; }
+  .dg-pre { white-space: pre-wrap; word-break: break-word; font-size: 11.5px; background: var(--darkened-bg); padding: 8px; border-radius: 6px; margin: 4px 0 0; direction: ltr; text-align: left; }
+</style>
+{% endblock %}
+{% block content %}
+{% if original %}
+<div class="dg-box">
+  <div class="dg-actions">
+    <strong style="font-size:15px;">تغییر سریع وضعیت:</strong>
+    {% for val, label in status_choices %}
+    <form method="post" action="{% url 'admin:diagnostics_errorgroup_set_status' original.pk %}" style="display:inline">
+      {% csrf_token %}
+      <input type="hidden" name="status" value="{{ val }}">
+      <button type="submit" class="button{% if original.status == val %} default{% endif %}">{{ label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+  <div class="dg-grid">
+    <div class="dg-kv"><b>انتظار محصول</b><div>{{ original.expected|default:"—" }}</div></div>
+    <div class="dg-kv"><b>مشاهدهٔ واقعی</b><div>{{ original.observed|default:"—" }}</div></div>
+  </div>
+</div>
+
+<div class="dg-box">
+  <div class="dg-actions" style="justify-content:space-between;">
+    <h2 style="margin:0;">پروندهٔ آماده برای هوش مصنوعی</h2>
+    <button type="button" class="button default" id="dg-copy-ai">کپی گزارش برای هوش مصنوعی</button>
+  </div>
+  <textarea id="dg-ai-text" class="dg-ai" readonly>{{ ai_report }}</textarea>
+  <span id="dg-copy-msg" class="lp-quiet" style="display:inline-block;margin-top:6px;"></span>
+</div>
+
+<div class="dg-box">
+  <h2>آخرین نمونه‌های رخداد (حداکثر ۲۵ نمونه)</h2>
+  <table class="dg-samples">
+    <thead>
+      <tr>
+        <th>زمان</th>
+        <th>نسخه / وضعیت</th>
+        <th>شناسه‌ها</th>
+        <th>جزئیات و شواهد مجاز</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in samples %}
+      <tr>
+        <td>{{ s.at }}</td>
+        <td>
+          <div>{{ s.platform|default:"—" }}{% if s.channel %}:{{ s.channel }}{% endif %}{% if s.app_build %} ({{ s.app_build }}){% endif %}</div>
+          {% if s.version_mismatch %}<span class="lp-badge lp-b-yellow">اختلاف نسخهٔ وب (سرور: {{ s.server_version }})</span>{% endif %}
+          {% if s.is_offline %}<span class="lp-badge lp-b-blue">آفلاین</span>{% endif %}
+        </td>
+        <td style="direction:ltr;text-align:left;font-size:11.5px;">
+          <div>event: {{ s.event_id }}</div>
+          {% if s.request_id %}<div>req: {{ s.request_id }}</div>{% endif %}
+          {% if s.op_id %}<div>op: {{ s.op_id }}</div>{% endif %}
+          {% if s.user_ref %}<div>user: {{ s.user_ref }}</div>{% endif %}
+          {% if s.install_short %}<div>install: {{ s.install_short }}</div>{% endif %}
+        </td>
+        <td>
+          {% if s.route %}<div style="direction:ltr;text-align:right;"><code>{{ s.route }}</code></div>{% endif %}
+          {% if s.observed %}<div>{{ s.observed }}</div>{% endif %}
+          {% if s.evidence_json %}<pre class="dg-pre">{{ s.evidence_json }}</pre>{% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4">نمونه‌ای ثبت نشده است.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  (function () {
+    var btn = document.getElementById('dg-copy-ai');
+    var box = document.getElementById('dg-ai-text');
+    var msg = document.getElementById('dg-copy-msg');
+    if (!btn || !box) return;
+    btn.addEventListener('click', function () {
+      box.select();
+      var done = function () { msg.textContent = 'گزارش کپی شد.'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(box.value).then(done, function () {
+          try { document.execCommand('copy'); done(); } catch (e) {}
+        });
+      } else {
+        try { document.execCommand('copy'); done(); } catch (e) {}
+      }
+    });
+  })();
+</script>
+{% endif %}
+{{ block.super }}
+{% endblock %}

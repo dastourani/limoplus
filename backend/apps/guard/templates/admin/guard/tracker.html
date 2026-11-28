@@ -1,0 +1,97 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}{{ block.super }}
+<style>
+.tr-switch{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--darkened-bg);border-radius:12px;padding:12px 14px;margin-bottom:18px}
+.tr-switch b{font-size:15px}.tr-switch small{color:var(--body-quiet-color)}
+.tr-on{color:#23864B}.tr-off{color:var(--body-quiet-color)}
+.tr-box textarea{width:100%;min-height:140px;box-sizing:border-box;font:15px/1.9 Vazirmatn,Tahoma,sans-serif}
+table.tr{width:100%;margin:10px 0 26px}
+table.tr td{vertical-align:top}
+table.tr td.quote{white-space:pre-wrap;max-width:520px}
+.tr-note{color:var(--body-quiet-color);font-size:12px}
+.tr-guide{background:var(--darkened-bg);border:1px solid var(--hairline-color);border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:13px;line-height:1.7}
+</style>
+{% endblock %}
+
+{% block content %}
+{% if is_admin %}
+<form method="post" class="tr-switch">{% csrf_token %}
+  <b>هشدارهای بله:</b>
+  {% if alerts_on %}<span class="tr-on">روشن</span>
+    <button type="submit" name="alerts" value="off" class="button">خاموش کن</button>
+  {% else %}<span class="tr-off">خاموش</span>
+    <button type="submit" name="alerts" value="on" class="button">روشن کن</button>
+  {% endif %}
+  <small>فوری (تمام شدن سهم کپی روزانه، امتیاز خطر ۶۰ به بالا، تعویض زیاد دستگاه) و یک خلاصه‌ی شبانه.
+  {% if not bale_ready %}<br>توکن و شناسه‌ی گفت‌وگوی بله روی سرور تنظیم نشده؛ تا آن موقع پیامی فرستاده نمی‌شود.{% endif %}</small>
+</form>
+{% else %}
+<div class="tr-guide">
+  🛡️ <strong>ردیاب هوشمند حق تألیف لیموخوان:</strong>
+  اگر بخشی از جزوه، درسنامه یا تست‌های کتاب‌های خود را در شبکه‌های اجتماعی، وبلاگ‌ها یا گروه‌های درسی مشاهده کردید، متن را در کادر زیر قرار دهید. سیستم از طریق اثرانگشت نامرئی، منشأ کپی و زمان انتشار را صرفاً برای آثار متعلق به شما جستجو می‌کند و شماره تماس کاربران به‌صورت ماسک‌شده نمایش داده می‌شود.
+</div>
+{% endif %}
+
+<h2>متن را اینجا بچسبانید</h2>
+<form method="post" class="tr-box">{% csrf_token %}
+  <textarea name="text" placeholder="متنی که در کانال یا سایت دیگری دیده‌اید…">{{ pasted }}</textarea>
+  <p><button type="submit" class="button default">ردیابی</button>
+  <span class="tr-note">هر کپی از درس‌ها یک نشانه‌ی نامرئی دارد. اگر نشانه پاک شده باشد، کپی‌های ثبت‌شده‌ای که همین متن را دارند نشان داده می‌شوند.</span></p>
+</form>
+
+{% if found %}
+  {% if found.marked %}
+    <h2>پیدا شد: نشانه‌ی نامرئی</h2>
+    <table class="tr"><tr><th>کاربر</th><th>کتاب</th><th>بخش</th><th>زمان</th><th>متن ثبت‌شده</th><th>وضعیت</th></tr>
+    {% for r in found.marked %}<tr>
+      <td>{% if r.is_teacher_view %}<strong>{{ r.display_user }}</strong>{% else %}<a href="{% url 'admin:accounts_user_change' r.event.user_id %}">{{ r.event.user }}</a>{% endif %}</td>
+      <td>{{ r.book_title }}</td><td>{{ r.event.node.title }}</td><td>{{ r.when }}</td><td class="quote">{{ r.text }}</td><td>{{ r.state }}</td></tr>{% endfor %}
+    </table>
+  {% elif found.similar %}
+    <h2>نشانه‌ای در متن نبود؛ کپی‌های هم‌متن</h2>
+    <table class="tr"><tr><th>کاربر</th><th>کتاب</th><th>بخش</th><th>زمان</th><th>متن ثبت‌شده</th></tr>
+    {% for r in found.similar %}<tr>
+      <td>{% if r.is_teacher_view %}<strong>{{ r.display_user }}</strong>{% else %}<a href="{% url 'admin:accounts_user_change' r.event.user_id %}">{{ r.event.user }}</a>{% endif %}</td>
+      <td>{{ r.book_title }}</td><td>{{ r.event.node.title }}</td><td>{{ r.when }}</td><td class="quote">{{ r.text }}</td></tr>{% endfor %}
+    </table>
+  {% else %}
+    <p><b>چیزی پیدا نشد.</b> نه نشانه‌ای در متن بود و نه کپی ثبت‌شده‌ای با این متن (دست‌کم ۲۰ حرف لازم است).</p>
+  {% endif %}
+{% endif %}
+
+<h2>تاریخچه ردیابی‌های ثبت‌شده</h2>
+{% if recent_hits %}
+<table class="tr">
+  <tr><th>کاربر</th><th>کتاب</th><th>بخش</th><th>ردیاب</th><th>یادداشت پیگیری</th><th>زمان ردیابی</th><th>جزئیات</th></tr>
+  {% for h in recent_hits %}
+  <tr>
+    <td>{% if h.is_teacher_view %}<strong>{{ h.display_user }}</strong>{% else %}{% if h.user_id %}<a href="{% url 'admin:accounts_user_change' h.user_id %}">{{ h.display_user }}</a>{% else %}{{ h.display_user }}{% endif %}{% endif %}</td>
+    <td>{{ h.book_title }}</td>
+    <td>{{ h.section_title }}</td>
+    <td>{{ h.found_by_label }}</td>
+    <td>{{ h.note }}</td>
+    <td>{{ h.when }}</td>
+    <td><a href="{{ h.hit_url }}">مشاهده</a></td>
+  </tr>
+  {% endfor %}
+</table>
+<p><a href="{% url 'admin:guard_tracehit_changelist' %}">همه‌ی موارد تاریخچه ردیابی ›</a></p>
+{% else %}
+<p class="tr-note">هنوز موردی در تاریخچه ردیابی برای کتاب‌های شما ثبت نشده است.</p>
+{% endif %}
+
+{% if is_admin %}
+<h2>امتیاز خطر حساب‌ها</h2>
+<p class="tr-note">از ۱۰۰: کپی‌های ۷ روز (تا ۳۰)، روزهایی که هر {{ limit }} کپی مصرف شد (۱۰ برای هر روز در ۳۰ روز، تا ۳۰)، کپی از بیش از ۱۰ بخش در ۷ روز (۱۰)،
+نشانه‌هایی که ردیاب پیدا کرده (۲۵ برای هر کدام، تا ۵۰)، ورود با دستگاه تازه بیش از ۲ بار در ۷ روز (۵ برای هر بار، تا ۲۰).</p>
+{% if risky %}
+<table class="tr"><tr><th>کاربر</th><th>امتیاز</th><th>کپی ۷ روز</th><th>روزهای سهم پر</th><th>بخش‌ها</th><th>ردیابی‌شده</th><th>ورود تازه در ۷ روز</th></tr>
+{% for r in risky %}<tr>
+  <td>{% if r.user %}<a href="{% url 'admin:accounts_user_change' r.user_id %}">{{ r.user }}</a>{% endif %}</td>
+  <td>{{ r.badge }}</td><td>{{ r.copies_7d }}</td><td>{{ r.full_days_30d }}</td><td>{{ r.sections_7d }}</td><td>{{ r.hits }}</td><td>{{ r.new_devices_7d }}</td></tr>{% endfor %}
+</table>
+{% else %}<p>هنوز کپی یا تعویض دستگاهی ثبت نشده.</p>{% endif %}
+<p><a href="{% url 'admin:guard_copyevent_changelist' %}">همه‌ی کپی‌ها ›</a></p>
+{% endif %}
+{% endblock %}

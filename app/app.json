@@ -1,0 +1,81 @@
+{
+  "expo": {
+    "name": "لیموخوان",
+    "slug": "limookhan",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ir.limookhan.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#17201A",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "ir.limookhan.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "limookhan",
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "asyncRoutes": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": false
+          }
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Vazirmatn_400Regular.ttf",
+            "./assets/fonts/Vazirmatn_700Bold.ttf",
+            "./assets/fonts/Vazirmatn_800ExtraBold.ttf",
+            "./assets/fonts/Vazirmatn_900Black.ttf"
+          ]
+        }
+      ],
+      [
+        "expo-localization",
+        {
+          "supportsRTL": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-lemon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#17201A"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

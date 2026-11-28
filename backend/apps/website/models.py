@@ -1,0 +1,1342 @@
+"""The public website (limookhan.ir): its editable texts. Pages are drawn by apps/website/views.py from the same
+database as the app, so books, prices and sample tests appear by themselves."""
+import hashlib
+import hmac
+import json
+import secrets
+from datetime import datetime, time, timedelta
+
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils import timezone
+
+
+def default_teacher_invitation_expiry():
+    return timezone.now() + timedelta(hours=72)
+
+
+class SiteSettings(models.Model):
+    """One row: contact details, store links and the trust seal. Edited in the panel («تنظیمات سایت»)."""
+
+    DEFAULT_PREPARING_HOVER_NOTE = "در صف تولید محتوا قرار دارد."
+    DEFAULT_PREPARING_NOTE = (
+        "قرارداد تألیف این منبع ثبت شده و در صف تولید محتوا قرار دارد. به محض آماده شدن اولین فصل، "
+        "وضعیت آن به «به‌زودی» تغییر می‌کند و امکان ثبت اطلاع‌رسانی یا مطالعهٔ نمونهٔ رایگان فعال می‌شود."
+    )
+    DEFAULT_COMING_SOON_NOTE = (
+        "با ثبت «خبرم کن» در اپلیکیشن یا وب‌اپ لیموخوان، به محض انتشار فصل اول رایگان با پیامک به شما اطلاع می‌دهیم."
+    )
+
+    tagline = models.CharField("جمله‌ی اصلی", max_length=120, default="منبع درسی‌ات را برش‌به‌برش بخوان، مرور کن و مسلط شو 🍋")
+    intro = models.TextField(
+        "معرفی کوتاه",
+        default="در لیموخوان هر کتاب یک درسنامه‌ی ساختارمند، چکیده‌ی مرور سریع، بانک تست کنکور با پاسخ تشریحی و فلش‌کارت‌های "
+        "زمان‌بندی‌شده دارد؛ با برنامه‌ی مرور هوشمند که فراموشی را به صفر می‌رساند.",
+    )
+    audience = models.CharField("برای چه کسانی", max_length=120, default="ویژه‌ی داوطلبان کنکور ارشد، دکتری و امتحانات دانشگاهی")
+    features_title = models.CharField("عنوان بخش چهار ویژگی", max_length=120, default="یک منبع، چهار ابزار مکمل یادگیری")
+    features_sub = models.CharField("زیرعنوان بخش ویژگی‌ها", max_length=200, default="تمام ابزارهای مطالعه و مرور، یکپارچه و منطبق با سرفصل‌های کتاب")
+    feat1_title = models.CharField("عنوان باکس ۱", max_length=80, default="درسنامه و چکیده‌ی دوحالته")
+    feat1_body = models.TextField("متن باکس ۱", default="متن کامل درسی با کادرهای تعریف، فرمول، مثال و نکات کنکوری؛ به‌همراه چکیده‌ی یک‌صفحه‌ای برای مرور شب امتحان.")
+    feat2_title = models.CharField("عنوان باکس ۲", max_length=80, default="بانک تست و دفترچه‌ی اشتباهات")
+    feat2_body = models.TextField("متن باکس ۲", default="تست‌های طبقه‌بندی‌شده‌ی کنکور با پاسخ تشریحی گام‌به‌گام؛ تست‌های غلط یا شک‌دار خودکار وارد چرخه‌ی مرور می‌شوند.")
+    feat3_title = models.CharField("عنوان باکس ۳", max_length=80, default="فلش‌کارت و واژه‌نامه‌ی لایتنر")
+    feat3_body = models.TextField("متن باکس ۳", default="نکات کلیدی، فرمول‌ها و لغات تخصصی در ۶ جعبه‌ی مرور هوشمند (فردا، هفته‌ی بعد، ماه بعد) تا انتقال به حافظه‌ی بلندمدت.")
+    feat4_title = models.CharField("عنوان باکس ۴", max_length=80, default="آمار پیشرفت و آزمون زمان‌دار")
+    feat4_body = models.TextField("متن باکس ۴", default="لیموی پیشرفت هر فصل، سنجش آمادگی برای کنکورهای سال قبل و شبیه‌ساز آزمون با نمره‌ی منفی.")
+    band_title = models.CharField("عنوان بخش میانی (کنار لیمو)", max_length=140, default="هر روز فقط چند دقیقه، با برنامه‌ی مرور هوشمند")
+    band_sub = models.CharField("زیرعنوان بخش میانی", max_length=220, default="لیموخوان بر اساس عملکردت می‌داند امروز چه بخشی، تستی یا کارتی را باید مرور کنی")
+    show_updates = models.BooleanField("نمایش بخش تازه‌ها در صفحه‌ی اول", default=True)
+    show_sample_test = models.BooleanField("نمایش تست نمونه‌ی تعاملی در صفحه‌ی اول", default=True)
+    show_home_faq = models.BooleanField("نمایش پرسش‌های پرتکرار در صفحه‌ی اول", default=True)
+    footer_about = models.TextField("متن معرفی در فوتر سایت", default="کتاب درسی تعاملی برای دانشجوهای ایران: خلاصه، درسنامه، تست با پاسخ تشریحی و فلش‌کارت.")
+    email = models.EmailField("ایمیل پشتیبانی", blank=True)
+    phone = models.CharField("تلفن", max_length=40, blank=True)
+    address = models.CharField("نشانی", max_length=300, blank=True)
+    bazaar_url = models.URLField("لینک کافه‌بازار", blank=True)
+    myket_url = models.URLField("لینک مایکت", blank=True)
+    apk_url = models.URLField("لینک فایل APK", blank=True, help_text="خالی: آخرین «نسخه‌ی اپ» منتشرشده.")
+    telegram_url = models.URLField("لینک تلگرام", blank=True)
+    instagram_url = models.URLField("لینک اینستاگرام", blank=True)
+    enamad_html = models.TextField("کد نماد اینماد", blank=True, help_text="همان کدی که سایت اینماد می‌دهد؛ پایین همه‌ی صفحه‌ها نشان داده می‌شود.")
+    preparing_hover_note = models.CharField(
+        "متن کوتاه هاور «در حال برنامه‌ریزی»",
+        max_length=160,
+        blank=True,
+        default=DEFAULT_PREPARING_HOVER_NOTE,
+        help_text="متن کوتاه روی کارت کتاب‌های «در حال برنامه‌ریزی» هنگام هاور در صفحه‌ی اول و فهرست کتاب‌ها (برای کتاب‌هایی که توضیح اختصاصی ندارند).",
+    )
+    preparing_note = models.TextField(
+        "متن کامل صفحه‌ی کتاب «در حال برنامه‌ریزی»",
+        blank=True,
+        default=DEFAULT_PREPARING_NOTE,
+        help_text="در صفحه‌ی کتاب (سایت و اپ/وب‌اپ) نمایش داده می‌شود؛ اگر روی خود کتاب «توضیح اختصاصی وضعیت انتشار» بنویسید، متن همان کتاب جایگزین می‌شود.",
+    )
+    coming_soon_note = models.TextField(
+        "متن کامل صفحه‌ی کتاب «به‌زودی»",
+        blank=True,
+        default=DEFAULT_COMING_SOON_NOTE,
+        help_text="در صفحه‌ی کتاب (سایت و اپ/وب‌اپ) نمایش داده می‌شود؛ اگر روی خود کتاب «توضیح اختصاصی وضعیت انتشار» بنویسید، متن همان کتاب جایگزین می‌شود.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "تنظیمات سایت"
+        verbose_name_plural = "تنظیمات سایت"
+
+    def __str__(self):
+        return "تنظیمات سایت"
+
+    @classmethod
+    def get(cls) -> "SiteSettings":
+        row = cls.objects.order_by("id").first()
+        return row or cls.objects.create()
+
+
+class TeacherApplication(models.Model):
+    """A public request for review. Approval records a decision only: it never creates or grants an account or access."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "در انتظار بازبینی"
+        NEEDS_INFO = "needs_info", "نیازمند اطلاعات تکمیلی"
+        APPROVED = "approved", "تأیید درخواست (بدون دسترسی)"
+        REJECTED = "rejected", "ردشده"
+
+    class CollaborationScope(models.TextChoices):
+        PUBLIC_AND_CLASS = "public_and_class", "عرضه در ویترین لیموخوان و کلاس‌های اختصاصی"
+        CLASS_ONLY = "class_only", "استفاده در کلاس اختصاصی دانشجویان خودم (رایگان)"
+        PUBLIC_ONLY = "public_only", "عرضهٔ عمومی در ویترین لیموخوان"
+
+    name = models.CharField("نام و نام خانوادگی", max_length=120)
+    phone = models.CharField("شماره‌ی موبایل", max_length=11, db_index=True)
+    book_or_link = models.CharField("رشته و عنوان کتاب یا درس پیشنهادی", max_length=300)
+    resume_url = models.URLField("لینک صفحه معرفی یا رزومه", max_length=500, blank=True, default="")
+    collaboration_scope = models.CharField(
+        "نحوه استفاده پیشنهادی",
+        max_length=20,
+        choices=CollaborationScope.choices,
+        blank=True,
+        default="",
+    )
+    explanation = models.TextField("توضیحات تکمیلی یا سابقه تدریس", max_length=2000, blank=True, default="")
+    sample_work = models.TextField("توضیح کوتاه نمونه‌کار یا شواهد", max_length=3000, blank=True, default="")
+    status = models.CharField(
+        "وضعیت",
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+        help_text="تأیید فقط پذیرش این درخواست است؛ ساخت حساب و هر نوع دسترسی/دعوت باید جداگانه در مرحله‌ی بعد تصویب شود.",
+    )
+    review_note = models.TextField(
+        "یادداشت داخلی بازبینی",
+        max_length=2000,
+        blank=True,
+        help_text="یادداشت داخلی پنل است؛ پیام یا دعوتی برای درخواست‌دهنده ارسال نمی‌شود.",
+    )
+    submitted_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_teacher_applications",
+        verbose_name="آخرین بازبین",
+        editable=False,
+    )
+    reviewed_at = models.DateTimeField("زمان آخرین بازبینی", null=True, blank=True, editable=False)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "درخواست همکاری آموزشی"
+        verbose_name_plural = "درخواست‌های همکاری آموزشی"
+        ordering = ["-submitted_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["phone"],
+                condition=models.Q(status__in=["pending", "needs_info", "approved"]),
+                name="uniq_active_teacher_app_phone",
+            ),
+        ]
+        indexes = [models.Index(fields=["status", "-submitted_at"], name="teacher_app_status_time_idx")]
+
+    def __str__(self):
+        return f"{self.name} · {self.phone}"
+
+
+class TeacherInvitation(models.Model):
+    """A manager-issued, hashed, one-use link for an already-approved teacher application."""
+
+    class Status(models.TextChoices):
+        ISSUED = "issued", "صادرشده"
+        ACCEPTED = "accepted", "پذیرفته‌شده"
+        REVOKED = "revoked", "لغوشده"
+        EXPIRED = "expired", "منقضی‌شده"
+
+    application = models.ForeignKey(
+        TeacherApplication, on_delete=models.PROTECT, related_name="invitations", verbose_name="درخواست تأییدشده"
+    )
+    book = models.ForeignKey(
+        "catalog.ContentNode", on_delete=models.PROTECT, related_name="teacher_invitations", verbose_name="کتاب"
+    )
+    token_hash = models.CharField(max_length=64, unique=True, editable=False)
+    expires_at = models.DateTimeField("انقضای پیوند", default=default_teacher_invitation_expiry)
+    status = models.CharField("وضعیت", max_length=10, choices=Status.choices, default=Status.ISSUED, db_index=True)
+    can_edit_content = models.BooleanField("ویرایش پیش‌نویس", default=False)
+    can_request_publication = models.BooleanField("درخواست بازبینی انتشار عمومی", default=False)
+    can_request_group_access = models.BooleanField("درخواست دسترسی گروهی", default=False)
+    can_view_reports = models.BooleanField("دیدن گزارش ایرادهای همین کتاب", default=False)
+    can_view_aggregate_study = models.BooleanField("دیدن آمار تجمیعی مطالعه", default=False)
+    can_view_aggregate_sales = models.BooleanField("دیدن آمار تجمیعی فروش", default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="issued_teacher_invitations", verbose_name="دعوت‌کننده"
+    )
+    created_at = models.DateTimeField("زمان صدور", auto_now_add=True)
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="accepted_teacher_invitations", verbose_name="پذیرنده", editable=False,
+    )
+    accepted_at = models.DateTimeField("زمان پذیرش", null=True, blank=True, editable=False)
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="revoked_teacher_invitations", verbose_name="لغوکننده", editable=False,
+    )
+    revoked_at = models.DateTimeField("زمان لغو", null=True, blank=True, editable=False)
+    revocation_reason = models.CharField("دلیل لغو", max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "دعوت استاد"
+        verbose_name_plural = "دعوت‌های استاد"
+        ordering = ["-created_at", "-pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["application", "book"], condition=models.Q(status="issued"), name="uniq_inv_app_book_issued"
+            ),
+        ]
+        indexes = [models.Index(fields=["status", "expires_at"], name="teacher_inv_status_exp_idx")]
+
+    @staticmethod
+    def digest_token(token: str) -> str:
+        return hmac.new(settings.HASH_KEY.encode(), f"teacher-invite:{token}".encode(), hashlib.sha256).hexdigest()
+
+    @staticmethod
+    def new_token() -> str:
+        return secrets.token_urlsafe(32)
+
+    @property
+    def is_expired(self):
+        return self.expires_at <= timezone.now()
+
+    @property
+    def phone(self):
+        return self.application.phone
+
+    def clean(self):
+        errors = {}
+        if self.application_id and self.application.status != TeacherApplication.Status.APPROVED:
+            errors["application"] = "فقط درخواست تأییدشده را می‌توان به دعوت استاد وصل کرد."
+        if self.book_id and (
+            self.book.kind != "book" or self.book.depth != 1 or self.book.is_inbox or self.book.is_archived
+        ):
+            errors["book"] = "فقط یک کتاب فعال (نه فصل، بخش یا صندوق تست) را انتخاب کنید."
+        if self.expires_at and self.expires_at <= timezone.now() and self._state.adding:
+            errors["expires_at"] = "زمان انقضا باید در آینده باشد."
+        if not any((self.can_edit_content, self.can_request_publication, self.can_request_group_access,
+                    self.can_view_reports, self.can_view_aggregate_study, self.can_view_aggregate_sales)):
+            errors["can_edit_content"] = "دست‌کم یک قابلیت محدود برای این کتاب انتخاب کنید."
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f"دعوت {self.application.phone} برای «{self.book.title}»"
+
+
+class BookAccessRequest(models.Model):
+    """An immutable proposed phone list; only a superuser may approve it and choose its expiry policy."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "در انتظار بازبینی"
+        NEEDS_INFO = "needs_info", "نیازمند اطلاعات تکمیلی"
+        APPROVED = "approved", "تأییدشده"
+        REJECTED = "rejected", "ردشده"
+
+    class ExpiryPolicy(models.TextChoices):
+        FIXED_DATE = "fixed_date", "تاریخ پایان مشترک"
+        FROM_ACTIVATION = "from_activation", "مدت از نخستین ورود با OTP هر نفر"
+
+    book = models.ForeignKey(
+        "catalog.ContentNode", on_delete=models.PROTECT, related_name="group_access_requests", verbose_name="کتاب"
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="submitted_group_access_requests", verbose_name="درخواست‌دهنده"
+    )
+    request_note = models.TextField("توضیح برای مدیر", blank=True, max_length=1000)
+    status = models.CharField("وضعیت", max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
+    review_note = models.TextField("یادداشت داخلی/علت تصمیم", blank=True, max_length=2000)
+    expiry_policy = models.CharField("سیاست انقضا", max_length=20, choices=ExpiryPolicy.choices, blank=True)
+    ends_on = models.DateField("تاریخ پایان مشترک", null=True, blank=True)
+    duration_days = models.PositiveSmallIntegerField("مدت از فعال‌سازی (روز)", null=True, blank=True)
+    submitted_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="reviewed_group_access_requests", verbose_name="تصمیم‌گیرنده", editable=False,
+    )
+    reviewed_at = models.DateTimeField("زمان آخرین تصمیم", null=True, blank=True, editable=False)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "درخواست دسترسی گروهی"
+        verbose_name_plural = "درخواست‌های دسترسی گروهی"
+        ordering = ["-submitted_at", "-pk"]
+        indexes = [models.Index(fields=["book", "status", "-submitted_at"], name="group_req_book_state_idx")]
+
+    def clean(self):
+        errors = {}
+        if self.book_id and (
+            self.book.kind != "book" or self.book.depth != 1 or self.book.is_inbox or self.book.is_archived
+        ):
+            errors["book"] = "فقط یک کتاب فعال (نه فصل، بخش یا صندوق تست) را انتخاب کنید."
+        if self.status in (self.Status.NEEDS_INFO, self.Status.APPROVED, self.Status.REJECTED) and not (self.review_note or "").strip():
+            errors["review_note"] = "برای ثبت تصمیم مدیر، دلیل یا یادداشت را وارد کنید."
+        if self.status == self.Status.APPROVED:
+            if self.expiry_policy == self.ExpiryPolicy.FIXED_DATE:
+                if not self.ends_on or self.duration_days is not None:
+                    errors["expiry_policy"] = "برای تاریخ پایان مشترک فقط «تاریخ پایان» را وارد کنید."
+                elif self.ends_on < timezone.localdate():
+                    errors["ends_on"] = "تاریخ پایان نمی‌تواند گذشته باشد."
+            elif self.expiry_policy == self.ExpiryPolicy.FROM_ACTIVATION:
+                if self.duration_days is None or self.ends_on is not None:
+                    errors["expiry_policy"] = "برای مدت از فعال‌سازی فقط تعداد روز را وارد کنید."
+                elif not 1 <= self.duration_days <= 3650:
+                    errors["duration_days"] = "مدت باید بین ۱ تا ۳۶۵۰ روز باشد."
+            else:
+                errors["expiry_policy"] = "سیاست انقضای دسترسی را انتخاب کنید."
+        elif self.expiry_policy or self.ends_on or self.duration_days is not None:
+            errors["expiry_policy"] = "سیاست و مدت دسترسی فقط هنگام تأیید مدیر تعیین می‌شود."
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f"درخواست #{self.pk or 'جدید'} · {self.book}"
+
+
+class BookAccessMember(models.Model):
+    """One submitted phone. No account or entitlement exists until the request is approved and that phone logs in by OTP."""
+
+    class Status(models.TextChoices):
+        PENDING_REVIEW = "pending_review", "در انتظار تصمیم مدیر"
+        WAITING_OTP = "waiting_otp", "تأییدشده، در انتظار ورود با OTP"
+        ACTIVE = "active", "فعال"
+        EXPIRED = "expired", "منقضی‌شده"
+        REVOKED = "revoked", "لغوشده"
+        REJECTED = "rejected", "ردشده"
+
+    request = models.ForeignKey(
+        BookAccessRequest, on_delete=models.PROTECT, related_name="members", verbose_name="درخواست"
+    )
+    book = models.ForeignKey(
+        "catalog.ContentNode", on_delete=models.PROTECT, related_name="group_access_members", verbose_name="کتاب"
+    )
+    phone = models.CharField("شماره‌ی نرمال‌شده", max_length=11, db_index=True)
+    status = models.CharField("وضعیت شماره", max_length=16, choices=Status.choices, default=Status.PENDING_REVIEW, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="group_book_access_memberships", verbose_name="کاربر متصل", editable=False,
+    )
+    entitlement = models.OneToOneField(
+        "commerce.Entitlement", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="group_access_member", verbose_name="ردیف دسترسی", editable=False,
+    )
+    activated_at = models.DateTimeField("زمان فعال‌سازی با OTP", null=True, blank=True, editable=False)
+    created_at = models.DateTimeField("زمان ثبت شماره", auto_now_add=True)
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="revoked_group_book_members", verbose_name="لغوکننده", editable=False,
+    )
+    revoked_at = models.DateTimeField("زمان لغو", null=True, blank=True, editable=False)
+    revocation_reason = models.CharField("علت لغو", max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "شماره‌ی دسترسی گروهی"
+        verbose_name_plural = "شماره‌های دسترسی گروهی"
+        ordering = ["phone", "pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["request", "phone"], name="uniq_req_member_phone"),
+        ]
+        indexes = [models.Index(fields=["book", "phone", "status"], name="ga_member_book_phone_idx")]
+
+    def clean(self):
+        if self.request_id and self.book_id and self.request.book_id != self.book_id:
+            raise ValidationError({"book": "کتاب این شماره باید با کتاب همان درخواست یکی باشد."})
+        from apps.accounts.phone import InvalidPhone, normalize_phone
+
+        try:
+            self.phone = normalize_phone(self.phone)
+        except InvalidPhone as exc:
+            raise ValidationError({"phone": str(exc)}) from exc
+
+    @property
+    def is_active(self):
+        return bool(
+            self.status == self.Status.ACTIVE and self.entitlement_id
+            and self.entitlement.is_archived is False
+            and self.entitlement.starts_at <= timezone.now()
+            and (self.entitlement.ends_at is None or self.entitlement.ends_at > timezone.now())
+        )
+
+    def __str__(self):
+        return f"{self.book} · {self.phone}"
+
+
+class BookAccessEvent(models.Model):
+    """An append-only audit trail for a group access activation, renewal or revocation."""
+
+    class Action(models.TextChoices):
+        ACTIVATED = "activated", "فعال‌سازی با OTP"
+        RENEWED = "renewed", "تمدید توسط مدیر"
+        REVOKED = "revoked", "لغو توسط مدیر"
+
+    member = models.ForeignKey(BookAccessMember, on_delete=models.PROTECT, related_name="events", verbose_name="شماره")
+    action = models.CharField("رویداد", max_length=12, choices=Action.choices)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="group_access_events", verbose_name="ثبت‌کننده",
+    )
+    reason = models.CharField("دلیل", max_length=500, blank=True)
+    previous_ends_at = models.DateTimeField("پایان قبلی", null=True, blank=True)
+    new_ends_at = models.DateTimeField("پایان جدید", null=True, blank=True)
+    created_at = models.DateTimeField("زمان", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "رویداد دسترسی گروهی"
+        verbose_name_plural = "رویدادهای دسترسی گروهی"
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self):
+        return f"{self.get_action_display()} · {self.member}"
+
+
+class BookAccessRequestEvent(models.Model):
+    """Immutable manager decision history for a proposed private/group phone list."""
+
+    class Action(models.TextChoices):
+        SUBMITTED = "submitted", "ثبت پیشنهاد"
+        NEEDS_INFO = "needs_info", "درخواست اطلاعات تکمیلی"
+        APPROVED = "approved", "تأیید مدیر کل"
+        REJECTED = "rejected", "رد مدیر کل"
+        REOPENED = "reopened", "بازگشایی برای بازبینی"
+        NOTE_UPDATED = "note_updated", "به‌روزرسانی یادداشت"
+
+    request = models.ForeignKey(
+        BookAccessRequest, on_delete=models.PROTECT, related_name="events", verbose_name="درخواست"
+    )
+    action = models.CharField("رویداد", max_length=16, choices=Action.choices)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="group_access_request_events", verbose_name="ثبت‌کننده",
+    )
+    reason = models.CharField("دلیل/یادداشت تصمیم", max_length=500, blank=True)
+    expiry_policy = models.CharField("سیاست انقضای مصوب", max_length=20, blank=True)
+    ends_on = models.DateField("تاریخ پایان مصوب", null=True, blank=True)
+    duration_days = models.PositiveSmallIntegerField("مدت مصوب (روز)", null=True, blank=True)
+    created_at = models.DateTimeField("زمان", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "رویداد تصمیم دسترسی گروهی"
+        verbose_name_plural = "رویدادهای تصمیم دسترسی گروهی"
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self):
+        return f"{self.get_action_display()} · درخواست #{self.request_id}"
+
+
+class PublicationRequest(models.Model):
+    """A teacher's request to publish one exact content snapshot; only a superuser may approve and release it."""
+
+    DEFAULT_RATE_VALIDITY_NOTE = (
+        "برای دورهٔ انتشار فعلی کتاب؛ هر تغییر نرخ منوط به ارسال پیشنهاد تازه و پذیرش نسخهٔ جدید است."
+    )
+    DEFAULT_TECH_DELIVERABLE = (
+        "فایل منبع اصلی در اختیار مؤلف می‌ماند؛ خروجی فنی آماده‌شده برای عرضه در لیموخوان طبق توافق نگهداری می‌شود."
+    )
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "در انتظار بازبینی"
+        NEEDS_INFO = "needs_info", "نیازمند اصلاح محتوای کتاب"
+        APPROVED = "approved", "تأیید و انتشار شد"
+        REJECTED = "rejected", "ردشده"
+
+    class PrepPreference(models.TextChoices):
+        READY_FILES = "ready_files", "فایل آماده دارم (مایل به کارمزد پایین‌تر)"
+        NEEDS_PREP = "needs_prep", "نیاز به آماده‌سازی فنی توسط تیم لیموخوان دارم"
+        UNDECIDED = "undecided", "مطمئن نیستم؛ مدیر پیشنهاد بدهد"
+
+    class DistributionScope(models.TextChoices):
+        STANDARD = "standard", "فروش تکی + اشتراک + کمپین‌های مصوب (پیش‌فرض)"
+        SINGLE_SALE_ONLY = "single_sale_only", "فقط فروش تکی (استثنای خارج از اشتراک)"
+
+    class OfferPrepMode(models.TextChoices):
+        READY_FILES = "ready_files", "فایل آماده توسط مؤلف (کارمزد پایین‌تر)"
+        PLATFORM_PREP = "platform_prep", "آماده‌سازی فنی و صفحه‌آرایی توسط لیموخوان"
+        CUSTOM = "custom", "توافق ترکیبی / اختصاصی (مطابق شرح باکس)"
+
+    class TeacherResponse(models.TextChoices):
+        ACCEPTED = "accepted", "پذیرفته‌شده"
+        REVISION_REQUESTED = "revision_requested", "درخواست بازنگری"
+
+    book = models.ForeignKey(
+        "catalog.ContentNode", on_delete=models.PROTECT, related_name="publication_requests", verbose_name="کتاب"
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="submitted_publication_requests", verbose_name="درخواست‌دهنده"
+    )
+    request_note = models.TextField("توضیح برای مدیر", blank=True, max_length=1000)
+    author_prep_preference = models.CharField(
+        "ترجیح آماده‌سازی از نگاه مؤلف",
+        max_length=20,
+        choices=PrepPreference.choices,
+        blank=True,
+        default="",
+    )
+    requested_distribution_scope = models.CharField(
+        "نوع عرضه درخواستی مؤلف",
+        max_length=20,
+        choices=DistributionScope.choices,
+        default=DistributionScope.STANDARD,
+    )
+    single_sale_exception_reason = models.TextField(
+        "دلیل درخواست استثنای «فقط فروش تکی»",
+        blank=True,
+        max_length=1000,
+    )
+    content_digest = models.CharField("شناسه‌ی نسخه‌ی درخواستی", max_length=64, editable=False)
+    status = models.CharField("وضعیت", max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
+    content_feedback = models.TextField(
+        "پیام اصلاح محتوا / نتیجهٔ بررسی برای استاد",
+        blank=True,
+        max_length=2000,
+        help_text="در صورت نیاز به اصلاح محتوا یا رد درخواست، این پیام برای استاد نمایش داده می‌شود.",
+    )
+    review_note = models.TextField(
+        "یادداشت داخلی مدیر",
+        blank=True,
+        max_length=2000,
+        help_text="فقط برای استفادهٔ داخلی مدیر کل است و هرگز در صفحات استاد نمایش داده نمی‌شود.",
+    )
+    submitted_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="reviewed_publication_requests", verbose_name="تصمیم‌گیرنده", editable=False,
+    )
+    reviewed_at = models.DateTimeField("زمان آخرین تصمیم", null=True, blank=True, editable=False)
+
+    # Manager offer draft fields (never exposed to teacher until explicitly sent via «ارسال پیشنهاد به استاد»).
+    offer_platform_fee_percent = models.PositiveSmallIntegerField(
+        "سهم پلتفرم از فروش تکی این کتاب (٪)",
+        null=True,
+        blank=True,
+        help_text="بازهٔ مجاز بین ۱۰ تا ۴۰ درصد؛ مبنا مبلغ خالص پرداخت‌شده در فروش تکی است.",
+    )
+    offer_prep_mode = models.CharField(
+        "خدمات آماده‌سازی پیشنهادی",
+        max_length=20,
+        choices=OfferPrepMode.choices,
+        blank=True,
+        default="",
+    )
+    offer_distribution_scope = models.CharField(
+        "نوع عرضه پیشنهادی",
+        max_length=20,
+        choices=DistributionScope.choices,
+        blank=True,
+        default="",
+    )
+    offer_campaign_discount_cap = models.PositiveSmallIntegerField(
+        "سقف مجاز تخفیف کمپین‌های فروش تکی (٪)",
+        default=30,
+        help_text="حداکثر درصد تخفیف مجاز برای کمپین‌های فروش تکی این کتاب (۰ تا ۸۰ درصد).",
+    )
+    offer_rate_validity_note = models.CharField(
+        "مدت اعتبار نرخ",
+        max_length=250,
+        blank=True,
+        default=DEFAULT_RATE_VALIDITY_NOTE,
+    )
+    offer_technical_deliverable = models.CharField(
+        "وضعیت تحویل خروجی فنی",
+        max_length=300,
+        blank=True,
+        default=DEFAULT_TECH_DELIVERABLE,
+    )
+    offer_technical_export_disabled = models.BooleanField(
+        "مسدودسازی دریافت و ایمیل فایل‌های فنی برای استاد (مدل ب)",
+        default=False,
+        help_text="اگر فعال باشد، پس از تأیید انتشار، دانلود و ارسال ایمیلی فایل‌های فنی Markdown و LaTeX برای این کتاب غیرفعال می‌شود.",
+    )
+    offer_note = models.TextField(
+        "باکس شرایط و پیام مدیر به استاد",
+        blank=True,
+        max_length=2000,
+        help_text="این متن همراه با درصد و شرایط پس از زدن دکمه «ارسال پیشنهاد به استاد» برای مؤلف نمایش داده می‌شود.",
+    )
+
+    # Sent offer snapshot (frozen only when manager explicitly clicks «ارسال پیشنهاد به استاد»).
+    sent_offer_version = models.PositiveIntegerField("نسخهٔ پیشنهاد ارسال‌شده", default=0, editable=False)
+    sent_offer_digest = models.CharField("شناسهٔ نسخهٔ پیشنهاد ارسال‌شده", max_length=64, blank=True, editable=False)
+    sent_offer_snapshot = models.JSONField("تصویر دقیق پیشنهاد ارسال‌شده", default=dict, blank=True, editable=False)
+    offer_sent_at = models.DateTimeField("زمان ارسال پیشنهاد به استاد", null=True, blank=True, editable=False)
+    offer_sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sent_publication_offers",
+        verbose_name="ارسال‌کنندهٔ پیشنهاد",
+        editable=False,
+    )
+
+    # Teacher response & accepted offer snapshot.
+    teacher_response = models.CharField(
+        "پاسخ استاد به پیشنهاد فعلی",
+        max_length=20,
+        choices=TeacherResponse.choices,
+        blank=True,
+        default="",
+        editable=False,
+    )
+    teacher_response_note = models.TextField("یادداشت پاسخ استاد", blank=True, max_length=1000, editable=False)
+    teacher_responded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="responded_publication_offers",
+        verbose_name="پاسخ‌دهندهٔ پیشنهاد",
+        editable=False,
+    )
+    teacher_responded_at = models.DateTimeField("زمان پاسخ استاد", null=True, blank=True, editable=False)
+    accepted_offer_version = models.PositiveIntegerField("آخرین نسخهٔ پذیرفته‌شده", null=True, blank=True, editable=False)
+    accepted_offer_digest = models.CharField("شناسهٔ نسخهٔ پذیرفته‌شده", max_length=64, blank=True, editable=False)
+    accepted_offer_snapshot = models.JSONField("تصویر دقیق شرایط پذیرفته‌شده", default=dict, blank=True, editable=False)
+
+    class Meta:
+        verbose_name = "درخواست بازبینی انتشار عمومی"
+        verbose_name_plural = "درخواست‌های بازبینی انتشار عمومی"
+        ordering = ["-submitted_at", "-pk"]
+        indexes = [models.Index(fields=["book", "status", "-submitted_at"], name="pub_req_book_state_idx")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["book", "requested_by", "content_digest"],
+                condition=models.Q(status__in=["pending", "needs_info"]),
+                name="uniq_pending_pub_req_snapshot",
+            ),
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.book_id and (
+            self.book.kind != "book" or self.book.depth != 1 or self.book.is_inbox or self.book.is_archived
+        ):
+            errors["book"] = "فقط یک کتاب فعال (نه فصل، بخش یا صندوق تست) را انتخاب کنید."
+        if self.content_digest and len(self.content_digest) != 64:
+            errors["content_digest"] = "شناسه‌ی نسخه معتبر نیست."
+        if self.offer_platform_fee_percent is not None and not (10 <= self.offer_platform_fee_percent <= 40):
+            errors["offer_platform_fee_percent"] = "سهم پلتفرم از فروش تکی باید بین ۱۰ تا ۴۰ درصد باشد."
+        if self.offer_campaign_discount_cap is not None and not (0 <= self.offer_campaign_discount_cap <= 80):
+            errors["offer_campaign_discount_cap"] = "سقف مجاز تخفیف کمپین باید بین ۰ تا ۸۰ درصد باشد."
+        if errors:
+            raise ValidationError(errors)
+
+    def build_draft_offer_payload(self) -> dict:
+        prep_mode = (self.offer_prep_mode or "").strip()
+        dist_scope = (self.offer_distribution_scope or "").strip()
+        fee = self.offer_platform_fee_percent
+        cap = 0 if self.offer_campaign_discount_cap is None else int(self.offer_campaign_discount_cap)
+        validity = (self.offer_rate_validity_note or self.DEFAULT_RATE_VALIDITY_NOTE).strip()
+        deliverable = (self.offer_technical_deliverable or self.DEFAULT_TECH_DELIVERABLE).strip()
+        return {
+            "platform_fee_percent": int(fee) if fee is not None else None,
+            "authors_total_percent": (100 - int(fee)) if fee is not None else None,
+            "prep_mode": prep_mode,
+            "prep_mode_label": dict(self.OfferPrepMode.choices).get(prep_mode, ""),
+            "distribution_scope": dist_scope,
+            "distribution_scope_label": dict(self.DistributionScope.choices).get(dist_scope, ""),
+            "campaign_discount_cap": cap,
+            "rate_validity_note": validity,
+            "technical_deliverable": deliverable,
+            "technical_export_disabled": bool(self.offer_technical_export_disabled),
+            "offer_note": (self.offer_note or "").strip(),
+        }
+
+    @staticmethod
+    def compute_offer_digest(payload: dict) -> str:
+        # Exclude internal review_note and labels; hash exact contractual terms shown to teacher.
+        canonical = {
+            "platform_fee_percent": payload.get("platform_fee_percent"),
+            "prep_mode": payload.get("prep_mode", ""),
+            "distribution_scope": payload.get("distribution_scope", ""),
+            "campaign_discount_cap": payload.get("campaign_discount_cap"),
+            "rate_validity_note": payload.get("rate_validity_note", ""),
+            "technical_deliverable": payload.get("technical_deliverable", ""),
+            "technical_export_disabled": bool(payload.get("technical_export_disabled")),
+            "offer_note": payload.get("offer_note", ""),
+        }
+        raw = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        return hashlib.sha256(raw).hexdigest()
+
+    @property
+    def current_draft_offer_digest(self) -> str:
+        if self.offer_platform_fee_percent is None:
+            return ""
+        return self.compute_offer_digest(self.build_draft_offer_payload())
+
+    @property
+    def has_sent_offer(self) -> bool:
+        return bool(self.sent_offer_version and self.sent_offer_digest and self.offer_sent_at)
+
+    @property
+    def has_unsent_offer_changes(self) -> bool:
+        if not self.has_sent_offer:
+            return any([
+                self.offer_platform_fee_percent is not None,
+                bool((self.offer_prep_mode or "").strip()),
+                bool((self.offer_distribution_scope or "").strip()),
+                bool(self.offer_technical_export_disabled),
+                bool((self.offer_note or "").strip()),
+            ])
+        return self.current_draft_offer_digest != self.sent_offer_digest
+
+    @property
+    def is_current_offer_accepted(self) -> bool:
+        return bool(
+            self.has_sent_offer
+            and self.teacher_response == self.TeacherResponse.ACCEPTED
+            and self.accepted_offer_version
+            and self.accepted_offer_version == self.sent_offer_version
+            and self.accepted_offer_digest
+            and self.accepted_offer_digest == self.sent_offer_digest
+        )
+
+    @property
+    def has_superseded_acceptance(self) -> bool:
+        return bool(
+            self.has_sent_offer
+            and self.accepted_offer_version
+            and (
+                self.accepted_offer_version != self.sent_offer_version
+                or self.accepted_offer_digest != self.sent_offer_digest
+            )
+        )
+
+    @property
+    def is_offer_ready_for_approval(self) -> bool:
+        if not self.is_current_offer_accepted or self.has_unsent_offer_changes:
+            return False
+        fee = (self.sent_offer_snapshot or {}).get("platform_fee_percent")
+        return fee is not None and 10 <= int(fee) <= 40
+
+    def workflow_summary(self) -> dict:
+        """One clear answer for what stage this request is in and whose turn it is to act next."""
+        if self.status == self.Status.APPROVED:
+            return {
+                "code": "approved",
+                "badge_class": "lp-b-green",
+                "stage_label": "منتشرشده در ویترین عمومی",
+                "next_actor": "تکمیل‌شده",
+                "next_hint": "کتاب با شرایط توافق‌شده منتشر شده است.",
+            }
+        if self.status == self.Status.REJECTED:
+            return {
+                "code": "rejected",
+                "badge_class": "lp-b-red",
+                "stage_label": "ردشده",
+                "next_actor": "شما (مؤلف)",
+                "next_hint": "در صورت رفع موارد مطرح‌شده می‌توانید درخواست تازه‌ای ثبت کنید.",
+            }
+        if self.status == self.Status.NEEDS_INFO:
+            return {
+                "code": "content_fix",
+                "badge_class": "lp-b-red",
+                "stage_label": "نیازمند اصلاح محتوای کتاب توسط استاد",
+                "next_actor": "شما (مؤلف — اصلاح محتوا)",
+                "next_hint": "ابتدا محتوای کتاب را طبق یادداشت مدیر اصلاح کنید و سپس درخواست بازبینی را دوباره بفرستید.",
+            }
+        if self.is_current_offer_accepted:
+            return {
+                "code": "offer_accepted",
+                "badge_class": "lp-b-green",
+                "stage_label": f"نسخهٔ #{self.accepted_offer_version} پذیرفته‌شده",
+                "next_actor": "مدیر کل (تأیید و انتشار نهایی)",
+                "next_hint": "شما آخرین پیشنهاد را پذیرفته‌اید؛ نوبت مدیر کل است تا انتشار عمومی را نهایی کند.",
+            }
+        if self.has_sent_offer and self.teacher_response == self.TeacherResponse.REVISION_REQUESTED:
+            return {
+                "code": "revision_requested",
+                "badge_class": "lp-b-blue",
+                "stage_label": f"درخواست بازنگری روی پیشنهاد نسخهٔ #{self.sent_offer_version}",
+                "next_actor": "مدیر کل (بررسی نظر شما و ارسال پیشنهاد اصلاح‌شده)",
+                "next_hint": "نظر شما ثبت شده و منتظر ارسال نسخهٔ جدید یا پاسخ مدیر کل است.",
+            }
+        if self.has_sent_offer:
+            return {
+                "code": "offer_pending",
+                "badge_class": "lp-b-yellow",
+                "stage_label": f"پیشنهاد مالی نسخهٔ #{self.sent_offer_version} آمادهٔ پاسخ شماست",
+                "next_actor": "شما (مؤلف — پاسخ به پیشنهاد)",
+                "next_hint": "جزئیات باکس زیر را بررسی کنید و این نسخه از پیشنهاد را بپذیرید یا درخواست بازنگری بدهید.",
+            }
+        return {
+            "code": "manager_review",
+            "badge_class": "lp-b-blue",
+            "stage_label": "در انتظار بررسی کتاب و ارسال پیشنهاد توسط مدیر",
+            "next_actor": "مدیر کل",
+            "next_hint": "درخواست شما در صف بررسی است؛ پس از بررسی، پیشنهاد همکاری توسط مدیر کل ارسال می‌شود.",
+        }
+
+    def __str__(self):
+        return f"بازبینی انتشار · {self.book} · #{self.pk or 'جدید'}"
+
+    @classmethod
+    def pending_queue_q(cls):
+        return models.Q(status__in=(cls.Status.PENDING, cls.Status.NEEDS_INFO))
+
+
+class PublicationRequestEvent(models.Model):
+    """Append-only audit trail of submissions and independent public-release decisions."""
+
+    class Action(models.TextChoices):
+        SUBMITTED = "submitted", "ثبت نسخه برای بازبینی"
+        NEEDS_INFO = "needs_info", "درخواست اصلاح محتوای کتاب"
+        OFFER_SENT = "offer_sent", "ارسال پیشنهاد مالی به استاد"
+        OFFER_ACCEPTED = "offer_accepted", "پذیرش نسخهٔ پیشنهاد توسط استاد"
+        OFFER_REVISION = "offer_revision", "درخواست بازنگری پیشنهاد توسط استاد"
+        APPROVED = "approved", "تأیید و انتشار"
+        REJECTED = "rejected", "رد انتشار"
+        REOPENED = "reopened", "بازگشایی برای بازبینی"
+        NOTE_UPDATED = "note_updated", "به‌روزرسانی یادداشت"
+
+    request = models.ForeignKey(
+        PublicationRequest, on_delete=models.PROTECT, related_name="events", verbose_name="درخواست انتشار"
+    )
+    action = models.CharField("رویداد", max_length=16, choices=Action.choices)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="publication_request_events", verbose_name="ثبت‌کننده",
+    )
+    reason = models.CharField("دلیل/یادداشت تصمیم", max_length=500, blank=True)
+    content_digest = models.CharField("شناسه‌ی نسخه", max_length=64)
+    offer_version = models.PositiveIntegerField("نسخهٔ پیشنهاد", null=True, blank=True)
+    offer_digest = models.CharField("شناسهٔ نسخهٔ پیشنهاد", max_length=64, blank=True)
+    offer_snapshot = models.JSONField("شرایط ثبت‌شده در این رویداد", default=dict, blank=True)
+    created_at = models.DateTimeField("زمان", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "رویداد بازبینی انتشار"
+        verbose_name_plural = "رویدادهای بازبینی انتشار"
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self):
+        return f"{self.get_action_display()} · درخواست #{self.request_id}"
+
+
+class SitePage(models.Model):
+    """«درباره‌ی ما»، «قوانین»، «حریم خصوصی»، «حفاظت از محتوا» یا هر صفحه‌ی دلخواه دیگر در سایت و اپ."""
+
+    class Kind(models.TextChoices):
+        ABOUT = "about", "درباره‌ی ما"
+        CONTACT = "contact", "تماس با ما"
+        TERMS = "terms", "شرایط استفاده و خرید در لیموخوان"
+        PRIVACY = "privacy", "حریم خصوصی"
+        PROTECTION = "protection", "حفاظت از محتوا"
+
+    slug = models.SlugField(
+        "شناسه‌ی آدرس (لاتین)",
+        max_length=40,
+        unique=True,
+        help_text="در آدرس /p/<slug>/ قرار می‌گیرد؛ مثلاً terms، privacy، protection یا هر نام لاتین دلخواه.",
+    )
+    title = models.CharField("عنوان", max_length=120)
+    body = models.TextField("متن", blank=True, help_text="پاراگراف‌ها را با یک خط خالی جدا کنید. «## » اول خط: تیتر؛ «- » اول خط: فهرست.")
+    order = models.PositiveIntegerField("ترتیب", default=10)
+    show_in_nav = models.BooleanField("نمایش در منوی بالا", default=False, help_text="در نوار منوی بالای سایت نشان داده شود.")
+    show_in_footer = models.BooleanField("نمایش در فوتر", default=True, help_text="در ستون پشتیبانی پایین سایت نشان داده شود.")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین تغییر")
+    show_in_app = models.BooleanField("نمایش در اپ", default=False, help_text="در «حساب من» اپ هم دیده شود.")
+    # Set by the «تغییر مهم است» tick on save: learners who have not opened the page since see a notice in the app.
+    important_at = models.DateTimeField("آخرین تغییر مهم", null=True, blank=True, editable=False)
+
+    class Meta:
+        verbose_name = "صفحه‌ی سایت"
+        verbose_name_plural = "صفحه‌های سایت"
+        ordering = ["order", "slug"]
+
+    def __str__(self):
+        return self.title
+
+
+class SiteNavItem(models.Model):
+    """An item in the website's top navigation bar, editable in the panel («منوی بالای سایت»). Supports 2 levels
+    (a parent item with dropdown children)."""
+
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+        verbose_name="زیرمجموعه‌ی منوی",
+        limit_choices_to={"parent__isnull": True},
+        help_text="خالی = آیتم اصلی در نوار بالا؛ اگر یک آیتم اصلی را انتخاب کنید، به‌عنوان زیرمنوی آبشاری آن نمایش داده می‌شود.",
+    )
+    title = models.CharField("عنوان در منو", max_length=60)
+    url = models.CharField(
+        "آدرس یا مسیر",
+        max_length=300,
+        blank=True,
+        default="#",
+        help_text="نام بخش داخلی («books»، «pricing»، «download»، «faq»)، آدرس یک صفحه («page:protection») یا لینک کامل («https://...»).",
+    )
+    order = models.PositiveIntegerField("ترتیب", default=10)
+    is_hidden = models.BooleanField("پنهان", default=False)
+
+    class Meta:
+        verbose_name = "آیتم منوی سایت"
+        verbose_name_plural = "منوی بالای سایت"
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"{self.parent.title} › {self.title}" if self.parent_id else self.title
+
+
+class HelpPage(models.Model):
+    """«صفحه‌های راهنما»: help texts shown in the app's «حساب من» › «راهنما», written like a lesson. Never deleted: hidden instead."""
+
+    title = models.CharField("عنوان", max_length=120)
+    body = models.TextField("متن", blank=True, help_text="مثل متن درس: فرمول، فهرست، کادرها و عکس.")
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    is_hidden = models.BooleanField("پنهان", default=False)
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین تغییر")
+
+    class Meta:
+        verbose_name = "صفحه‌ی راهنما"
+        verbose_name_plural = "صفحه‌های راهنما"
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return self.title
+
+
+class FaqItem(models.Model):
+    """«پرسش‌های پرتکرار». Never deleted: hidden instead."""
+
+    class Group(models.TextChoices):
+        TOP = "top", "پرسش‌های اصلی (بالای صفحه)"
+        BOOKS = "books", "کتاب‌ها، نمونه‌ی رایگان و خرید"
+        ACCOUNT_PAYMENT = "account_payment", "ورود، دستگاه‌ها و پرداخت"
+        STUDY_OFFLINE = "study_offline", "مطالعه، یادداشت و آفلاین"
+        REVIEW_QUIZ = "review_quiz", "تست، فلش‌کارت و برنامه‌ی مرور"
+        CLASSROOM = "classroom", "کلاس و دعوت استاد"
+        TEACHERS = "teachers", "استاد یا مؤلف هستید؟"
+
+    group = models.CharField("دسته", max_length=24, choices=Group.choices, default=Group.TOP, db_index=True)
+    question = models.CharField("پرسش", max_length=200)
+    answer = models.TextField("پاسخ")
+    action_label = models.CharField("عنوان دکمه‌ی اقدام (اختیاری)", max_length=80, blank=True)
+    action_url = models.CharField(
+        "مسیر دکمه‌ی اقدام (اختیاری)",
+        max_length=200,
+        blank=True,
+        help_text="نام بخش داخلی («books»، «pricing»، «download»، «webapp»، «teacher-application»، «teacher-login»)، صفحه («page:contact»، «page:protection») یا نشانی کامل.",
+    )
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    is_hidden = models.BooleanField("پنهان", default=False)
+
+    class Meta:
+        verbose_name = "پرسش پرتکرار"
+        verbose_name_plural = "پرسش‌های پرتکرار"
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return self.question
+
+
+_INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+def generate_classroom_code(length: int = 8) -> str:
+    """Generate a clean, unambiguous 8-character invitation token (no 0/O/1/I)."""
+    return "".join(secrets.choice(_INVITE_CODE_ALPHABET) for _ in range(length))
+
+
+class Classroom(models.Model):
+    """A teacher's course or cohort offering access to one book via an invite link or phone list."""
+
+    class AccessType(models.TextChoices):
+        FREE = "free", "رایگان کلاس"
+        STUDENT_PAID = "student_paid", "پرداخت توسط دانشجو (آینده)"
+        TEACHER_PAID = "teacher_paid", "اشتراک/پرداخت مدرس (آینده)"
+
+    class ExpiryPolicy(models.TextChoices):
+        FIXED_DATE = "fixed_date", "تاریخ پایان ترم / انقضای مشخص"
+        FROM_JOIN = "from_join", "مدت روز مشخص از زمان پیوستن"
+        UNLIMITED = "unlimited", "بدون محدودیت زمانی"
+
+    teacher = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="taught_classrooms",
+        verbose_name="مدرس / استاد",
+    )
+    book = models.ForeignKey(
+        "catalog.ContentNode",
+        on_delete=models.PROTECT,
+        related_name="classrooms",
+        verbose_name="کتاب کلاس",
+    )
+    title = models.CharField(
+        "عنوان کلاس یا دوره",
+        max_length=150,
+        help_text="مثلاً «ریاضی عمومی ۱ - دانشگاه صنعتی شریف - پاییز ۱۴۰۵»",
+    )
+    description = models.TextField("توضیحات و پیام خوش‌آمد استاد", blank=True)
+    code = models.CharField(
+        "کد دعوت کلاس",
+        max_length=16,
+        unique=True,
+        db_index=True,
+        default=generate_classroom_code,
+        help_text="شناسه‌ی کوتاه برای آدرس دعوت اختصاصی: /join/CODE",
+    )
+    is_active = models.BooleanField(
+        "لینک دعوت فعال است",
+        default=True,
+        help_text="در صورت غیرفعال شدن، دانشجوی جدید نمی‌تواند با این لینک ثبت‌نام کند، اما دسترسی‌های قبلی برقرار می‌ماند.",
+    )
+    capacity = models.PositiveIntegerField(
+        "سقف ظرفیت دانشجویان",
+        default=100,
+        help_text="حداکثر تعداد دانشجویانی که می‌توانند به این کلاس بپیوندند (برای امنیت و کنترل سوءاستفاده).",
+    )
+    expiry_policy = models.CharField(
+        "سیاست انقضای دسترسی",
+        max_length=16,
+        choices=ExpiryPolicy.choices,
+        default=ExpiryPolicy.FIXED_DATE,
+    )
+    ends_on = models.DateField(
+        "تاریخ پایان دسترسی (شمسی / میلادی)",
+        null=True,
+        blank=True,
+        help_text="پایان این تاریخ، دسترسی کتاب منقضی می‌شود. برای سیاست «تاریخ پایان مشخص».",
+    )
+    duration_days = models.PositiveIntegerField(
+        "مدت دسترسی پس از پیوستن (روز)",
+        null=True,
+        blank=True,
+        help_text="تعداد روزهای مجاز مطالعه از لحظه فعال‌سازی با OTP. برای سیاست «مدت روز مشخص».",
+    )
+    access_type = models.CharField(
+        "نوع دسترسی (آینده‌نگر)",
+        max_length=20,
+        choices=AccessType.choices,
+        default=AccessType.FREE,
+    )
+    price = models.PositiveIntegerField(
+        "هزینه به تومان (اختیاری برای آینده)",
+        null=True,
+        blank=True,
+        default=0,
+    )
+    created_at = models.DateTimeField("زمان ساخت کلاس", auto_now_add=True)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "کلاس و دوره اختصاصی"
+        verbose_name_plural = "کلاس‌ها و دوره‌های اختصاصی"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["teacher", "is_active", "-created_at"], name="class_teacher_active_idx"),
+            models.Index(fields=["book", "is_active"], name="class_book_active_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.teacher})"
+
+    def clean(self):
+        from apps.catalog.models import ContentNode
+
+        errors = {}
+        if self.book_id and (
+            self.book.kind != ContentNode.Kind.BOOK or self.book.depth != 1 or self.book.is_inbox or self.book.is_archived
+        ):
+            errors["book"] = "فقط یک کتاب فعال و معتبر را برای کلاس انتخاب کنید."
+
+        if self.code:
+            self.code = self.code.strip().upper()
+
+        if self.expiry_policy == self.ExpiryPolicy.FIXED_DATE:
+            if not self.ends_on:
+                errors["ends_on"] = "برای تاریخ پایان مشخص، فیلد «تاریخ پایان دسترسی» الزامی است."
+            elif self.is_active and self.ends_on < timezone.localdate():
+                errors["ends_on"] = "تاریخ پایان کلاس فعال نمی‌تواند در گذشته باشد."
+        elif self.expiry_policy == self.ExpiryPolicy.FROM_JOIN:
+            if not self.duration_days or self.duration_days <= 0:
+                errors["duration_days"] = "برای مدت مشخص از زمان پیوستن، تعداد روزهای مجاز را وارد کنید."
+
+        if self.capacity <= 0:
+            errors["capacity"] = "سقف ظرفیت باید عددی مثبت باشد."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def calculate_end_time(self, joined_at=None):
+        """Calculate exclusive ends_at instant based on class expiry policy."""
+        from .group_access import calculate_cohort_end_time
+
+        return calculate_cohort_end_time(
+            expiry_policy=self.expiry_policy,
+            ends_on=self.ends_on,
+            duration_days=self.duration_days,
+            now=joined_at,
+        )
+
+    def is_expired(self, now=None) -> bool:
+        """True when a fixed-date classroom deadline has already elapsed."""
+        now = now or timezone.now()
+        end_at = self.calculate_end_time(now)
+        return end_at is not None and end_at <= now
+
+    @property
+    def active_members_count(self) -> int:
+        now = timezone.now()
+        return (
+            self.members.filter(
+                status=ClassroomMember.Status.ACTIVE,
+                entitlement__is_archived=False,
+                entitlement__starts_at__lte=now,
+            )
+            .filter(models.Q(entitlement__ends_at__isnull=True) | models.Q(entitlement__ends_at__gt=now))
+            .count()
+        )
+
+    @property
+    def has_capacity(self) -> bool:
+        return self.active_members_count < self.capacity
+
+
+class ClassroomMember(models.Model):
+    """A student's membership in a classroom granting access to the assigned book."""
+
+    class Status(models.TextChoices):
+        WAITING_OTP = "waiting_otp", "در انتظار اولین ورود دانشجو با OTP"
+        ACTIVE = "active", "فعال در کلاس"
+        EXPIRED = "expired", "پایان مهلت / منقضی‌شده"
+        REVOKED = "revoked", "لغوشده توسط استاد یا مدیر"
+
+    class JoinMethod(models.TextChoices):
+        LINK = "link", "پیوستن مستقیم با لینک دعوت"
+        BULK_IMPORT = "bulk_import", "واردسازی شماره توسط استاد"
+        MANUAL = "manual", "ثبت دستی"
+
+    classroom = models.ForeignKey(
+        Classroom,
+        on_delete=models.CASCADE,
+        related_name="members",
+        verbose_name="کلاس",
+    )
+    phone = models.CharField(
+        "شماره موبایل دانشجو",
+        max_length=11,
+        db_index=True,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classroom_memberships",
+        verbose_name="کاربر دانشجو",
+        editable=False,
+    )
+    entitlement = models.OneToOneField(
+        "commerce.Entitlement",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classroom_membership",
+        verbose_name="ردیف دسترسی ایجادشده",
+        editable=False,
+    )
+    join_method = models.CharField(
+        "روش پیوستن",
+        max_length=16,
+        choices=JoinMethod.choices,
+        default=JoinMethod.LINK,
+    )
+    status = models.CharField(
+        "وضعیت عضویت",
+        max_length=16,
+        choices=Status.choices,
+        default=Status.WAITING_OTP,
+        db_index=True,
+    )
+    joined_at = models.DateTimeField(
+        "زمان پیوستن به کلاس",
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    created_at = models.DateTimeField("زمان ثبت ردیف", auto_now_add=True)
+    revoked_at = models.DateTimeField("زمان لغو", null=True, blank=True, editable=False)
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="لغوکننده",
+        editable=False,
+    )
+    revocation_reason = models.CharField("علت لغو", max_length=300, blank=True)
+
+    class Meta:
+        verbose_name = "عضویت دانشجو در کلاس"
+        verbose_name_plural = "عضویت‌های دانشجویان در کلاس‌ها"
+        ordering = ["-created_at", "phone"]
+        constraints = [
+            models.UniqueConstraint(fields=["classroom", "phone"], name="uniq_classroom_member_phone"),
+        ]
+        indexes = [
+            models.Index(fields=["classroom", "status"], name="class_member_status_idx"),
+            models.Index(fields=["phone", "status"], name="class_member_phone_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.classroom.title} · {self.phone}"
+
+    def clean(self):
+        from apps.accounts.phone import InvalidPhone, normalize_phone
+
+        try:
+            self.phone = normalize_phone(self.phone)
+        except InvalidPhone as exc:
+            raise ValidationError({"phone": str(exc)}) from exc
+
+    @property
+    def is_active(self) -> bool:
+        from .group_access import is_entitlement_active_now
+
+        return bool(self.status == self.Status.ACTIVE and is_entitlement_active_now(self.entitlement))
+
+
+def generate_contact_tracking_code(length: int = 6) -> str:
+    """Readable support tracking code such as LM-7K4M9P (no ambiguous 0/O/1/I)."""
+    return "LM-" + "".join(secrets.choice(_INVITE_CODE_ALPHABET) for _ in range(length))
+
+
+class ContactMessage(models.Model):
+    """Public contact/support ticket submitted via /p/contact/, audited and managed in admin."""
+
+    class Topic(models.TextChoices):
+        ORDER_PAYMENT = "order_payment", "پیگیری پرداخت ناموفق یا فعال‌نشدن خرید"
+        REFUND = "refund", "درخواست انصراف و بازپرداخت (تا ۷ روز)"
+        ACCOUNT_ACCESS = "account_access", "مشکل حساب کاربری، تغییر شماره یا دستگاه‌ها"
+        PRIVACY = "privacy", "درخواست حریم خصوصی (اصلاح، حذف یا گزارش)"
+        CONTENT_COPYRIGHT = "content_copyright", "گزارش خطای علمی، کپی‌رایت یا بازنشر غیرمجاز"
+        TEACHER_ORG = "teacher_org", "همکاری اساتید، کلاس‌های دانشگاهی یا سازمانی"
+        OTHER = "other", "پیشنهاد، انتقاد یا سایر موارد"
+
+    class Status(models.TextChoices):
+        NEW = "new", "جدید (در انتظار بررسی)"
+        IN_PROGRESS = "in_progress", "در حال پیگیری"
+        WAITING_USER = "waiting_user", "در انتظار پاسخ کاربر"
+        RESOLVED = "resolved", "پاسخ‌داده‌شده / حل‌شده"
+        CLOSED = "closed", "بسته‌شده"
+
+    class Priority(models.TextChoices):
+        HIGH = "high", "بالا"
+        NORMAL = "normal", "عادی"
+
+    PHONE_REQUIRED_TOPICS = frozenset({
+        Topic.ORDER_PAYMENT,
+        Topic.REFUND,
+        Topic.ACCOUNT_ACCESS,
+        Topic.PRIVACY,
+        Topic.TEACHER_ORG,
+    })
+
+    tracking_code = models.CharField(
+        "کد پیگیری",
+        max_length=16,
+        unique=True,
+        db_index=True,
+        default=generate_contact_tracking_code,
+        editable=False,
+    )
+    topic = models.CharField(
+        "موضوع درخواست",
+        max_length=24,
+        choices=Topic.choices,
+        default=Topic.ORDER_PAYMENT,
+        db_index=True,
+    )
+    priority = models.CharField(
+        "اولویت",
+        max_length=10,
+        choices=Priority.choices,
+        default=Priority.NORMAL,
+        db_index=True,
+    )
+    name = models.CharField("نام و نام خانوادگی", max_length=120)
+    phone = models.CharField("شماره موبایل", max_length=11, blank=True, db_index=True)
+    order_reference = models.CharField("شماره سفارش یا کد پیگیری پرداخت", max_length=120, blank=True)
+    related_item = models.CharField("کتاب، بخش یا صفحهٔ مرتبط", max_length=160, blank=True)
+    message = models.TextField("شرح پیام", max_length=4000)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="contact_messages",
+        verbose_name="حساب ثبت‌شده هنگام ارسال",
+        editable=False,
+    )
+    status = models.CharField(
+        "وضعیت رسیدگی",
+        max_length=16,
+        choices=Status.choices,
+        default=Status.NEW,
+        db_index=True,
+    )
+    admin_note = models.TextField(
+        "یادداشت و شرح رسیدگی داخلی",
+        max_length=3000,
+        blank=True,
+        help_text="نتیجه بررسی پرداخت، استرداد یا پاسخ ارسال‌شده به کاربر را برای ممیزی ثبت کنید.",
+    )
+    handled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="handled_contact_messages",
+        verbose_name="رسیدگی‌کننده",
+        editable=False,
+    )
+    handled_at = models.DateTimeField("زمان آخرین رسیدگی", null=True, blank=True, editable=False)
+    created_at = models.DateTimeField("زمان ثبت", auto_now_add=True)
+    updated_at = models.DateTimeField("آخرین تغییر", auto_now=True)
+
+    class Meta:
+        verbose_name = "پیام تماس با ما"
+        verbose_name_plural = "پیام‌های تماس و پشتیبانی"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["status", "-created_at"], name="contact_msg_status_time_idx"),
+            models.Index(fields=["topic", "-created_at"], name="contact_msg_topic_time_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.tracking_code} · {self.get_topic_display()} · {self.name}"
+

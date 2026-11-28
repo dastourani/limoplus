@@ -1,0 +1,208 @@
+# Builds the signed OFFICIAL Android release APKs (ir.limookhan.app, «لیموخوان», HTTPS-only)
+# and publishes them to GitHub Releases (`official-<build>`) + syncs the `official` channel on the server.
+name: Android official APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Official integer build number (leave blank to use github.run_number)"
+        required: false
+        default: ""
+      release_notes:
+        description: "Release notes (Persian)"
+        required: false
+        default: "انتشار نسخهٔ رسمی لیموخوان"
+  push:
+    tags:
+      - "official-*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-official-apk
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release signing secrets and HTTPS API URL
+        env:
+          API_URL: ${{ vars.OFFICIAL_API_URL || 'https://limookhan.ir' }}
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          case "$API_URL" in
+            https://*) ;;
+            *) echo "OFFICIAL_API_URL must start with https:// (got: $API_URL)" >&2; exit 1 ;;
+          esac
+          for var in KEYSTORE_B64 KEYSTORE_PASS KEY_ALIAS KEY_PASS; do
+            eval "val=\$$var"
+            if [ -z "$val" ]; then
+              echo "Missing required release signing secret: RELEASE_$var" >&2
+              exit 1
+            fi
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and tests
+        run: |
+          npm run typecheck
+          npm test
+          npm run test:plots
+
+      - name: Resolve build number and official config
+        id: meta
+        env:
+          INPUT_BUILD: ${{ github.event.inputs.build_number }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUM: ${{ github.run_number }}
+          API_URL: ${{ vars.OFFICIAL_API_URL || 'https://limookhan.ir' }}
+        run: |
+          BUILD="$RUN_NUM"
+          if [ -n "$INPUT_BUILD" ]; then
+            BUILD="$INPUT_BUILD"
+          elif [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            BUILD="$(echo "$REF_NAME" | grep -oE '[0-9]+$' || echo "$RUN_NUM")"
+          fi
+          case "$BUILD" in
+            ''|*[!0-9]*) echo "Invalid build number: $BUILD" >&2; exit 1 ;;
+          esac
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          {
+            echo "EXPO_PUBLIC_API_URL=$API_URL"
+            echo "EXPO_PUBLIC_APP_CHANNEL=official"
+            echo "EXPO_PUBLIC_APP_BUILD=$BUILD"
+          } > .env
+          node -e "const f='app.json',j=require('./'+f);j.expo.android=j.expo.android||{};j.expo.android.versionCode=$BUILD;j.expo.version='1.0.$BUILD';require('fs').writeFileSync(f,JSON.stringify(j,null,2))"
+
+      - name: Generate the Android project (official)
+        env:
+          EXPO_PUBLIC_APP_CHANNEL: official
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Configure release keystore signing and ABI splits
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > android/app/release.keystore
+          cat >> android/app/build.gradle <<'GRADLE'
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("release.keystore")
+                      storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("RELEASE_KEY_ALIAS")
+                      keyPassword System.getenv("RELEASE_KEY_PASSWORD")
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+              splits {
+                  abi {
+                      enable true
+                      reset()
+                      include "armeabi-v7a", "arm64-v8a"
+                      universalApk true
+                  }
+              }
+          }
+          GRADLE
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build signed release APKs
+        working-directory: app/android
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
+
+      - name: Clean up release keystore
+        if: always()
+        run: rm -f android/app/release.keystore
+
+      - name: Name and verify APK signatures and manifest settings
+        env:
+          BUILD: ${{ steps.meta.outputs.build }}
+          EXPECTED_SHA256: ${{ secrets.RELEASE_CERT_SHA256 }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-arm64-v8a-release.apk "limookhan-${BUILD}-arm64.apk"
+          cp android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "limookhan-${BUILD}-32bit.apk"
+          cp android/app/build/outputs/apk/release/app-universal-release.apk "limookhan-${BUILD}.apk"
+
+          BUILD_TOOLS_DIR="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+          AAPT2="$BUILD_TOOLS_DIR/aapt2"
+          for apk in "limookhan-${BUILD}.apk" "limookhan-${BUILD}-arm64.apk" "limookhan-${BUILD}-32bit.apk"; do
+            echo "Verifying $apk..."
+            OUT="$("$APKSIGNER" verify --verbose --print-certs "$apk")"
+            echo "$OUT"
+            if [ -n "$EXPECTED_SHA256" ]; then
+              ACTUAL_SHA="$(echo "$OUT" | grep -i "SHA-256 digest:" | head -n 1 | awk '{print $NF}' | tr '[:upper:]' '[:lower:]')"
+              EXP_NORM="$(echo "$EXPECTED_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+              if [ "$ACTUAL_SHA" != "$EXP_NORM" ]; then
+                echo "Certificate SHA-256 mismatch on $apk: expected $EXP_NORM, got $ACTUAL_SHA" >&2
+                exit 1
+              fi
+            fi
+          done
+          BADGING="$("$AAPT2" dump badging "limookhan-${BUILD}.apk")"
+          echo "$BADGING" | grep -q "package: name='ir.limookhan.app'"
+          if "$AAPT2" dump xmltree "limookhan-${BUILD}.apk" --file AndroidManifest.xml | grep -q "usesCleartextTraffic.*=.*true"; then
+            echo "Official APK must not enable usesCleartextTraffic!" >&2
+            exit 1
+          fi
+
+      - name: Publish official release on GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: official-${{ steps.meta.outputs.build }}
+          name: "نسخه‌ی رسمی ${{ steps.meta.outputs.build }}"
+          prerelease: false
+          body: |
+            ${{ github.event.inputs.release_notes || 'انتشار نسخهٔ رسمی لیموخوان (ir.limookhan.app).' }}
+          files: |
+            app/limookhan-${{ steps.meta.outputs.build }}.apk
+            app/limookhan-${{ steps.meta.outputs.build }}-arm64.apk
+            app/limookhan-${{ steps.meta.outputs.build }}-32bit.apk
+
+      - name: Notify server to sync the official release
+        env:
+          SYNC_URL: ${{ secrets.PARSPACK_SYNC_URL || 'https://limookhan.ir/api/v1/releases/sync-github/' }}
+          SECRET: ${{ secrets.RELEASE_WEBHOOK_SECRET }}
+        run: |
+          if [ -n "$SECRET" ]; then
+            SEP="?"
+            case "$SYNC_URL" in *"?"*) SEP="&" ;; esac
+            curl --fail-with-body -sS -X POST "${SYNC_URL}${SEP}channel=official" \
+              -H "X-Release-Secret: $SECRET" \
+              -H "Content-Type: application/json"
+          fi

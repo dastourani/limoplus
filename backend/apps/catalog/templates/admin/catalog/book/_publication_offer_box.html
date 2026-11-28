@@ -1,0 +1,130 @@
+<div id="pub-offer" class="lp-pub-offer-box" style="margin-top:14px; padding:16px 18px; background:var(--darkened-bg, #f8fafc); border-radius:10px; border:1px solid var(--hairline-color, #cbd5e1); font-size:13px; line-height:1.75;" dir="rtl">
+  {% include "admin/accounts/_email_verify_reminder.html" %}
+  <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center; padding-bottom:10px; border-bottom:1px solid var(--hairline-color, #e2e8f0);">
+    <div>
+      <strong>وضعیت انتشار عمومی:</strong>
+      <span class="lp-badge {{ publication_offer.summary.badge_class }}">{{ publication_offer.summary.stage_label }}</span>
+    </div>
+    <div>
+      <strong>الان نوبت اقدام چه کسی است؟</strong>
+      <span style="font-weight:700; color:var(--body-fg);">{{ publication_offer.summary.next_actor }}</span>
+    </div>
+  </div>
+  <p style="margin:8px 0 0; color:var(--body-fg);">{{ publication_offer.summary.next_hint }}</p>
+
+  {% if pub_req.content_feedback %}
+    <div style="margin-top:10px; padding:10px 12px; border-radius:8px; background:var(--body-bg, #fff); border:1px solid var(--hairline-color, #e2e8f0);">
+      <strong>پیام مدیر دربارهٔ محتوای کتاب / نتیجهٔ بررسی:</strong>
+      <p style="margin:4px 0 0; white-space:pre-line;">{{ pub_req.content_feedback }}</p>
+    </div>
+  {% endif %}
+
+  <div style="margin-top:12px; padding:12px 14px; border-radius:8px; background:var(--body-bg, #fff); border:1px solid var(--hairline-color, #e2e8f0);">
+    <div style="font-weight:800; margin-bottom:6px; color:var(--body-fg);">من کدام نسخه را پذیرفته‌ام؟</div>
+    {% if publication_offer.accepted_offer %}
+      <p style="margin:0;">
+        نسخهٔ <strong>#{{ publication_offer.accepted_offer.version }}</strong>
+        (سهم پلتفرم: <strong>{{ publication_offer.accepted_offer.fee_percent }}٪</strong> / سهم مجموع مؤلفان: <strong>{{ publication_offer.accepted_offer.authors_total_percent }}٪</strong>
+        {% if publication_offer.accepted_offer.accepted_at_fa %} — تاریخ پذیرش: {{ publication_offer.accepted_offer.accepted_at_fa }}{% endif %})
+        {% if publication_offer.accepted_offer.is_current %}
+          <span class="lp-badge lp-b-green" style="margin-right:6px;">معتبر و منطبق با پیشنهاد فعلی</span>
+        {% elif publication_offer.accepted_offer.is_superseded %}
+          <span class="lp-badge lp-b-red" style="margin-right:6px;">باطل‌شده به دلیل پیشنهاد جدید مدیر</span>
+        {% endif %}
+      </p>
+      {% if publication_offer.accepted_offer.is_superseded %}
+        <p style="margin:6px 0 0; color:#b45309; font-weight:700;">
+          مدیر نسخهٔ جدیدی از شرایط را ارسال کرده است؛ بنابراین پذیرش قبلی شما دیگر معتبر نیست و برای انتشار باید نسخهٔ جدید زیر را بررسی و بپذیرید.
+        </p>
+      {% endif %}
+    {% else %}
+      <p style="margin:0; color:var(--body-quiet-color, #64748b);">هنوز هیچ نسخه‌ای از پیشنهاد مالی را نپذیرفته‌اید.</p>
+    {% endif %}
+  </div>
+
+  {% if publication_offer.sent_offer %}
+    <div style="margin-top:12px; padding:14px 16px; border-radius:8px; background:var(--body-bg, #fff); border:2px solid #0f766e;">
+      <div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; margin-bottom:10px;">
+        <strong style="font-size:14px; color:#0f766e;">مدیر چه پیشنهادی داده؟ (نسخهٔ #{{ publication_offer.sent_offer.version }})</strong>
+        {% if publication_offer.sent_offer.sent_at_fa %}
+          <span style="font-size:12px; color:var(--body-quiet-color);">ارسال‌شده در {{ publication_offer.sent_offer.sent_at_fa }}</span>
+        {% endif %}
+      </div>
+
+      <ul style="margin:0; padding-right:18px; display:grid; gap:6px;">
+        <li>
+          <strong>سهم پلتفرم از فروش تکی این کتاب:</strong> {{ publication_offer.sent_offer.platform_fee_percent }}٪
+          — <strong>سهم مجموع مؤلفان:</strong> {{ publication_offer.sent_offer.authors_total_percent }}٪
+        </li>
+        <li>
+          <strong>مبنای درصد و مثال عددی:</strong>
+          مبنا مبلغ خالص پرداخت‌شده در هر سفارش فروش تکی است. مثلاً اگر مبلغ مبنای فروش {{ publication_offer.sent_offer.example_base_fa }} تومان و نرخ {{ publication_offer.sent_offer.platform_fee_percent }}٪ باشد،
+          سهم پلتفرم <strong>{{ publication_offer.sent_offer.example_platform_fa }} تومان</strong>
+          و <strong>سهم مجموع مؤلفان {{ publication_offer.sent_offer.example_authors_total_fa }} تومان</strong> است.
+          {% if publication_offer.is_multi_author %}
+            <br><span style="color:#b45309;">توجه: این کتاب چندمؤلفی است؛ این مبلغ سهم شخصی یک نفر نیست بلکه سهم مجموع مؤلفان است و مطابق سهم هر همکار تقسیم می‌شود{% if publication_offer.user_share_percent is not None %} (سهم تعریف‌شدهٔ شما در جدول تسهیم: {{ publication_offer.user_share_percent }}٪){% endif %}.</span>
+          {% endif %}
+        </li>
+        <li><strong>خدمات آماده‌سازی:</strong> {{ publication_offer.sent_offer.prep_mode_label }}</li>
+        <li>
+          <strong>نوع عرضه و کمپین‌ها:</strong> {{ publication_offer.sent_offer.distribution_scope_label }}
+          (سقف مجاز تخفیف کمپین‌های فروش تکی: <strong>{{ publication_offer.sent_offer.campaign_discount_cap }}٪</strong>؛ کمپین همان فروش تکی با تخفیف در حدود توافق است و کارمزد از مبلغ واقعیِ پرداخت‌شده محاسبه می‌شود.)
+        </li>
+        <li><strong>مدت اعتبار نرخ:</strong> {{ publication_offer.sent_offer.rate_validity_note }}</li>
+        <li>
+          <strong>وضعیت تحویل خروجی فنی:</strong> {{ publication_offer.sent_offer.technical_deliverable }}
+          {% if publication_offer.sent_offer.technical_export_disabled %}
+            <span style="display:inline-block; margin-top:4px; padding:2px 8px; border-radius:999px; background:#fef3c7; color:#92400e; font-size:12px; font-weight:700;">
+              دریافت و ارسال ایمیلی فایل‌های فنی (Markdown / LaTeX) پس از تأیید انتشار غیرفعال خواهد بود
+            </span>
+          {% endif %}
+        </li>
+      </ul>
+
+      {% if publication_offer.sent_offer.offer_note %}
+        <div style="margin-top:10px; padding:10px 12px; border-radius:6px; background:var(--darkened-bg, #f8fafc); border:1px solid var(--hairline-color, #e2e8f0);">
+          <strong>شرایط و پیام اختصاصی مدیر برای شما:</strong>
+          <p style="margin:4px 0 0; white-space:pre-line;">{{ publication_offer.sent_offer.offer_note }}</p>
+        </div>
+      {% endif %}
+
+      {% if publication_offer.teacher_response == 'revision_requested' %}
+        <div style="margin-top:10px; padding:8px 12px; border-radius:6px; background:var(--darkened-bg, #eff6ff); border:1px solid #93c5fd;">
+          <strong>آخرین نظر / درخواست بازنگری شما:</strong> {{ publication_offer.teacher_response_note }}
+        </div>
+      {% endif %}
+
+      {% if publication_offer.can_respond %}
+        <form method="post" action="{% url 'admin:catalog_book_respond_offer' book.pk %}" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--hairline-color, #e2e8f0);">
+          {% csrf_token %}
+          <input type="hidden" name="request_id" value="{{ pub_req.pk }}">
+          <input type="hidden" name="expected_offer_version" value="{{ publication_offer.sent_offer.version }}">
+          <input type="hidden" name="expected_offer_digest" value="{{ publication_offer.sent_offer.digest }}">
+          <input type="hidden" name="return_to" value="{{ offer_return_to|default:'book_page' }}">
+          <div style="margin-bottom:10px;">
+            <label for="id_offer_response_note_{{ pub_req.pk }}" style="display:block; font-weight:700; margin-bottom:4px;">
+              توضیح یا نظر شما دربارهٔ این نسخه (در صورت درخواست بازنگری الزامی است):
+            </label>
+            <textarea name="response_note" id="id_offer_response_note_{{ pub_req.pk }}" rows="2" placeholder="اگر با شرایط موافقید می‌توانید خالی بگذارید یا یادداشت بنویسید؛ برای درخواست بازنگری دلیل را بنویسید..." style="width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid var(--hairline-color, #cbd5e1); border-radius:6px; background:var(--body-bg, #fff); color:var(--body-fg);"></textarea>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:10px;">
+            <button type="submit" name="decision" value="accepted" class="btn primary" style="background:#0f766e; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-weight:700; cursor:pointer;">
+              ✓ پذیرش نسخهٔ #{{ publication_offer.sent_offer.version }} پیشنهاد
+            </button>
+            <button type="submit" name="decision" value="revision_requested" class="btn" style="padding:8px 14px; border-radius:6px; font-weight:700; cursor:pointer;">
+              درخواست بازنگری / ارسال نظر به مدیر
+            </button>
+          </div>
+        </form>
+      {% elif publication_offer.is_superuser_preview and not publication_offer.accepted_offer.is_current %}
+        <p style="margin:12px 0 0; font-size:12px; color:var(--body-quiet-color, #64748b);">
+          در نمای پیش‌نمایش مدیر، امکان ثبت پاسخ مالی به جای استاد وجود ندارد.
+        </p>
+      {% endif %}
+    </div>
+  {% else %}
+    <p style="margin:10px 0 0; font-size:12.5px; color:var(--body-quiet-color, #64748b);">
+      <strong>پیشنهاد مالی مدیر:</strong> هنوز پیشنهادی برای شما ارسال نشده است (پیش‌نویس‌های بررسی مدیر تا زمان ارسال رسمی نمایش داده نمی‌شوند).
+    </p>
+  {% endif %}
+</div>

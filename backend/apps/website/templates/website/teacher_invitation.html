@@ -1,0 +1,120 @@
+{% extends "website/base.html" %}
+{% block title %}پذیرش دعوت استاد، لیموخوان{% endblock %}
+{% block description %}تکمیل دعوت استاد با کد یک‌بارمصرف پیامکی.{% endblock %}
+{% block head %}<meta name="robots" content="noindex,nofollow">{% endblock %}
+{% block main %}
+<section class="sec wrap narrow teacher-application-page">
+  <div class="page-card">
+    <header class="page-head">
+      <div>
+        <h1 class="h2">پذیرش دعوت استاد</h1>
+        <p class="mut">برای اتصال دعوت به حساب درست، شماره‌ی موبایلی را وارد کنید که مدیر برای آن دعوت فرستاده است.</p>
+      </div>
+    </header>
+
+    <div id="invite-unavailable" class="teacher-application-alert" role="alert" hidden>
+      پیوند دعوت در دسترس نیست یا قبلاً استفاده شده است. از مدیر بخواهید پیوند تازه صادر کند یا اگر دعوت را قبلاً پذیرفته‌اید، از <a href="{% url 'teacher-login' %}">ورود به پنل اساتید</a> وارد شوید.
+    </div>
+    <div id="invite-result" class="teacher-application-result" role="status" hidden></div>
+
+    <form id="teacher-invitation-form" class="teacher-application-form" autocomplete="on">
+      <div class="teacher-application-field">
+        <label for="invite-phone">شماره‌ی موبایل دعوت‌شده</label>
+        <input id="invite-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" dir="ltr" maxlength="24" required>
+        <small class="teacher-application-help">کد فقط به شماره‌ای فرستاده می‌شود که با دعوت مدیر مطابقت داشته باشد.</small>
+      </div>
+      <button id="send-invite-code" class="btn lemon wide" type="button">دریافت کد پیامکی</button>
+      <div id="invite-code-field" class="teacher-application-field" hidden>
+        <label for="invite-code">کد یک‌بارمصرف پیامکی</label>
+        <input id="invite-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" dir="ltr" maxlength="10">
+      </div>
+      <button id="verify-invite-code" class="btn dark wide" type="button" hidden>تأیید شماره و پذیرش دعوت</button>
+      <p id="invite-message" class="teacher-application-note" role="status" aria-live="polite"></p>
+      <p class="teacher-application-note">پذیرش دعوت فقط نقش و قابلیت‌های مصوب همین کتاب را فعال می‌کند. این پیوند یک‌بارمصرف است؛ دسترسی گروهی دانشجویان از این مسیر ساخته نمی‌شود.</p>
+    </form>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const token = window.location.hash.slice(1);
+  const form = document.getElementById('teacher-invitation-form');
+  const unavailable = document.getElementById('invite-unavailable');
+  const resultPanel = document.getElementById('invite-result');
+  const sendButton = document.getElementById('send-invite-code');
+  const verifyButton = document.getElementById('verify-invite-code');
+  const codeField = document.getElementById('invite-code-field');
+  const message = document.getElementById('invite-message');
+  const phoneInput = document.getElementById('invite-phone');
+  const codeInput = document.getElementById('invite-code');
+  const teacherLoginUrl = "{{ invitation_login_url|escapejs }}";
+
+  if (!token || !/^[A-Za-z0-9_-]{32,80}$/.test(token)) {
+    form.hidden = true;
+    unavailable.hidden = false;
+    return;
+  }
+
+  async function postJson(url, body) {
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    let data = {};
+    try { data = await response.json(); } catch (_) {}
+    return {ok: response.ok, data};
+  }
+
+  sendButton.addEventListener('click', async () => {
+    sendButton.disabled = true;
+    message.textContent = 'در حال درخواست کد…';
+    try {
+      const result = await postJson('/api/v1/auth/request-otp/', {phone: phoneInput.value});
+      if (!result.ok) {
+        message.textContent = result.data.message || 'ارسال کد انجام نشد؛ شماره را بررسی و دوباره تلاش کنید.';
+        sendButton.disabled = false;
+        return;
+      }
+      message.textContent = 'اگر شماره معتبر و فعال باشد، کد پیامکی ارسال شده است. کد را وارد کنید.';
+      codeField.hidden = false;
+      verifyButton.hidden = false;
+      codeInput.focus();
+    } catch (_) {
+      message.textContent = 'ارتباط با سرور برقرار نشد؛ دوباره تلاش کنید.';
+      sendButton.disabled = false;
+    }
+  });
+
+  verifyButton.addEventListener('click', async () => {
+    verifyButton.disabled = true;
+    message.textContent = 'در حال بررسی کد و دعوت…';
+    try {
+      const verifyResponse = await postJson('/api/v1/auth/verify-otp/', {
+        phone: phoneInput.value,
+        code: codeInput.value,
+        teacher_invitation: token,
+        device_name: 'مرورگر پذیرش دعوت استاد',
+        platform: 'web'
+      });
+      if (!verifyResponse.ok || !verifyResponse.data.accepted) {
+        message.textContent = verifyResponse.data.message || 'کد یا دعوت معتبر نیست. دوباره بررسی کنید.';
+        verifyButton.disabled = false;
+        return;
+      }
+      form.hidden = true;
+      resultPanel.textContent = 'شماره تأیید شد و دعوت پذیرفته شد. در حال ورود به پنل…';
+      resultPanel.hidden = false;
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      const destination = verifyResponse.data.redirect || teacherLoginUrl;
+      window.setTimeout(() => window.location.assign(destination), 450);
+    } catch (_) {
+      message.textContent = 'ارتباط با سرور برقرار نشد؛ دوباره تلاش کنید.';
+      verifyButton.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

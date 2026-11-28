@@ -1,0 +1,67 @@
+{% extends "website/base.html" %}
+{% block title %}پرسش‌های پرتکرار، لیموخوان{% endblock %}
+{% block main %}
+<section class="sec wrap narrow">
+  <h1 class="h2">پرسش‌های پرتکرار</h1>
+  <p class="sub">پاسخ سریع برای خرید کتاب، دسترسی، مطالعه‌ی آفلاین، برنامه‌ی مرور، کلاس‌ها و همکاری اساتید</p>
+
+  {% if student_groups or teacher_faqs %}
+  <nav class="faq-nav" aria-label="بخش‌های پرسش‌های پرتکرار">
+    {% if top_faqs %}<a class="pill" href="#top-questions">پرسش‌های اصلی</a>{% endif %}
+    {% for g in student_groups %}<a class="pill" href="#{{ g.anchor }}">{{ g.title }}</a>{% endfor %}
+    {% if teacher_faqs %}<a class="pill faq-pill-teacher" href="#teachers">استاد یا مؤلف هستید؟</a>{% endif %}
+  </nav>
+  {% endif %}
+
+  {% if top_faqs %}
+  <div id="top-questions" class="faq-block">
+    <h2 class="faq-sec-title">پاسخ‌های فوری و پرسش‌های اصلی</h2>
+    {% include "website/_faq.html" with faq=top_faqs %}
+  </div>
+  {% elif faq %}
+  {% include "website/_faq.html" %}
+  {% else %}
+  <p class="sub">به‌زودی.</p>
+  {% endif %}
+
+  {% if student_groups %}
+  <div class="faq-block">
+    <h2 class="faq-sec-title">پرسش‌های تکمیلی دانشجویان</h2>
+    <p class="faq-sec-sub">برای دیدن جزئیات هر موضوع، عنوان آن را باز کنید.</p>
+    <div class="faq-cats">
+      {% for g in student_groups %}
+      <details class="faq-cat" id="{{ g.anchor }}">
+        <summary class="faq-cat-sum">
+          <span class="faq-cat-head">
+            <b>{{ g.title }}</b>
+            <small>{{ g.subtitle }}</small>
+          </span>
+          <span class="faq-cat-chev" aria-hidden="true">▾</span>
+        </summary>
+        <div class="faq-cat-body">
+          {% include "website/_faq.html" with faq=g.items keep_closed=True %}
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if teacher_faqs %}
+  <section id="teachers" class="faq-teachers" aria-labelledby="teachers-faq-heading">
+    <div class="faq-teachers-head">
+      <div>
+        <h2 id="teachers-faq-heading">استاد یا مؤلف هستید؟</h2>
+        <p>پرسش‌های رایج درباره‌ی ثبت درخواست همکاری، آماده‌سازی کتاب، کلاس‌های خصوصی، شرایط انتشار، سهم فروش و تسویه.</p>
+      </div>
+      <div class="faq-teachers-actions">
+        <a class="btn lemon small" href="{% url 'website:teacher-application' %}">درخواست همکاری آموزشی</a>
+        <a class="btn dark small" href="{% url 'teacher-login' %}">ورود به درگاه اساتید</a>
+      </div>
+    </div>
+    {% include "website/_faq.html" with faq=teacher_faqs keep_closed=True %}
+  </section>
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

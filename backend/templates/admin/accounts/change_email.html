@@ -1,0 +1,47 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div class="card" style="max-width: 540px; margin: 30px auto; padding: 28px; background: var(--body-bg, #fff); color: var(--body-fg, #111827); border-radius: 12px; border: 1px solid var(--hairline-color, #e5e7eb); box-shadow: 0 4px 16px rgba(0,0,0,0.06);" dir="rtl">
+  <h2 style="margin-top:0; color: var(--body-fg, #111827); font-size: 20px; font-weight: 800;">{{ title }}</h2>
+  <p style="color: var(--body-quiet-color, #4b5563); font-size: 13.5px; line-height: 1.75; margin-bottom: 16px;">
+    ثبت و تأیید ایمیل کاری به شما امکان می‌دهد اعلان‌های رسمی مدیر (پیشنهاد انتشار، نتیجهٔ بررسی، دسترسی گروهی و تسویه حساب) و خروجی‌های کتاب را مستقیماً در ایمیل خود دریافت کنید.
+  </p>
+
+  {% if user_email %}
+    <div style="margin-bottom:18px; padding:10px 14px; border-radius:8px; background:var(--darkened-bg, #f8fafc); border:1px solid var(--hairline-color, #e2e8f0); font-size:13px; line-height:1.7;">
+      <div>
+        <strong>نشانی فعلی:</strong> <span dir="ltr">{{ user_email }}</span>
+        {% if is_verified %}
+          <span style="color:#15803d; font-weight:700; margin-right:6px;">(تأییدشده)</span>
+        {% else %}
+          <span style="color:#b45309; font-weight:700; margin-right:6px;">(تأییدنشده)</span>
+        {% endif %}
+      </div>
+      <div style="color:var(--body-quiet-color, #4b5563); font-size:12px; margin-top:4px;">
+        با تغییر نشانی ایمیل، وضعیت تأیید قبلی بلافاصله لغو می‌شود و تا زمان تأیید نشانی جدید، هیچ اعلان یا فایلی به نشانی قبلی ارسال نخواهد شد.
+      </div>
+    </div>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    <div style="margin-bottom: 18px;">
+      <label for="id_email" style="display:block; font-weight:700; margin-bottom:6px; color: var(--body-fg);">آدرس ایمیل کاری جدید:</label>
+      <input type="email" name="email" id="id_email" dir="ltr" required value="{{ user_email }}" placeholder="profs@university.ac.ir" style="width:100%; box-sizing:border-box; padding:10px 12px; background:var(--darkened-bg, #f9fafb); color:var(--body-fg, #111); border:1px solid var(--hairline-color, #d1d5db); border-radius:8px; font-size:14px;">
+    </div>
+
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px;">
+      <button type="submit" class="button" style="background: #2563eb; color: #fff; padding: 10px 22px; border-radius: 8px; border: none; font-size:14px; font-weight: 700; cursor: pointer;">
+        ذخیره و ارسال لینک تأیید
+      </button>
+      {% if user_email and not is_verified %}
+        <a href="{% url 'admin:accounts_user_send_verification' %}" class="button" style="background: var(--darkened-bg, #f3f4f6); color: var(--body-fg, #374151); border: 1px solid var(--hairline-color); padding: 10px 16px; border-radius: 8px; text-decoration: none; font-size:13.5px; font-weight: 700;">
+          ارسال مجدد لینک به همین نشانی
+        </a>
+      {% endif %}
+      <a href="{% url 'admin:index' %}" class="button" style="background: var(--darkened-bg, #f3f4f6); color: var(--body-fg, #374151); border: 1px solid var(--hairline-color); padding: 10px 18px; border-radius: 8px; text-decoration: none; font-size:14px; font-weight: 700;">
+        انصراف
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

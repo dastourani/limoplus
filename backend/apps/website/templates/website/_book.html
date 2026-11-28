@@ -1,0 +1,40 @@
+{% load site_icons %}<a class="bk{% if c.cover_ribbon.kind == 'soon' or c.cover_ribbon.kind == 'planning' %} bk-prerelease{% endif %}" href="{{ c.url }}" data-majors="{{ c.majors|join:' ' }}">
+  <div class="cover" data-cover="{{ c.cover }}" data-w="{{ w|default:170 }}" style="width:{{ w|default:170 }}px"><div class="cover-ph"><b>{{ c.book.title }}</b></div></div>
+  {% if c.cover_ribbon %}<span class="bk-ribbon{% if c.cover_ribbon.kind != 'free' %} bk-ribbon-{{ c.cover_ribbon.kind }}{% endif %}">{% if c.cover_ribbon.icon %}{% icon c.cover_ribbon.icon 12 %}{% endif %}{{ c.cover_ribbon.text }}</span>{% endif %}
+  <b class="bk-title">{{ c.book.title }}</b>
+  <span class="bk-meta">{% if c.chapters %}{{ c.chapters }} فصل{% if c.book.author %}، {{ c.book.author }}{% endif %}{% elif c.release_estimate %}انتشار: {{ c.release_estimate }}{% elif c.book.author %}{{ c.book.author }}{% else %}&nbsp;{% endif %}</span>
+  <div class="bk-action">
+    {% if c.label.kind == 'soon' %}
+    <span class="tip-wrap tip-up" style="width:100%">
+      <span class="tagbtn {{ c.label.kind }}">{% icon c.label.icon 15 %}{{ c.label.text }}</span>
+      <span class="tip-bubble">
+        <b>زمان حدودی انتشار: {{ c.release_estimate|default:"به‌زودی" }}</b>
+        <span>برای ثبت «خبرم کن» و دریافت پیامک به محض انتشار این کتاب کلیک کنید.</span>
+      </span>
+    </span>
+    {% elif c.label.kind == 'preparing' %}
+    <span class="tip-wrap tip-up" style="width:100%">
+      <span class="tagbtn {{ c.label.kind }}">{% icon c.label.icon 15 %}{{ c.label.text }}</span>
+      <span class="tip-bubble">
+        <b>این کتاب در حال برنامه‌ریزی است</b>
+        {% if c.release_estimate %}<span>پیش‌بینی انتشار: {{ c.release_estimate }}</span>{% endif %}
+        <span>{{ c.hover_note }}</span>
+      </span>
+    </span>
+    {% elif c.discount %}
+    <span class="tip-wrap tip-up" style="width:100%">
+      <span class="tagbtn {{ c.label.kind }}">
+        {% icon c.label.icon 15 %}<span class="bk-price">{{ c.label.text }}</span><span class="bk-discount-chip">{{ c.discount.percent }}٪</span>
+      </span>
+      <span class="tip-bubble">
+        <b>{{ c.discount.percent }}٪ تخفیف زمان‌دار</b>
+        {% if c.regular_price %}<span>قیمت عادی: <s>{{ c.regular_price }}</s></span>{% endif %}
+        <span>قیمت ویژه: {{ c.label.text }}</span>
+        {% if c.discount.end_date %}<span>مهلت: تا {{ c.discount.end_date }}</span>{% endif %}
+      </span>
+    </span>
+    {% else %}
+    <span class="tagbtn {{ c.label.kind }}">{% icon c.label.icon 15 %}<span class="bk-price">{{ c.label.text }}</span></span>
+    {% endif %}
+  </div>
+</a>

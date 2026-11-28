@@ -1,0 +1,286 @@
+{% extends "website/base.html" %}
+{% load static %}
+{% block title %}دعوت به کلاس {{ classroom.title }} | لیموخوان{% endblock %}
+{% block description %}پیوستن به کلاس {{ classroom.title }} و دریافت کتاب {{ book.title }} در لیموخوان.{% endblock %}
+
+{% block main %}
+<section class="sec wrap narrow" style="max-width: 580px; margin: 40px auto; padding: 0 16px;">
+  <div class="page-card" style="background: #ffffff; border-radius: 16px; padding: 32px 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); text-align: center;">
+
+    {% if error_state %}
+      <div style="font-size: 48px; margin-bottom: 16px;">
+        {% if error_state == 'expired' %}⏰{% elif error_state == 'full' %}👥{% else %}🔒{% endif %}
+      </div>
+      <h1 class="h2" style="color: #dc2626; margin-bottom: 12px;">
+        {% if error_state == 'expired' %}
+          مهلت کلاس به پایان رسیده است
+        {% elif error_state == 'full' %}
+          ظرفیت کلاس تکمیل است
+        {% elif error_state == 'revoked' %}
+          دسترسی لغو شده است
+        {% else %}
+          لینک دعوت غیرفعال است
+        {% endif %}
+      </h1>
+      <p class="mut" style="color: #6b7280; line-height: 1.7;">{{ message }}</p>
+      <div style="margin-top: 24px;">
+        <a href="{% url 'website:home' %}" class="btn dark" style="padding: 10px 24px; text-decoration: none;">بازگشت به صفحه اصلی</a>
+      </div>
+    {% else %}
+      {% if messages %}
+        <div style="margin-bottom: 16px; text-align: right;">
+          {% for m in messages %}
+            <div style="padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; background: {% if 'error' in m.tags %}#fef2f2; color: #b91c1c; border: 1px solid #fecaca{% else %}#ecfdf5; color: #065f46; border: 1px solid #a7f3d0{% endif %};">
+              {{ m }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <div style="display: inline-block; background: #e0f2fe; color: #0284c7; padding: 6px 14px; border-radius: 999px; font-weight: bold; font-size: 13px; margin-bottom: 16px;">
+        🎓 دعوت اختصاصی به کلاس درس
+      </div>
+
+      <h1 class="h2" style="font-size: 24px; font-weight: 800; color: #111827; margin-bottom: 8px;">
+        {{ classroom.title }}
+      </h1>
+
+      <p style="color: #4b5563; font-size: 15px; margin-bottom: 24px;">
+        مدرس: <b>{{ classroom.teacher.full_name|default:classroom.teacher.phone }}</b>
+      </p>
+
+      <!-- Book Card -->
+      <div style="background: #f9fafb; border: 1px solid #f3f4f6; border-radius: 12px; padding: 18px; margin-bottom: 24px; display: flex; align-items: center; gap: 16px; text-align: right;">
+        <div class="cover" data-cover="{{ book_cover }}" data-w="58" style="width: 58px; flex-shrink: 0; border-radius: 6px; overflow: hidden;">
+          <div class="cover-ph"><b>{{ book.title }}</b></div>
+        </div>
+        <div style="flex: 1;">
+          <h3 style="margin: 0 0 6px 0; font-size: 16px; color: #111827;">{{ book.title }}</h3>
+          <p style="margin: 0; color: #6b7280; font-size: 13px;">
+            مهلت استفاده: <span style="color: #10b981; font-weight: bold;">{{ expiry_text }}</span>
+          </p>
+        </div>
+      </div>
+
+      {% if classroom.description %}
+        <div style="background: #fffbeb; border-right: 4px solid #f59e0b; padding: 12px 16px; border-radius: 6px; text-align: right; margin-bottom: 24px; font-size: 14px; color: #92400e; line-height: 1.6;">
+          <b>پیام استاد:</b> {{ classroom.description }}
+        </div>
+      {% endif %}
+
+      {% if user.is_authenticated %}
+        {% if already_member %}
+          <div style="background: #ecfdf5; border-radius: 10px; padding: 16px; margin-bottom: 20px; color: #065f46; font-size: 14px;">
+            ✓ شما پیش از این عضو این کلاس شده‌اید و کتاب در کتابخانه شما فعال است.
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <a id="deep-link-btn" href="{{ deep_link_url }}" class="btn dark wide" style="display: none; padding: 12px; font-size: 15px; font-weight: bold; text-decoration: none; border-radius: 8px;">
+              📱 باز کردن در اپلیکیشن لیموخوان
+            </a>
+            <form method="post" style="margin: 0;">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="open_app">
+              <button type="submit" class="btn lemon wide" style="display: block; width: 100%; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer;">
+                ورود به کتاب در وب و شروع مطالعه
+              </button>
+            </form>
+          </div>
+        {% else %}
+          <form method="post">
+            {% csrf_token %}
+            <p style="color: #4b5563; font-size: 14px; margin-bottom: 16px;">
+              شما با شماره <b>{{ user.phone }}</b> وارد شده‌اید. با کلیک روی دکمه زیر، کتاب فوراً به کتابخانه شما افزوده می‌شود.
+            </p>
+            <button type="submit" class="btn lemon wide" style="padding: 12px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%;">
+              افزودن کتاب به کتابخانه من
+            </button>
+          </form>
+        {% endif %}
+      {% else %}
+        <!-- OTP Login directly inside invitation card -->
+        <div id="join-otp-box" style="text-align: right;">
+          {% csrf_token %}
+          <p style="color: #4b5563; font-size: 14px; margin-bottom: 16px; text-align: center;">
+            برای دریافت رایگان این کتاب در حساب خود، شماره موبایلتان را وارد کنید:
+          </p>
+          <div style="margin-bottom: 14px;">
+            <label for="student-phone" style="display: block; font-weight: bold; margin-bottom: 6px; font-size: 13px;">شماره موبایل دانشجو:</label>
+            <input id="student-phone" type="tel" inputmode="tel" dir="ltr" placeholder="09121234567" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px;">
+          </div>
+          <button id="send-otp-btn" type="button" class="btn lemon wide" style="width: 100%; padding: 10px; font-size: 15px; font-weight: bold; border-radius: 8px; cursor: pointer;">
+            دریافت کد پیامکی
+          </button>
+
+          <div id="otp-code-container" style="display: none; margin-top: 16px;">
+            <label for="student-otp" style="display: block; font-weight: bold; margin-bottom: 6px; font-size: 13px;">کد پیامک‌شده:</label>
+            <input id="student-otp" type="text" inputmode="numeric" dir="ltr" maxlength="8" placeholder="کد تأیید" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 16px; text-align: center; letter-spacing: 2px;">
+            <button id="verify-otp-btn" type="button" class="btn dark wide" style="width: 100%; padding: 10px; margin-top: 10px; font-size: 15px; font-weight: bold; border-radius: 8px; cursor: pointer;">
+              تأیید و دریافت کتاب
+            </button>
+
+            <!-- Resend OTP Timer & Button -->
+            <div id="resend-container" style="margin-top: 14px; text-align: center; font-size: 13px;">
+              <span id="countdown-text" style="color: #6b7280;">ارسال مجدد پیامک تا <b id="countdown-timer" dir="ltr">02:00</b> دیگر</span>
+              <button id="resend-otp-btn" type="button" style="display: none; background: none; border: none; color: #0284c7; font-weight: bold; cursor: pointer; text-decoration: underline; font-size: 13px; font-family: inherit;">
+                🔄 ارسال مجدد کد پیامکی
+              </button>
+            </div>
+          </div>
+
+          <div id="otp-message" style="margin-top: 14px; font-size: 13px; text-align: center; color: #6b7280;"></div>
+        </div>
+      {% endif %}
+
+    {% endif %}
+  </div>
+</section>
+
+{% if not user.is_authenticated and not error_state %}
+<script>
+(() => {
+  const phoneInput = document.getElementById('student-phone');
+  const sendBtn = document.getElementById('send-otp-btn');
+  const codeBox = document.getElementById('otp-code-container');
+  const codeInput = document.getElementById('student-otp');
+  const verifyBtn = document.getElementById('verify-otp-btn');
+  const message = document.getElementById('otp-message');
+  const resendBtn = document.getElementById('resend-otp-btn');
+  const countdownText = document.getElementById('countdown-text');
+  const countdownTimer = document.getElementById('countdown-timer');
+  const classroomCode = "{{ classroom.code }}";
+  const bookUrl = "{{ app_book_url }}";
+
+  let timerInterval = null;
+
+  function startCountdown(seconds) {
+    clearInterval(timerInterval);
+    if (resendBtn) resendBtn.style.display = 'none';
+    if (countdownText) countdownText.style.display = 'inline';
+
+    let left = seconds;
+    const updateDisplay = () => {
+      const m = String(Math.floor(left / 60)).padStart(2, '0');
+      const s = String(left % 60).padStart(2, '0');
+      if (countdownTimer) countdownTimer.textContent = `${m}:${s}`;
+    };
+    updateDisplay();
+
+    timerInterval = setInterval(() => {
+      left--;
+      if (left <= 0) {
+        clearInterval(timerInterval);
+        if (countdownText) countdownText.style.display = 'none';
+        if (resendBtn) resendBtn.style.display = 'inline';
+      } else {
+        updateDisplay();
+      }
+    }, 1000);
+  }
+
+  async function postJson(url, body, withCsrf = false) {
+    const headers = {'Content-Type': 'application/json'};
+    if (withCsrf) {
+      const csrf = document.querySelector('#join-otp-box input[name="csrfmiddlewaretoken"]')?.value;
+      if (csrf) headers['X-CSRFToken'] = csrf;
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: JSON.stringify(body)
+    });
+    let data = {};
+    try { data = await res.json(); } catch (_) {}
+    return { ok: res.ok, data };
+  }
+
+  async function requestOtp() {
+    const phone = phoneInput.value.trim();
+    if (!phone) {
+      message.textContent = 'لطفاً شماره موبایل خود را وارد کنید.';
+      message.style.color = '#dc2626';
+      return;
+    }
+    sendBtn.disabled = true;
+    if (resendBtn) resendBtn.disabled = true;
+    message.textContent = 'در حال ارسال کد…';
+    message.style.color = '#4b5563';
+
+    try {
+      const res = await postJson('/api/v1/auth/request-otp/', { phone });
+      if (!res.ok) {
+        message.textContent = res.data.message || 'خطا در ارسال کد. شماره را بررسی کنید.';
+        message.style.color = '#dc2626';
+        sendBtn.disabled = false;
+        if (resendBtn) resendBtn.disabled = false;
+        return;
+      }
+      message.textContent = 'کد پیامکی با موفقیت ارسال شد.';
+      message.style.color = '#10b981';
+      codeBox.style.display = 'block';
+      sendBtn.style.display = 'none';
+      codeInput.focus();
+      startCountdown(120);
+    } catch (_) {
+      message.textContent = 'خطا در اتصال به سرور.';
+      message.style.color = '#dc2626';
+      sendBtn.disabled = false;
+      if (resendBtn) resendBtn.disabled = false;
+    }
+  }
+
+  sendBtn.addEventListener('click', requestOtp);
+  if (resendBtn) resendBtn.addEventListener('click', () => {
+    resendBtn.disabled = false;
+    requestOtp();
+  });
+
+  verifyBtn.addEventListener('click', async () => {
+    const phone = phoneInput.value.trim();
+    const code = codeInput.value.trim();
+    if (!code) {
+      message.textContent = 'کد پیامک‌شده را وارد کنید.';
+      message.style.color = '#dc2626';
+      return;
+    }
+    verifyBtn.disabled = true;
+    message.textContent = 'در حال بررسی کد و فعال‌سازی کتاب…';
+    message.style.color = '#4b5563';
+
+    try {
+      const res = await postJson(window.location.pathname, {
+        action: 'verify_otp',
+        phone,
+        code
+      }, true);
+      if (!res.ok || !res.data.ok) {
+        message.textContent = res.data.message || 'کد واردشده نامعتبر است.';
+        message.style.color = '#dc2626';
+        verifyBtn.disabled = false;
+        return;
+      }
+      // Web session cookie is now set and membership is active; hand off to the web app directly.
+      message.textContent = 'ورود موفقیت‌آمیز بود. در حال انتقال به کتاب…';
+      message.style.color = '#10b981';
+      window.location.assign(res.data.redirect || bookUrl);
+    } catch (_) {
+      message.textContent = 'خطا در اتصال به سرور.';
+      message.style.color = '#dc2626';
+      verifyBtn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endif %}
+
+<script>
+(() => {
+  // Mobile app deep-link detection
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const deepBtn = document.getElementById('deep-link-btn');
+  if (deepBtn && isMobile) {
+    deepBtn.style.display = 'block';
+  }
+})();
+</script>
+{% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}

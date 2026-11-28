@@ -1,0 +1,549 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block nav-sidebar %}{% endblock %}
+{% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">مدیریت</a> ›
+  <a href="{% url 'admin:catalog_book_changelist' %}">کتاب‌ها</a> ›
+  {% if book %}<a href="{% url 'admin:catalog_book_change' book.pk %}">{{ book.title }}</a> ›{% endif %}
+  فصل از فایل
+</div>
+{% endblock %}
+{% block content %}
+<div id="content-main" class="lp">
+  {% if not report or report.errors %}
+  <!-- راهنمای دسته‌بندی‌شده و افقی فرمت‌ها و قوانین -->
+  <div class="card" style="background:var(--darkened-bg); border:1px solid var(--hairline-color); border-radius:12px; padding:16px 20px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+    <div style="font-size:12.5px; font-weight:800; color:var(--body-fg); margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+      📁 فرمت‌های قابل قبول فایل ورودی:
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+      <span class="pill" style="padding:4px 10px; font-size:12px; background:var(--body-bg); border-color:var(--hairline-color); display:inline-flex; align-items:center; gap:6px;">
+        <code style="font-weight:800; color:#0284c7; direction:ltr; unicode-bidi:isolate;">.md</code> <span>مارک‌داون به‌همراه پوشهٔ <code style="direction:ltr; unicode-bidi:isolate;">images</code></span>
+      </span>
+      <span class="pill" style="padding:4px 10px; font-size:12px; background:var(--body-bg); border-color:var(--hairline-color); display:inline-flex; align-items:center; gap:6px;">
+        <code style="font-weight:800; color:#0284c7; direction:ltr; unicode-bidi:isolate;">.tex</code> <span>یک فصل LaTeX (فایل متنی <code style="direction:ltr; unicode-bidi:isolate;">.tex</code>)</span>
+      </span>
+      <span class="pill" style="padding:4px 10px; font-size:12px; background:var(--body-bg); border-color:var(--hairline-color); display:inline-flex; align-items:center; gap:6px;">
+        <code style="font-weight:800; color:#0284c7; direction:ltr; unicode-bidi:isolate;">.zip</code> <span>پروژهٔ کامل LaTeX (از جمله خروجی Overleaf)</span>
+      </span>
+      <span class="pill" style="padding:4px 10px; font-size:12px; background:var(--body-bg); border-color:var(--hairline-color); display:inline-flex; align-items:center; gap:6px;">
+        <code style="font-weight:800; color:#0284c7; direction:ltr; unicode-bidi:isolate;">.pptx</code> <span>پاورپوینت درس (هر اسلاید یک بخش می‌شود)</span>
+      </span>
+    </div>
+
+    <div style="border-top:1px dashed var(--hairline-color); padding-top:10px; display:flex; flex-wrap:wrap; gap:16px; font-size:12px; color:var(--body-quiet-color); line-height:1.6;">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="color:#16a34a; font-weight:800;">✓ به‌روزرسانی ایمن:</span> اگر فصلی با همین شناسه قبلاً وارد شده باشد، به‌روز می‌شود و پیشرفت کاربران حفظ خواهد شد.
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="color:#0284c7; font-weight:800;">👁️ پیش‌نمایش زنده:</span> قبل از اعمال در دیتابیس، محتوا و کادرها به‌صورت تعاملی نمایش داده می‌شوند.
+      </div>
+      {% if book %}
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="color:#eab308; font-weight:800;">📚 کتاب جاری:</span> فصل به کتاب «<b>{{ book.title }}</b>» اضافه می‌شود و نیازی به شناسه-کتاب در فایل نیست.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- گرید متوازن کارت‌ها: قالب‌ها و انتخاب کتاب مقصد -->
+  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:20px;">
+    <!-- کارت قالب‌ها -->
+    <div style="background:var(--darkened-bg); padding:16px 20px; border-radius:12px; border:1px solid var(--hairline-color); display:flex; flex-direction:column; justify-content:space-between; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+      <div>
+        <div style="font-weight:800; font-size:13.5px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+          📥 دریافت قالب‌ها و فایل‌های نمونه برای شروع:
+        </div>
+        <div style="font-size:12px; color:var(--body-quiet-color); line-height:1.5;">
+          می‌توانید برای ساختاردهی استاندارد به جزوات خود، نمونه‌های آماده را دانلود کنید:
+        </div>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+        <a href="{% static 'catalog/templates/sample_chapter.tex' %}" download="sample_chapter.tex" class="btn small" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd; font-weight:700; padding:6px 12px; border-radius:8px;">
+          دانلود نمونه LaTeX (.tex)
+        </a>
+        <a href="{% static 'catalog/templates/sample_chapter.md' %}" download="sample_chapter.md" class="btn small" style="background:#fef3c7; color:#92400e; border-color:#fde68a; font-weight:700; padding:6px 12px; border-radius:8px;">
+          دانلود نمونه مارک‌داون (.md)
+        </a>
+      </div>
+    </div>
+
+    <!-- کارت انتخاب کتاب مقصد (برای نمای عمومی مدیر کل) -->
+    {% if not book and all_books %}
+    <div style="background:var(--darkened-bg); padding:16px 20px; border-radius:12px; border:1px solid var(--hairline-color); display:flex; flex-direction:column; justify-content:space-between; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <label for="id_target_book_id" style="font-size:13.5px; font-weight:800; color:var(--body-fg);">
+            📚 انتخاب کتاب مقصد (فصل به کدام کتاب افزوده شود؟):
+          </label>
+          <a href="{% url 'admin:catalog_book_changelist' %}" style="font-size:11.5px; color:#0284c7; text-decoration:none; font-weight:700;" title="مشاهده فهرست کتاب‌ها و ورود به صفحه اختصاصی هر کتاب">
+            فهرست کتاب‌ها ↗
+          </a>
+        </div>
+        <div style="position:relative; width:100%; margin-top:4px;">
+          <select id="id_target_book_id" name="target_book_id" form="import-upload-form" style="width:100%; box-sizing:border-box; height:42px; padding:8px 14px 8px 38px; border-radius:8px; border:1.5px solid var(--hairline-color); font:inherit; font-size:13.5px; font-weight:500; background-color:var(--body-bg); color:var(--body-fg); cursor:pointer; outline:none; transition:border-color .15s, box-shadow .15s;">
+            <option value="">— از مشخصات خود فایل خوانده شود (فایل‌های دارای شناسه-کتاب) —</option>
+            {% for b in all_books %}
+              <option value="{{ b.pk }}">{{ b.title }} ({{ b.slug }})</option>
+            {% endfor %}
+          </select>
+          <div style="position:absolute; left:12px; top:50%; transform:translateY(-50%); pointer-events:none; display:flex; align-items:center; color:var(--body-quiet-color);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11.5px; color:var(--body-quiet-color); line-height:1.5;">
+        💡 برای فایل‌های خام LaTeX (.tex) که شناسه-کتاب ندارند، کتاب مقصد را انتخاب کنید تا دکمهٔ بررسی فعال شود؛ یا مستقیماً از <a href="{% url 'admin:catalog_book_changelist' %}" style="color:#0284c7; font-weight:700;">صفحهٔ کتاب</a> اقدام کنید.
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- فرم آپلود و بررسی فایل در یک کارت منظم و یکپارچه -->
+  <form method="post" enctype="multipart/form-data" id="import-upload-form">
+    {% csrf_token %}
+    <div id="upload-card-box" style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:12px; padding:18px 22px; margin-bottom:24px; box-shadow:0 1px 4px rgba(0,0,0,0.04); display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; transition:opacity .15s ease;">
+      <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:240px;">
+        <label for="id_file_upload" style="font-size:13.5px; font-weight:800; color:var(--body-fg);">
+          انتخاب فایل فصل:
+        </label>
+        <input type="file" id="id_file_upload" name="file" accept=".md,.tex,.pptx,.zip" required {% if not book and all_books %}disabled{% endif %} style="font:inherit; font-size:13px; cursor:pointer;">
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <span id="target-book-hint" style="font-size:11.5px; color:#eab308; font-weight:700; display:none;">
+          ⚠️ برای شروع، ابتدا کتاب مقصد را از کادر بالا انتخاب کنید.
+        </span>
+        <button class="btn primary" type="submit" id="btn-submit-upload" {% if not book and all_books %}disabled{% endif %} style="padding:8px 24px; font-size:14px; border-radius:8px;">
+          بررسی فایل
+        </button>
+      </div>
+    </div>
+  </form>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var selectBook = document.getElementById('id_target_book_id');
+      var fileInput = document.getElementById('id_file_upload');
+      var submitBtn = document.getElementById('btn-submit-upload');
+      var hintEl = document.getElementById('target-book-hint');
+      var cardBox = document.getElementById('upload-card-box');
+
+      if (selectBook && submitBtn && fileInput) {
+        function checkState() {
+          var val = (selectBook.value || '').trim();
+          if (!val) {
+            // Lock both file picker and submit button
+            fileInput.disabled = true;
+            submitBtn.disabled = true;
+            fileInput.style.cursor = 'not-allowed';
+            submitBtn.style.cursor = 'not-allowed';
+            if (cardBox) cardBox.style.opacity = '0.55';
+            if (hintEl) {
+              hintEl.textContent = '🔒 برای شروع، ابتدا کتاب مقصد را از کادر بالا انتخاب کنید.';
+              hintEl.style.display = 'inline';
+            }
+          } else {
+            // Unlock everything
+            fileInput.disabled = false;
+            submitBtn.disabled = false;
+            fileInput.style.cursor = 'pointer';
+            submitBtn.style.cursor = 'pointer';
+            if (cardBox) cardBox.style.opacity = '1';
+            if (hintEl) hintEl.style.display = 'none';
+          }
+        }
+        selectBook.addEventListener('change', checkState);
+        checkState();
+      }
+    });
+  </script>
+  {% endif %}
+
+  {% if report %}
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px;">
+      <h2 style="margin:0; font-size:18px; font-weight:800;">{{ report.filename }}</h2>
+      {% if not report.errors %}
+      <span style="font-size:12px; color:#16a34a; font-weight:700; background:rgba(34,197,94,0.1); padding:4px 12px; border-radius:999px;">
+        ✓ فایل آماده پردازش است
+      </span>
+      {% endif %}
+    </div>
+
+    {% if report.errors %}
+      <div class="msg err" style="margin-top:12px;"><b>{{ report.errors|length }} خطا؛ چیزی وارد نشد.</b> خطاها را در فایل درست کنید و دوباره انتخابش کنید.
+        <ul>{% for issue in report.errors %}<li>{{ issue }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if report.warnings %}
+    <details class="msg warn" style="margin-top:10px; padding:8px 14px; cursor:pointer;">
+      <summary style="font-size:12px; font-weight:700;">
+        ⚠️ مشاهده هشدارهای تبدیل اولیه فایل ({{ report.warnings|length }} مورد) — پس از تمیزکاری با هوش مصنوعی برطرف می‌شوند
+      </summary>
+      <ul style="margin:8px 0 0; padding-inline-start:20px; font-size:11.5px; line-height:1.6;">
+        {% for issue in report.warnings %}<li>{{ issue }}</li>{% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+    {% if report.markdown %}
+    <!-- بخش هوشمند قطعات فصل و دستیار هوش مصنوعی (AI Chunks Assistant) -->
+    {% if report.ai_chunks %}
+    <div class="card" style="background:var(--darkened-bg); border:1px solid var(--hairline-color); border-radius:12px; padding:18px 22px; margin:20px 0; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px; border-bottom:1px dashed var(--hairline-color); padding-bottom:12px;">
+        <div>
+          <h3 style="margin:0 0 4px; font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px;">
+            🤖 قطعه‌بندی هوشمند و دستیار هوش مصنوعی
+          </h3>
+          <p style="margin:0; font-size:12px; color:var(--body-quiet-color); line-height:1.5;">
+            فایل شما به <b>{{ report.ai_chunks|length }}</b> قطعهٔ طبیعی تقسیم شده است. هوش مصنوعی به‌طور اختصاصی هر قطعه را تمیزکاری می‌کند و کادرها و فرمول‌ها در پیش‌نمایش بلادرنگ رندر می‌شوند.
+          </p>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <button type="button" class="btn" id="btn-clean-all-chunks" style="background:#0284c7; color:#fff; font-weight:700; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+            ⚡ تمیزکاری خودکار قطعه‌به‌قطعه
+          </button>
+          <label for="ai-provider-select" style="font-size:12px; font-weight:700;">مدل هوش مصنوعی:</label>
+          <select id="ai-provider-select" style="padding:6px 12px; border-radius:8px; border:1px solid var(--hairline-color); font:inherit; font-size:12.5px; background:var(--body-bg); color:var(--body-fg); cursor:pointer;">
+            {% if report.active_ai_providers.my_providers %}
+              <optgroup label="👤 مدل‌های اختصاصی من (API اختصاصی شما)">
+                {% for prov in report.active_ai_providers.my_providers %}
+                  <option value="{{ prov.id }}" {% if prov.is_default %}selected{% endif %}>{{ prov.title }} ({{ prov.model_name }})</option>
+                {% endfor %}
+              </optgroup>
+            {% endif %}
+            {% if report.active_ai_providers.global_providers %}
+              <optgroup label="🏢 مدل‌های عمومی مدیر کل (اشتراکی سامانه)">
+                {% for prov in report.active_ai_providers.global_providers %}
+                  <option value="{{ prov.id }}" {% if prov.is_default and not report.active_ai_providers.my_providers %}selected{% endif %}>{{ prov.title }} ({{ prov.model_name }})</option>
+                {% endfor %}
+              </optgroup>
+            {% endif %}
+            {% if not report.active_ai_providers.has_any %}
+              <option value="">(هیچ مدلی فعال نیست - در تنظیمات ثبت کنید)</option>
+            {% endif %}
+          </select>
+          <a href="{% url 'admin:catalog_aiprovider_changelist' %}" target="_blank" class="btn small" style="font-size:11.5px; border-radius:8px; text-decoration:none;" title="مدیریت کلیدها و ارائه‌دهندگان هوش مصنوعی در تب جدید">
+            ⚙️ تنظیم APIهای اختصاصی من
+          </a>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        {% for chunk in report.ai_chunks %}
+        <div class="ai-chunk-card" data-index="{{ chunk.index }}" style="background:var(--body-bg); border:1px solid var(--hairline-color); border-radius:10px; padding:14px 18px; transition:border-color .15s ease;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:12px; font-weight:800; background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:6px;">
+                قطعه {{ chunk.index }}
+              </span>
+              <span style="font-weight:700; font-size:14px;">{{ chunk.title }}</span>
+              <span style="font-size:11.5px; color:var(--body-quiet-color);">({{ chunk.word_count }} کلمه)</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="chunk-status-badge" style="font-size:11.5px; color:var(--body-quiet-color);"></span>
+              <button type="button" class="btn small btn-open-chunk-studio" data-index="{{ chunk.index }}" style="font-size:12px; font-weight:700; border-radius:8px; display:inline-flex; align-items:center; gap:4px; display:none; background:#0284c7; color:#fff;">
+                ✏️ ویرایش در استودیوی لیموخوان
+              </button>
+              <button type="button" class="btn small btn-clean-chunk" data-index="{{ chunk.index }}" style="background:#F5C518; color:#17201A; font-weight:800; border-color:#E0AE0B; border-radius:8px; display:inline-flex; align-items:center; gap:4px;">
+                ✨ تمیزکاری با هوش مصنوعی
+              </button>
+            </div>
+          </div>
+
+          <!-- حافظه پنهان متن تمیزشده برای هر قطعه -->
+          <textarea class="chunk-cleaned-textarea" style="display:none;"></textarea>
+          <script type="application/json" class="chunk-raw-json">{{ chunk.raw|json_script:"chunk-raw-data" }}</script>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- استودیوی متمرکز ویرایش و پیش‌نمایش لیموخوان (Dedicated Limo Studio) -->
+      <div id="chunk-studio-modal" class="card" style="display:none; margin-top:20px; border:2px solid #0284c7; border-radius:12px; padding:18px 22px; background:var(--body-bg); box-shadow:0 4px 16px rgba(2,132,199,0.12);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px; border-bottom:1px solid var(--hairline-color); padding-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:13px; font-weight:800; background:#0284c7; color:#fff; padding:3px 10px; border-radius:8px;">
+              استودیوی ویرایش لیموخوان
+            </span>
+            <span id="studio-chunk-title" style="font-weight:800; font-size:15px; color:var(--body-fg);">
+              قطعه انتخاب‌شده
+            </span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" class="btn primary small" id="btn-studio-save-chunk" style="background:#16a34a; color:#fff; border-color:#15803d; font-weight:800; border-radius:8px; display:inline-flex; align-items:center; gap:4px;">
+              ✓ ذخیره تغییرات در قطعه
+            </button>
+            <button type="button" class="btn small" id="btn-studio-close" style="font-weight:700; border-radius:8px;">
+              بستن استودیو
+            </button>
+          </div>
+        </div>
+
+        <p style="font-size:12px; color:var(--body-quiet-color); margin:0 0 12px; line-height:1.6;">
+          شما به تمام ابزارهای استاندارد لیموخوان شامل <b>نوار ابزار نمادهای ریاضی</b>، <b>کادرهای رسمی/نکته/تمرین</b> و <b>پیش‌نمایش زنده در سایزهای مختلف</b> دسترسی دارید. پس از بررسی یا ویرایش، دکمه «ذخیره تغییرات» را بزنید.
+        </p>
+
+        <div id="studio-editor-container">
+          <textarea id="studio-main-textarea" rows="12" style="width:100%; box-sizing:border-box;"></textarea>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {{ report.markdown|json_script:"import-md" }}
+    {% endif %}
+    {% if report.token %}
+      {% if report.existing %}
+        <div id="plan"></div>
+        {{ report.plan|json_script:"plan-data" }}
+        {{ report.diff|json_script:"diff-data" }}
+        <script>
+          document.addEventListener('DOMContentLoaded', function () {
+            var el = document.getElementById('plan');
+            el.appendChild(LimoReport({ plan: JSON.parse(document.getElementById('plan-data').textContent), diff: JSON.parse(document.getElementById('diff-data').textContent) }));
+          });
+        </script>
+      {% endif %}
+      <form method="post" class="cm-save" id="import-confirm-form">
+        {% csrf_token %}
+        <input type="hidden" name="token" value="{{ report.token }}">
+        <input type="hidden" name="filename" value="{{ report.filename }}">
+        {% if book %}<input type="hidden" name="target_book_id" value="{{ book.pk }}">{% endif %}
+        <input type="hidden" name="custom_boxes" id="id_custom_boxes" value="{{ report.custom_boxes_json|escape }}">
+        <script>
+          document.addEventListener('DOMContentLoaded', function () {
+            // Setup single dedicated LimoMdEditor instance for the studio
+            var studioModal = document.getElementById('chunk-studio-modal');
+            var studioTitle = document.getElementById('studio-chunk-title');
+            var studioTextarea = document.getElementById('studio-main-textarea');
+            var studioSaveBtn = document.getElementById('btn-studio-save-chunk');
+            var studioCloseBtn = document.getElementById('btn-studio-close');
+
+            var studioEditor = null;
+            var activeChunkCard = null;
+
+            if (studioTextarea && window.LimoMdEditor) {
+              studioEditor = new window.LimoMdEditor(studioTextarea, {
+                variant: 'notes',
+                labels: true,
+                expanded: false,
+                previewKey: 'limo.import.studio.preview'
+              });
+            }
+
+            function openStudioForChunk(card) {
+              if (!card || !studioModal) return;
+              activeChunkCard = card;
+              var index = card.getAttribute('data-index');
+              var title = card.querySelector('span[style*="font-weight:700"]')?.textContent || ('قطعه ' + index);
+              var ta = card.querySelector('.chunk-cleaned-textarea');
+              var chunkText = ta ? ta.value : '';
+
+              if (studioTitle) {
+                studioTitle.textContent = 'ویرایش قطعه ' + index + ': ' + title;
+              }
+
+              if (studioTextarea) {
+                studioTextarea.value = chunkText;
+                if (studioEditor) {
+                  studioEditor.refresh();
+                }
+              }
+
+              studioModal.style.display = 'block';
+              studioModal.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            if (studioCloseBtn && studioModal) {
+              studioCloseBtn.addEventListener('click', function () {
+                studioModal.style.display = 'none';
+              });
+            }
+
+            if (studioSaveBtn) {
+              studioSaveBtn.addEventListener('click', function () {
+                if (activeChunkCard && studioTextarea) {
+                  var ta = activeChunkCard.querySelector('.chunk-cleaned-textarea');
+                  if (ta) {
+                    ta.value = studioTextarea.value;
+                  }
+                  updateMasterMarkdownFromChunks();
+                  var badge = activeChunkCard.querySelector('.chunk-status-badge');
+                  if (badge) {
+                    badge.textContent = '✓ ویرایش و ذخیره شد';
+                    badge.style.color = '#16a34a';
+                  }
+                  if (window.LimoToast) {
+                    window.LimoToast('تغییرات این قطعه با موفقیت ذخیره و در کل فصل اعمال شد.', 'ok');
+                  }
+                }
+              });
+            }
+
+            // Assemble all chunk clean textareas back into the main markdown
+            function updateMasterMarkdownFromChunks() {
+              var allChunks = document.querySelectorAll('.ai-chunk-card');
+              var parts = [];
+              allChunks.forEach(function (card) {
+                var ta = card.querySelector('.chunk-cleaned-textarea');
+                if (ta && ta.value.trim()) {
+                  parts.push(ta.value.trim());
+                }
+              });
+
+              if (parts.length > 0) {
+                var fullMd = parts.join('\n\n');
+                var mdEl = document.getElementById('import-md');
+                if (mdEl) {
+                  mdEl.textContent = JSON.stringify(fullMd);
+                }
+              }
+            }
+
+            // Function to process a single AI chunk via Promise (for individual or sequential auto-clean)
+            function cleanChunkAsync(card) {
+              return new Promise(function (resolve, reject) {
+                if (!card) return resolve({ ok: false, error: 'کارت نامعتبر' });
+                var btn = card.querySelector('.btn-clean-chunk');
+                var openStudioBtn = card.querySelector('.btn-open-chunk-studio');
+                var statusBadge = card.querySelector('.chunk-status-badge');
+                var rawScript = card.querySelector('#chunk-raw-data') || card.querySelector('script');
+                var textarea = card.querySelector('.chunk-cleaned-textarea');
+                var providerSelect = document.getElementById('ai-provider-select');
+                var providerId = providerSelect ? providerSelect.value : '';
+
+                var rawText = '';
+                try {
+                  if (rawScript && rawScript.textContent) rawText = JSON.parse(rawScript.textContent);
+                } catch (e) {
+                  rawText = rawScript ? rawScript.textContent : '';
+                }
+
+                if (!rawText) {
+                  if (statusBadge) statusBadge.textContent = '❌ متن خام قطعه پیدا نشد';
+                  return resolve({ ok: false, error: 'متن خام قطعه پیدا نشد' });
+                }
+
+                if (btn) {
+                  btn.disabled = true;
+                  btn.innerHTML = '⏳ در حال تمیزکاری...';
+                }
+                if (statusBadge) {
+                  statusBadge.textContent = 'در حال پردازش هوش مصنوعی...';
+                  statusBadge.style.color = '#0284c7';
+                }
+
+                var csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+                var formData = new FormData();
+                formData.append('provider_id', providerId);
+                formData.append('raw_text', rawText);
+                formData.append('csrfmiddlewaretoken', csrfToken);
+
+                fetch("{% url 'admin:catalog_ai_clean_chunk' %}", {
+                  method: 'POST',
+                  body: formData,
+                  headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                  if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '✨ تمیزکاری مجدد';
+                  }
+                  if (!data.ok) {
+                    if (statusBadge) {
+                      statusBadge.textContent = '❌ ' + (data.error || 'خطا در پردازش');
+                      statusBadge.style.color = '#dc2626';
+                    }
+                    return resolve(data);
+                  }
+
+                  if (statusBadge) {
+                    statusBadge.textContent = '✓ تمیز شد با ' + (data.provider_title || 'هوش مصنوعی');
+                    statusBadge.style.color = '#16a34a';
+                  }
+
+                  var cleaned = data.cleaned_markdown || '';
+                  if (textarea) textarea.value = cleaned;
+                  if (openStudioBtn) openStudioBtn.style.display = 'inline-flex';
+
+                  // If this chunk is currently open in studio, update studio as well
+                  if (activeChunkCard === card && studioTextarea) {
+                    studioTextarea.value = cleaned;
+                    if (studioEditor) studioEditor.refresh();
+                  }
+
+                  updateMasterMarkdownFromChunks();
+                  resolve({ ok: true, data: data });
+                })
+                .catch(function (err) {
+                  if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '✨ تمیزکاری با هوش مصنوعی';
+                  }
+                  if (statusBadge) {
+                    statusBadge.textContent = '❌ خطای شبکه';
+                    statusBadge.style.color = '#dc2626';
+                  }
+                  resolve({ ok: false, error: err });
+                });
+              });
+            }
+
+            // Click listener for cleaning individual AI chunks
+            document.querySelectorAll('.btn-clean-chunk').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                var card = btn.closest('.ai-chunk-card');
+                cleanChunkAsync(card);
+              });
+            });
+
+            // Click listener for opening dedicated studio for each chunk
+            document.querySelectorAll('.btn-open-chunk-studio').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                var card = btn.closest('.ai-chunk-card');
+                openStudioForChunk(card);
+              });
+            });
+
+            // Sequential one-by-one automatic cleaning for all chunks
+            var cleanAllBtn = document.getElementById('btn-clean-all-chunks');
+            if (cleanAllBtn) {
+              cleanAllBtn.addEventListener('click', async function () {
+                var cards = Array.from(document.querySelectorAll('.ai-chunk-card'));
+                if (!cards.length) return;
+
+                cleanAllBtn.disabled = true;
+                cleanAllBtn.innerHTML = '⏳ در حال تمیزکاری قطعه‌به‌قطعه...';
+
+                for (var i = 0; i < cards.length; i++) {
+                  var card = cards[i];
+                  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  card.style.borderColor = '#0284c7';
+                  await cleanChunkAsync(card);
+                  card.style.borderColor = 'var(--hairline-color)';
+                }
+
+                cleanAllBtn.disabled = false;
+                cleanAllBtn.innerHTML = '✓ تمیزکاری تمام قطعات پایان یافت';
+                setTimeout(function () {
+                  cleanAllBtn.innerHTML = '⚡ تمیزکاری خودکار قطعه‌به‌قطعه';
+                }, 4000);
+              });
+            }
+          });
+        </script>
+        {% if request.user.is_superuser %}
+          <label class="btn"><input type="checkbox" name="publish"> انتشار فوری</label>
+        {% else %}
+          <p class="hint">فصلِ آماده‌شده پیش‌نویس می‌ماند؛ انتشار و بازکردن دسترسی دانشجویان فقط با مدیر کل است.</p>
+        {% endif %}
+        <button class="btn primary" type="submit">اعمال تغییرات</button>
+        <a class="btn" href="{{ request.path }}">انصراف</a>
+      </form>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

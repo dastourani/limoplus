@@ -1,0 +1,45 @@
+{% extends "admin/base_site.html" %}
+{% block nav-sidebar %}{% endblock %}
+{% block extrahead %}{{ block.super }}{% include "admin/catalog/book/_assets.html" %}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">مدیریت</a> ›
+  <a href="{% url 'admin:catalog_book_changelist' %}">کتاب‌ها</a> ›
+  {% if book.is_inbox %}<a href="{% url 'admin:catalog_inbox' %}">{{ book.title }}</a>{% else %}<a href="{% url 'admin:catalog_book_change' book.pk %}">{{ book.title }}</a>{% endif %} ›
+  <a href="{% url 'admin:catalog_chapter_manager' chapter.pk %}">{{ chapter.title }}</a> ›
+  {% if restore %}بازگرداندن نسخه{% else %}ویرایش کل فایل{% endif %}
+</div>
+{% endblock %}
+{% block content %}
+{% csrf_token %}
+<div id="content-main" class="lp">
+  {% if restore %}
+    <div class="msg warn">این متن نسخه‌ی <b>{{ restore_when }}</b> است ({{ restore.get_source_display }}{% if restore.note %}: {{ restore.note }}{% endif %}).
+      «بررسی» را بزنید تا ببینید چه چیزی برمی‌گردد؛ با «ذخیره»، فصل به این نسخه برمی‌گردد. نسخه‌ی فعلی هم در «نسخه‌ها» می‌ماند.</div>
+  {% else %}
+    <p>متن فصل، دقیقاً همان چیزی که روی سرور است. مشخصات فصل (عنوان، شماره، رایگان) بالای کادر است؛ سرصفحه‌ی فایل
+      (شناسه‌ی کتاب و فصل، رشته‌ها) خودکار ساخته می‌شود و در کادر نشان داده نمی‌شود. هر چیزی را عوض کنید، «بررسی» را بزنید
+      تا خطاها و تغییرات را ببینید، بعد «ذخیره». شناسه‌ها (<code>{#…}</code>) را عوض نکنید؛ آمار کاربران به آن‌ها وصل است.</p>
+  {% endif %}
+  {{ meta|json_script:"file-meta" }}
+  <textarea id="file-text" class="file-ed" spellcheck="false">{{ body }}</textarea>
+  <div class="cm-save">
+    <button id="file-check" class="btn" type="button">بررسی</button>
+    <button id="file-save" class="btn primary" type="button" disabled>ذخیره</button>
+    <a class="btn" href="{% url 'admin:catalog_chapter_manager' chapter.pk %}">انصراف</a>
+    <span class="hint">«ذخیره» بعد از یک «بررسی» بدون خطا فعال می‌شود.</span>
+  </div>
+  <div id="file-result"></div>
+</div>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var metaEl = document.getElementById('file-meta');
+    var meta = null;
+    try { meta = JSON.parse(metaEl.textContent); } catch (err) { meta = null; }
+    LimoFileEditor({ api: "{{ api_url|escapejs }}", version: "{{ version }}", restore: {% if restore %}true{% else %}false{% endif %},
+      note: "{% if restore %}بازگرداندن نسخه‌ی {{ restore_when|escapejs }}{% else %}ویرایش کل فایل{% endif %}",
+      meta: meta, book_url: "{{ book_url|escapejs }}",
+      done: "{% url 'admin:catalog_chapter_manager' chapter.pk %}" });
+  });
+</script>
+{% endblock %}

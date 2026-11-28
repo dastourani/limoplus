@@ -1,0 +1,1647 @@
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Image, LayoutAnimation, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, UIManager, useWindowDimensions, View } from 'react-native';
+import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from 'react-native-svg';
+
+import { ApiError } from '../../api/client';
+import { endpoints, type ChapterSummary, type NodeSummary, type ReviewItem } from '../../api/endpoints';
+import { openReview } from '../../lib/reviews';
+import { BookCover } from '../../components/BookCover';
+import { CoverRibbon } from '../../components/CoverRibbon';
+import { Pill } from '../../components/Pill';
+import { MarkdownView } from '../../components/MarkdownView';
+import { Text, TextInput } from '../../components/Text';
+import { useFeedback } from '../../components/Feedback';
+import { useCelebrate } from '../../components/Celebrate';
+import { LemonProgress } from '../../components/LemonProgress';
+import { PageTurn } from '../../components/PageTurn';
+import { Icon, IconBadge } from '../../components/Icon';
+import { Button, Chip, ErrorState, Header, Loading, Screen, Sheet, usePullRefresh } from '../../components/ui';
+import { requireLogin, useAuth } from '../../lib/auth';
+import { firstReadableNodeId, isSectionAccessibleInBook, lockedCtaLabel, productStateNote, resolveBookCta } from '../../lib/bookAccess';
+import { coverByline } from '../../lib/cover';
+import { jalaliDate } from '../../lib/jalali';
+import { offlineBookDetail, offlineBooks, offlineSupported, removeOfflineBook, saveOfflineBook, type OfflineBook } from '../../lib/offline';
+import { storage, type LastSection } from '../../lib/storage';
+import { useApi } from '../../lib/useApi';
+import { useAppearance } from '../../lib/coverTheme';
+import { celebrateProgress } from '../../lib/milestones';
+import { studyDuration } from '../../lib/duration';
+import { flushStudyTime, useLocalStudySeconds } from '../../lib/studyTime';
+import { currentPrice, percentLabel } from '../../lib/pricing';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
+import { colors, formatToman, radius, rtl, toPersianDigits } from '../../theme';
+import { BookSide } from '../../components/ChapterSide';
+import { HelpTip } from '../../components/HelpTip';
+import { useWide } from '../../lib/layout';
+
+
+function ReviewCardItem({ r }: { r: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = (r.body || '').length > 130;
+  return (
+    <View style={styles.singleReviewCard}>
+      <View style={styles.reviewUserHead}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={[styles.reviewUserName, rtl]}>{r.display_name}</Text>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <View style={styles.studyBadge}>
+              <Text style={styles.studyBadgeText}>{toPersianDigits(r.study_percent)}٪ مطالعه</Text>
+            </View>
+            {r.test_percent > 0 && (
+              <View style={[styles.studyBadge, { backgroundColor: '#f0fdf4' }]}>
+                <Text style={[styles.studyBadgeText, { color: '#166534' }]}>{toPersianDigits(r.test_percent)}٪ تست</Text>
+              </View>
+            )}
+            <Text style={styles.reviewDate}>{r.created_at}</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row-reverse', gap: 1 }}>
+          {[1, 2, 3, 4, 5].map((st) => (
+            <Text key={st} style={{ color: st <= r.rating ? '#eab308' : '#e5e7eb', fontSize: 13 }}>★</Text>
+          ))}
+        </View>
+      </View>
+      <Text style={[styles.reviewBodyText, rtl]} numberOfLines={!expanded && isLong ? 2 : undefined}>
+        {r.body}
+      </Text>
+      {isLong && (
+        <Pressable onPress={() => setExpanded(!expanded)} style={{ alignSelf: 'flex-start', marginTop: 2 }}>
+          <Text style={{ fontSize: 11.5, fontWeight: '800', color: colors.greenDark }}>
+            {expanded ? 'بستن متن نظر ▴' : 'ادامه‌ی نظر ▾'}
+          </Text>
+        </Pressable>
+      )}
+
+      {/* کادر پاسخ استاد */}
+      {!!r.teacher_reply && (
+        <View style={styles.teacherReplyBox}>
+          <View style={styles.teacherReplyHead}>
+            <Icon name="corner-down-left" size={14} color="#0369a1" />
+            <Text style={styles.teacherReplyBadge}>پاسخ مؤلف / استاد</Text>
+          </View>
+          <Text style={[styles.teacherReplyBody, rtl]}>{r.teacher_reply}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+export default function Book() {
+  const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { user } = useAuth();
+  const wide = useWide();
+  const localStudy = useLocalStudySeconds();
+  const { data, error, loading, retry } = useApi(
+    async () => {
+      await flushStudyTime();
+      try {
+        return await endpoints.book(String(slug));
+      } catch (e) {
+        const err = e instanceof ApiError ? e : null;
+        if (err && (err.status === 0 || err.status >= 500)) {
+          const cached = await offlineBookDetail(String(slug));
+          if (cached) return cached;
+        }
+        throw e;
+      }
+    },
+    [slug, user?.id],
+  );
+  const celebrate = useCelebrate();
+  // Coming back with a section, a chapter or the whole book newly finished: celebrated here, once each.
+  useEffect(() => {
+    if (user && data && data.slug === slug) celebrateProgress(user.id, data, celebrate).catch(() => undefined);
+  }, [data, user, slug, celebrate]);
+  const refresh = usePullRefresh(loading, retry);
+  // Entering a book: its cover opens like a real book (once per visit).
+  const { title: titleParam } = useLocalSearchParams<{ title?: string }>();
+  const [coverTitle, setCoverTitle] = useState<string | null>(titleParam ?? '');
+  const [offline, setOffline] = useState<OfflineBook | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const { confirm, toast } = useFeedback();
+  const { width } = useWindowDimensions();
+  const [notify, setNotify] = useState<{ on: boolean; canCancel: boolean } | null>(null);
+  // «درباره‌ی کتاب»: three lines that fade out, with «ادامه‌ی معرفی ▾» (or a tap on the text); opened by the learner,
+  // it stays open on later visits.
+  const [aboutOpen, setAboutOpen] = useState<boolean | null>(null);
+  // تب‌های سه‌گانه: «درباره کتاب» | «درباره نویسنده» | «نظرات»
+  const [activeTab, setActiveTab] = useState<'book' | 'author' | 'reviews'>('book');
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewBody, setReviewBody] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [lockedSection, setLockedSection] = useState<NodeSummary | null>(null);
+
+  useEffect(() => {
+    setAboutOpen(null);
+    storage.getAbout(String(slug)).then((v) => setAboutOpen(v === 'open'));
+  }, [slug]);
+  const handleSendReview = async () => {
+    if (!requireLogin(user, 'برای ثبت نظر ابتدا وارد حساب خود شوید.')) return;
+    if (reviewBody.trim().length < 5) {
+      toast('لطفاً حداقل یک جمله کوتاه (حداقل ۵ حرف) درباره کتاب بنویسید.');
+      return;
+    }
+    setSubmittingReview(true);
+    try {
+      await endpoints.submitReview(String(slug), {
+        rating: reviewRating,
+        satisfaction_percent: reviewRating * 20,
+        body: reviewBody.trim(),
+      });
+      toast('نظر شما با موفقیت ثبت شد.');
+      setReviewBody('');
+      setShowReviewForm(false);
+      retry();
+    } catch (e: any) {
+      toast(e?.message || 'خطا در ثبت نظر');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const toggleAbout = () => {
+    const open = !aboutOpen;
+    if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.create(260, 'easeInEaseOut', 'opacity'));
+    setAboutOpen(open);
+    storage.setAbout(String(slug), open ? 'open' : 'seen');
+  };
+  // «کنکورهای سال‌های قبل»: the past exams that have tests in this book.
+  const { data: past } = useApi(() => endpoints.pastExams(String(slug)), [slug, user?.id]);
+  const [pastOpen, setPastOpen] = useState(false);
+  const [pastNames, setPastNames] = useState<string[]>([]);
+  // The green part with the cover stays put; the page slides up over it. A bar with the buttons stays on top, and the
+  // book's name shows in it once the cover is covered.
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<any>(null);
+  const chapterOffsets = useRef<Record<number, number>>({});
+  // «ظاهر اپ»: the top of the page is dark green, or warm cream when the learner chose the light look.
+  const light = useAppearance() === 'light';
+  const top = light
+    ? { bg: '#EFEADA', fg: colors.ink, button: 'rgba(23,32,26,0.07)', stat: 'rgba(23,32,26,0.06)', value: '#7A5B00', label: colors.muted }
+    : { bg: colors.ink, fg: '#FFFFFF', button: 'rgba(255,255,255,0.08)', stat: 'rgba(255,255,255,0.07)', value: colors.lemon, label: '#C9D3CC' };
+  const [heroH, setHeroH] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      offlineBooks().then((list) => setOffline(list.find((b) => b.slug === slug) ?? null));
+    }, [slug]),
+  );
+  // Coming back from payment or from reading: reload so ownership and read marks are fresh.
+  const [focused, setFocused] = useState(0);
+  useFocusEffect(useCallback(() => setFocused((n) => n + 1), []));
+  useEffect(() => {
+    if (focused > 1) retry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused]);
+
+  useEffect(() => setNote(null), [slug]);
+
+  // The chapter being read is open; the rest stay folded so a long book is a short list.
+  const [last, setLast] = useState<LastSection | null>(null);
+  const [openId, setOpenId] = useState<number | null | undefined>(undefined);
+  useFocusEffect(
+    useCallback(() => {
+      storage.getLastSection().then((l) => setLast(l && l.bookSlug === slug ? l : null));
+    }, [slug]),
+  );
+  useEffect(() => {
+    if (!data || !last || last.bookSlug !== slug) return;
+    if (!isSectionAccessibleInBook(data, last.id)) {
+      setLast(null);
+      storage.setLastSection(null);
+    }
+  }, [data, last, slug]);
+  useEffect(() => {
+    if (!data || openId !== undefined) return;
+    const withLast =
+      last && last.bookSlug === slug && isSectionAccessibleInBook(data, last.id)
+        ? data.chapters.find((c) => c.sections.some((x) => x.id === last.id))
+        : null;
+    setOpenId((withLast ?? data.chapters[0])?.id ?? null);
+  }, [data, last, slug, openId]);
+
+  const download = async () => {
+    if (!requireLogin(user, 'برای دانلود آفلاین وارد شوید.')) return;
+    setDownloading(true);
+    setNote(null);
+    try {
+      setOffline(await saveOfflineBook(await endpoints.offline(String(slug))));
+      setNote('دانلود شد. بخش‌های در دسترس بدون اینترنت هم باز می‌شوند.');
+    } catch (e) {
+      setNote(e instanceof ApiError ? e.message : 'دانلود ممکن نشد.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  if (loading && !data)
+    return (
+      <Screen>
+        <Header subtitle="کتاب" />
+        <Loading />
+        {!!titleParam && <PageTurn kind="cover" title={titleParam} hold />}
+      </Screen>
+    );
+  if (error || !data) return <Screen><Header subtitle="کتاب" /><ErrorState message={error?.message ?? ''} status={error?.status} onRetry={retry} /></Screen>;
+
+  const book = data;
+  const localChapterSeconds: Record<string, number> = {};
+  let localBookSeconds = 0;
+  for (const ch of book.chapters) {
+    let sum = localStudy[ch.id] ?? 0;
+    for (const s of ch.sections) sum += localStudy[s.id] ?? 0;
+    if (sum > 0) {
+      localChapterSeconds[String(ch.id)] = sum;
+      localBookSeconds += sum;
+    }
+  }
+  const totalBookSeconds = (book.mine?.time_seconds ?? 0) + localBookSeconds;
+  const bookPrice = currentPrice(book);
+  // The cover is the width of the page (less its margins) divided by the golden ratio, in its 2:3 book shape: about a
+  // fifth larger than before on a phone, and still leaving the counts under it in view on a small screen.
+  const coverW = Math.round(Math.min((Math.min(width, 760) - 32) / 1.618, 240));
+  const cover =
+    coverTitle !== null ? (
+      <PageTurn kind="cover" title={coverTitle || book.title} face={<BookCover book={book} major={book.major ?? null} width={Math.min(width * 0.62, 300)} />} onDone={() => setCoverTitle(null)} />
+    ) : null;
+  const done = new Set(book.done_ids);
+  const read = new Set(book.read_ids ?? []);
+  const sections = book.chapters.flatMap((c) => c.sections);
+  // The book's own counts come summed from the server (a chapter already carries its sections' totals).
+  const tests = book.chapters.reduce((n, c) => n + (c.question_count ?? 0), 0);
+  const cards = book.chapters.reduce((n, c) => n + (c.flashcard_count ?? 0), 0);
+  const readCount = sections.filter((x) => done.has(x.id)).length;
+  const now = notify ?? { on: book.notify, canCancel: !!book.notify_can_cancel };
+  const waiting = now.on;
+  const toggleNotify = async () => {
+    if (!requireLogin(user, 'برای «خبرم کن» وارد شوید تا وقتی کتاب آماده شد خبرتان کنیم.')) return;
+    if (now.on && !now.canCancel) return; // asked again after a cancel: stays on
+    const on = !now.on;
+    setNotify({ on, canCancel: on });
+    endpoints
+      .notifyBook(book.slug, on)
+      .then((r) => setNotify({ on: r.notify, canCancel: r.can_cancel }))
+      .catch(() => setNotify(now));
+  };
+
+  // Measured once laid out; until then a close guess, so the page doesn't jump.
+  const heroHeight = heroH || coverW * 1.5 + 110;
+  const barShade = scrollY.interpolate({ inputRange: [heroHeight - 90, heroHeight - 30], outputRange: [0, 1], extrapolate: 'clamp' });
+  const barTitle = scrollY.interpolate({ inputRange: [heroHeight - 60, heroHeight - 10], outputRange: [0, 1], extrapolate: 'clamp' });
+  // The cover fades back a little as the page comes over it (it doesn't move).
+  const heroFade = scrollY.interpolate({ inputRange: [0, heroHeight], outputRange: [1, 0.35], extrapolate: 'clamp' });
+
+  const isPreparing = book.product_status.state === 'coming_soon' || book.product_status.state === 'preparing';
+  const validLast = last && last.bookSlug === slug && isSectionAccessibleInBook(book, last.id) ? last : null;
+  const cta = resolveBookCta(book, { isAuthenticated: !!user, lastSection: validLast });
+  const wideCta = width >= 560;
+
+  return (
+    <Screen background={colors.ground} wide={wide}>
+      <View style={{ flex: 1, flexDirection: 'row-reverse' }}>
+      {wide && !isPreparing && (
+        <BookSide
+          book={book}
+          openId={openId}
+          onSelect={(cid) => {
+            LayoutAnimation.configureNext(LayoutAnimation.create(280, 'easeInEaseOut', 'opacity'));
+            setOpenId((prev) => {
+              const next = prev === cid ? null : cid;
+              if (next != null) {
+                // اسکرول نرم و مطمئن به محل باز شدن منوی فصل در بدنه اصلی
+                const doScroll = () => {
+                  const y = chapterOffsets.current[cid];
+                  if (y != null) {
+                    const targetY = Math.max(0, y + (heroH || 380) - 10);
+                    if (scrollRef.current) {
+                      if (typeof (scrollRef.current as any).scrollTo === 'function') {
+                        (scrollRef.current as any).scrollTo({ y: targetY, animated: true });
+                      } else if (typeof (scrollRef.current as any).scrollToOffset === 'function') {
+                        (scrollRef.current as any).scrollToOffset({ offset: targetY, animated: true });
+                      }
+                    }
+                    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                      try {
+                        const el = document.getElementById(`chapter-card-${cid}`);
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                      } catch (_) {}
+                    }
+                  }
+                };
+                // تأخیر کوتاه جهت رندر کامل باز شدن بخش‌ها
+                setTimeout(doScroll, 80);
+                setTimeout(doScroll, 220);
+              }
+              return next;
+            });
+          }}
+          onLockedPress={(sec) => setLockedSection(sec)}
+        />
+      )}
+      <View style={{ flex: 1, minWidth: 0 }}>
+      <View style={[styles.inkBack, { height: BAR_H + heroHeight + 40, backgroundColor: top.bg }]} />
+      {/* The margin is on a wrapper: on the web a refresh control gives the scroll view's style to two elements. */}
+      <View style={{ flex: 1, marginTop: BAR_H }}>
+      <Animated.ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.scroll}
+        refreshControl={refresh}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: Platform.OS !== 'web' })}
+      >
+        <Animated.View
+          style={[
+            styles.hero,
+            {
+              opacity: heroFade,
+              backgroundColor: top.bg,
+              transform: [{ translateY: scrollY }],
+            },
+          ]}
+          onLayout={(e) => {
+            const h = Math.round(e.nativeEvent.layout.height);
+            if (h && h !== heroH) setHeroH(h);
+          }}
+        >
+          <View style={{ alignItems: 'center' }}>
+            {/* The cover carries the title (and author), so it is not written again under it; screen readers hear it here. */}
+            <View accessible accessibilityRole="header" accessibilityLabel={[book.title, coverByline(book.author, book.edition)].filter(Boolean).join('، ')}>
+              <BookCover book={book} major={book.major ?? null} width={coverW} edge />
+              <CoverRibbon book={book} />
+            </View>
+          </View>
+          {/* An uploaded cover image may not show the title clearly: then it stays, small. */}
+          {!!book.cover && <Text style={[styles.heroTitle, { color: top.fg }]}>{book.title}</Text>}
+          {!isPreparing && (
+            <View style={styles.stats}>
+              {(
+                [
+                  [book.chapters.length, 'فصل'],
+                  [sections.length, 'بخش'],
+                  [tests, 'تست'],
+                  [cards, 'فلش‌کارت'],
+                ] as const
+              )
+                .filter(([n], i) => i < 2 || n > 0)
+                .map(([n, label]) => (
+                  <View key={label} style={[styles.stat, { backgroundColor: top.stat }]}>
+                    <Text style={[styles.statValue, { color: top.value }]}>{toPersianDigits(n)}</Text>
+                    <Text style={[styles.statLabel, { color: top.label }]}>{label}</Text>
+                  </View>
+                ))}
+              {!!user && !!book.words && (
+                <View style={[styles.stat, { backgroundColor: top.stat }]}>
+                  <Text style={[styles.statValue, { color: top.value }]}>
+                    {toPersianDigits(book.words.total)}
+                  </Text>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
+                    <Text style={[styles.statLabel, { color: top.label }]}>لغت</Text>
+                    <HelpTip
+                      size={18}
+                      title="لغت‌های حفظ‌شده"
+                      text={
+                        book.words.learned > 0
+                          ? `تا الان ${toPersianDigits(book.words.learned)} از ${toPersianDigits(book.words.total)} لغت این کتاب را حفظ کرده‌ای؛ یعنی به جعبه‌ی ۴ یا بالاتر مرور رسیده‌اند و چند بار پشت‌سرهم بلدشان بوده‌ای.`
+                          : `تا الان هیچ لغتی از ${toPersianDigits(book.words.total)} لغت این کتاب را حفظ نکرده‌ای. وقتی لغتی به جعبه‌ی ۴ یا بالاتر مرور برسد، حفظ‌شده محسوب می‌شود.`
+                      }
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+        </Animated.View>
+        <View style={styles.sheet}>
+        <View style={styles.page}>
+          {cta.kind === 'preparing' ? (
+            <View style={styles.cta}>
+              <View style={styles.ctaHead}>
+                <IconBadge name={book.product_status.state === 'preparing' ? 'calendar' : 'bell'} size={30} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[styles.ctaTitle, rtl]}>
+                    {book.product_status.state === 'preparing'
+                      ? 'این کتاب در حال برنامه‌ریزی است'
+                      : 'این کتاب در حال آماده‌سازی است و به‌زودی منتشر می‌شود'}
+                  </Text>
+                  {!!book.release_estimate ? (
+                    <Text style={[styles.ctaSmall, rtl, { color: colors.greenDark, fontWeight: '800' }]}>
+                      زمان حدودی انتشار: {book.release_estimate}
+                    </Text>
+                  ) : (
+                    book.product_status.state === 'preparing' && (
+                      <Text style={[styles.ctaSmall, rtl]}>{book.release_note || 'قرارداد تألیف ثبت شده و در صف تولید محتوا قرار دارد.'}</Text>
+                    )
+                  )}
+                </View>
+                <HelpTip
+                  size={22}
+                  title={
+                    book.product_status.state === 'preparing'
+                      ? 'این کتاب در حال برنامه‌ریزی است'
+                      : `زمان حدودی انتشار: ${book.release_estimate || 'به‌زودی'}`
+                  }
+                  text={
+                    book.release_note ||
+                    (book.product_status.state === 'preparing'
+                      ? `قرارداد تألیف این منبع ثبت شده و در صف تولید محتوا قرار دارد.${book.release_estimate ? ` پیش‌بینی انتشار: ${book.release_estimate}.` : ''} با زدن دکمه‌ی «خبرم کن»، به محض انتشار فصل اول رایگان با پیامک به شما اطلاع می‌دهیم.`
+                      : 'با زدن دکمه‌ی «خبرم کن»، به محض انتشار فصل اول رایگان این کتاب، یک پیامک اطلاع‌رسانی برای شما ارسال می‌شود.')
+                  }
+                />
+              </View>
+              <Button
+                label={waiting ? (now.canCancel ? 'خبرت می‌کنیم (لغو)' : 'خبرت می‌کنیم ✓') : 'خبرم کن'}
+                variant={waiting ? 'outline' : 'dark'}
+                disabled={waiting && !now.canCancel}
+                onPress={toggleNotify}
+              />
+            </View>
+          ) : cta.kind === 'full' ? (
+            <View style={[styles.cta, styles.ctaRow, totalBookSeconds >= 60 && styles.ctaWithBadge]}>
+              <HelpTip
+                size={54}
+                title="لیموی پیشرفت کتاب"
+                text={`${user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش این کتاب تمام شده است. ` : ''}هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای.`}
+              >
+                <LemonProgress parts={sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={54} />
+              </HelpTip>
+              <View style={{ flex: 1, gap: 2 }}>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.ctaSmall, rtl]}>
+                    {user ? `${toPersianDigits(readCount)} از ${toPersianDigits(sections.length)} بخش تمام‌شده` : 'برای ذخیره‌ی پیشرفت وارد شو'}
+                  </Text>
+                  {!!user && <HelpTip size={18} title="لیموی پیشرفت" text="هر برش لیمو یک بخش کتاب است. برش پررنگ: بخش را تا آخر خوانده‌ای. برش کم‌رنگ: شروعش کرده‌ای. برش خالی: هنوز نخوانده‌ای." />}
+                </View>
+                <Text style={[styles.ctaTitle, rtl]} numberOfLines={1}>{validLast ? validLast.title : 'از اول کتاب شروع کن'}</Text>
+              </View>
+              {cta.targetNodeId != null && (
+                <Pressable
+                  onPress={() => router.push(`/section/${cta.targetNodeId!}`)}
+                  style={styles.ctaButton}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.ctaButtonText}>{cta.buttonLabel}</Text>
+                </Pressable>
+              )}
+              {totalBookSeconds >= 60 && (
+                <View style={styles.badgeWrapper} pointerEvents="none">
+                  <View style={styles.floatingTimeBadge}>
+                    <Text style={styles.floatingTimeBadgeText}>⏱️ {studyDuration(totalBookSeconds)} زمان صرف شده برای کل کتاب</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={[styles.cta, totalBookSeconds >= 60 && styles.ctaWithBadge]}>
+              {(cta.buttonLabel != null || cta.showUnlock || book.product_status.state === 'unpriced' || book.product_status.state === 'unavailable') && (
+                <View
+                  style={[
+                    styles.ctaActions,
+                    wideCta && cta.buttonLabel != null && (cta.showUnlock || book.product_status.state === 'unpriced' || book.product_status.state === 'unavailable') && styles.ctaActionsRow,
+                  ]}
+                >
+                  {cta.buttonLabel != null && cta.targetNodeId != null && (
+                    <View
+                      style={[
+                        wideCta &&
+                          (cta.showUnlock || book.product_status.state === 'unpriced' || book.product_status.state === 'unavailable') &&
+                          styles.ctaActionFlex,
+                      ]}
+                    >
+                      <Pressable
+                        onPress={() => router.push(`/section/${cta.targetNodeId!}`)}
+                        style={styles.startFreeBtn}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.startFreeBtnText}>{cta.buttonLabel}</Text>
+                        {!!cta.lastTitle && (
+                          <Text style={[styles.startFreeBtnSub, rtl]} numberOfLines={1} ellipsizeMode="tail">
+                            {cta.lastTitle}
+                          </Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  )}
+                  {(cta.showUnlock || book.product_status.state === 'unpriced' || book.product_status.state === 'unavailable') && (
+                    <View
+                      style={[
+                        styles.ctaUnlockCol,
+                        wideCta && cta.buttonLabel != null && styles.ctaActionFlex,
+                      ]}
+                    >
+                      {cta.showUnlock && (
+                        <Pressable
+                          onPress={() => router.push(`/buy/${book.slug}`)}
+                          style={[
+                            styles.unlock,
+                            cta.buttonLabel == null && styles.unlockMain,
+                          ]}
+                          accessibilityRole="button"
+                        >
+                          <Icon name="lock-open" size={18} color={colors.ink} />
+                          <Text style={styles.unlockText}>باز کردن همه‌ی کتاب</Text>
+                        </Pressable>
+                      )}
+                      {book.product_status.state === 'paid' && bookPrice.price != null && (
+                        bookPrice.discount ? (
+                          <View style={styles.priceDetails}>
+                            <View style={styles.priceLine}>
+                              <Text style={[styles.ctaSmall, rtl]}>قیمت عادی</Text>
+                              <Text style={styles.oldPrice}>{formatToman(bookPrice.regularPrice ?? bookPrice.price)}</Text>
+                            </View>
+                            <View style={styles.priceLine}>
+                              <Text style={[styles.ctaSmall, rtl]}>قیمت ویژه</Text>
+                              <View style={styles.saleAmountLine}>
+                                <Text style={styles.salePrice}>{formatToman(bookPrice.price)}</Text>
+                                <Text style={styles.discountChip}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
+                              </View>
+                            </View>
+                            {book.single_sale_only ? (
+                              <Text style={[styles.saving, rtl]}>{formatToman(bookPrice.discount.amount)} تخفیف</Text>
+                            ) : (
+                              <Pressable onPress={() => router.push('/subscribe')} accessibilityRole="link">
+                                <Text style={[styles.saving, rtl]}>
+                                  {formatToman(bookPrice.discount.amount)} تخفیف · یا با اشتراک لیمو
+                                </Text>
+                              </Pressable>
+                            )}
+                          </View>
+                        ) : (
+                          <View style={styles.priceLineCenter}>
+                            <Text style={[styles.ctaSmall, { textAlign: 'center' }]}>
+                              <Text style={styles.ctaPriceStrong}>{formatToman(bookPrice.price)}</Text>
+                              {!book.single_sale_only && (
+                                <>
+                                  {'، یا با '}
+                                  <Text onPress={() => router.push('/subscribe')} style={styles.ctaSubLink}>
+                                    اشتراک ماهانه‌ی لیمو
+                                  </Text>
+                                </>
+                              )}
+                            </Text>
+                          </View>
+                        )
+                      )}
+                      {book.product_status.state === 'unpriced' && <Text style={[styles.ctaSmall, rtl, { textAlign: 'center' }]}>قیمت نسخه‌ی کامل هنوز تعیین نشده است.</Text>}
+                      {book.product_status.state === 'unavailable' && <Text style={[styles.ctaSmall, rtl, { textAlign: 'center' }]}>این کتاب فعلاً برای خرید در دسترس نیست.</Text>}
+                    </View>
+                  )}
+                </View>
+              )}
+              {totalBookSeconds >= 60 && (
+                <View style={styles.badgeWrapper} pointerEvents="none">
+                  <View style={styles.floatingTimeBadge}>
+                    <Text style={styles.floatingTimeBadgeText}>⏱️ {studyDuration(totalBookSeconds)} زمان صرف شده برای کل کتاب</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+
+          {!isPreparing && (
+            <View style={styles.shortcuts}>
+              {/* The book's flashcards, only from finished (green) sections: what was learned gets reviewed. */}
+              {!!user && book.chapters.some((c) => c.flashcard_count || c.sections.some((s) => s.flashcard_count)) && (
+                <Pressable
+                  onPress={() =>
+                    book.done_card_count
+                      ? router.push({ pathname: '/flashcards/[nodeId]', params: { nodeId: String(book.id), done: '1' } })
+                      : toast('هر بخشی را که تمام کنی (تیک سبز)، فلش‌کارت‌هایش اینجا برای مرور می‌آید.')
+                  }
+                  style={[styles.shortcut, !book.done_card_count && { opacity: 0.55 }]}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !book.done_card_count }}
+                >
+                  <Icon name="layers" size={18} color={colors.ink} />
+                  <Text style={styles.shortcutText}>
+                    {book.done_card_count ? `مرور کارت‌ها (${toPersianDigits(book.done_card_count)})` : 'مرور کارت‌ها'}
+                  </Text>
+                </Pressable>
+              )}
+              <Pressable onPress={() => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(book.id) } })} style={styles.shortcut} accessibilityRole="button">
+                <Icon name="clipboard-list" size={18} color={colors.ink} />
+                <Text style={styles.shortcutText}>کادرهای کتاب</Text>
+              </Pressable>
+              <Pressable onPress={() => router.push(`/glossary/${book.slug}`)} style={styles.shortcut} accessibilityRole="button">
+                <Icon name="languages" size={18} color={colors.ink} />
+                <Text style={styles.shortcutText}>واژه‌نامه‌ی کتاب</Text>
+              </Pressable>
+              {!!book.mine?.mistakes.count && (
+                <Pressable onPress={() => router.push({ pathname: '/mistakes', params: { book: book.slug } })} style={styles.shortcut} accessibilityRole="button">
+                  <Icon name="notebook-pen" size={18} color={colors.ink} />
+                  <Text style={styles.shortcutText}>اشتباه‌هایم ({toPersianDigits(book.mine.mistakes.count)})</Text>
+                </Pressable>
+              )}
+              {!!book.sample_count && (
+                <Pressable onPress={() => router.push({ pathname: '/share/[slug]', params: { slug: book.slug } })} style={styles.shortcut} accessibilityRole="button">
+                  <Icon name="share-2" size={18} color={colors.ink} />
+                  <Text style={styles.shortcutText}>تست‌های نمونه ({toPersianDigits(book.sample_count)})</Text>
+                </Pressable>
+              )}
+              {!!book.mine?.exams && (
+                <Pressable onPress={() => router.push({ pathname: '/exams', params: { book: book.slug } })} style={styles.shortcut} accessibilityRole="button">
+                  <Icon name="trophy" size={18} color={colors.ink} />
+                  <Text style={styles.shortcutText}>آزمون‌هایم ({toPersianDigits(book.mine.exams)})</Text>
+                </Pressable>
+              )}
+              {offlineSupported && (
+                <Pressable onPress={download} disabled={downloading} style={styles.shortcut} accessibilityRole="button">
+                  <Icon name={offline ? 'circle-check' : 'download'} size={18} color={offline ? colors.greenDark : colors.ink} />
+                  <Text style={styles.shortcutText}>
+                    {downloading
+                      ? 'در حال دانلود…'
+                      : offline
+                        ? book.updated_on && Date.parse(book.updated_on) > Date.parse(offline.bookUpdatedOn ?? offline.downloadedAt)
+                          ? 'نسخه‌ی تازه موجود است · به‌روزرسانی'
+                          : `آفلاین تا ${jalaliDate(offline.validUntil)}`
+                        : 'دانلود آفلاین'}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+
+          {/* «آخرین به‌روزرسانی»: the book's last important update; tap for «تغییرات کتاب». */}
+          {!!book.updated_on && (
+            <Pressable onPress={() => router.push({ pathname: '/changes/[slug]', params: { slug: book.slug } })} style={styles.timeRow} accessibilityRole="button">
+              <Icon name="sparkles" size={16} color={colors.muted} />
+              <Text style={styles.timeText}>آخرین به‌روزرسانی: {jalaliDate(book.updated_on)}</Text>
+              <Text style={[styles.timeText, { color: colors.greenDark, fontWeight: '800' }]}>تغییرات کتاب ←</Text>
+            </Pressable>
+          )}
+          {!!offline && offlineSupported && (
+            <Pressable
+              onPress={async () => {
+                if (!(await confirm({ title: 'نسخه‌ی آفلاین حذف شود؟', message: 'بعداً می‌توانید دوباره دانلودش کنید.', confirmLabel: 'حذف', destructive: true, icon: 'trash' }))) return;
+                removeOfflineBook(book.slug)
+                  .then(() => setOffline(null))
+                  .catch(() => toast('حذف نسخه‌ی آفلاین ممکن نشد.'));
+              }}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.smallLink, rtl]}>حذف نسخه‌ی آفلاین</Text>
+            </Pressable>
+          )}
+          {!!note && <Text style={[styles.note, rtl]}>{note}</Text>}
+
+          {/* تب‌های سه‌گانه همگن با منوی اصلی: درباره کتاب | درباره نویسنده | نظرات */}
+          {!isPreparing && (
+          <View style={styles.tabsContainer}>
+            <View style={styles.tabHeader}>
+              <Pressable
+                onPress={() => {
+                  if (activeTab === 'book' && aboutOpen) {
+                    setAboutOpen(false);
+                  } else {
+                    setActiveTab('book');
+                  }
+                }}
+                style={[styles.tabButton, activeTab === 'book' && styles.tabButtonActive]}
+                accessibilityRole="tab"
+              >
+                <Icon name="book-open" size={17} color={activeTab === 'book' ? colors.ink : colors.muted} strokeWidth={activeTab === 'book' ? 2.3 : 1.8} />
+                <Text style={[styles.tabButtonText, activeTab === 'book' && styles.tabButtonTextActive]}>درباره‌ی کتاب</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setActiveTab('author')}
+                style={[styles.tabButton, activeTab === 'author' && styles.tabButtonActive]}
+                accessibilityRole="tab"
+              >
+                <Icon name="circle-user-round" size={17} color={activeTab === 'author' ? colors.ink : colors.muted} strokeWidth={activeTab === 'author' ? 2.3 : 1.8} />
+                <Text style={[styles.tabButtonText, activeTab === 'author' && styles.tabButtonTextActive]}>درباره‌ی نویسنده</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setActiveTab('reviews')}
+                style={[styles.tabButton, activeTab === 'reviews' && styles.tabButtonActive]}
+                accessibilityRole="tab"
+              >
+                <Icon name="message-circle" size={17} color={activeTab === 'reviews' ? colors.ink : colors.muted} strokeWidth={activeTab === 'reviews' ? 2.3 : 1.8} />
+                <Text style={[styles.tabButtonText, activeTab === 'reviews' && styles.tabButtonTextActive]}>
+                  نظرات {book.community_reviews?.total_count ? `(${toPersianDigits(book.community_reviews.total_count)})` : ''}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* محتوای تب ۱: درباره کتاب */}
+            {activeTab === 'book' && (
+              <View style={styles.tabContent}>
+                {book.about ? (
+                  shortAbout(book.about) ? (
+                    <MarkdownView markdown={book.about} compact />
+                  ) : (
+                    <>
+                      <View style={[styles.aboutBody, aboutOpen ? styles.aboutBodyOpen : styles.aboutFolded]}>
+                        <MarkdownView markdown={book.about} compact />
+                        {!aboutOpen && (
+                          <>
+                            <Svg pointerEvents="none" style={styles.aboutFade} width="100%" height={44}>
+                              <Defs>
+                                <SvgGradient id="aboutFade" x1="0" y1="0" x2="0" y2="1">
+                                  <Stop offset="0" stopColor={colors.surface} stopOpacity={0} />
+                                  <Stop offset="1" stopColor={colors.surface} stopOpacity={1} />
+                                </SvgGradient>
+                              </Defs>
+                              <Rect x="0" y="0" width="100%" height="44" fill="url(#aboutFade)" />
+                            </Svg>
+                            <Pressable onPress={toggleAbout} style={StyleSheet.absoluteFill} accessibilityLabel="ادامه‌ی معرفی" />
+                          </>
+                        )}
+                      </View>
+                      <Pressable onPress={toggleAbout} style={styles.aboutMore} accessibilityRole="button" accessibilityState={{ expanded: aboutOpen ?? false }}>
+                        <Text style={[styles.aboutMoreText, rtl]}>{aboutOpen ? 'بستن معرفی' : 'ادامه‌ی معرفی'}</Text>
+                        <View style={[styles.chevronCircle, styles.chevronCircleOn, { width: 24, height: 24 }]}>
+                          <Icon name={aboutOpen ? 'chevron-up' : 'chevron-down'} size={13} color={colors.ink} />
+                        </View>
+                      </Pressable>
+                    </>
+                  )
+                ) : (
+                  <Text style={[styles.emptyNote, rtl]}>توضیحاتی برای این اثر ثبت نشده است.</Text>
+                )}
+              </View>
+            )}
+
+            {/* محتوای تب ۲: درباره نویسنده / استاد */}
+            {activeTab === 'author' && (
+              <View style={styles.tabContent}>
+                <View style={styles.authorHeader}>
+                  {book.author_profile?.avatar ? (
+                    <Pressable
+                      onPress={() => setAvatarModalOpen(true)}
+                      style={[styles.authorAvatar, styles.authorAvatarClickable]}
+                      accessibilityRole="button"
+                      accessibilityLabel="مشاهده‌ی تصویر بزرگ‌تر مؤلف"
+                    >
+                      <Image source={{ uri: book.author_profile.avatar }} style={styles.authorAvatarImg} resizeMode="cover" />
+                      <View style={styles.avatarZoomBadge}>
+                        <Icon name="search" size={11} color="#FFFFFF" />
+                      </View>
+                    </Pressable>
+                  ) : (
+                    <View style={styles.authorAvatar}>
+                      <Icon name="circle-user-round" size={36} color={colors.muted} strokeWidth={1.7} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={[styles.authorName, rtl]}>{book.author_profile?.name || book.author || 'مؤلف اثر'}</Text>
+                    {!!book.author_profile?.academic_title && (
+                      <Text style={[styles.authorTitle, rtl]}>{book.author_profile.academic_title}</Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* مودال بزرگنمایی تصویر مؤلف */}
+                {!!book.author_profile?.avatar && (
+                  <Modal visible={avatarModalOpen} transparent animationType="fade" onRequestClose={() => setAvatarModalOpen(false)}>
+                    <Pressable style={styles.avatarModalBackdrop} onPress={() => setAvatarModalOpen(false)}>
+                      <View style={styles.avatarModalCard}>
+                        <Image source={{ uri: book.author_profile.avatar }} style={styles.avatarModalImg} resizeMode="contain" />
+                        <Text style={styles.avatarModalName}>{book.author_profile?.name || book.author}</Text>
+                        {!!book.author_profile?.academic_title && (
+                          <Text style={styles.avatarModalTitle}>{book.author_profile.academic_title}</Text>
+                        )}
+                        <Pressable onPress={() => setAvatarModalOpen(false)} style={styles.avatarModalClose}>
+                          <Text style={styles.avatarModalCloseText}>بستن تصویر ✕</Text>
+                        </Pressable>
+                      </View>
+                    </Pressable>
+                  </Modal>
+                )}
+
+                {book.author_profile?.bio ? (
+                  <View style={{ marginTop: 12, maxHeight: 380 }}>
+                    <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                      <MarkdownView markdown={book.author_profile.bio} compact />
+                    </ScrollView>
+                  </View>
+                ) : (
+                  <Text style={[styles.emptyNote, rtl]}>رزومه و اطلاعات تکمیلی مؤلف به زودی قرار می‌گیرد.</Text>
+                )}
+
+                {!!book.author_profile?.contact_email && (
+                  <View style={styles.authorMetaRow}>
+                    <Icon name="mail" size={14} color={colors.muted} />
+                    <Text style={styles.authorMetaText}>{book.author_profile.contact_email}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* محتوای تب ۳: نظرات و امتیازها */}
+            {activeTab === 'reviews' && (
+              <View style={styles.tabContent}>
+                {/* خلاصه امتیازها و شاخص رضایت */}
+                {book.community_reviews?.total_count ? (
+                  <View style={styles.reviewStatsBox}>
+                    <View style={styles.reviewStatCol}>
+                      <Text style={styles.reviewBigScore}>{toPersianDigits(book.community_reviews?.average_rating ?? 5)}</Text>
+                      <View style={{ flexDirection: 'row-reverse', gap: 2 }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Text key={star} style={{ color: star <= Math.round(book.community_reviews?.average_rating ?? 5) ? '#eab308' : '#d1d5db', fontSize: 14 }}>
+                            ★
+                          </Text>
+                        ))}
+                      </View>
+                      <Text style={styles.reviewSubLabel}>از ۵ ستاره</Text>
+                    </View>
+
+                    <View style={styles.reviewStatDivider} />
+
+                    <View style={{ flex: 1, gap: 6, justifyContent: 'center' }}>
+                      <View style={styles.reviewHighlightRow}>
+                        <Icon name="thumbs-up" size={14} color={colors.greenDark} />
+                        <Text style={[styles.reviewHighlightText, rtl]}>
+                          <Text style={{ fontWeight: '900', color: colors.greenDark }}>{toPersianDigits(book.community_reviews?.satisfaction_rate ?? 100)}٪</Text> رضایت خوانندگان
+                        </Text>
+                      </View>
+                      <View style={styles.reviewHighlightRow}>
+                        <Icon name="award" size={14} color="#0284c7" />
+                        <Text style={[styles.reviewHighlightText, rtl]}>
+                          امتیاز خوانندگان جدی (+۵۰٪ مطالعه): <Text style={{ fontWeight: '900', color: '#0284c7' }}>{toPersianDigits(book.community_reviews?.serious_readers_rating ?? 5)}</Text>
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={[styles.reviewStatsBox, { justifyContent: 'center', paddingVertical: 18 }]}>
+                    <View style={{ alignItems: 'center', gap: 6 }}>
+                      <View style={{ flexDirection: 'row-reverse', gap: 4 }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Text key={star} style={{ color: '#e5e7eb', fontSize: 20 }}>★</Text>
+                        ))}
+                      </View>
+                      <Text style={{ fontSize: 13.5, fontWeight: '800', color: colors.ink }}>هنوز امتیازی برای این کتاب ثبت نشده است</Text>
+                      <Text style={{ fontSize: 12, color: colors.muted }}>تجربه و نظر ارزشمند شما به سایر همراهان لیمو کمک می‌کند.</Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* دکمه ثبت نظر */}
+                {!showReviewForm ? (
+                  <Pressable onPress={() => setShowReviewForm(true)} style={styles.writeReviewButton} accessibilityRole="button">
+                    <Icon name="edit-3" size={16} color={colors.ink} />
+                    <Text style={styles.writeReviewText}>ثبت نظر و امتیاز شما برای این کتاب</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.reviewFormBox}>
+                    <Text style={[styles.formTitle, rtl]}>دیدگاه و امتیاز شما درباره کتاب:</Text>
+                    <View style={styles.starsSelectCard}>
+                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={[styles.starPrompt, rtl]}>
+                          شما در حال ثبت امتیاز <Text style={{ color: '#ca8a04', fontWeight: '900' }}>{toPersianDigits(reviewRating)} از ۵</Text> هستید
+                        </Text>
+                        <View style={{ flexDirection: 'row-reverse', gap: 5 }}>
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Pressable key={s} onPress={() => setReviewRating(s)} accessibilityRole="button" accessibilityLabel={`${toPersianDigits(s)} ستاره`}>
+                              <Text style={{ fontSize: 26, color: s <= reviewRating ? '#eab308' : '#d1d5db' }}>★</Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      </View>
+                    </View>
+                    <TextInput
+                      value={reviewBody}
+                      onChangeText={setReviewBody}
+                      multiline
+                      numberOfLines={4}
+                      placeholder="دیدگاه و تجربه خود را از مطالعه این کتاب بنویسید (حداقل ۵ حرف)..."
+                      placeholderTextColor={colors.muted}
+                      style={[styles.reviewTextInput, rtl]}
+                      maxLength={350}
+                    />
+                    <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 11, color: reviewBody.trim().length < 5 ? colors.muted : colors.greenDark }}>
+                        {reviewBody.trim().length < 5 ? 'حداقل ۵ حرف لازم است' : 'آماده‌ی ارسال'}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.muted }}>
+                        {toPersianDigits(reviewBody.length)} / ۳۵۰
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 4 }}>
+                      <View style={{ flex: 1 }}>
+                        <Pressable
+                          disabled={submittingReview || reviewBody.trim().length < 5}
+                          onPress={handleSendReview}
+                          style={[
+                            styles.sendReviewBtn,
+                            reviewBody.trim().length >= 5 ? styles.sendReviewBtnActive : styles.sendReviewBtnDisabled,
+                          ]}
+                          accessibilityRole="button"
+                        >
+                          <Text
+                            style={[
+                              styles.sendReviewBtnText,
+                              reviewBody.trim().length >= 5 ? styles.sendReviewBtnTextActive : styles.sendReviewBtnTextDisabled,
+                            ]}
+                          >
+                            {submittingReview ? 'در حال ارسال...' : 'ارسال نظر'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                      <Pressable
+                        onPress={() => setShowReviewForm(false)}
+                        style={styles.cancelReviewButton}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.cancelReviewText}>انصراف</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+
+                {/* لیست نظرات با اسکرول کنترل‌شده */}
+                {book.community_reviews?.reviews?.length ? (
+                  <ScrollView nestedScrollEnabled style={{ maxHeight: 440 }} contentContainerStyle={{ gap: 12, marginTop: 14 }} showsVerticalScrollIndicator={false}>
+                    {book.community_reviews.reviews.map((r) => (
+                      <ReviewCardItem key={r.id} r={r} />
+                    ))}
+                  </ScrollView>
+                ) : (
+                  <Text style={[styles.emptyNote, rtl]}>هنوز نظری برای این کتاب ثبت نشده است. اولین نفری باشید که دیدگاه خود را می‌نویسد!</Text>
+                )}
+              </View>
+            )}
+          </View>
+          )}
+
+          {!isPreparing && !!past?.exams.length && (
+            <View style={styles.about}>
+              <Pressable onPress={() => setPastOpen((v) => !v)} style={styles.aboutHead} accessibilityRole="button" accessibilityState={{ expanded: pastOpen }}>
+                <Text style={[styles.aboutTitle, rtl, { flex: 1 }]}>
+                  کنکورهای سال‌های قبل ({toPersianDigits(past.exams.length)} کنکور، {toPersianDigits(past.total)} تست)
+                </Text>
+                <View style={styles.aboutActions}>
+                  <HelpTip
+                    size={26}
+                    title="آمادگی برای کنکورها"
+                    text="لیموی کنار هر کنکور «آمادگی» توست: چند درصد تست‌های آن کنکور از فصل‌هایی است که تمامشان کرده‌ای. هر چه پرتر، آن کنکور را راحت‌تر می‌توانی بزنی."
+                  />
+                  <View style={[styles.chevronCircle, pastOpen && styles.chevronCircleOn, pastOpen && { transform: [{ rotate: '-180deg' }] }]}>
+                    <Icon name="chevron-down" size={16} color={pastOpen ? colors.ink : colors.muted} />
+                  </View>
+                </View>
+              </Pressable>
+              {pastOpen && (
+                <View style={{ gap: 8 }}>
+                  {past.exams.map((x) => (
+                    <View key={x.id} style={styles.pastRow}>
+                      {/* «آمادگی»: the share of its tests from chapters already studied. */}
+                      {x.ready != null && <LemonProgress value={x.ready / 100} segments={8} size={30} />}
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.pastTitle, rtl]}>
+                          {x.name} {toPersianDigits(x.year)}
+                        </Text>
+                        <Text style={[styles.sectionMeta, rtl]}>
+                          {toPersianDigits(x.count)} تست، حدود {toPersianDigits(x.minutes)} دقیقه
+                        </Text>
+                        {x.ready != null &&
+                          (x.ready >= 100 ? (
+                            <Text style={[styles.ready, rtl]}>آماده‌ای: همه‌ی فصل‌هایش را تمام کرده‌ای</Text>
+                          ) : (
+                            <Text style={[styles.sectionMeta, rtl]}>آمادگی: {toPersianDigits(x.ready)}٪ تست‌هایش از فصل‌های تمام‌شده است</Text>
+                          ))}
+                      </View>
+                      <Pressable
+                        onPress={() => router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: 'past', book: book.slug, source: String(x.id) } })}
+                        style={styles.pastBtn}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.pastBtnText}>تمرین</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() =>
+                          router.push({ pathname: '/exam/[nodeId]', params: { nodeId: String(book.id), source: String(x.id), title: `${x.name} ${toPersianDigits(x.year)}` } })
+                        }
+                        style={[styles.pastBtn, styles.pastBtnMain]}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.pastBtnText}>آزمون</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                  {!!past.repeats && (
+                    <View style={[styles.pastRepeats]}>
+                      <Text style={[styles.pastTitle, rtl]}>تکراری‌ها و مشابه‌ها</Text>
+                      <Text style={[styles.sectionMeta, rtl]}>
+                        تست‌هایی که عیناً یا با کمی تغییر در چند کنکور آمده‌اند، کنار هم. کنکور یا کنکورهایی را که می‌خواهی انتخاب کن (هیچ: همه).
+                      </Text>
+                      {(past.names ?? []).length > 1 && (
+                        <View style={styles.pastNames}>
+                          {(past.names ?? []).map((n) => (
+                            <Pill
+                              key={n.name}
+                              small
+                              label={`${n.name} (${toPersianDigits(n.repeats)})`}
+                              selected={pastNames.includes(n.name)}
+                              onPress={() => setPastNames((l) => (l.includes(n.name) ? l.filter((x) => x !== n.name) : [...l, n.name]))}
+                            />
+                          ))}
+                        </View>
+                      )}
+                      <Pressable
+                        onPress={() => router.push({ pathname: '/quiz/[nodeId]', params: { nodeId: 'repeats', book: book.slug, names: pastNames.join('|') } })}
+                        style={[styles.pastBtn, styles.pastBtnMain, { alignSelf: 'flex-end' }]}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.pastBtnText}>
+                          تمرین {toPersianDigits(pastNames.length ? (past.names ?? []).filter((n) => pastNames.includes(n.name)).reduce((a, n) => a + n.repeats, 0) : past.repeats)} گروه
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                  {!!past.locked && <Text style={[styles.sectionMeta, rtl]}>{toPersianDigits(past.locked)} تست کنکور دیگر در فصل‌های نسخه‌ی کامل است.</Text>}
+                </View>
+              )}
+            </View>
+          )}
+
+          {!isPreparing && <Text style={[styles.chaptersTitle, rtl]}>فصل‌ها</Text>}
+          {book.chapters.map((chapter, index) => (
+            <View
+              key={chapter.id}
+              nativeID={`chapter-card-${chapter.id}`}
+              onLayout={(e) => {
+                chapterOffsets.current[chapter.id] = e.nativeEvent.layout.y;
+              }}
+            >
+            <ChapterCard
+              chapter={chapter}
+              number={index + 1}
+              open={openId === chapter.id}
+              onToggle={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
+                setOpenId((v) => (v === chapter.id ? null : chapter.id));
+              }}
+              done={done}
+              read={read}
+              owned={book.owned}
+              bookSlug={book.slug}
+              seconds={(book.mine?.chapter_seconds?.[String(chapter.id)] ?? 0) + (localChapterSeconds[String(chapter.id)] ?? 0)}
+              review={book.reviews?.chapters[String(chapter.id)] ?? null}
+              canFinish={!!user && !!book.reviews}
+              onLockedPress={(sec) => setLockedSection(sec)}
+              onFinish={async () => {
+                const ok = await confirm({
+                  title: 'این فصل را تمام کردی؟',
+                  message: 'مرورهای این فصل زمان‌بندی می‌شوند: فردا، یک هفته بعد و یک ماه بعد. فلش‌کارت‌هایش هم به مرور روزانه اضافه می‌شوند.',
+                  confirmLabel: 'تمام کردم',
+                  icon: 'circle-check',
+                });
+                if (!ok) return;
+                endpoints.finishChapter(chapter.id).then(retry).catch(() => undefined);
+              }}
+            />
+            </View>
+          ))}
+        </View>
+        </View>
+      </Animated.ScrollView>
+      </View>
+      <View style={styles.bar}>
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.barShade, { opacity: barShade, backgroundColor: top.bg }]} />
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} style={[styles.heroButton, { backgroundColor: top.button }]} accessibilityRole="button" accessibilityLabel="بازگشت">
+          <Icon name="arrow-right" size={22} color={top.fg} />
+        </Pressable>
+        <Animated.View style={{ flex: 1, opacity: barTitle }}>
+          <Text numberOfLines={1} style={[styles.barTitle, { color: top.fg }]}>{book.title}</Text>
+        </Animated.View>
+        <Pressable
+          onPress={() => router.push({ pathname: '/search', params: { book: book.slug, bookTitle: book.title } })}
+          style={[styles.heroButton, { backgroundColor: top.button }]}
+          accessibilityRole="button"
+          accessibilityLabel="جست‌وجو در این کتاب"
+        >
+          <Icon name="search" size={20} color={top.fg} />
+        </Pressable>
+        <Pressable
+          onPress={() => Share.share({ message: `«${book.title}» را در لیموخوان بخوان: خلاصه، جزوه، تست و فلش‌کارت.${book.share_link ? `\n${book.share_link}` : ''}` }).catch(() => undefined)}
+          style={[styles.heroButton, { backgroundColor: top.button }]}
+          accessibilityRole="button"
+          accessibilityLabel="معرفی به دوست"
+        >
+          <Icon name="share-2" size={20} color={top.fg} />
+        </Pressable>
+      </View>
+      </View>
+      </View>
+      <Sheet
+        visible={!!lockedSection}
+        onClose={() => setLockedSection(null)}
+        title={lockedSection?.title ?? 'بخش قفل'}
+      >
+        <View style={styles.lockedSheetBody}>
+          <IconBadge name="lock" size={56} />
+          <Text style={[styles.lockedSheetTitle, rtl]}>این بخش در نسخه‌ی کامل کتاب است</Text>
+          {!!productStateNote(book.product_status.state) && (
+            <Text style={[styles.lockedSheetNote, rtl]}>{productStateNote(book.product_status.state)}</Text>
+          )}
+          {book.product_status.state === 'paid' && bookPrice.price != null && (
+            <View style={styles.lockedPriceBox}>
+              {bookPrice.discount && (
+                <Text style={styles.lockedOldPrice}>{formatToman(bookPrice.regularPrice ?? bookPrice.price)}</Text>
+              )}
+              <Text style={styles.lockedPrice}>{formatToman(bookPrice.price)}</Text>
+              {bookPrice.discount && (
+                <Text style={styles.lockedSaving}>{percentLabel(bookPrice.discount.percent)}٪ تخفیف</Text>
+              )}
+            </View>
+          )}
+          {book.product_status.state === 'paid' && (
+            <Button
+              label={lockedCtaLabel(book.single_sale_only)}
+              onPress={() => {
+                setLockedSection(null);
+                router.push(`/buy/${book.slug}`);
+              }}
+              style={{ alignSelf: 'stretch' }}
+            />
+          )}
+          {(() => {
+            const sampleId = firstReadableNodeId(book);
+            if (sampleId == null || book.product_status.preview !== 'sample') return null;
+            return (
+              <Button
+                label="مطالعه‌ی بخش رایگان"
+                variant="outline"
+                onPress={() => {
+                  setLockedSection(null);
+                  router.push({ pathname: '/section/[id]', params: { id: String(sampleId), bookSlug: book.slug } });
+                }}
+                style={{ alignSelf: 'stretch' }}
+              />
+            );
+          })()}
+          <Button label="بستن" variant="outline" onPress={() => setLockedSection(null)} style={{ alignSelf: 'stretch' }} />
+        </View>
+      </Sheet>
+      {cover && <View style={StyleSheet.absoluteFill}>{cover}</View>}
+    </Screen>
+  );
+}
+
+/** One chapter: a single line when closed; sections (under their group headings) and chapter actions when open. */
+function ChapterCard({
+  chapter,
+  number,
+  open,
+  onToggle,
+  done,
+  read,
+  owned,
+  bookSlug,
+  review,
+  canFinish,
+  onFinish,
+  onLockedPress,
+  seconds,
+}: {
+  seconds: number;
+  bookSlug: string;
+  /** «مرور بعدی: ۶ روز دیگر» once the chapter is finished. */
+  review: { id?: number; step: number; days: number; done: number } | null;
+  canFinish: boolean;
+  onFinish: () => void;
+  onLockedPress: (section: NodeSummary) => void;
+  chapter: ChapterSummary;
+  number: number;
+  open: boolean;
+  onToggle: () => void;
+  done: Set<number>;
+  read: Set<number>;
+  owned: boolean;
+}) {
+  const turn = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const { toast } = useFeedback();
+  useEffect(() => {
+    Animated.spring(turn, { toValue: open ? 1 : 0, friction: 7, tension: 120, useNativeDriver: true }).start();
+  }, [open, turn]);
+  // The chapter's totals come summed from the server, the same numbers the buttons below follow.
+  const tests = chapter.question_count ?? 0;
+  const cards = chapter.flashcard_count ?? 0;
+  let lastGroup = '';
+  return (
+    <View style={styles.chapter}>
+      {(open || !!review) && (
+        <View collapsable={false} style={styles.chapterBody}>
+          {/* A quiet strip for review. */}
+          {!!review && (
+            <View style={[styles.strip, seconds >= 60 && { paddingTop: 20, paddingBottom: 10 }]}>
+              <View />
+              {review.days > 0 ? (
+                <View style={styles.stripItem}>
+                  <Icon name="calendar" size={14} color={colors.muted} />
+                  <Text style={styles.stripText}>مرور فصل: {toPersianDigits(review.days)} روز دیگر</Text>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() =>
+                    review.id &&
+                    openReview({ kind: 'chapter', id: review.id, chapter_id: chapter.id } as ReviewItem).catch((e: Error) => toast(e.message || 'مرور شروع نشد.'))
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={review.days === 0 ? 'مرور فصل، امروز' : 'مرور فصل، عقب افتاده'}
+                >
+                  {review.days === 0 ? (
+                    <Chip label="مرور فصل: امروز ←" icon="rotate-ccw" color={colors.ink} background={colors.lemon} />
+                  ) : (
+                    <Chip label={`مرور فصل: ${toPersianDigits(-review.days)} روز عقب ←`} icon="rotate-ccw" color={colors.amberDark} background={colors.amberSoft} />
+                  )}
+                </Pressable>
+              )}
+            </View>
+          )}
+
+          {open && (
+            <>
+              {chapter.has_overview && (
+                <Pressable
+                  onPress={() => router.push(`/section/${chapter.id}`)}
+                  style={({ pressed }) => [
+                    styles.section,
+                    !review && { borderTopWidth: 0 },
+                    !review && seconds >= 60 && { paddingTop: 22 },
+                    pressed && { backgroundColor: colors.ground },
+                  ]}
+                >
+                  <Icon name="map" size={18} color={colors.greenDark} />
+                  <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>مقدمه‌ی فصل</Text>
+                </Pressable>
+              )}
+              {chapter.sections.map((section, sectionIndex) => {
+                const header = section.group && section.group !== lastGroup ? section.group : '';
+                if (section.group) lastGroup = section.group;
+                const isFirstRow = !review && !chapter.has_overview && sectionIndex === 0;
+                return (
+                  <View key={section.id}>
+                    {!!header && (
+                      <Text style={[styles.group, rtl, isFirstRow && { borderTopWidth: 0, paddingTop: seconds >= 60 ? 22 : 14 }]}>
+                        {header}
+                      </Text>
+                    )}
+                    <SectionRow
+                      section={section}
+                      bookSlug={bookSlug}
+                      state={done.has(section.id) ? 'done' : read.has(section.id) ? 'read' : 'none'}
+                      firstWithoutTopBorder={isFirstRow && !header}
+                      extraTopPadding={isFirstRow && !header && seconds >= 60}
+                      onLockedPress={onLockedPress}
+                    />
+                  </View>
+                );
+              })}
+              {!!chapter.term_count && (
+                <Pressable
+                  onPress={() => router.push({ pathname: '/glossary/[slug]', params: { slug: bookSlug, chapter: String(chapter.id) } })}
+                  style={({ pressed }) => [
+                    styles.section,
+                    !review && !chapter.has_overview && chapter.sections.length === 0 && { borderTopWidth: 0, paddingTop: seconds >= 60 ? 22 : 14 },
+                    pressed && { backgroundColor: colors.ground },
+                  ]}
+                  accessibilityRole="button"
+                >
+                  <Icon name="languages" size={18} color={colors.greenDark} />
+                  <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>واژه‌های این فصل</Text>
+                  <Text style={styles.sectionMeta}>{toPersianDigits(chapter.term_count)} واژه</Text>
+                </Pressable>
+              )}
+              {!chapter.is_locked && canFinish && !review && (
+                <Pressable
+                  onPress={onFinish}
+                  style={({ pressed }) => [
+                    styles.section,
+                    !chapter.has_overview && chapter.sections.length === 0 && !chapter.term_count && { borderTopWidth: 0, paddingTop: seconds >= 60 ? 22 : 14 },
+                    pressed && { backgroundColor: colors.ground },
+                  ]}
+                  accessibilityRole="button"
+                >
+                  <Icon name="circle-check" size={18} color={colors.greenDark} />
+                  <Text style={[styles.sectionTitle, rtl, { color: colors.greenDark }]}>این فصل را تمام کردم</Text>
+                </Pressable>
+              )}
+              {!chapter.is_locked && (
+                <View style={[styles.actions, !review && !chapter.has_overview && chapter.sections.length === 0 && !chapter.term_count && !canFinish && { borderTopWidth: 0, paddingTop: seconds >= 60 ? 22 : 12 }]}>
+                  {/* Only the practice this chapter actually has: no tests, no «تمرین کل فصل» and «آزمون». */}
+                  {!!tests && (
+                    <Pressable style={styles.action} onPress={() => router.push(`/quiz/${chapter.id}`)}>
+                      <Text style={styles.actionText}>تمرین کل فصل</Text>
+                    </Pressable>
+                  )}
+                  {!!tests && (
+                    <Pressable style={styles.action} onPress={() => router.push(`/exam/${chapter.id}`)}>
+                      <Text style={styles.actionText}>آزمون</Text>
+                    </Pressable>
+                  )}
+                  {!!cards && (
+                    <Pressable style={styles.action} onPress={() => router.push(`/flashcards/${chapter.id}`)}>
+                      <Text style={styles.actionText}>فلش‌کارت</Text>
+                    </Pressable>
+                  )}
+                  <Pressable style={styles.action} onPress={() => router.push({ pathname: '/boxes/[nodeId]', params: { nodeId: String(chapter.id) } })}>
+                    <Text style={styles.actionText}>کادرها</Text>
+                  </Pressable>
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      )}
+      <View collapsable={false} style={styles.chapterTop}>
+        <Pressable
+          onPress={onToggle}
+          style={[styles.chapterHead, seconds >= 60 && (open || !!review) && { paddingBottom: 20 }]}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+        >
+          {/* As tall as two lines of the title, so the lemon and the name read as one. */}
+          <HelpTip
+            size={46}
+            title={`فصل ${toPersianDigits(number)}، ${chapter.title}`}
+            text={`${toPersianDigits(chapter.sections.filter((s) => done.has(s.id)).length)} از ${toPersianDigits(chapter.sections.length)} بخش این فصل تمام شده است.`}
+          >
+            <LemonProgress parts={chapter.sections.map((x) => (done.has(x.id) ? 'done' : read.has(x.id) ? 'soft' : 'empty'))} size={46} />
+          </HelpTip>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={[styles.chapterTitle, rtl]} numberOfLines={2}>
+              فصل {toPersianDigits(number)}، {chapter.title}
+            </Text>
+            {/* Counts and the free/locked label share one line, so the title keeps the width. */}
+            <View style={styles.metaRow}>
+              <Text style={[styles.sectionMeta, rtl]}>
+                {toPersianDigits(chapter.sections.length)} بخش{tests ? `، ${toPersianDigits(tests)} تست` : ''}
+              </Text>
+              {chapter.is_locked ? <Chip label="نسخه‌ی کامل" icon="lock" /> : !owned && <Chip label="رایگان" color={colors.greenDark} background={colors.greenSoft} />}
+            </View>
+          </View>
+          <Animated.View style={[styles.chevronCircle, open && styles.chevronCircleOn, { transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-180deg'] }) }] }]}>
+            <Icon name="chevron-down" size={16} color={open ? colors.ink : colors.muted} />
+          </Animated.View>
+        </Pressable>
+        {(open || !!review) && <View style={{ height: 1, backgroundColor: colors.line, width: '100%' }} />}
+        {seconds >= 60 && (
+          <View style={styles.badgeWrapper} pointerEvents="none">
+            <View style={styles.floatingChapterBadge}>
+              <Text style={styles.floatingChapterBadgeText}>⏱️ {studyDuration(seconds)} زمان صرف شده برای فصل {toPersianDigits(number)}</Text>
+            </View>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+/** A section in the contents: the title takes up to two lines (then «…»; a long press shows it whole), the counts stay at
+ * its left so the list never grows wider. */
+/** none: not started; read: half (the notes read, or most of its questions answered); done: «تمام شد» (green tick: both). */
+function SectionRow({
+  section,
+  bookSlug,
+  state,
+  firstWithoutTopBorder = false,
+  extraTopPadding = false,
+  onLockedPress,
+}: {
+  section: NodeSummary;
+  bookSlug: string;
+  state: 'none' | 'read' | 'done';
+  firstWithoutTopBorder?: boolean;
+  extraTopPadding?: boolean;
+  onLockedPress?: (section: NodeSummary) => void;
+}) {
+  const done = state === 'done';
+  const { toast } = useFeedback();
+  return (
+    <Pressable
+      onPress={() => {
+        if (section.is_locked && onLockedPress) {
+          onLockedPress(section);
+        } else {
+          router.push({ pathname: '/section/[id]', params: { id: String(section.id), bookSlug, title: section.title } });
+        }
+      }}
+      onLongPress={() => toast(section.title)}
+      delayLongPress={350}
+      style={({ pressed }) => [
+        styles.section,
+        firstWithoutTopBorder && { borderTopWidth: 0 },
+        extraTopPadding && { paddingTop: 22 },
+        pressed && { backgroundColor: colors.ground },
+      ]}
+      accessibilityRole="button"
+    >
+      <View
+        style={[styles.check, done && styles.checkOn, state === 'read' && styles.checkRead]}
+        accessibilityLabel={done ? 'تمام شد' : state === 'read' ? 'نیمه‌کاره: جزوه یا تست‌هایش مانده' : 'شروع‌نشده'}
+      >
+        {done && <Icon name="check" size={13} color="#fff" strokeWidth={3} />}
+        {state === 'read' && <View style={styles.half} />}
+      </View>
+      <Text style={[styles.sectionTitle, rtl, section.is_locked && { color: colors.muted }]} numberOfLines={2}>
+        {section.title}
+      </Text>
+      {section.badge === 'updated' && <Text style={styles.updated}>به‌روز شده</Text>}
+      {section.is_locked ? (
+        <Icon name="lock" size={16} color={colors.muted} />
+      ) : (
+        <Text style={styles.sectionMeta}>{`${toPersianDigits(section.question_count ?? 0)} تست، ${toPersianDigits(section.flashcard_count ?? 0)} کارت`}</Text>
+      )}
+    </Pressable>
+  );
+}
+
+/** The top bar with the back, search and share buttons. */
+const BAR_H = 58;
+
+const styles = StyleSheet.create({
+  scroll: { flexGrow: 1 },
+  updated: { fontSize: 11, fontWeight: '800', color: '#4A3A9E', backgroundColor: '#E8E4FA', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 1, overflow: 'hidden' },
+  inkBack: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: colors.ink },
+  sheet: { flexGrow: 1, backgroundColor: colors.ground, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingBottom: 28, zIndex: 2 },
+  bar: { position: 'absolute', top: 0, left: 0, right: 0, height: BAR_H, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 16, zIndex: 2 },
+  // Once the page covers the cover: a soft shadow under the bar, so the page seems to slide beneath it.
+  barShade: { backgroundColor: colors.ink, shadowColor: '#000000', shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  barTitle: { textAlign: 'center', fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
+  page: { padding: 16, gap: 14, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  hero: { backgroundColor: colors.ink, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 36, gap: 6, zIndex: 1 },
+  heroButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
+  heroTitle: { marginTop: 10, textAlign: 'center', fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
+  // Equal boxes across the width of the cards below them, so their edges line up.
+  stats: { flexDirection: 'row-reverse', gap: 8, marginTop: 16, width: '100%', maxWidth: 728, alignSelf: 'center' },
+  stat: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.07)' },
+  statValue: { fontSize: 18, fontWeight: '900', color: colors.lemon },
+  statLabel: { fontSize: 12, color: '#C9D3CC' },
+  badgeWrapper: { position: 'absolute', bottom: -13, left: 0, right: 0, width: '100%', alignItems: 'center', justifyContent: 'center', zIndex: 99, elevation: 6 },
+  floatingTimeBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  floatingTimeBadgeText: { fontSize: 11.5, lineHeight: 18, fontWeight: '800', color: '#166534' },
+  floatingChapterBadge: { backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 16, borderWidth: 1, borderColor: '#bbf7d0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 6 },
+  floatingChapterBadgeText: { fontSize: 11.5, lineHeight: 18, fontWeight: '800', color: '#166534' },
+  cta: { marginTop: -34, zIndex: 20, backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 10, shadowColor: '#17201A', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+  ctaWithBadge: { paddingBottom: 26, marginBottom: 16 },
+  ctaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
+  ctaHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  ctaTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
+  ctaSmall: { fontSize: 12, color: colors.muted },
+  priceDetails: { gap: 4, padding: 10, backgroundColor: colors.redSoft, borderRadius: 12 },
+  priceLine: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  oldPrice: { color: colors.muted, textDecorationLine: 'line-through', fontSize: 12 },
+  salePrice: { color: colors.redDark, fontSize: 14, fontWeight: '900' },
+  saleAmountLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  discountChip: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: colors.redDark, color: '#FFFFFF', fontSize: 10, fontWeight: '900', overflow: 'hidden' },
+  saving: { textAlign: 'center', fontSize: 11, fontWeight: '800', color: colors.redDark },
+  ctaButton: { backgroundColor: colors.lemon, borderRadius: 12, paddingHorizontal: 18, minHeight: 46, justifyContent: 'center' },
+  ctaButtonText: { color: colors.ink, fontWeight: '900', fontSize: 15 },
+  ctaActions: { gap: 10 },
+  ctaActionsRow: { flexDirection: 'row-reverse', alignItems: 'flex-start' },
+  ctaActionFlex: { flex: 1 },
+  ctaUnlockCol: { gap: 8 },
+  startFreeBtn: { minHeight: 54, borderRadius: radius.md, backgroundColor: colors.lemon, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 18, gap: 2 },
+  startFreeBtnText: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  startFreeBtnSub: { fontSize: 11.5, lineHeight: 16, fontWeight: '700', color: 'rgba(23, 32, 26, 0.72)', maxWidth: '100%', textAlign: 'center' },
+  unlock: { minHeight: 54, borderRadius: radius.md, borderWidth: 1.5, borderColor: '#BAC4B4', backgroundColor: colors.surface, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
+  // The one main action of the box is lemon; next to «خواندن رایگان» or «ادامه بده» it is the outlined second.
+  unlockMain: { backgroundColor: colors.lemon, borderColor: colors.lemon },
+  unlockText: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  priceLineCenter: { alignItems: 'center' },
+  ctaPriceStrong: { fontWeight: '800', color: colors.ink },
+  ctaSubLink: { color: colors.greenDark, fontWeight: '800', textDecorationLine: 'underline' },
+  shortcuts: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  shortcut: { flexGrow: 1, flexBasis: '45%', minHeight: 46, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
+  timeRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 4 },
+  timeText: { fontSize: 13, color: colors.muted },
+  shortcutText: { fontSize: 13, fontWeight: '700', color: colors.ink },
+  smallLink: { fontSize: 12, color: colors.muted, textDecorationLine: 'underline' },
+  note: { fontSize: 13, color: colors.muted },
+  pastRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.line },
+  pastTitle: { fontSize: 14, fontWeight: '800', color: colors.ink },
+  ready: { fontSize: 12, fontWeight: '800', color: colors.greenDark },
+  pastRepeats: { gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.line },
+  pastNames: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 },
+  pastBtn: { borderRadius: 999, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, paddingVertical: 6 },
+  pastBtnMain: { backgroundColor: colors.lemon, borderColor: colors.lemon },
+  pastBtnText: { fontSize: 13, fontWeight: '800', color: colors.ink },
+  // استایل‌های تب‌های سه‌گانه
+  tabsContainer: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' },
+  tabHeader: { flexDirection: 'row-reverse', backgroundColor: '#F0F2EB', padding: 5, gap: 6, borderBottomWidth: 1, borderBottomColor: colors.line },
+  tabButton: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 10 },
+  tabButtonActive: { backgroundColor: colors.lemon, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  tabButtonText: { fontSize: 13, fontWeight: '700', color: colors.muted },
+  tabButtonTextActive: { color: colors.ink, fontWeight: '900' },
+  tabContent: { padding: 16 },
+  emptyNote: { fontSize: 13, color: colors.muted, textAlign: 'center', paddingVertical: 18 },
+  // نویسنده
+  authorHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.line },
+  authorAvatar: { width: 70, height: 70, borderRadius: 35, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.line, overflow: 'hidden' },
+  authorAvatarClickable: { borderColor: colors.lemon, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  authorAvatarImg: { width: '100%', height: '100%' },
+  avatarZoomBadge: { position: 'absolute', bottom: 2, left: 2, backgroundColor: 'rgba(23,32,26,0.72)', width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  avatarModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  avatarModalCard: { backgroundColor: colors.surface, borderRadius: 20, padding: 18, alignItems: 'center', gap: 10, maxWidth: 360, width: '100%' },
+  avatarModalImg: { width: 260, height: 260, borderRadius: 16 },
+  avatarModalName: { fontSize: 16, fontWeight: '900', color: colors.ink, marginTop: 4 },
+  avatarModalTitle: { fontSize: 13, color: colors.muted, textAlign: 'center' },
+  avatarModalClose: { marginTop: 10, paddingVertical: 8, paddingHorizontal: 20, backgroundColor: colors.ground, borderRadius: 20 },
+  avatarModalCloseText: { fontSize: 13, fontWeight: '800', color: colors.ink },
+  authorName: { fontSize: 16, fontWeight: '900', color: colors.ink },
+  authorTitle: { fontSize: 12.5, fontWeight: '700', color: colors.greenDark },
+  authorMetaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 12 },
+  authorMetaText: { fontSize: 12, color: colors.muted },
+  // نظرات
+  reviewStatsBox: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: colors.ground, borderRadius: 12, padding: 14, marginBottom: 14 },
+  reviewStatCol: { alignItems: 'center', gap: 2 },
+  reviewBigScore: { fontSize: 28, fontWeight: '900', color: colors.ink },
+  reviewSubLabel: { fontSize: 11, color: colors.muted },
+  reviewStatDivider: { width: 1, height: 44, backgroundColor: colors.line },
+  reviewHighlightRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  reviewHighlightText: { fontSize: 12, color: colors.ink },
+  reviewTextInput: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 12, minHeight: 90, textAlignVertical: 'top', fontSize: 14, color: colors.ink },
+  cancelReviewButton: { paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.line },
+  cancelReviewText: { fontSize: 13, color: colors.muted, fontWeight: '700' },
+  writeReviewButton: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 12, backgroundColor: colors.ground, borderWidth: 1, borderColor: colors.line },
+  writeReviewText: { fontSize: 13, fontWeight: '800', color: colors.ink },
+  reviewFormBox: { backgroundColor: colors.ground, borderRadius: 12, padding: 12, gap: 10 },
+  formTitle: { fontSize: 13, fontWeight: '800', color: colors.ink },
+  starsSelectCard: { backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: colors.line },
+  starPrompt: { fontSize: 12.5, fontWeight: '700', color: colors.ink },
+  sendReviewBtn: { height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  sendReviewBtnActive: { backgroundColor: colors.lemon },
+  sendReviewBtnDisabled: { backgroundColor: '#e2e8f0' },
+  sendReviewBtnText: { fontSize: 14, fontWeight: '800' },
+  sendReviewBtnTextActive: { color: colors.ink },
+  sendReviewBtnTextDisabled: { color: '#94a3b8' },
+  textAreaWrap: { minHeight: 80, backgroundColor: colors.surface, borderRadius: 8, padding: 8, borderWidth: 1, borderColor: colors.line },
+  singleReviewCard: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 8 },
+  reviewUserHead: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between' },
+  reviewUserName: { fontSize: 13.5, fontWeight: '800', color: colors.ink },
+  studyBadge: { backgroundColor: '#e0f2fe', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  studyBadgeText: { fontSize: 10.5, fontWeight: '800', color: '#0369a1' },
+  reviewDate: { fontSize: 11, color: colors.muted },
+  reviewBodyText: { fontSize: 13, lineHeight: 1.8, color: colors.ink },
+  teacherReplyBox: { backgroundColor: '#f0f9ff', borderRadius: 8, borderRightWidth: 3, borderRightColor: '#0284c7', padding: 10, marginTop: 4, gap: 4 },
+  teacherReplyHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  teacherReplyBadge: { fontSize: 11.5, fontWeight: '900', color: '#0284c7' },
+  teacherReplyBody: { fontSize: 12.5, lineHeight: 1.8, color: '#0f172a' },
+
+  // About four lines of the compact text (16px, line height 1.9).
+  aboutBody: { overflow: 'hidden', ...(Platform.OS === 'web' ? ({ transitionProperty: 'max-height', transitionDuration: '260ms' } as object) : null) },
+  aboutFolded: { maxHeight: 92 }, // three lines of the compact text (16px × 1.9)
+  aboutBodyOpen: { maxHeight: 4000 },
+  aboutFade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  aboutMore: { height: 44, borderRadius: 12, backgroundColor: colors.ground, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  aboutMoreText: { fontSize: 14, fontWeight: '700', color: colors.greenDark },
+  about: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 6 },
+  aboutHead: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  aboutActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  chevronCircle: { width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  chevronCircleOn: { backgroundColor: colors.lemon, borderColor: colors.lemon },
+  aboutTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  chaptersTitle: { fontSize: 18, fontWeight: '900', color: colors.ink, marginTop: 6 },
+  chapter: { flexDirection: 'column-reverse', backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, overflow: 'visible', marginBottom: 14 },
+  chapterTop: { position: 'relative', zIndex: 20 },
+  chapterBody: { position: 'relative', zIndex: 1, overflow: 'hidden', borderBottomLeftRadius: radius.md - 1, borderBottomRightRadius: radius.md - 1 },
+  chapterHead: { flexDirection: 'row-reverse', alignItems: 'center', padding: 16, gap: 12 },
+  strip: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingVertical: 8, minHeight: 40, backgroundColor: '#F9FAF5' },
+  metaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  stripItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  stripText: { fontSize: 12, color: colors.muted },
+  group: { fontSize: 12.5, fontWeight: '800', color: colors.muted, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.ground },
+  glossary: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, alignSelf: 'flex-end', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
+  glossaryText: { fontSize: 13, fontWeight: '700', color: colors.ink },
+  resume: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, padding: 12 },
+  resumeLabel: { fontSize: 12, color: colors.muted },
+  resumeTitle: { fontSize: 15, fontWeight: '800', color: colors.ink },
+  chapterTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: colors.ink },
+  section: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.line, gap: 10 },
+  check: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
+  checkOn: { backgroundColor: colors.green, borderColor: colors.green },
+  checkRead: { borderColor: colors.lemon, overflow: 'hidden', alignItems: 'flex-end' },
+  half: { width: '50%', height: '100%', backgroundColor: colors.lemon },
+  checkMark: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  sectionTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.ink },
+  sectionMeta: { fontSize: 12, color: colors.muted, flexShrink: 0 },
+  reviewLine: { fontSize: 12, fontWeight: '700', color: colors.greenDark },
+  // Two by two, so «تمرین کل فصل» never wraps on a small phone.
+  actions: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: colors.line },
+  action: { flexGrow: 1, flexBasis: '45%', backgroundColor: colors.ground, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  actionText: { fontWeight: '700', color: colors.ink, fontSize: 15 },
+  lockedSheetBody: { alignItems: 'center', gap: 10, paddingVertical: 6 },
+  lockedSheetTitle: { fontSize: 16, fontWeight: '800', color: colors.ink, textAlign: 'center' },
+  lockedSheetNote: { fontSize: 13.5, color: colors.muted, textAlign: 'center', lineHeight: 22 },
+  lockedPriceBox: { alignItems: 'center', gap: 2, paddingVertical: 6 },
+  lockedOldPrice: { fontSize: 13, color: colors.muted, textDecorationLine: 'line-through' },
+  lockedPrice: { fontSize: 22, fontWeight: '900', color: colors.ink },
+  lockedSaving: { fontSize: 12, fontWeight: '800', color: colors.greenDark },
+});
+
+/** A short «درباره‌ی کتاب» (about three lines) is shown whole, without «بیشتر». */
+function shortAbout(md: string): boolean {
+  const lines = md.split('\n').filter((l) => l.trim());
+  const text = lines.join(' ').replace(/[#*_>`\[\]()|-]/g, '').trim();
+  return lines.length <= 3 && text.length <= 200;
+}

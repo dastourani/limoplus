@@ -1,0 +1,97 @@
+{% extends "website/base.html" %}{% load site_icons %}
+{% block title %}دانلود لیموخوان{% endblock %}
+{% block description %}دانلود لیموخوان برای اندروید، و نسخه‌ی وب برای آیفون و کامپیوتر.{% endblock %}
+{% block main %}
+<section class="sec wrap center">
+  <h1 class="h1">نصب و ورود به لیموخوان</h1>
+  <p class="sub">اپلیکیشن اختصاصی اندروید (با مطالعه‌ی آفلاین) و وب‌اپلیکیشن پیشرفته برای آیفون، تبلت و کامپیوتر</p>
+</section>
+<section class="wrap grid2">
+  <div class="feat big dl-card" data-device="android">
+    <span class="dev-badge" hidden>پیشنهاد برای دستگاه شما</span>
+    <div class="head">{% icon "smartphone" 30 %}<h2>اپلیکیشن اندروید</h2></div>
+    <p class="sub">قابل نصب روی اندروید ۷ به بالا، با قابلیت دانلود آفلاین کتاب‌ها</p>
+    {% if apk.version %}<div class="dl-meta"><span class="q-badge">نسخه‌ی {{ apk.version }}</span>{% if apk.date_fa %}<span class="mut">انتشار: {{ apk.date_fa }}</span>{% endif %}</div>{% endif %}
+    <div class="stores">
+      {% if apk %}<a class="store" href="{{ apk.url }}"><span class="si">{% icon "download" 22 %}</span><span><small>دانلود مستقیم، سازگار با همه‌ی گوشی‌ها</small><b>دریافت فایل APK (همه‌کاره)</b></span></a>{% endif %}
+      {% if s.bazaar_url or s.myket_url %}
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:2px;">
+        {% if s.bazaar_url %}<a class="store" href="{{ s.bazaar_url }}" style="flex:1; min-width:140px; margin:0;"><span class="si">{% icon "download" 18 %}</span><span><small>دریافت از</small><b>کافه‌بازار</b></span></a>{% endif %}
+        {% if s.myket_url %}<a class="store" href="{{ s.myket_url }}" style="flex:1; min-width:140px; margin:0;"><span class="si">{% icon "download" 18 %}</span><span><small>دریافت از</small><b>مایکت</b></span></a>{% endif %}
+      </div>
+      {% endif %}
+      {% if not apk %}<p class="sub">نسخهٔ رسمی هنوز منتشر نشده.</p>{% endif %}
+    </div>
+    {% if apk %}
+    <details class="more-downloads" style="margin-top:14px; background:rgba(0,0,0,0.02); border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:13px;">
+      <summary style="cursor:pointer; font-weight:700; color:var(--ink); user-select:none; outline:none;">
+        ⚙️ سایر نسخه‌ها و لینک‌های کمکی دانلود
+      </summary>
+      <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+        {% if apk.arm64 %}
+          <a class="abi-card" href="{{ apk.arm64 }}" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--surface); border:1px solid var(--line); border-radius:8px; text-decoration:none; color:inherit;">
+            <div><b>نسخه‌ی ۶۴ بیتی (arm64 - سبک‌تر)</b><span style="display:block; font-size:11px; color:var(--mut);">مناسب اکثر گوشی‌های جدید</span></div>
+            <span style="font-weight:700; color:#0284c7; font-size:12px;">دانلود {% icon "download" 14 %}</span>
+          </a>
+        {% endif %}
+        {% if apk.bit32 %}
+          <a class="abi-card" href="{{ apk.bit32 }}" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--surface); border:1px solid var(--line); border-radius:8px; text-decoration:none; color:inherit;">
+            <div><b>نسخه‌ی ۳۲ بیتی (سبک‌تر)</b><span style="display:block; font-size:11px; color:var(--mut);">مناسب گوشی‌های اقتصادی یا قدیمی</span></div>
+            <span style="font-weight:700; color:#0284c7; font-size:12px;">دانلود {% icon "download" 14 %}</span>
+          </a>
+        {% endif %}
+        <a class="abi-card" href="{{ apk.github_url|default:'https://github.com/dastourani/limoplus/releases' }}" target="_blank" rel="noopener" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--surface); border:1px solid var(--line); border-radius:8px; text-decoration:none; color:inherit;">
+          <div><b>لینک کمکی دانلود از GitHub Releases</b><span style="display:block; font-size:11px; color:var(--mut);">پشتیبان مستقیم در گیت‌هاب</span></div>
+          <span style="font-weight:700; color:#0284c7; font-size:12px;">دریافت {% icon "download" 14 %}</span>
+        </a>
+        <p class="mut small" style="margin:4px 0 0; font-size:11.5px; line-height:1.6;">اگر نوع پردازنده گوشی خود را نمی‌دانید، دکمه اصلی بالا (همه‌کاره) مناسب است و به‌روزرسانی‌های بعدی خودکار دانلود می‌شوند.</p>
+      </div>
+    </details>
+    {% endif %}
+    {% if apk.notes %}
+    <div class="rel-notes">
+      <b>تغییرات آخرین نسخه:</b>
+      <ul>{% for line in apk.notes %}<li>{{ line }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+  </div>
+  <div class="feat big dl-card" data-device="web">
+    <span class="dev-badge" hidden>پیشنهاد برای دستگاه شما</span>
+    <div class="head">{% icon "monitor-smartphone" 30 %}<h2>آیفون، آیپد و کامپیوتر (وب‌اپ)</h2></div>
+    <p class="sub">بدون نیاز به نصب فایل؛ مستقیم در مرورگر باز می‌شود و روی آیفون مثل یک اپ مستقل کار می‌کند</p>
+    <a class="btn lemon wide" style="margin-top:0;margin-bottom:16px" href="{{ app_url }}">{% icon "book-open" 18 %}ورود به نسخه‌ی وب لیموخوان</a>
+    <div class="web-mock" aria-hidden="true">
+      <div class="wm-bar"><span></span><span></span><span></span><small>نمای وب‌اپ روی کامپیوتر و تبلت</small></div>
+      <div class="wm-body">
+        <div class="wm-side">
+          <b>فهرست فصل</b>
+          <div class="wm-srow on">✓ مقدمه‌ی فصل</div>
+          <div class="wm-srow">● رادیوگرافی</div>
+          <div class="wm-srow">○ توموگرافی (CT)</div>
+        </div>
+        <div class="wm-main">
+          <div class="wm-head"><b>درسنامه و چکیده</b>{% include "website/_lemon.html" with size=18 %}</div>
+          <div class="wm-line"></div>
+          <div class="wm-box"><b>تعریف ۱-۱:</b> کادرهای فرمول، هایلایت چهاررنگ و تست‌های تعاملی در مرورگر</div>
+        </div>
+      </div>
+    </div>
+    <div class="pwa-guide">
+      <b>راهنمای افزودن به صفحه‌ی اصلی آیفون (PWA):</b>
+      <div class="pwa-step"><span class="n">۱</span><div><b>باز کردن در مرورگر Safari</b><p>نسخه‌ی وب لیموخوان را در مرورگر سافاری آیفون یا آیپد باز کنید.</p></div></div>
+      <div class="pwa-step"><span class="n">۲</span><div><b>زدن دکمه‌ی Share ({% icon "share-2" 14 %})</b><p>در نوار پایین سافاری روی آیکون اشتراک‌گذاری بزنید.</p></div></div>
+      <div class="pwa-step"><span class="n">۳</span><div><b>گزینه‌ی Add to Home Screen</b><p>آیکون لیموخوان کنار سایر اپ‌های گوشی قرار می‌گیرد و تمام‌صفحه باز می‌شود.</p></div></div>
+    </div>
+  </div>
+</section>
+<section class="sec wrap">
+  <h2>یک حساب کاربری، همگام در همه‌ی دستگاه‌ها</h2>
+  <p class="sub">هر جا مطالعه کنی، ادامه‌اش روی دستگاه دیگرت آماده است</p>
+  <div class="grid3">
+    <div class="feat"><div class="ic">{% icon "wifi-off" 26 %}</div><b>مطالعه‌ی آفلاین در اندروید</b><p>کتاب‌های خودت را دانلود کن تا در مترو، دانشگاه یا بدون اینترنت هم به درسنامه، تست و فلش‌کارت دسترسی داشته باشی.</p></div>
+    <div class="feat"><div class="ic">{% icon "repeat" 26 %}</div><b>همگام‌سازی خودکار دو دستگاه</b><p>پیشرفت مطالعه، هایلایت‌های چهاررنگ، یادداشت‌های شخصی و جعبه‌های لایتنر بین گوشی و کامپیوترت همگام می‌مانند.</p></div>
+    <div class="feat"><div class="ic">{% icon "circle-check" 26 %}</div><b>ورود سریع بدون رمز عبور</b><p>فقط با شماره‌ی موبایل و کد پیامکی وارد شو؛ به محض انتشار مطالب یا تست‌های تازه در کتاب‌ها هم مطلع می‌شوی.</p></div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}{% include "website/_scripts.html" %}{% endblock %}
