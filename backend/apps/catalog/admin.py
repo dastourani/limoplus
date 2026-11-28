@@ -1709,7 +1709,7 @@ class StorageAdmin(admin.ModelAdmin):
             "media_bytes": sum(f["bytes"] for f in report["folders"]),
             "media_files": sum(f["files"] for f in report["folders"]),
             "runs": [{"at": jalali_datetime(r.at), "summary": r.summary} for r in CleanupRun.objects.all()[:10]],
-            "can_run": request.user.is_superuser,
+            "can_run": access.acts_as_panel_superuser(request),
             "backups": [
                 {"at": jalali_datetime(b.at), "kind": b.get_kind_display(), "ok": b.ok, "sent": b.sent, "size": b.size, "note": b.note}
                 for b in BackupRun.objects.all()[:12]
@@ -1866,7 +1866,7 @@ class StorageAdmin(admin.ModelAdmin):
 
         from .backups import _safe, export_database_json
 
-        if request.method != "POST" or not request.user.is_superuser:
+        if request.method != "POST" or not access.acts_as_panel_superuser(request):
             raise PermissionDenied
         try:
             path = export_database_json()
@@ -1883,7 +1883,7 @@ class StorageAdmin(admin.ModelAdmin):
 
         from .backups import _safe, export_full_media
 
-        if request.method != "POST" or not request.user.is_superuser:
+        if request.method != "POST" or not access.acts_as_panel_superuser(request):
             raise PermissionDenied
         try:
             path, _count = export_full_media()
@@ -1904,7 +1904,7 @@ class StorageAdmin(admin.ModelAdmin):
         from apps.accounts.phone import InvalidPhone, normalize_phone
         from apps.accounts.sms import SMSError, pattern_ready, send_login_code
 
-        if request.method != "POST" or not request.user.is_superuser:
+        if request.method != "POST" or not access.acts_as_panel_superuser(request):
             raise PermissionDenied
         raw_phone = (request.POST.get("phone") or getattr(request.user, "phone", "") or "").strip()
         try:
@@ -1932,7 +1932,7 @@ class StorageAdmin(admin.ModelAdmin):
 
         from apps.commerce.zibal import GatewayError, request_payment
 
-        if request.method != "POST" or not request.user.is_superuser:
+        if request.method != "POST" or not access.acts_as_panel_superuser(request):
             raise PermissionDenied
         try:
             track_id = request_payment(
